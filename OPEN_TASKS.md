@@ -1,10 +1,13 @@
 # Open tasks: @genclass/runtime
 
-Status as of 2026-10-07 23:00 UTC. Branch `runtime`. Spec: [docs/runtime/CONTRACT.md](docs/runtime/CONTRACT.md).
+Status as of 2026-10-07 23:30 UTC. Branch `runtime`. Spec: [docs/runtime/CONTRACT.md](docs/runtime/CONTRACT.md).
 The runtime decides through a trained local model; nothing here is hardcoded per bug pattern.
 
 ## Done
 
+- **Runtime fix batch 3** (frozen as tag `situation-v1`): all 34 review findings fixed, each with its
+  regression test; summed-probability gate; `transient`; compact questions; redaction by field meaning;
+  300 tests passing. A keystroke write on a 5,000-item store takes 0.14 ms.
 - **Runtime core** (`packages/runtime/src`): observers (fetch, XHR, DOM user actions, errors, nav, storage,
   long tasks, WebSocket, timers), causal context propagation, stores (atoms, guard, adapter seam), mutation
   pipeline with holds, learned invariants and transition profiles, latency/error/rate baselines, generic facts,
@@ -23,35 +26,30 @@ The runtime decides through a trained local model; nothing here is hardcoded per
 
 ## In progress
 
-1. **Runtime fix batch 3** (CORE). Remaining items:
-   - fix the 43 review findings, each with a failing test in `packages/runtime/test/review-*.test.ts`; they
-     include a stack overflow from recursive timers, sub-object loss in held writes, coalesce hangs, request
-     identity collisions, wrong facts, a password-name leak, and perf on large stores;
-   - the simulator's requests (sim/NEEDS.md a–f), including the remote-write-over-pending-local-change fact;
-   - the summed-probability gate (CONTRACT §8);
-   - the new `transient` diagnosis;
-   - compact questions at budgets ≤ 1,400 chars, and a 1,000-char auto budget on single-thread WASM.
+1. **Final data, phase A** (SIM): 600k rows from the frozen runtime (tag `situation-v1`), then phase B
+   (1.4M more, disjoint seeds) until the 03:00 UTC VM shutdown; resumable.
 2. **Demos** (DEMOS): six demos, Service Worker backend, Playwright trial harness; screenshot tour and README.
    Current numbers use the untrained v0.1 model and only validate the harness.
 
 ## Next
 
-3. **Freeze the runtime** after batch 3; re-run all suites; tag the situation format.
-4. **Final data**: ≥ 1M (target 2M) simulator rows on the frozen runtime (train VM + c-nodes, disjoint seeds).
-5. **Final training** (heavy, Azure): stage 2 for R17 and R32 on the frozen data plus curriculum replay;
+3. **Final training round 1** (tonight, on phase A): R17 and R32 from their stage-1 weights, then eval,
+   calibration and export by about 02:40 UTC. **Round 2** (after the shutdown) uses phase A + B with longer
+   schedules.
+4. **Final training details** (heavy, Azure): stage 2 for R17 and R32 on the frozen data plus curriculum replay;
    calibration fit on dev, checked on held-out test; export; parity; EVAL.md with guard/heal precision,
    false-intervention rate and regret per trigger and per budget.
-6. **Choose shipping models**: R17 for WASM (about 0.2–0.3 s per decision single-threaded), and R32 for WebGPU
+5. **Choose shipping models**: R17 for WASM (about 0.2–0.3 s per decision single-threaded), and R32 for WebGPU
    only if it is clearly more accurate. Device-based model selection in the host card.
-7. **Demo evaluation with the trained model**: bug rate Off / Guard / Heal and false interventions on clean runs
+6. **Demo evaluation with the trained model**: bug rate Off / Guard / Heal and false interventions on clean runs
    for all six demos. Investigate:
    - **hold-induced harm:** with v0.1, the board demo had 9 bugs introduced in guard mode with no interventions,
      and search clean-run latency rose from 14 ms to 125 ms because salient writes were held;
    - **triage sensitivity on naturally concurrent apps:** typeahead was salient about 6 times per trial on
      clean runs.
-8. **Docs**: library-first README (install, two-line init, modes, what it detects, observability, performance,
+7. **Docs**: READMEs and ARCHITECTURE.md are written; still to do: fill in honest results (install, two-line init, modes, what it detects, observability, performance,
    honest results), ARCHITECTURE.md, model card, and dev-only lazy import of the devtools (52 KB min / 17 KB gz).
-9. **Packaging**: model files as `@genclass/runtime-model` (CDN default URL) and a GitHub release on this repo;
+8. **Packaging**: model files as `@genclass/runtime-model` (CDN default URL) and a GitHub release on this repo;
    CI workflow (build, typecheck, unit tests); `npm pack` smoke test in a fresh Vite app.
 
 ## Needs the user
