@@ -27,7 +27,13 @@ export function searchScenario(seed: number, kind: TrialKind): Scenario {
       steps.push({ k: "wait", ms: rng.range(250, 600) });
       labels.push("cleared");
     }
-    steps.push(...typeSteps(rng, INPUT, typed, style));
+    // Many people glance at the suggestions after the first letters before typing on.
+    const glanceAt = kind === "chaos" && typed.length > 4 && rng.chance(0.6) ? rng.int(2, 3) : 0;
+    if (glanceAt) {
+      steps.push(...typeSteps(rng, INPUT, typed.slice(0, glanceAt), style));
+      steps.push({ k: "wait", ms: rng.range(250, 650) });
+      steps.push(...typeSteps(rng, INPUT, typed.slice(glanceAt), style));
+    } else steps.push(...typeSteps(rng, INPUT, typed, style));
     queries.push(typed);
     steps.push({ k: "mark", name: `typed${r}` });
     if (r === rounds - 1) steps.push({ k: "mark", name: "lastKey" });

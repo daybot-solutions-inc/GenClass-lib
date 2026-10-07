@@ -391,6 +391,9 @@ DIAG_DESC = {
     "unusual": ["this differs from how the same operation normally behaves", "an atypical outcome for this operation",
                 "the operation behaved unlike its usual pattern", "a novel, never-seen shape of result",
                 "out of the ordinary for this operation"],
+    "transient": ["a one-off failure that is likely to succeed if tried again", "an isolated blip that should pass",
+                  "a single failure, probably fine on a retry", "a momentary glitch, not a pattern",
+                  "a one-time error likely to clear up"],
 }
 
 DIAGNOSES = tuple(DIAG_DESC)

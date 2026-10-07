@@ -3,14 +3,31 @@
 //   import { GenClass } from "@genclass/runtime";
 //   GenClass.init();
 
-import type { CreateOptions, DecisionProvider, InitOptions, Mode, ModelOptions, ModelStatus, ObserverName, Runtime } from "./types.js";
+import type { Clock, CreateOptions, DecisionProvider, InitOptions, Mode, ModelOptions, ModelStatus, ObserverName, Runtime } from "./types.js";
 import { RuntimeImpl } from "./runtime.js";
 import { createModelHost } from "./model/host.js";
 
 export * from "./types.js";
 export { browserClock } from "./clock.js";
 export { GenClassUnavailableError } from "./errors.js";
-export { stateText, stateChars, STATE_CHAR_BUDGET } from "./situation/serialize.js";
+export { createModelHost, DEFAULT_MODEL_BASE_URL } from "./model/host.js";
+export type { ModelHost, ModelHostOptions, ModelHostStatus, ModelHostStats, ModelEvaluateRequest } from "./model/host.js";
+export {
+  GenClassModelError,
+  ModelNotReadyError,
+  MaxTokensExceededError,
+  ModelInputError,
+  ModelUnsupportedError,
+  ModelTimeoutError,
+  ModelAbortedError,
+  ModelBusyError,
+  ModelDisposedError,
+  ModelLoadError,
+  ModelIntegrityError,
+  ModelInferenceError,
+} from "./model/errors.js";
+export type { ModelErrorCode, LoadAttempt } from "./model/errors.js";
+export { stateText, stateChars, sectionLimits, STATE_CHAR_BUDGET, COMPACT_BUDGET } from "./situation/serialize.js";
 export { BUILTIN_ACTIONS, TRIGGER_ACTIONS, PASSIVE, DEFAULT_DIAGNOSES } from "./situation/questions.js";
 export { describeElement } from "./observe/dom-user.js";
 export { RuntimeImpl } from "./runtime.js";
@@ -29,9 +46,9 @@ function failedProvider(message: string): DecisionProvider {
   };
 }
 
-function makeHost(m: ModelOptions, fetchFn: typeof fetch | undefined): DecisionProvider {
+function makeHost(m: ModelOptions, fetchFn: typeof fetch | undefined, clock: Clock | undefined): DecisionProvider {
   try {
-    return createModelHost({ ...m, ...(fetchFn ? { fetch: fetchFn } : {}) });
+    return createModelHost({ ...m, ...(fetchFn ? { fetch: fetchFn } : {}), ...(clock ? { clock } : {}) });
   } catch (e) {
     return failedProvider(`model host unavailable: ${(e as Error)?.message ?? e}`);
   }
@@ -45,7 +62,7 @@ export function createRuntime(options: CreateOptions = {}): Runtime {
     owns = true;
     const g = (options.global ?? globalThis) as { fetch?: typeof fetch };
     const nf = options.global ? (typeof g.fetch === "function" ? g.fetch.bind(g) : undefined) : NATIVE_FETCH;
-    decider = makeHost(options.model, nf);
+    decider = makeHost(options.model, nf, options.clock);
   }
   return new RuntimeImpl({ ...options, decider: decider ?? null, ownsDecider: owns });
 }

@@ -25,8 +25,9 @@ def _v(x) -> str:
 
 
 def inconsistency(rng: random.Random, app: App, st: Style) -> Scen:
-    case = rng.choices(("partial_sum", "count_drift", "negative", "dup_ids", "explained_discount", "weak_invariant"),
-                       (0.2, 0.16, 0.12, 0.1, 0.21, 0.21))[0]
+    case = rng.choices(("partial_sum", "count_drift", "negative", "dup_ids", "explained_discount", "weak_invariant",
+                        "coincidental"),
+                       (0.15, 0.12, 0.09, 0.08, 0.16, 0.15, 0.25))[0]
     tr = Trace(rng)
     test = st.test
     store = rng.choice(("cart", "basket", "order", app.coll, "summary", "invoice"))
@@ -108,6 +109,33 @@ def inconsistency(rng: random.Random, app: App, st: Style) -> Scen:
                          test)
         label_a = {"ignore": 0.8, "resync": 0.2} if has_resync else {"ignore": 0.85, "rollback": 0.15}
         diag = "expected"
+    elif case == "coincidental":
+        # a relation the miner learned by coincidence between unrelated fields (few settled points), broken by a
+        # legitimate user action: SIM labels these `expected` (the invariant miner learns many such relations)
+        n_settled = rng.randint(3, 8)
+        other = rng.choice(("lanes", "summary", "stats", "panel", "filters", "meta"))
+        f1 = app.ident(rng.choice(("total count", "page", "unread", "selected index", "version", "level")))
+        kind = rng.choice(("member", "equal", "unique"))
+        ue = tr.user(t + _u(rng, 200, 900), rng.choice(("click", "change", "input")),
+                     rng.choice((f'item "{app.word().capitalize()}"', "#status", f'button "{app.dom.buttons[0]}"')),
+                     rng.choice(("", "low", "high", app.word())))
+        v1 = rng.randint(1, 9)
+        if kind == "member":
+            rel = f"{store}.{f1} ∈ {other}.results[*].version"
+            lhs, rhs = v1, "the versions in the list"
+            tr.write(ue.start + 1, f"{other}.results", ue, f"{rng.randint(3, 15)} items, 1 changed")
+        elif kind == "equal":
+            f2 = app.ident(rng.choice(("low", "pending", "open count", "rank")))
+            rel = f"{store}.{f1} == {other}.{f2}"
+            lhs, rhs = v1, v1 + rng.choice((1, -1, 2))
+            tr.write(ue.start + 1, f"{other}.{f2}", ue, str(rhs))
+        else:
+            rel = f"{store}.{items}[*].{app.ident(app.text_field)} unique"
+            lhs, rhs = "duplicates", "unique values"
+            tr.write(ue.start + 1, f"{store}.{items}", ue, f"{k} → {k + 1} items: added {{text: \"{app.word()}\"}}")
+        what = pick_from(rng, [f"{tr.root_desc(ue)}, a normal user action", f"the user action {tr.root_desc(ue)}"], test)
+        label_a = {"ignore": 0.85, "resync": 0.15} if has_resync else {"ignore": 0.85, "rollback": 0.15}
+        diag = "expected"
     else:  # weak_invariant: learned from very few snapshots, changed by a direct user edit
         f1, f2 = rng.choice((("shippingAddress", "billingAddress"), ("displayName", "legalName"), ("startDate", "endDate"),
                              ("currency", "displayCurrency")))
@@ -157,9 +185,14 @@ def inconsistency(rng: random.Random, app: App, st: Style) -> Scen:
         values = f"{store}.{f} = {_v(lhs)}"
     elif case == "dup_ids":
         values = f"{lhs}"
+    elif case == "coincidental" and kind == "member":
+        values = f"{store}.{f1} = {lhs}, not among {other}.results[*].version"
+    elif case == "coincidental" and kind == "unique":
+        values = f"{rel.replace(' unique', '')} has duplicates"
     else:
         values = f"{left} = {_v(lhs)}, {right} = {_v(rhs)}"
-    fields = sorted({w.path for w in tr.writes if w.path.startswith(store + ".")})
+    fields = sorted({w.path for w in tr.writes if w.path.startswith(store + ".")
+                     or (case == "coincidental" and w.op in tr.ops and tr.ops[w.op].kind == "user")})
     spec = {"rel": rel, "values": values, "held": n_settled, "fields": fields, "lc_age": age,
             "state_paths": fields, "state_lines": [x for x in extra if x.split(":")[0] not in fields]}
     return Scen("inconsistency", f"inconsistency/{case}", subject, store, facts, actions, label_a, diag,
@@ -335,7 +368,7 @@ def error(rng: random.Random, app: App, st: Style) -> Scen:
                                      f"Unhandled: the failed {Y.req} had no catch handler."], test))
         facts.append(pick_from(rng, [f"{Y.req} wrote no state.", "No store was modified by the failing request.",
                                      "The failed request did not touch any store."], test))
-        label_a, diag = "ignore", "failing"
+        label_a, diag = "ignore", {"transient": 0.6, "failing": 0.4}
         err_line = f"Unhandled rejection: TypeError: Failed to fetch"
     else:  # chunk_load
         tr.now = X.end + _u(rng, 100, 4000)
@@ -344,7 +377,7 @@ def error(rng: random.Random, app: App, st: Style) -> Scen:
         facts.append(pick_from(rng, [f"The lazy-loaded chunk {chunk} failed to load (network).",
                                      f"Dynamic import of {chunk} failed.", f"Code chunk {chunk} could not be fetched."], test))
         facts.append(pick_from(rng, ["No app state was written around the error.", "No store changed."], test))
-        label_a, diag = "ignore", "failing"
+        label_a, diag = "ignore", {"transient": 0.6, "failing": 0.4}
         err_line = f"Uncaught ChunkLoadError: Loading chunk failed ({chunk})"
     add_noise_ops(rng, app, tr, -6000, -5)
     cap_now(tr)

@@ -26,7 +26,7 @@ interface Args {
 }
 
 function parse(argv: string[]): Args {
-  const a: Args = { rows: 1000, out: "sim/out/run", seed: 1, workers: 4, maxPoints: 6, testKeep: 0.55, explore: 1, ask: true, fake: false, sample: false };
+  const a: Args = { rows: 1000, out: "sim/out/run", seed: 1, workers: 4, maxPoints: 6, testKeep: 0.33, explore: 1, ask: true, fake: false, sample: false };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     const v = argv[i + 1];
@@ -72,10 +72,12 @@ interface Agg {
   decisions: number;
   correlated: Counter;
   explored: Counter;
+  byBudget: Record<string, { rows: number; lens: number[]; chars: number[]; passiveBest: Record<string, { n: number; passive: number }> }>;
+  sharp: Record<string, { passiveRows: number; passive90: number; actRows: number; act95: number; act90: number; actSoft: number; futures3: number }>;
 }
 
 function newAgg(): Agg {
-  return { rows: {}, rowsBySplitTrigger: {}, diag: {}, best: {}, passiveBest: {}, harm: {}, gap: {}, askKinds: {}, askLabels: {}, lens: [], drops: {}, domains: {}, families: {}, features: {}, skipped: {}, errors: [], trajectories: 0, runs: 0, decisions: 0, correlated: {}, explored: {} };
+  return { rows: {}, rowsBySplitTrigger: {}, diag: {}, best: {}, passiveBest: {}, harm: {}, gap: {}, askKinds: {}, askLabels: {}, lens: [], drops: {}, domains: {}, families: {}, features: {}, skipped: {}, errors: [], trajectories: 0, runs: 0, decisions: 0, correlated: {}, explored: {}, byBudget: {}, sharp: {} };
 }
 
 function pct(xs: number[], p: number): number {
@@ -92,7 +94,7 @@ async function main(): Promise<void> {
   const out = resolve(a.sample ? join(here, "..", "out", "sample-tmp") : a.out);
   if (existsSync(join(out, "shards"))) rmSync(join(out, "shards"), { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
-  const target = a.sample ? 260 : a.rows;
+  const target = a.sample ? 900 : a.rows;
   const agg = newAgg();
   let produced = 0;
   let nextSeed = a.seed;
@@ -141,6 +143,20 @@ async function main(): Promise<void> {
         for (const k of m.askKinds as string[]) inc(agg.askKinds, k);
         for (const k of m.askLabels as string[]) inc(agg.askLabels, k);
         for (const l of m.lens as number[]) agg.lens.push(l);
+        const budgets = m.rowBudgets as number[];
+        budgets.forEach((b, i) => {
+          const bb = (agg.byBudget[String(b)] ??= { rows: 0, lens: [], chars: [], passiveBest: {} });
+          bb.rows++;
+          if (bb.lens.length < 200000) bb.lens.push((m.lens as number[])[i]!);
+          if (bb.chars.length < 200000) bb.chars.push((m.stateChars as number[])[i]!);
+        });
+        const tb = String(budgets[0] ?? 0);
+        for (const p of m.points as PointStat[]) {
+          const bb = (agg.byBudget[tb] ??= { rows: 0, lens: [], chars: [], passiveBest: {} });
+          const x = (bb.passiveBest[p.trigger] ??= { n: 0, passive: 0 });
+          x.n++;
+          if (p.passiveBest) x.passive++;
+        }
         for (const [k, v] of Object.entries(m.drops as Counter)) inc(agg.drops, k, v);
         if (n > 0) {
           if (m.domain) inc(agg.domains, String(m.domain));
@@ -161,6 +177,17 @@ async function main(): Promise<void> {
             const c = p.costs;
             const passive = Object.keys(c)[0]!;
             (agg.gap[p.trigger] ??= []).push((c[passive] ?? 0) - (c[p.best] ?? 0));
+          }
+          const sh = (agg.sharp[p.trigger] ??= { passiveRows: 0, passive90: 0, actRows: 0, act95: 0, act90: 0, actSoft: 0, futures3: 0 });
+          if (p.futures > 1) sh.futures3++;
+          if (p.passiveBest) {
+            sh.passiveRows++;
+            if (1 - p.nonPassiveMass >= 0.9) sh.passive90++;
+          } else {
+            sh.actRows++;
+            if (p.nonPassiveMass >= 0.95) sh.act95++;
+            if (p.nonPassiveMass >= 0.9) sh.act90++;
+            if (p.nonPassiveMass < 0.6) sh.actSoft++;
           }
           inc(agg.correlated, p.correlated ? "yes" : "no");
           inc(agg.explored, p.explored ? "after-exploration" : "on-passive-path");
@@ -219,6 +246,31 @@ async function main(): Promise<void> {
     passive_best_by_split_trigger: passiveBest,
     harm_of_non_passive_when_passive_best: harm,
     gain_of_best_over_passive_when_not_passive: Object.fromEntries(Object.entries(agg.gap).map(([k, xs]) => [k, { n: xs.length, mean: r3(mean(xs)), median: r3(pct(xs, 0.5)) }])),
+    by_budget: Object.fromEntries(
+      Object.entries(agg.byBudget).map(([b, v]) => [
+        b,
+        {
+          rows: v.rows,
+          state_chars: { p50: pct(v.chars, 0.5), p90: pct(v.chars, 0.9), max: pct(v.chars, 1) },
+          token_estimate: { p50: pct(v.lens, 0.5), p90: pct(v.lens, 0.9), max: pct(v.lens, 1) },
+          passive_best_by_trigger: Object.fromEntries(Object.entries(v.passiveBest).map(([t, x]) => [t, { rows: x.n, frac: r3(x.passive / x.n) }])),
+        },
+      ]),
+    ),
+    label_sharpness: Object.fromEntries(
+      Object.entries(agg.sharp).map(([t, v]) => [
+        t,
+        {
+          passive_best_rows: v.passiveRows,
+          passive_mass_ge_0_9: r3(v.passive90 / Math.max(1, v.passiveRows)),
+          intervene_best_rows: v.actRows,
+          non_passive_mass_ge_0_95: r3(v.act95 / Math.max(1, v.actRows)),
+          non_passive_mass_ge_0_9: r3(v.act90 / Math.max(1, v.actRows)),
+          non_passive_mass_lt_0_6: r3(v.actSoft / Math.max(1, v.actRows)),
+          points_with_3_futures: r3(v.futures3 / Math.max(1, v.passiveRows + v.actRows)),
+        },
+      ]),
+    ),
     ask_question_kinds: agg.askKinds,
     ask_labels: agg.askLabels,
     token_estimate: { note: "chars/3.6 of state+questions JSON", p50: pct(agg.lens, 0.5), p90: pct(agg.lens, 0.9), p99: pct(agg.lens, 0.99), max: pct(agg.lens, 1) },
@@ -242,7 +294,17 @@ async function main(): Promise<void> {
     }
     const sampleDir = join(here, "..", "samples");
     mkdirSync(sampleDir, { recursive: true });
-    const picked = all.slice(0, 200);
+    // Stratified: round-robin over (trigger, diagnosis) groups so every kind of row is represented.
+    const groups = new Map<string, Record<string, unknown>[]>();
+    for (const r of all) {
+      const m = r.meta as Record<string, unknown>;
+      const k = `${m.trigger}|${m.diagnosis ?? ""}|${m.passive_best === false ? "act" : "passive"}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(r);
+    }
+    const picked: Record<string, unknown>[] = [];
+    const lists = [...groups.values()];
+    for (let i = 0; picked.length < 200 && lists.some((l) => l.length > i); i++) for (const l of lists) if (l[i] && picked.length < 200) picked.push(l[i]!);
     writeFileSync(join(sampleDir, "sample.jsonl"), picked.map((r) => JSON.stringify(r)).join("\n") + "\n");
     writeFileSync(join(sampleDir, "EXAMPLES.md"), renderExamples(all));
     writeFileSync(join(sampleDir, "sample-stats.json"), JSON.stringify(stats, null, 2));

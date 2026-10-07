@@ -26,6 +26,7 @@ DIAGNOSES = {
     "slow": "an operation is far slower than usual",
     "overload": "work is being triggered far more often than usual",
     "unusual": "this differs from how the same operation normally behaves",
+    "transient": "a one-off failure that is likely to succeed if tried again",  # CONTRACT §6 (2026-10-07)
 }
 ACTIONS = {
     "apply": "let this write update the state now", "discard": "drop this write and keep the current state",
@@ -658,7 +659,11 @@ def stats_lines(tr: Trace, subj: Op | None, spec: dict) -> list[str]:
     return out[: LIMITS["stats"]]
 
 
-def to_state(parts: dict) -> dict:
+BUDGETS = ((3200, 0.35), (2000, 0.3), (1000, 0.35))  # the runtime's "auto" device budgets (chars; WASM 1 thread = 1000)
+COMPACT_QUESTIONS_MAX = 1400  # CORE: at budgets <= 1,400 chars options are bare labels / names (criteria null)
+
+
+def to_state(parts: dict, budget: int = STATE_CHAR_BUDGET) -> dict:
     p = {"app": truncate(parts["app"] or "unknown", LINE["app"]), "trigger": truncate(parts["trigger"], LINE["trigger"]),
          "facts": [truncate(s, LINE["facts"]) for s in parts["facts"][: LIMITS["facts"]]],
          "in_flight": [truncate(s, LINE["in_flight"]) for s in parts["in_flight"][: LIMITS["in_flight"]]],
@@ -675,10 +680,14 @@ def to_state(parts: dict) -> dict:
     st = build()
     for key, from_start, floor in (("timeline", True, 0), ("state", False, 0), ("facts", False, 1), ("in_flight", False, 0),
                                    ("stats", False, 0)):
-        while size(st) > STATE_CHAR_BUDGET and len(p[key]) > floor:
+        while size(st) > budget and len(p[key]) > floor:
             p[key].pop(0 if from_start else -1)
             st = build()
     return st
+
+
+def size_chars(st: dict) -> int:
+    return sum(len(k) + 2 + len("\n".join(v) if isinstance(v, list) else str(v)) + 1 for k, v in st.items())
 
 
 def render(sc, app, rng) -> tuple[dict, dict] | None:
@@ -721,9 +730,19 @@ def render(sc, app, rng) -> tuple[dict, dict] | None:
              "facts": facts, "in_flight": in_flight_lines(tr, subj if trig != "mutation" else None),
              "timeline": event_lines(tr), "state": state_lines(tr, paths) + spec.get("state_lines", []),
              "stats": stats_lines(tr, subj if trig != "mutation" else spec.get("cause"), spec)}
-    state = to_state(parts)
+    import os
+    forced = os.environ.get("GC_RT_BUDGET")  # analysis: render every row at one budget
+    budget = int(forced) if forced else (spec.get("budget") or rng.choices([b for b, _ in BUDGETS], [w for _, w in BUDGETS])[0])
+    state = to_state(parts, budget)
+    if size_chars(state) > budget:  # pathological: one over-long fact; cut lines like the runtime does
+        over = size_chars(state) - budget
+        if isinstance(state.get("facts"), list):
+            state["facts"] = [truncate(f, max(40, len(f) - over)) for f in state["facts"]]
     acts = [a for a in TRIGGER_ACTIONS[trig] if a in sc.actions]
-    questions = {"diagnosis": {"type": "choice", "instructions": DIAG_INSTR, "criteria": dict(DIAGNOSES)}}
+    compact = budget <= COMPACT_QUESTIONS_MAX
+    questions = {"diagnosis": {"type": "choice", "instructions": DIAG_INSTR,
+                               "criteria": {k: (None if compact else v) for k, v in DIAGNOSES.items()}}}
     if len(acts) > 1:
-        questions["action"] = {"type": "choice", "instructions": ACTION_INSTR[trig], "criteria": {a: ACTIONS[a] for a in acts}}
+        questions["action"] = {"type": "choice", "instructions": ACTION_INSTR[trig],
+                               "criteria": {a: (None if compact else ACTIONS[a]) for a in acts}}
     return state, questions

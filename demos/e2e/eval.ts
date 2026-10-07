@@ -5,7 +5,7 @@
 // input (Playwright), lets the page's own oracle score it, and writes results.json, results.md and screenshots.
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { serveStatic } from "./serve.ts";
 import { summarizeDemo, type DemoSummary, type ModeSummary } from "../src/shared/aggregate.ts";
@@ -36,9 +36,16 @@ const SHOTS = !flag("no-shots");
 const SHOTS_ONLY = flag("shots-only");
 const OUT = opt("out", ROOT);
 const DIST = `${ROOT}dist/`;
-const localModel = existsSync(`${DIST}genclass-model/model.json`);
+// The model directory can live outside the synced tree (scripts/vm.sh deletes untracked files on sync).
+const MODEL_DIR = opt("model-dir", process.env.GENCLASS_MODEL_DIR ?? "");
+const localModel = existsSync(`${DIST}genclass-model/model.json`) || (MODEL_DIR !== "" && existsSync(`${MODEL_DIR}/model.json`));
 const MODEL = opt("model", localModel ? "genclass-model/" : "cdn");
 const SITE = `http://127.0.0.1:${PORT}${BASE}`;
+/** Experiment: policy.holdBudgetMs for every GenClass page (results go to results-budget<ms>.*). */
+const BUDGET = opt("budget", "");
+/** Free-form label for a run (e.g. the model under test): results-<tag>.json / .md, not shipped with the site. */
+const TAG = opt("tag", "").replace(/[^a-zA-Z0-9._-]+/g, "-");
+const SUFFIX = [TAG ? `-${TAG}` : "", BUDGET ? `-budget${BUDGET}` : ""].join("");
 
 interface Job {
   demo: DemoId;
@@ -164,6 +171,7 @@ function trialUrl(j: Job): string {
   u.searchParams.set("seed", String(j.seed));
   u.searchParams.set("run", Math.random().toString(36).slice(2, 9));
   u.searchParams.set("model", MODEL);
+  if (BUDGET) u.searchParams.set("budget", BUDGET);
   return u.href;
 }
 
@@ -221,16 +229,31 @@ function planJobs(): Job[] {
   return jobs;
 }
 
+/** Register the mock server worker in a fresh context and wait until pages come up cross-origin isolated. */
+async function warmUp(ctx: BrowserContext): Promise<boolean> {
+  const page = await ctx.newPage();
+  try {
+    await page.goto(new URL(`search/?mode=off`, SITE).href, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => crossOriginIsolated && document.querySelector(".app-body > *"), null, { timeout: 30000, polling: 200 });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
 async function runTrials(browser: Browser): Promise<TrialResult[]> {
   const queue = planJobs();
   const total = queue.length;
   const results: TrialResult[] = [];
   const t0 = Date.now();
-  log(`${total} trials · ${DEMOS.length} demos · modes ${MODES.join("/")} · ${N} chaos + ${CLEAN} clean per mode · ${WORKERS} workers · model ${MODEL}`);
+  log(`${total} trials · ${DEMOS.length} demos · modes ${MODES.join("/")} · ${N} chaos + ${CLEAN} clean per mode · ${WORKERS} workers · model ${MODEL_LABEL} (${MODEL})${TAG ? ` · tag ${TAG}` : ""}`);
   await mkdir(`${ROOT}e2e/.out`, { recursive: true });
   await Promise.all(
     Array.from({ length: WORKERS }, async (_, w) => {
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      if (!(await warmUp(ctx))) log(`w${w}: warm-up did not reach cross-origin isolation`);
       while (queue.length) {
         const j = queue.shift()!;
         const r = await runTrial(ctx, j);
@@ -262,19 +285,55 @@ const TITLES: Record<DemoId, string> = {
   decisions: "Runtime decisions",
 };
 
+interface ServedCard {
+  name?: string;
+  version?: string;
+  variants?: Record<string, { file?: string; bytes?: number; sha256?: string }>;
+  source: string;
+}
+
+/** The model card the pages are served (local directory or URL), recorded with the results. */
+async function servedCard(): Promise<ServedCard | null> {
+  try {
+    if (MODEL === "cdn") return { source: "the runtime's default CDN" };
+    if (MODEL === "genclass-model/") {
+      const dir = existsSync(`${DIST}genclass-model/model.json`) ? `${DIST}genclass-model` : MODEL_DIR;
+      const card = JSON.parse(await readFile(`${dir}/model.json`, "utf8")) as ServedCard;
+      return { name: card.name, version: card.version, variants: card.variants, source: dir };
+    }
+    const res = await fetch(new URL("model.json", MODEL.endsWith("/") ? MODEL : MODEL + "/"));
+    if (!res.ok) return { source: MODEL };
+    const card = (await res.json()) as ServedCard;
+    return { name: card.name, version: card.version, variants: card.variants, source: MODEL };
+  } catch {
+    return null;
+  }
+}
+const CARD = await servedCard();
+const MODEL_LABEL = CARD?.name ? `${CARD.name} ${CARD.version ?? ""}`.trim() : MODEL;
+/** The v0.1 extension model (a general classifier), as opposed to a runtime-trained model. */
+const IS_V01 = CARD?.name === "genclass-model" && (CARD.version ?? "").startsWith("0.1");
+
 function modelNote(results: TrialResult[]): { name: string; note: string; status: string; runtime: string } {
   const runtime = [...new Set(results.map((r) => r.gc.runtime))].join("+") || "unknown";
   const on = results.filter((r) => r.mode !== "off");
   const statuses = [...new Set(on.map((r) => r.gc.status))];
   const variants = [...new Set(on.map((r) => [r.gc.device, r.gc.variant].filter(Boolean).join(" ")).filter(Boolean))];
-  const name = MODEL === "genclass-model/" ? "GenClass v0.1 (self-hosted copy)" : MODEL;
+  const reported = [...new Set(on.map((r) => r.gc.model).filter(Boolean))].join(", ");
+  const name = reported || MODEL_LABEL;
+  const iso = on.length ? on.filter((r) => r.gc.isolated).length / on.length : 0;
+  const threads = iso > 0.95 ? "cross-origin isolated (WASM threads available)" : iso > 0 ? `cross-origin isolated in ${Math.round(iso * 100)}% of runs` : "not cross-origin isolated (single-threaded WASM)";
   let note: string;
   if (runtime.includes("shim")) {
     note = "Measured with a development stand-in for @genclass/runtime (observe-only, no model): every mode is the no-GenClass baseline.";
   } else if (!statuses.includes("ready")) {
     note = `The model did not load in these runs (status: ${statuses.join(", ") || "n/a"}), so Guard and Heal acted passively.`;
   } else {
-    note = `Model: ${name}${variants.length ? ` on ${variants.join(", ")}` : ""}. The v0.1 GenClass model is a general classifier that was not trained for runtime decisions; these numbers measure the runtime and the demos with it, not the runtime-specialist model.`;
+    note = `Model: ${name}${variants.length ? ` on ${variants.join(", ")}` : ""}, ${threads}.${
+      IS_V01
+        ? " The v0.1 GenClass model is a general classifier that was not trained for runtime decisions; these numbers measure the runtime and the demos with it, not the runtime-specialist model."
+        : ""
+    }`;
   }
   return { name, note, status: statuses.join("+"), runtime };
 }
@@ -340,8 +399,9 @@ async function writeReports(results: TrialResult[]) {
   const json = {
     generatedAt: new Date().toISOString(),
     runtime: meta.runtime,
-    model: { name: meta.name, note: meta.note, status: meta.status, baseUrl: MODEL },
+    model: { name: meta.name, note: meta.note, status: meta.status, baseUrl: MODEL, card: CARD, tag: TAG || undefined },
     driver: "playwright (real keyboard and mouse input), headless Chromium",
+    policy: BUDGET ? { holdBudgetMs: Number(BUDGET), note: "experiment: hold budget raised from the default 300 ms" } : "runtime defaults",
     trials: { chaos: N, clean: CLEAN },
     modes: MODES,
     seeds: { chaos: `${SEED_BASE}..${SEED_BASE + N - 1}`, clean: `${SEED_BASE + 500}..${SEED_BASE + 500 + CLEAN - 1}` },
@@ -355,11 +415,16 @@ async function writeReports(results: TrialResult[]) {
     demos: Object.fromEntries(summaries.map((s) => [s.demo, s.modes])),
     raw: results,
   };
-  await writeFile(`${OUT}/results.json`, JSON.stringify(json, null, 1));
+  await writeFile(`${OUT}/results${SUFFIX}.json`, JSON.stringify(json, null, 1));
+  // A compact copy (no raw trials) for the landing page; ship it with the built site right away.
+  const { raw: _raw, ...summary } = json;
+  await writeFile(`${OUT}/results${SUFFIX}-summary.json`, JSON.stringify(summary));
+  if (!SUFFIX) await copyFile(`${OUT}/results-summary.json`, `${DIST}results-summary.json`).catch(() => {});
+  else log(`tagged run: results${SUFFIX}.* are not shipped with the site (rename to results.* to publish)`);
   const md = [
     "# GenClass Runtime demos: trial results",
     "",
-    `Generated ${json.generatedAt} on the build VM. Runtime: **${meta.runtime}**. ${meta.note}`,
+    `Generated ${json.generatedAt} on the build VM. Runtime: **${meta.runtime}**. ${meta.note}${BUDGET ? ` **Experiment:** policy.holdBudgetMs = ${BUDGET} ms (default 300 ms), so slow model decisions can still act; this is not the default configuration.` : ""}`,
     "",
     `Driver: Playwright with real keyboard and mouse input in headless Chromium (no GPU, WASM inference). ${N} chaos trials and ${CLEAN} clean trials per mode per demo; the same seeds run in every mode. Bug rate = share of chaos trials where the demo's own oracle found a bug. False interventions = non-passive actions GenClass took on clean runs, where the app behaves correctly; every one is a false positive.`,
     "",
@@ -369,22 +434,23 @@ async function writeReports(results: TrialResult[]) {
     "## How to reproduce",
     "",
     "```bash",
-    "scripts/vm.sh run demos 'npm install && npm run build -w @genclass/runtime && cd demos && npm run fetch-model && npm run build && npm run eval'",
+    "scripts/vm.sh run demos 'setsid nohup bash demos/scripts/vm-eval.sh > ~/gcl/logs/demos-eval.log 2>&1 < /dev/null &'",
+    "# or, on any machine: npm install && npm run build -w @genclass/runtime && cd demos && npm run fetch-model && npm run build && npm run eval",
     "```",
     "",
   ].join("\n");
-  await writeFile(`${OUT}/results.md`, md);
-  log(`wrote ${OUT}/results.json and results.md`);
+  await writeFile(`${OUT}/results${SUFFIX}.md`, md);
+  log(`wrote ${OUT}/results${SUFFIX}.json and results${SUFFIX}.md`);
 }
 
 // -------------------------------------------------------------------------------------------- screenshots
 const SHOT_PRESET: Record<DemoId, string> = { search: "Busy", editor: "Busy", checkout: "Flaky", status: "Flaky", board: "Busy", decisions: "Busy" };
 
-async function shootDemo(ctx: BrowserContext, demo: DemoId, file: string, full: boolean) {
+async function shootDemo(ctx: BrowserContext, demo: DemoId, file: string, full: boolean, overlayOpen = true) {
   const page = await ctx.newPage();
   const u = new URL(`${demo}/`, SITE);
   u.searchParams.set("mode", "guard");
-  u.searchParams.set("devtools", "open");
+  if (overlayOpen) u.searchParams.set("devtools", "open");
   u.searchParams.set("model", MODEL);
   await page.goto(u.href, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".app-body > *", { timeout: 60000 });
@@ -399,7 +465,35 @@ async function shootDemo(ctx: BrowserContext, demo: DemoId, file: string, full: 
   const steps = (await page.evaluate(() => (window as unknown as W).__demo?.scenario(1003, "chaos").steps).catch(() => null)) as Step[] | null;
   if (steps) await runSteps(page, steps.slice(0, 40), false).catch(() => {});
   await page.waitForTimeout(1500);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(300);
   await page.screenshot({ path: file, fullPage: full });
+  await page.close();
+}
+
+/** Exercise the in-page trial runner (iframes + synthetic DOM events) and capture its results table. */
+async function shootTrialsUI(ctx: BrowserContext, demo: DemoId, file: string): Promise<void> {
+  const page = await ctx.newPage();
+  const u = new URL(`${demo}/`, SITE);
+  u.searchParams.set("mode", "guard");
+  u.searchParams.set("model", MODEL);
+  if (BUDGET) u.searchParams.set("budget", BUDGET);
+  await page.goto(u.href, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".app-body > *", { timeout: 60000 });
+  await page.locator("#trials select").selectOption("3");
+  await page.getByRole("button", { name: "Run trials" }).click();
+  const t0 = Date.now();
+  await page.waitForFunction(() => /trials in \d+ s/.test(document.querySelector("#trials .trial-progress .line span")?.textContent ?? ""), null, {
+    timeout: 900000,
+    polling: 1000,
+  });
+  log(`in-page trial runner (${demo}): done in ${Math.round((Date.now() - t0) / 1000)} s`);
+  const rows = await page.locator("#trials .trial-log tbody tr").count();
+  const errors = await page.locator("#trials .trial-log .badge-warn").count();
+  log(`in-page trial runner: ${rows} trials, ${errors} errors`);
+  await page.locator("#trials").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
+  await page.locator("#trials").screenshot({ path: file });
   await page.close();
 }
 
@@ -418,11 +512,17 @@ async function screenshots(browser: Browser) {
     for (const demo of DEMOS) {
       try {
         await shootDemo(ctx, demo, `${dir}/${demo}${suffix}.png`, false);
-        if (theme === "light") await shootDemo(ctx, demo, `${dir}/${demo}-full.png`, true);
+        if (theme === "light") {
+          await shootDemo(ctx, demo, `${dir}/${demo}-page.png`, false, false);
+          await shootDemo(ctx, demo, `${dir}/${demo}-full.png`, true, false);
+        }
         log(`screenshot ${demo}${suffix}`);
       } catch (e) {
         log(`screenshot ${demo}${suffix} failed: ${String(e).split("\n")[0]}`);
       }
+    }
+    if (theme === "light" && !flag("no-trials-ui")) {
+      await shootTrialsUI(ctx, "search", `${dir}/search-trials.png`).catch((e) => log(`in-page trial runner failed: ${String(e).split("\n")[0]}`));
     }
     await ctx.close();
   }
@@ -442,7 +542,7 @@ if (!existsSync(`${DIST}index.html`)) {
   process.exit(2);
 }
 if (MODEL === "genclass-model/" && !localModel) log("warning: no dist/genclass-model/; Guard/Heal will run without a model");
-const server = await serveStatic(DIST, BASE, PORT);
+const server = await serveStatic(DIST, BASE, PORT, MODEL_DIR ? { "genclass-model": MODEL_DIR } : {});
 log(`serving ${DIST} at ${SITE}`);
 const browser = await chromium.launch({ headless: true });
 try {
@@ -455,5 +555,5 @@ try {
   await browser.close();
   server.close();
 }
-const prev = SHOTS_ONLY ? null : await readFile(`${OUT}/results.md`, "utf8").catch(() => null);
+const prev = SHOTS_ONLY ? null : await readFile(`${OUT}/results${SUFFIX}.md`, "utf8").catch(() => null);
 if (prev) console.log("\n" + prev.split("\n").slice(0, 16).join("\n"));

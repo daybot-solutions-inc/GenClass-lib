@@ -2,7 +2,10 @@
 // until the runtime model ships): worker load over WASM, PyTorch parity, Cache Storage on the second load, inline
 // fallbacks, lazy/idle preload, WebGPU fallbacks, status events, and latency numbers.
 import { expect, test } from "@playwright/test";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
+  APP,
   HAVE_MODEL,
   MODEL_DIR,
   benchSizes,
@@ -18,14 +21,28 @@ import {
   ready,
   saveResults,
   statusOf,
+  transferReport,
   useServer,
 } from "./model-helpers.js";
 
 test.describe.configure({ mode: "serial" });
 test.skip(!HAVE_MODEL, `no model directory at ${MODEL_DIR} (run genclass-runtime fetch-model)`);
 
-const srv = useServer();
+/** GENCLASS_BENCH_MODELS="name=dir,name=dir": more model directories for the per-model-size latency test. */
+const benchModels: Record<string, string> = Object.fromEntries(
+  (process.env.GENCLASS_BENCH_MODELS ?? "")
+    .split(",")
+    .map((x) => x.split("="))
+    .filter(([n, d]) => n && d && existsSync(join(d, "model.json"))),
+);
+const srv = useServer(benchModels);
 const q8File = () => card.variants.q8.file as string;
+/** Which app chunk holds which onnxruntime-web bundle (written by build.mjs). */
+const ortChunk = (bundle: string): string | undefined => {
+  const f = join(APP, "..", "app-files.json");
+  const files: Array<{ file: string; inputs: string[] }> = existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : [];
+  return files.find((x) => x.inputs.some((i) => i.endsWith(bundle)))?.file;
+};
 
 test("loads over WASM in a module worker, matches PyTorch, reports status, and the second load comes from Cache Storage", async ({ browser }) => {
   const ctx = await browser.newContext();
@@ -33,11 +50,21 @@ test("loads over WASM in a module worker, matches PyTorch, reports status, and t
   srv.clearLog();
   await create(page, { baseUrl: "/model/", device: "wasm", preload: "eager", ortWasmPaths: "/ort/" });
   const cold = await ready(page);
-  expect(cold.status).toMatchObject({ state: "ready", device: "wasm", variant: "q8", worker: true, fromCache: false, threads: 1, model: card.name, version: card.version });
+  expect(cold.status).toMatchObject({ state: "ready", device: "wasm", variant: "q8", worker: true, fromCache: false, threads: 1, model: card.name, version: card.version, ortBuild: "wasm" });
   expect(cold.status.bytes).toBe(card.variants.q8.bytes);
   expect(srv.served(new RegExp(`/model/${q8File()}$`))).toBe(1);
-  expect(srv.served(/\/ort\/ort-wasm-simd-threaded\.asyncify\.wasm$/)).toBe(1);
+  // no WebGPU plan: the WASM-only onnxruntime bundle and its plain wasm, never the WebGPU ones
+  expect(srv.served(/\/ort\/ort-wasm-simd-threaded\.wasm$/)).toBe(1);
+  expect(srv.served(/asyncify/)).toBe(0);
+  const wasmChunk = ortChunk("ort.wasm.bundle.min.mjs");
+  const webgpuChunk = ortChunk("ort.webgpu.bundle.min.mjs");
+  expect(wasmChunk && webgpuChunk).toBeTruthy();
+  expect(srv.served(new RegExp(`/app/${wasmChunk}$`))).toBe(1);
+  expect(srv.served(new RegExp(`/app/${webgpuChunk}$`))).toBe(0);
   expect(srv.served(/\/model\/genclass-fp16/)).toBe(0);
+  const transfer = transferReport(srv.paths());
+  console.log(`[transfer wasm path] runtime ${JSON.stringify(transfer.totals.runtime)} model ${JSON.stringify(transfer.totals.model)}`);
+  saveResults("transfer", { wasmPath: transfer });
 
   // status events: loading phases, monotonic progress up to the full size, then ready
   const ev = await events(page);
@@ -164,13 +191,33 @@ test("WebGPU paths: no adapter -> wasm; an adapter that cannot make a device is 
   }
 });
 
-test("latency: single-threaded WASM (q8), warm forward for ~600- and ~1,000-token states", async ({ browser }) => {
+test("latency: single-threaded WASM (q8), warm forward for ~600- and ~1,000-token states; status.latency follows", async ({ browser }) => {
   const { page } = await openApp(browser, srv.url);
   await create(page, { baseUrl: "/model/", device: "wasm", preload: "eager", ortWasmPaths: "/ort/" });
   const s = await ready(page);
   expect(s.status.threads).toBe(1);
-  saveResults("latency", { wasm1: { threads: 1, ...(await benchSizes(page, "wasm x1")) } });
+  expect(s.status.latency).toMatchObject({ n: 0, source: "warmup" });
+  const bench = await benchSizes(page, "wasm x1");
+  const latency = (await statusOf(page)).latency;
+  console.log(`[status.latency] warm-up estimate ${JSON.stringify(s.status.latency)}; after the bench ${JSON.stringify(latency)}`);
+  expect(latency).toMatchObject({ n: 20, source: "evaluations" });
+  expect(latency.p90).toBeGreaterThanOrEqual(latency.p50);
+  saveResults("latency", { wasm1: { threads: 1, warmupEstimate: s.status.latency, statusLatency: latency, ...bench } });
   await page.context().close();
+});
+
+test("latency per model size: single-threaded WASM at ~300 and ~400 state tokens", async ({ browser }) => {
+  const models: Array<[string, string]> = [["v0.1-32m", "/model/"], ...Object.keys(benchModels).map((n): [string, string] => [n, `/m/${n}/`])];
+  const out: Record<string, unknown> = {};
+  for (const [name, base] of models) {
+    const { page } = await openApp(browser, srv.url);
+    await create(page, { baseUrl: base, device: "wasm", preload: "eager", ortWasmPaths: "/ort/" });
+    const s = await ready(page);
+    expect(s.status.state).toBe("ready");
+    out[name] = { model: `${s.status.model}@${s.status.version}`, bytes: s.status.bytes, warmupMs: s.status.warmupMs, ...(await benchSizes(page, `wasm x1 ${name}`, 8, [300, 400, 600, 1000])) };
+    await page.context().close();
+  }
+  saveResults("latency", { perModel: out });
 });
 
 test("latency: crossOriginIsolated page, 4 WASM threads", async ({ browser }) => {
@@ -193,6 +240,6 @@ test("default ORT wasm path: jsDelivr for the installed onnxruntime-web version"
   expect(s.status.state).toBe("ready");
   expect(srv.served(/\/ort\//)).toBe(0);
   const keys = await page.evaluate(() => (window as any).GC.cacheKeys());
-  expect(keys.some((k: string) => /^https:\/\/cdn\.jsdelivr\.net\/npm\/onnxruntime-web@1\.30\.\d+\/dist\/ort-wasm-simd-threaded\.asyncify\.wasm$/.test(k))).toBe(true);
+  expect(keys.some((k: string) => /^https:\/\/cdn\.jsdelivr\.net\/npm\/onnxruntime-web@1\.30\.\d+\/dist\/ort-wasm-simd-threaded\.wasm$/.test(k))).toBe(true);
   await page.context().close();
 });

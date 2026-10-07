@@ -3,7 +3,8 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { startServer } from "./server.mjs";
+import { brotliCompressSync, constants as zc, gzipSync } from "node:zlib";
+import { ortDistDir, startServer } from "./server.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const PKG = resolve(HERE, "..", "..");
@@ -11,7 +12,8 @@ export const APP = join(HERE, ".build", "app");
 const FIX = join(PKG, "test", "fixtures", "model");
 export const MODEL_DIR = process.env.GENCLASS_MODEL_DIR ? resolve(process.env.GENCLASS_MODEL_DIR) : resolve(PKG, "..", "..", ".cache-model");
 export const HAVE_MODEL = existsSync(join(MODEL_DIR, "model.json"));
-const RESULTS_DIR = join(PKG, "test-results", "browser");
+// not Playwright's outputDir (test-results/browser), which it empties at the start of every run
+const RESULTS_DIR = join(PKG, "test-results", "model-bench");
 
 const readJson = (p: string) => JSON.parse(readFileSync(p, "utf8"));
 export const requests = HAVE_MODEL ? readJson(join(FIX, "requests50.json")) : [];
@@ -21,11 +23,12 @@ export const card = HAVE_MODEL ? readJson(join(MODEL_DIR, "model.json")) : null;
 
 type Srv = Awaited<ReturnType<typeof startServer>>;
 
-/** Starts the static server for the spec file (beforeAll/afterAll) and returns accessors. */
-export function useServer() {
+/** Starts the static server for the spec file (beforeAll/afterAll) and returns accessors. Extra model
+ * directories are served at /m/<name>/. */
+export function useServer(models: Record<string, string> = {}) {
   let srv: Srv | null = null;
   test.beforeAll(async () => {
-    srv = await startServer({ appDir: APP, modelDir: MODEL_DIR });
+    srv = await startServer({ appDir: APP, modelDir: MODEL_DIR, models });
   });
   test.afterAll(async () => {
     await srv?.close();
@@ -35,10 +38,44 @@ export function useServer() {
       return (srv as Srv).url;
     },
     served: (re: RegExp): number => (srv as Srv).log.filter((e) => re.test(e.path)).length,
+    paths: (): string[] => (srv as Srv).log.map((e) => e.path),
     clearLog: (): void => {
       (srv as Srv).log.length = 0;
     },
+    models,
   };
+}
+
+const sizeCache = new Map<string, { raw: number; gzip: number; br: number }>();
+/** raw / gzip -9 / brotli (q11 below 2 MB, q9 above) bytes of a file. */
+function sizes(file: string) {
+  let s = sizeCache.get(file);
+  if (!s) {
+    const b = readFileSync(file);
+    const q = b.length > 2e6 ? 9 : 11;
+    s = { raw: b.length, gzip: gzipSync(b, { level: 9 }).length, br: brotliCompressSync(b, { params: { [zc.BROTLI_PARAM_QUALITY]: q, [zc.BROTLI_PARAM_SIZE_HINT]: b.length } }).length };
+    sizeCache.set(file, s);
+  }
+  return s;
+}
+
+/** What a page load downloaded: each served file (deduplicated) with raw, gzip and brotli sizes, grouped. */
+export function transferReport(paths: string[], models: Record<string, string> = {}) {
+  const roots: Record<string, string> = { app: APP, model: MODEL_DIR, ort: ortDistDir() };
+  for (const [k, v] of Object.entries(models)) roots[`m:${k}`] = v;
+  const files: Array<{ path: string; group: string; raw: number; gzip: number; br: number }> = [];
+  for (const p of [...new Set(paths)]) {
+    let [, top, ...rest] = (p.startsWith("/coi/") ? p.slice(4) : p).split("/");
+    if (top === "m") top = `m:${rest.shift()}`;
+    const root = roots[top];
+    if (!root) continue;
+    const f = join(root, ...rest);
+    if (!existsSync(f) || f.endsWith(".html")) continue;
+    const group = top === "app" ? (rest.join("/").includes("chunks/") ? "app chunks" : "app entry") : top === "ort" ? "ort wasm" : "model files";
+    files.push({ path: p, group, ...sizes(f) });
+  }
+  const sum = (g?: string) => files.filter((f) => !g || f.group === g).reduce((a, f) => ({ raw: a.raw + f.raw, gzip: a.gzip + f.gzip, br: a.br + f.br }), { raw: 0, gzip: 0, br: 0 });
+  return { files, totals: { all: sum(), runtime: { raw: sum().raw - sum("model files").raw, gzip: sum().gzip - sum("model files").gzip, br: sum().br - sum("model files").br }, model: sum("model files") } };
 }
 
 /** Writes (merges) test-results/browser/<name>.json. */
@@ -126,34 +163,48 @@ export async function parityRun(page: Page, ids = PARITY_IDS) {
 
 // ---------------------------------------------------------------------------------------------- latency
 
-/** A situation-shaped state (runtime trigger "mutation") with `lines` timeline entries. */
-export function situation(lines: number, seed = 1) {
-  const ev = [
-    'user click "Refresh"',
-    "GET /api/orders/:id started",
-    "user input orders.note",
-    "PATCH /api/orders/:id started",
-    "PATCH /api/orders/:id ok 200 in 182 ms",
-    "state orders.items v6 (3 items)",
-    "GET /api/inventory?sku=:id ok 200 in 95 ms",
-    "state inventory.stock v12",
-  ];
-  return {
+const EVENTS = [
+  'user click "Refresh"',
+  "GET /api/orders/:id started",
+  "user input orders.note",
+  "PATCH /api/orders/:id started",
+  "PATCH /api/orders/:id ok 200 in 182 ms",
+  "state orders.items v6 (3 items)",
+  "GET /api/inventory?sku=:id ok 200 in 95 ms",
+  "state inventory.stock v12",
+];
+const FACTS = [
+  'GET /api/orders/:id started 1.24 s ago, caused by a click on "Refresh" (user action #41).',
+  "orders.items was at version 4 when GET /api/orders/:id started and is at version 6 now.",
+  "Versions 5 and 6 of orders.items were written by PATCH /api/orders/:id, which started 0.42 s after it.",
+  "An identical GET /api/orders/:id finished 0.31 s ago (same user action).",
+  "orders.total was written 0.05 s ago by the PATCH; the write would change it from 42.5 to 37.0.",
+  "GET /api/orders/:id usually takes 180 ms (p95 420 ms); this one took 1,240 ms (6.9x the median).",
+];
+
+/**
+ * A situation-shaped state (runtime trigger "mutation") that grows with `size`: sections are added in a fixed order
+ * (facts, in-flight ops, store fields, stats), then timeline lines, so sizes from ~40 to ~2,000 tokens are reachable.
+ */
+export function situation(size: number, seed = 1) {
+  const st: Record<string, unknown> = {
     app: "Orders dashboard (route /orders/:id)",
     trigger: "A write to orders.items by GET /api/orders/:id (started 1.24 s ago) is about to apply.",
-    facts: [
-      'GET /api/orders/:id started 1.24 s ago, caused by a click on "Refresh" (user action #41).',
-      "orders.items was at version 4 when GET /api/orders/:id started and is at version 6 now.",
-      "Versions 5 and 6 of orders.items were written by PATCH /api/orders/:id, which started 0.42 s after it.",
-      "An identical GET /api/orders/:id finished 0.31 s ago (same user action).",
-      "orders.total was written 0.05 s ago by the PATCH; the write would change it from 42.5 to 37.0.",
-      "GET /api/orders/:id usually takes 180 ms (p95 420 ms); this one took 1,240 ms (6.9x the median).",
-    ],
-    in_flight: ["PATCH /api/orders/:id (0.42 s)", "GET /api/orders/:id (1.24 s)"],
-    timeline: Array.from({ length: lines }, (_, i) => `-${(lines * 0.11 - i * 0.11 + (seed % 3) * 0.01).toFixed(2)}s ${ev[(i + seed) % ev.length]} (op #${100 + i})`),
-    state: ["orders.items: 3 items (ids 17, 18, 21)", "orders.total: 42.5", 'orders.note: "leave at the door"', "inventory.stock: {sku-17: 4, sku-18: 0}"],
-    stats: ["GET /api/orders/:id: median 180 ms, p95 420 ms, 2% errors over 317 calls", "PATCH /api/orders/:id: median 160 ms, p95 300 ms"],
   };
+  let left = Math.max(0, Math.floor(size));
+  const take = (n: number) => {
+    const k = Math.min(n, left);
+    left -= k;
+    return k;
+  };
+  const nf = take(FACTS.length);
+  if (nf) st.facts = FACTS.slice(0, nf);
+  if (take(1)) st.in_flight = ["PATCH /api/orders/:id (0.42 s)", "GET /api/orders/:id (1.24 s)"];
+  if (take(1)) st.state = ["orders.items: 3 items (ids 17, 18, 21)", "orders.total: 42.5", 'orders.note: "leave at the door"', "inventory.stock: {sku-17: 4, sku-18: 0}"];
+  if (take(1)) st.stats = ["GET /api/orders/:id: median 180 ms, p95 420 ms, 2% errors over 317 calls", "PATCH /api/orders/:id: median 160 ms, p95 300 ms"];
+  const lines = left;
+  if (lines) st.timeline = Array.from({ length: lines }, (_, i) => `-${(lines * 0.11 - i * 0.11 + (seed % 3) * 0.01).toFixed(2)}s ${EVENTS[(i + seed) % EVENTS.length]} (op #${100 + i})`);
+  return st;
 }
 
 /** The two standing questions of a mutation trigger: diagnosis (8 options) and action (4 options). */
@@ -186,9 +237,9 @@ export const QUESTIONS = {
 
 /** A request whose state packs to about `target` tokens (measured with the loaded tokenizer). */
 export async function sizedRequest(page: Page, target: number) {
-  let lo = 1;
-  let hi = 200;
-  let best = { lines: 1, tokens: 0 };
+  let lo = 0;
+  let hi = 260;
+  let best = { lines: 0, tokens: 0 };
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     const m = await page.evaluate(([s, q]) => (window as any).GC.measure(s, q), [situation(mid), QUESTIONS] as const);
@@ -201,10 +252,10 @@ export async function sizedRequest(page: Page, target: number) {
 
 export const median = (a: number[]) => [...a].sort((x, y) => x - y)[a.length >> 1];
 
-/** Warm forward/wall medians for ~600- and ~1,000-token states (2 choice questions, 8 + 4 options). */
-export async function benchSizes(page: Page, label: string, runs = 10) {
+/** Warm forward/wall medians for states of about `targets` tokens (2 choice questions, 8 + 4 options). */
+export async function benchSizes(page: Page, label: string, runs = 10, targets = [600, 1000]) {
   const out: Record<string, unknown> = {};
-  for (const target of [600, 1000]) {
+  for (const target of targets) {
     const { req, stateTokens } = await sizedRequest(page, target);
     const b = await page.evaluate(([r, n]) => (window as any).GC.bench(r, n), [req, runs] as const);
     out[`state${target}`] = {

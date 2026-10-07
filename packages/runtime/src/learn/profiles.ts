@@ -44,13 +44,25 @@ export interface Unusual {
   observed: string;
 }
 
+/**
+ * The value kind compared across completions: the type, and for arrays empty vs non-empty. The length change
+ * (grew/shrank) is deliberately not part of it: a short last page or a removal is ordinary (precision).
+ */
 export function kindLabel(w: ChainWrite): string {
-  if (w.kind === "array") {
-    const empty = w.len1 === 0 ? "empty" : "non-empty";
-    const sign = w.len0 < 0 ? "" : w.len1 > w.len0 ? " that grew" : w.len1 < w.len0 ? " that shrank" : "";
-    return `${empty} array${sign}`;
-  }
+  if (w.kind === "array") return w.len1 === 0 ? "empty array" : "non-empty array";
+  if (w.kind === "object") return "object";
   return w.kind;
+}
+
+const MAX_SETS = 64;
+const MAX_FIELDS = 128;
+
+/** Keep a count map to `max` keys by dropping the least frequent (ties: oldest). */
+function capCounts(rec: Record<string, number>, max: number): void {
+  const keys = Object.keys(rec);
+  if (keys.length <= max) return;
+  keys.sort((a, b) => rec[a] - rec[b]);
+  for (const k of keys.slice(0, keys.length - max)) delete rec[k];
 }
 
 export function writesBucket(n: number): string {
@@ -131,10 +143,15 @@ export class Profiles {
     }
     p.n++;
     p.sets[s.set] = (p.sets[s.set] ?? 0) + 1;
+    capCounts(p.sets, MAX_SETS);
     for (const f of s.fields) {
       p.wrote[f] = (p.wrote[f] ?? 0) + 1;
       const k = (p.kinds[f] ??= {});
       k[s.kinds[f]] = (k[s.kinds[f]] ?? 0) + 1;
+    }
+    if (Object.keys(p.wrote).length > MAX_FIELDS) {
+      capCounts(p.wrote, MAX_FIELDS);
+      for (const f of Object.keys(p.kinds)) if (!(f in p.wrote)) delete p.kinds[f];
     }
     p.status[s.status] = (p.status[s.status] ?? 0) + 1;
     p.writes[s.writes] = (p.writes[s.writes] ?? 0) + 1;

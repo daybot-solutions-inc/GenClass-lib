@@ -23,6 +23,8 @@ async function main(): Promise<void> {
   const how: Record<string, number> = {};
   const diag: Record<string, number> = {};
   const errs: string[] = [];
+  const roles: Record<string, number> = {};
+  const pushWrites: Record<string, number> = {};
   const shown = new Set<string>();
   let runs = 0;
   let ms = 0;
@@ -35,7 +37,13 @@ async function main(): Promise<void> {
     runs++;
     tasks += r.tasks;
     for (const e of r.internalErrors) if (errs.length < 8) errs.push(`seed ${seed}: ${String((e as Error)?.stack ?? e).slice(0, 600)}`);
+    for (const w of r.know.writes) if (w.role === "push") pushWrites[w.feature] = (pushWrites[w.feature] ?? 0) + 1;
     for (const d of r.decisions) {
+      if (d.trigger === "mutation" && d.subject.ref !== undefined) {
+        const w = r.know.getWrite(d.subject.ref);
+        const k = `${w?.role}:${d.diagnosis}`;
+        roles[k] = (roles[k] ?? 0) + 1;
+      }
       byTrig[d.trigger] = (byTrig[d.trigger] ?? 0) + 1;
       how[`${d.trigger}:${d.subject.how}`] = (how[`${d.trigger}:${d.subject.how}`] ?? 0) + 1;
       diag[`${d.trigger}:${d.diagnosis ?? "?"}`] = (diag[`${d.trigger}:${d.diagnosis ?? "?"}`] ?? 0) + 1;
@@ -55,6 +63,8 @@ async function main(): Promise<void> {
   console.log("decisions by trigger", byTrig);
   console.log("correlation", how);
   console.log("diagnoses", diag);
+  console.log("mutation subject roles", Object.fromEntries(Object.entries(roles).sort((a, b) => b[1] - a[1])));
+  console.log("push writes proposed", pushWrites);
   if (errs.length) console.log("internal errors:\n" + errs.join("\n---\n"));
   if (cf) {
     const t0 = performance.now();

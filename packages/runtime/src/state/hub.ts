@@ -1,4 +1,4 @@
-// StoreHub (CONTRACT §4): registered stores, per-field versions with short histories, the mutation pipeline
+// StoreHub (CONTRACT §4): registered stores, per-field versions with write logs, the mutation pipeline
 // (propose -> gate -> hold -> apply in proposal order per store), recent changes for repetition facts.
 //
 // Apply semantics of a write that waited (held, or queued behind a held write):
@@ -6,15 +6,21 @@
 //   - value writes are re-applied as a patch of the fields they changed (so a user's newer input to another
 //     field of the same store survives); if the store value did not change meanwhile, the value is used as is.
 // User-sync writes (inside a user handler's task) and GenClass action writes bypass the queue and never wait.
+// A functional update that may be held must not change live state before the decision: if the updater mutated
+// the stored value in place, the change is detached into a copy and the live value is restored (when it cannot
+// be restored exactly, the write is applied at once and marked as not holdable).
 
 import type { Clock, Change, StoreIO, StoreOptions } from "../types.js";
 import type { Context } from "../trace/context.js";
 import type { EventLog } from "../trace/events.js";
 import type { OpRec } from "../trace/ops.js";
-import { describe, type Redactor } from "../util.js";
-import { cloneValue, diffLeaves, flatten, leafOf, patchValue, type FieldChange, type Leaf } from "./fields.js";
+import { describe, isPlainObject, type Redactor } from "../util.js";
+import { changeText, cloneValue, diffLeaves, flatten, patchValue, type FieldChange, type Leaf } from "./fields.js";
+
+export { changeText } from "./fields.js";
 
 const HIST = 16;
+const LOG = 512;
 const RECENT_MS = 10_000;
 const RECENT_MAX = 256;
 
@@ -29,6 +35,17 @@ export interface FieldHist {
   delta: string;
   before: unknown;
   after: unknown;
+  beforeLeaf?: Leaf;
+  afterLeaf?: Leaf;
+  mutation: number;
+}
+
+/** Compact write log entry (counts and versions beyond the rich 16-entry history). */
+export interface LogEntry {
+  seq: number;
+  v: number;
+  writer: number | null;
+  root: number | null;
   mutation: number;
 }
 
@@ -38,7 +55,10 @@ export interface FieldState {
   writer: number | null;
   t: number;
   seq: number;
+  /** The last 16 writes with values. */
   hist: FieldHist[];
+  /** The last 512 writes (seq ascending). */
+  log: LogEntry[];
 }
 
 export interface RecentChange {
@@ -68,6 +88,8 @@ export interface MutationRec {
   base: unknown;
   /** Previewed value at proposal time. */
   preview: unknown;
+  /** Leaves of the preview. */
+  leaves?: Map<string, Leaf>;
   fn?: (prev: unknown) => unknown;
   /** Custom commit (guard io.set, redux dispatch, zustand set). Receives the computed next value. */
   commit?: (next: unknown) => void;
@@ -77,7 +99,13 @@ export interface MutationRec {
   state: "queued" | "held" | "resolved" | "done";
   verdict?: Verdict;
   /** Set when the write was applied or dropped. */
-  outcome?: "applied" | "discarded" | "deferred";
+  outcome?: "applied" | "discarded" | "deferred" | "failed";
+  /** When applied: the time, the global sequence number and the changes actually made (for a late revert). */
+  appliedAt?: number;
+  appliedSeq?: number;
+  applied?: FieldChange[];
+  /** Why the write could not be held (e.g. the updater changed the stored value in place). */
+  unholdable?: string;
 }
 
 export interface GateResult {
@@ -105,11 +133,15 @@ export interface StoreRec {
 
 export interface HubHooks {
   gate(m: MutationRec): GateResult;
+  /** Whether a write to this store could be held right now (decides whether live state must be protected). */
+  mayHold(s: StoreRec): boolean;
   /** Resolves when the in-flight ops related to a deferred write have settled. */
   waitRelated(m: MutationRec): Promise<void>;
   applied(m: MutationRec | null, store: StoreRec, changes: FieldChange[], writer: OpRec | null): void;
   discarded(m: MutationRec): void;
   proposed?(m: MutationRec): void;
+  /** An app setter/reducer/subscriber threw while GenClass applied a write later. */
+  appError?(e: unknown, source: string): void;
 }
 
 export class StoreHub {
@@ -123,6 +155,7 @@ export class StoreHub {
   holdUserWrites = false;
   /** When false (paused / destroyed) every write applies immediately. */
   gating = true;
+  private snapCache = new Map<string, { version: number; ref: unknown; seq: number; clone: unknown }>();
 
   constructor(
     private readonly clock: Clock,
@@ -151,7 +184,7 @@ export class StoreHub {
       writable: kind !== "adapter" || typeof io?.set === "function",
     };
     if (io) s.io = io;
-    for (const path of s.leaves.keys()) s.fields.set(path, { path, v: 0, writer: null, t: this.clock.now(), seq: this.seq, hist: [] });
+    for (const path of s.leaves.keys()) s.fields.set(path, { path, v: 0, writer: null, t: this.clock.now(), seq: this.seq, hist: [], log: [] });
     this.stores.set(name, s);
     if (io?.subscribe) {
       s.unsubscribeIO = io.subscribe(() => {
@@ -166,6 +199,7 @@ export class StoreHub {
     if (!s) return;
     s.unsubscribeIO?.();
     this.stores.delete(name);
+    this.snapCache.delete(name);
   }
 
   get(name: string): StoreRec | undefined {
@@ -182,13 +216,12 @@ export class StoreHub {
   propose(s: StoreRec, w: { fn?: (prev: unknown) => unknown; value?: unknown; commit?: (next: unknown) => void }): MutationRec | null {
     const cause = this.ctx.op();
     const base = this.read(s);
-    let preview: unknown;
-    try {
-      preview = w.fn ? w.fn(base) : w.value;
-    } catch (e) {
-      throw e; // errors in updater functions surface to the caller, as without GenClass
-    }
-    const changes = diffLeaves(s.leaves, flatten(s.name, preview));
+    const userSync = this.ctx.isUserSync(cause);
+    const genclass = !!cause?.genclass;
+    const bypass = (userSync && !this.holdUserWrites) || genclass || s.opts.hold === false || !this.gating;
+    const guarded = !bypass && this.hooks.mayHold(s);
+    const pv = this.previewOf(s, w, base, guarded);
+    const changes = diffLeaves(s.leaves, pv.leaves);
     const m: MutationRec = {
       id: ++this.mid,
       store: s.name,
@@ -197,24 +230,20 @@ export class StoreHub {
       root: cause?.root,
       t: this.clock.now(),
       base,
-      preview,
-      userSync: this.ctx.isUserSync(cause),
-      genclass: !!cause?.genclass,
+      preview: pv.preview,
+      leaves: pv.leaves,
+      userSync,
+      genclass,
       defers: 0,
       state: "queued",
     };
-    if (w.fn) m.fn = w.fn;
+    if (w.fn && !pv.detached) m.fn = w.fn;
     if (w.commit) m.commit = w.commit;
+    if (pv.unholdable) m.unholdable = pv.unholdable;
     this.hooks.proposed?.(m);
-    // Writes that never wait: no-ops, user-sync writes, GenClass writes, non-holdable stores, gating off.
-    const bypass =
-      changes.length === 0 ||
-      (m.userSync && !this.holdUserWrites) ||
-      m.genclass ||
-      s.opts.hold === false ||
-      !this.gating;
-    if (bypass) {
-      this.commit(s, m);
+    if (changes.length === 0 || bypass || pv.unholdable) {
+      // never waits: applied now, in the caller's stack (app errors propagate to the caller, as without GenClass)
+      this.commit(s, m, true);
       return m;
     }
     this.mutations.set(m.id, m);
@@ -227,6 +256,70 @@ export class StoreHub {
     s.queue.push(m);
     this.gateAndQueue(s, m);
     return m;
+  }
+
+  /** The value a write would produce, computed without changing live state when the write may be held. */
+  private previewOf(
+    s: StoreRec,
+    w: { fn?: (prev: unknown) => unknown; value?: unknown },
+    base: unknown,
+    guarded: boolean,
+  ): { preview: unknown; leaves: Map<string, Leaf>; detached?: boolean; unholdable?: string } {
+    if (!w.fn) return { preview: w.value, leaves: flatten(s.name, w.value, s.leaves) };
+    const preview = w.fn(base);
+    if (!guarded) return { preview, leaves: flatten(s.name, preview, s.leaves) };
+    const live = flatten(s.name, base, s.leaves);
+    const mutated = diffLeaves(s.leaves, live);
+    if (!mutated.length) return { preview, leaves: preview === base ? live : flatten(s.name, preview, s.leaves) };
+    // the updater changed the stored value in place: detach its result, then restore the live value
+    let detached: unknown;
+    let ok = true;
+    try {
+      detached = cloneValue(preview);
+    } catch {
+      ok = false;
+    }
+    if (ok) ok = this.restoreInPlace(s, base, mutated);
+    if (!ok) return { preview, leaves: flatten(s.name, preview, s.leaves), unholdable: "the update changed the stored value in place, so it could not be held" };
+    return { preview: detached, leaves: flatten(s.name, detached, s.leaves), detached: true };
+  }
+
+  /** Undo an in-place mutation of `base` using the recorded leaves. True when the live value matches them again. */
+  private restoreInPlace(s: StoreRec, base: unknown, mutated: FieldChange[]): boolean {
+    for (const c of mutated) {
+      const segs = c.path.split(".").slice(1);
+      const old = c.beforeLeaf;
+      if (segs.length === 0) {
+        if (Array.isArray(base) && old && Array.isArray(old.value)) {
+          base.length = 0;
+          base.push(...(old.value as unknown[]));
+          continue;
+        }
+        if (isPlainObject(base) && old && isPlainObject(old.value)) {
+          for (const k of Object.keys(base)) delete base[k];
+          Object.assign(base, old.value);
+          continue;
+        }
+        return false;
+      }
+      let parent: unknown = base;
+      for (let i = 0; i < segs.length - 1; i++) {
+        parent = isPlainObject(parent) ? parent[segs[i]] : undefined;
+        if (!isPlainObject(parent)) return false;
+      }
+      if (!isPlainObject(parent)) return false;
+      const key = segs[segs.length - 1];
+      const cur = parent[key];
+      if (!old) delete parent[key];
+      else if (old.kind === "array" && Array.isArray(cur) && Array.isArray(old.value)) {
+        cur.length = 0;
+        cur.push(...(old.value as unknown[]));
+      } else if (old.kind === "object" && isPlainObject(cur) && isPlainObject(old.value)) {
+        for (const k of Object.keys(cur)) if (!(k in old.value)) delete cur[k];
+        Object.assign(cur, old.value);
+      } else parent[key] = old.value;
+    }
+    return diffLeaves(s.leaves, flatten(s.name, base, s.leaves)).length === 0;
   }
 
   private gateAndQueue(s: StoreRec, m: MutationRec): void {
@@ -257,21 +350,25 @@ export class StoreHub {
     );
   }
 
-  /** Apply/drop resolved writes at the head of the store's queue, in proposal order. */
+  /** Apply/drop resolved writes at the head of the store's queue, in proposal order. Never throws. */
   private drain(s: StoreRec): void {
     while (s.queue.length && s.queue[0].state === "resolved") {
       const m = s.queue.shift()!;
       const v = m.verdict ?? "apply";
-      if (v === "discard") {
-        m.state = "done";
-        m.outcome = "discarded";
-        this.hooks.discarded(m);
-      } else if (v === "defer" && m.defers < 2) {
-        m.state = "done";
-        m.outcome = "deferred";
-        this.defer(s, m);
-      } else {
-        this.commit(s, m);
+      try {
+        if (v === "discard") {
+          m.state = "done";
+          m.outcome = "discarded";
+          this.hooks.discarded(m);
+        } else if (v === "defer" && m.defers < 2) {
+          m.state = "done";
+          m.outcome = "deferred";
+          this.defer(s, m);
+        } else {
+          this.commit(s, m, false);
+        }
+      } catch (e) {
+        this.hooks.appError?.(e, `applying a write to ${s.name}`);
       }
     }
   }
@@ -283,15 +380,17 @@ export class StoreHub {
       const base = this.read(s);
       let preview: unknown;
       try {
-        preview = m.fn ? m.fn(base) : this.patched(s, m, base);
+        preview = m.fn ? m.fn(cloneValue(base)) : this.patched(s, m, base);
       } catch {
         preview = m.preview;
       }
+      const leaves = flatten(s.name, preview, s.leaves);
       const r: MutationRec = {
         ...m,
-        changes: diffLeaves(s.leaves, flatten(s.name, preview)),
+        changes: diffLeaves(s.leaves, leaves),
         base,
         preview,
+        leaves,
         defers: m.defers + 1,
         state: "queued",
         t: this.clock.now(),
@@ -300,7 +399,7 @@ export class StoreHub {
       delete r.outcome;
       this.mutations.set(r.id, r);
       if (r.changes.length === 0 || !this.gating) {
-        this.commit(s, r);
+        this.commit(s, r, false);
         return;
       }
       s.queue.push(r);
@@ -320,33 +419,68 @@ export class StoreHub {
     return p.ok ? p.value : m.preview;
   }
 
-  /** Apply a mutation now. */
-  commit(s: StoreRec, m: MutationRec): void {
+  /**
+   * Apply a mutation now, with its cause as the ambient op (subscribers' writes join its chain). `rethrow`: the
+   * caller is the app's own set() call (errors propagate as without GenClass); otherwise errors are reported.
+   */
+  commit(s: StoreRec, m: MutationRec, rethrow: boolean): void {
     const current = this.read(s);
     let next: unknown;
-    try {
-      next = m.fn ? (current === m.base ? m.preview : m.fn(current)) : this.patched(s, m, current);
-    } catch {
+    let leaves: Map<string, Leaf> | undefined;
+    if (current === m.base) {
       next = m.preview;
+      leaves = m.leaves;
+    } else {
+      try {
+        next = m.fn ? m.fn(current) : this.patched(s, m, current);
+      } catch (e) {
+        if (rethrow) throw e;
+        this.hooks.appError?.(e, `re-running an update of ${s.name}`);
+        next = m.preview;
+      }
     }
     m.state = "done";
+    const changes = this.ctx.run(m.cause, () => this.write(s, next, m.cause, m, m.commit, rethrow, leaves));
+    if (changes === null) {
+      m.outcome = "failed";
+      return;
+    }
     m.outcome = "applied";
-    this.write(s, next, m.cause, m, m.commit);
+    m.appliedAt = this.clock.now();
+    m.applied = changes;
   }
 
-  /** Write a value through (atom: internal; guard/adapters: commit) and record the changes. */
-  write(s: StoreRec, next: unknown, writer: OpRec | null, m: MutationRec | null, commit?: (next: unknown) => void): FieldChange[] {
+  /**
+   * Write a value through (atom: internal; guard/adapters: commit) and record the changes. Returns null when the
+   * app's setter threw (reported, or rethrown when `rethrow`).
+   */
+  write(
+    s: StoreRec,
+    next: unknown,
+    writer: OpRec | null,
+    m: MutationRec | null,
+    commit?: (next: unknown) => void,
+    rethrow = false,
+    leaves?: Map<string, Leaf>,
+  ): FieldChange[] | null {
     if (commit || s.io) {
       s.committing = true;
       try {
         if (commit) commit(next);
         else s.io!.set(next);
+      } catch (e) {
+        s.committing = false;
+        if (rethrow) throw e;
+        this.hooks.appError?.(e, `the setter of ${s.name}`);
+        return null;
       } finally {
         s.committing = false;
       }
-      next = this.read(s);
+      const after = this.read(s);
+      if (after !== next) leaves = undefined;
+      next = after;
     }
-    return this.record(s, next, writer, m);
+    return this.record(s, next, writer, m, leaves);
   }
 
   /** A change made outside the pipeline (guarded store changed by its owner): recorded, never held. */
@@ -355,43 +489,51 @@ export class StoreHub {
     this.record(s, v, this.ctx.op(), null);
   }
 
-  /** Record a new value: bump field versions, recent changes, emit the state event, notify subscribers. */
-  record(s: StoreRec, next: unknown, writer: OpRec | null, m: MutationRec | null): FieldChange[] {
-    const leaves = flatten(s.name, next);
+  /** Record a new value: bump field versions, logs, recent changes, emit the state event, notify subscribers. */
+  record(s: StoreRec, next: unknown, writer: OpRec | null, m: MutationRec | null, precomputed?: Map<string, Leaf>): FieldChange[] {
+    const leaves = precomputed ?? flatten(s.name, next, s.leaves);
     const changes = diffLeaves(s.leaves, leaves);
+    const prevValue = s.value;
     s.value = next;
     s.leaves = leaves;
     if (changes.length === 0) {
-      this.notify(s);
+      if (next !== prevValue) this.notify(s);
       return changes;
     }
     const t = this.clock.now();
     const seq = ++this.seq;
+    if (m) m.appliedSeq = seq;
     s.version++;
     const user = m ? m.userSync : this.ctx.isUserSync(writer);
     const root = writer ? writer.root ?? writer.id : null;
+    const mid = m ? m.id : 0;
     for (const c of changes) {
       let f = s.fields.get(c.path);
       if (!f) {
-        f = { path: c.path, v: 0, writer: null, t, seq: 0, hist: [] };
+        f = { path: c.path, v: 0, writer: null, t, seq: 0, hist: [], log: [] };
         s.fields.set(c.path, f);
       }
       f.v++;
       f.writer = writer ? writer.id : null;
       f.t = t;
       f.seq = seq;
-      f.hist.push({ v: f.v, seq, writer: f.writer, root, user, t, delta: c.delta, before: c.before, after: c.after, mutation: m ? m.id : 0 });
+      const h: FieldHist = { v: f.v, seq, writer: f.writer, root, user, t, delta: c.delta, before: c.before, after: c.after, mutation: mid };
+      if (c.beforeLeaf) h.beforeLeaf = c.beforeLeaf;
+      if (c.afterLeaf) h.afterLeaf = c.afterLeaf;
+      f.hist.push(h);
       if (f.hist.length > HIST) f.hist.shift();
+      f.log.push({ seq, v: f.v, writer: f.writer, root, mutation: mid });
+      if (f.log.length > LOG) f.log.splice(0, f.log.length - LOG);
     }
     const paths = changes.map((c) => c.path).sort();
     const key = paths.join(",") + "|" + changes.map((c) => `${c.path}=${c.delta}`).sort().join(";");
-    this.recent.push({ t, seq, store: s.name, paths: paths.join(","), key, writer: writer ? writer.id : null, root, user, mutation: m ? m.id : 0 });
+    this.recent.push({ t, seq, store: s.name, paths: paths.join(","), key, writer: writer ? writer.id : null, root, user, mutation: mid });
     while (this.recent.length > RECENT_MAX || (this.recent.length && this.recent[0].t < t - RECENT_MS)) this.recent.shift();
     const redact = this.redact();
     const summary = changes.slice(0, 3).map((c) => `${c.path}: ${changeText(c, redact)}`);
     this.events.push(t, "state", s.name, {
       ...(writer ? { op: writer.id } : {}),
-      data: { store: s.name, paths, mutation: m ? m.id : 0, user, summary },
+      data: { store: s.name, paths, mutation: mid, user, summary },
     });
     this.hooks.applied(m, s, changes, writer);
     this.notify(s);
@@ -403,12 +545,78 @@ export class StoreHub {
       try {
         fn(s.value);
       } catch (e) {
-        // subscriber errors are app errors: rethrow asynchronously so they are not swallowed
-        this.clock.setTimeout(() => {
-          throw e;
-        }, 0);
+        this.hooks.appError?.(e, `a subscriber of ${s.name}`);
       }
     }
+  }
+
+  // ------------------------------------------------------------------------------------------- late revert
+
+  /** null when the applied write `m` can be reverted exactly, else why not. */
+  revertable(m: MutationRec): string | null {
+    const s = this.stores.get(m.store);
+    if (!s) return "the store is gone";
+    if (m.outcome !== "applied" || !m.applied || m.appliedSeq === undefined) return "the write was not applied";
+    if (!s.writable) return `${m.store} cannot be written by GenClass`;
+    if (!m.applied.length) return "the write changed nothing";
+    for (const c of m.applied) {
+      const f = s.fields.get(c.path);
+      const last = f?.log[f.log.length - 1];
+      if (!f || !last || last.mutation !== m.id) return `superseded: ${c.path} changed again after the write applied`;
+    }
+    const root = m.cause ? m.cause.root ?? m.cause.id : null;
+    if (root !== null) {
+      const later = this.recent.find((r) => r.seq > m.appliedSeq! && r.root === root && r.mutation !== m.id);
+      if (later) return `the same operation chain wrote ${later.paths} after this write applied; reverting only this write would leave them inconsistent`;
+    }
+    return null;
+  }
+
+  /** Revert an applied write by restoring the values it replaced. Returns the changes made, or null if impossible. */
+  revert(m: MutationRec, writer: OpRec | null): FieldChange[] | null {
+    const s = this.stores.get(m.store);
+    if (!s || !m.applied) return null;
+    const p = patchValue(
+      s.name,
+      this.read(s),
+      m.applied.map((c) => ({ path: c.path, after: c.before, removed: c.beforeLeaf === undefined })),
+    );
+    if (!p.ok) return null;
+    return this.write(s, p.value, writer, null);
+  }
+
+  /** Re-apply the changes of a reverted write (undo of a late revert). */
+  reapply(m: MutationRec, writer: OpRec | null): FieldChange[] | null {
+    const s = this.stores.get(m.store);
+    if (!s || !m.applied) return null;
+    const p = patchValue(
+      s.name,
+      this.read(s),
+      m.applied.map((c) => ({ path: c.path, after: c.after, removed: c.afterLeaf === undefined })),
+    );
+    if (!p.ok) return null;
+    return this.write(s, p.value, writer, null);
+  }
+
+  /** Restore fields to given values (chain reverts and their undo), store by store. Returns the paths restored. */
+  restoreFields(values: Map<string, { value: unknown; removed: boolean }>, writer: OpRec | null): string[] {
+    const byStore = new Map<string, { path: string; after: unknown; removed: boolean }[]>();
+    for (const [path, v] of values) {
+      const store = path.split(".")[0];
+      const list = byStore.get(store) ?? [];
+      list.push({ path, after: v.value, removed: v.removed });
+      byStore.set(store, list);
+    }
+    const done: string[] = [];
+    for (const [name, list] of byStore) {
+      const s = this.stores.get(name);
+      if (!s || !s.writable) continue;
+      const p = patchValue(name, this.read(s), list);
+      if (!p.ok) continue;
+      const ch = this.write(s, p.value, writer, null);
+      if (ch) done.push(...ch.map((c) => c.path));
+    }
+    return done;
   }
 
   // ------------------------------------------------------------------------------------------- queries
@@ -418,26 +626,43 @@ export class StoreHub {
     return this.stores.get(store)?.fields.get(path);
   }
 
-  /** Version of a field at global sequence number `seq` (its value as of an op's start). */
+  /** Version of a field at global sequence number `seq` (exact for the last 512 writes). */
   versionAt(path: string, seq: number): number {
     const f = this.field(path);
     if (!f) return 0;
-    for (let i = f.hist.length - 1; i >= 0; i--) if (f.hist[i].seq <= seq) return f.hist[i].v;
-    return f.hist.length ? f.hist[0].v - 1 : f.v;
+    const log = f.log;
+    let lo = 0;
+    let hi = log.length - 1;
+    let ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (log[mid].seq <= seq) {
+        ans = mid;
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    if (ans >= 0) return log[ans].v;
+    return log.length ? log[0].v - 1 : f.v;
   }
 
-  /** Writes to a field after global sequence number `seq`. */
+  /** All logged writes to a field after `seq` (up to the last 512). */
+  logSince(path: string, seq: number): LogEntry[] {
+    const f = this.field(path);
+    return f ? f.log.filter((e) => e.seq > seq) : [];
+  }
+
+  /** Rich history entries (values) of writes to a field after `seq` (the last 16 writes at most). */
   writesSince(path: string, seq: number): FieldHist[] {
     const f = this.field(path);
     return f ? f.hist.filter((h) => h.seq > seq) : [];
   }
 
-  /** Fields of all stores changed after `seq`. */
-  changedSince(seq: number): { path: string; hist: FieldHist[] }[] {
-    const out: { path: string; hist: FieldHist[] }[] = [];
+  /** Fields of all stores changed after `seq`, with their rich history entries since then. */
+  changedSince(seq: number): { path: string; hist: FieldHist[]; count: number }[] {
+    const out: { path: string; hist: FieldHist[]; count: number }[] = [];
     for (const s of this.stores.values())
       for (const f of s.fields.values()) {
-        if (f.seq > seq) out.push({ path: f.path, hist: f.hist.filter((h) => h.seq > seq) });
+        if (f.seq > seq) out.push({ path: f.path, hist: f.hist.filter((h) => h.seq > seq), count: f.log.filter((e) => e.seq > seq).length });
       }
     return out;
   }
@@ -449,20 +674,30 @@ export class StoreHub {
     return out;
   }
 
-  private snapCache = new Map<string, { version: number; value: unknown }>();
-
-  /** Current values of every store, deep-cloned (stores unchanged since the last snapshot reuse their clone). */
+  /**
+   * Current values of every store, deep-cloned. A store unchanged since the last snapshot reuses its clone; for a
+   * plain-object store, top-level keys whose fields did not change reuse their previous clone.
+   */
   snapshot(): Map<string, unknown> {
     const m = new Map<string, unknown>();
     for (const s of this.stores.values()) {
+      const ref = this.read(s);
       const c = this.snapCache.get(s.name);
-      if (c && c.version === s.version && s.kind === "atom") {
-        m.set(s.name, c.value);
+      if (c && c.version === s.version && c.ref === ref) {
+        m.set(s.name, c.clone);
         continue;
       }
-      const v = cloneValue(this.read(s));
-      this.snapCache.set(s.name, { version: s.version, value: v });
-      m.set(s.name, v);
+      let clone: unknown;
+      if (c && isPlainObject(ref) && isPlainObject(c.clone)) {
+        const changedKeys = new Set<string>();
+        for (const f of s.fields.values()) if (f.seq > c.seq) changedKeys.add(f.path.split(".")[1] ?? "");
+        const prevClone = c.clone as Record<string, unknown>;
+        const out: Record<string, unknown> = {};
+        for (const k of Object.keys(ref)) out[k] = !changedKeys.has(k) && k in prevClone ? prevClone[k] : cloneValue(ref[k]);
+        clone = out;
+      } else clone = cloneValue(ref);
+      this.snapCache.set(s.name, { version: s.version, ref, seq: this.seq, clone });
+      m.set(s.name, clone);
     }
     for (const k of [...this.snapCache.keys()]) if (!this.stores.has(k)) this.snapCache.delete(k);
     return m;
@@ -488,44 +723,6 @@ export class StoreHub {
   describeValue(path: string, v: unknown): string {
     return describe(v, path, this.redact());
   }
-}
-
-export function changeText(c: Pick<FieldChange, "before" | "after" | "path"> & { beforeLeaf?: Leaf; afterLeaf?: Leaf }, redact: Redactor): string {
-  const b = c.beforeLeaf ?? leafOf(c.before);
-  const a = c.afterLeaf ?? leafOf(c.after);
-  if (a.kind === "array" && b.kind === "array" && a.elems && b.elems) {
-    const full = `${describe(c.before, c.path, redact, 44)} → ${describe(c.after, c.path, redact, 44)}`;
-    if (full.length <= 70) return full;
-    const ba = c.before as unknown[];
-    const aa = c.after as unknown[];
-    // element-level diff (multiset by hash), elements described individually
-    const count = new Map<string, number>();
-    for (const h of b.elems) count.set(h, (count.get(h) ?? 0) + 1);
-    const added: unknown[] = [];
-    a.elems.forEach((h, i) => {
-      const n = count.get(h) ?? 0;
-      if (n > 0) count.set(h, n - 1);
-      else added.push(aa[i]);
-    });
-    const removed: unknown[] = [];
-    const left = new Map(count);
-    b.elems.forEach((h, i) => {
-      const n = left.get(h) ?? 0;
-      if (n > 0) {
-        left.set(h, n - 1);
-        removed.push(ba[i]);
-      }
-    });
-    const el = (v: unknown) => describe(v, c.path, redact, 48);
-    if (!added.length && !removed.length) return `${a.len} items, reordered`;
-    if (added.length && added.length === removed.length && a.len === b.len)
-      return `${a.len} items, ${added.length} changed: ${el(removed[0])} → ${el(added[0])}${added.length > 1 ? ", …" : ""}`;
-    const parts: string[] = [];
-    if (added.length) parts.push(`added ${el(added[0])}${added.length > 1 ? ` and ${added.length - 1} more` : ""}`);
-    if (removed.length) parts.push(`removed ${el(removed[0])}${removed.length > 1 ? ` and ${removed.length - 1} more` : ""}`);
-    return `${b.len} → ${a.len} items: ${parts.join("; ")}`;
-  }
-  return `${describe(c.before, c.path, redact, 36)} → ${describe(c.after, c.path, redact, 36)}`;
 }
 
 export function toChanges(cs: FieldChange[]): Change[] {

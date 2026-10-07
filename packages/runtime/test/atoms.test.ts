@@ -31,7 +31,7 @@ describe("atoms and the mutation pipeline (CONTRACT §4)", () => {
     expect(a.get()).toBe(5);
   });
 
-  it("a held write fails open after holdBudgetMs", async () => {
+  it("a held write fails open after holdBudgetMs; a late discard reverts exactly that write", async () => {
     const manual = new ManualDecider();
     const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdBudgetMs: 120 } });
     const a = rt.atom("v", 0);
@@ -39,14 +39,70 @@ describe("atoms and the mutation pipeline (CONTRACT §4)", () => {
     await clock.advance(119);
     expect(a.get()).toBe(0);
     await clock.advance(2);
-    expect(a.get()).toBe(1);
-    manual.answer(discard); // arrives late: recorded, not executed
+    expect(a.get()).toBe(1); // fail-open: applied
+    await clock.advance(300);
+    manual.answer(discard); // decided 0.3 s after it applied
     await clock.flush();
+    expect(a.get()).toBe(0);
     const d = rt.decisions()[0];
     expect(d.action).toBe("discard");
-    expect(d.executed).toBe(false);
-    expect(d.reason).toMatch(/hold budget/);
+    expect(d.executed).toBe(true);
+    const rec = rt.interventions()[0];
+    expect(rec.late).toBe(true);
+    expect(rec.changed).toMatch(/^Reverted the write to v from task w \(#\d+\) \(decided 0\.30s after it applied\); v is back to 0\.$/);
+    expect(rt.explain(rec.id)!.message).toMatch(/^\[GenClass\] Reverted a stale write: /);
+    rec.undo!();
     expect(a.get()).toBe(1);
+  });
+
+  it("a late discard does not revert a write whose fields changed since (superseded) or after 2 s", async () => {
+    const manual = new ManualDecider();
+    const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdBudgetMs: 100 } });
+    const a = rt.atom("v", 0);
+    void rt.op("w", () => a.set(1));
+    await clock.advance(150);
+    rt.user({ kind: "click", target: "button" }, () => a.set(2)); // newer write to the same field
+    await clock.flush();
+    manual.answer(discard);
+    await clock.flush();
+    expect(a.get()).toBe(2);
+    expect(rt.decisions()[0].executed).toBe(false);
+    expect(rt.decisions()[0].reason).toMatch(/^superseded: v changed again after the write applied/);
+    // too late
+    const b = rt.atom("b", 0);
+    void rt.op("w2", () => b.set(1));
+    await clock.advance(2500);
+    manual.answer(discard);
+    await clock.flush();
+    expect(b.get()).toBe(1);
+    expect(rt.decisions()[1].reason).toMatch(/too late to revert/);
+  });
+
+  it("a late defer/apply is only recorded", async () => {
+    const manual = new ManualDecider();
+    const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdBudgetMs: 100 } });
+    const a = rt.atom("v", 0);
+    void rt.op("w", () => a.set(1));
+    await clock.advance(150);
+    manual.answer(defaultScript({ mutation: { diagnosis: "conflict", action: "defer" } }));
+    await clock.flush();
+    expect(a.get()).toBe(1);
+    expect(rt.decisions()[0].reason).toMatch(/after the hold budget expired/);
+  });
+
+  it("provider errors (not ready, too many tokens, timeout, busy) fail open at once", async () => {
+    for (const code of ["not_ready", "max_tokens_exceeded", "timeout", "busy"]) {
+      const { rt, clock, decider } = setup({ triage: "always" });
+      decider.script = () => {
+        throw Object.assign(new Error(code), { code });
+      };
+      const a = rt.atom("v", 0);
+      void rt.op("w", () => a.set(1));
+      await clock.flush();
+      expect(a.get()).toBe(1);
+      expect(rt.decisions().length).toBe(0);
+      expect(clock.now()).toBe(1000); // no time passed: not held until the budget
+    }
   });
 
   it("applies held and queued writes in proposal order per store", async () => {

@@ -78,6 +78,17 @@ export async function ensureServiceWorker(root: URL): Promise<ServiceWorkerRegis
   }
   sessionStorage.removeItem("gc-demo-sw-reload");
 
+  // The first visit was not served by the worker, so it lacks the isolation headers: reload once.
+  const wantIsolation = new URLSearchParams(location.search).get("coi") !== "0";
+  if (wantIsolation && !self.crossOriginIsolated && window.top === window) {
+    const key = "gc-demo-coi-reload";
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, "1");
+      location.reload();
+      await new Promise(() => {});
+    }
+  } else if (self.crossOriginIsolated) sessionStorage.removeItem("gc-demo-coi-reload");
+
   // An older worker from a previous build may still be in charge: update it once.
   const pong = await rawSend(navigator.serviceWorker.controller, { type: "ping" }, 5000).catch(() => null);
   if (pong && pong.buildId !== BUILD && BUILD !== "dev") {

@@ -54,7 +54,27 @@ export interface ModelHostStatus extends ModelStatus {
   ort?: string;
   /** What the WebGPU probe found (absent with device "wasm"). */
   gpu?: string;
+  /** Which onnxruntime-web bundle was loaded: "wasm" (onnxruntime-web/wasm, CPU only) or "webgpu" (onnxruntime-web/webgpu). */
+  ortBuild?: OrtBuild;
+  /**
+   * Inference time (pack + forward + answers, in the worker; no queue wait) over the last 20 evaluations. Before the
+   * first evaluation it is the warm-up estimate (n = 0). `msPerToken` is the median of ms / sequence tokens.
+   */
+  latency?: LatencyStats;
 }
+
+export interface LatencyStats {
+  p50: number;
+  p90: number;
+  n: number;
+  tokensP50: number;
+  msPerToken: number;
+  /** "warmup" until real evaluations arrive. */
+  source: "warmup" | "evaluations";
+}
+
+/** onnxruntime-web bundle: "webgpu" = onnxruntime-web/webgpu (WebGPU + WASM providers), "wasm" = onnxruntime-web/wasm. */
+export type OrtBuild = "webgpu" | "wasm";
 
 export interface BackendLoadOptions {
   /** Absolute model directory URL (holds model.json). */
@@ -72,8 +92,8 @@ export interface BackendLoadOptions {
 }
 
 export interface BackendEnv {
-  /** Loads onnxruntime-web (static import in the worker, dynamic import inline). */
-  ort: () => Promise<OrtLike>;
+  /** Loads onnxruntime-web: the WebGPU bundle only when a WebGPU plan will be tried, else the smaller WASM one. */
+  ort: (build: OrtBuild) => Promise<OrtLike>;
   /** Native fetch (never the runtime's instrumented one). */
   fetch: typeof fetch;
   caches: CacheStorage | null;
@@ -85,8 +105,14 @@ export interface BackendEnv {
   inWorker: boolean;
 }
 
-/** onnxruntime-web/webgpu (1.30) runs on this wasm build for both its WebGPU and its CPU (wasm) providers. */
-export const ORT_WASM_FILE = "ort-wasm-simd-threaded.asyncify.wasm";
+/**
+ * The .wasm each onnxruntime-web 1.30 bundle loads: onnxruntime-web/webgpu runs its WebGPU and CPU providers on the
+ * asyncify build (27 MB, 5.5 MB brotli); onnxruntime-web/wasm on the plain one (14 MB, 3.1 MB brotli).
+ */
+export const ORT_WASM_FILES: Record<OrtBuild, string> = {
+  webgpu: "ort-wasm-simd-threaded.asyncify.wasm",
+  wasm: "ort-wasm-simd-threaded.wasm",
+};
 export const ortCdnBase = (version: string): string => `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/`;
 
 const PROGRESS_STEP_MS = 100;
@@ -133,8 +159,6 @@ export class ModelBackend {
     const attempts: LoadAttempt[] = [];
     let ort: OrtLike | null = null;
     try {
-      const ortP = this.env.ort();
-      ortP.catch(() => undefined);
       const gpuP: Promise<GpuInfo> =
         opts.device === "wasm" ? Promise.resolve({ webgpu: false, f16: false, fallback: false }) : (this.env.probeGpu ?? (() => probeWebGPU(clock)))();
       const { card } = await fetchCard(fenv, baseUrl);
@@ -143,6 +167,11 @@ export class ModelBackend {
       const gpu = await gpuP;
       if (opts.device !== "wasm" && gpu.summary) base.gpu = gpu.summary;
       const plans = planOrder(card, opts.device ?? "auto", gpu);
+      // The WebGPU bundle (and its larger wasm) only when a WebGPU plan will be tried.
+      const build: OrtBuild = plans.some((p) => p.device === "webgpu") ? "webgpu" : "wasm";
+      base.ortBuild = build;
+      const ortP = this.env.ort(build);
+      ortP.catch(() => undefined);
 
       // Progress covers the model files, seeded with the card's sizes so it only moves forward; the ORT wasm
       // downloads alongside (its compressed size is unknown up front).
@@ -191,7 +220,7 @@ export class ModelBackend {
       base.ort = ortVersion;
       base.threads = this.configureOrt(ort, opts);
       const wasmBase = normalizeBaseUrl(opts.ortWasmPaths || ortCdnBase(ortVersion || ORT_FALLBACK_VERSION), globalLocation());
-      const wasmP = this.prefetchWasm(ort, fenv, wasmBase, ortVersion);
+      const wasmP = this.prefetchWasm(ort, fenv, wasmBase, ortVersion, build);
 
       for (const plan of plans) {
         if (this.disposed) throw new ModelLoadError("disposed while loading");
@@ -205,16 +234,21 @@ export class ModelBackend {
           this.set({ ...at, phase: "session" });
           const engine = await this.createEngine(ort, plan, vf.bytes, tokenizer, calibration, meta, card, opts);
           let warmupMs: number | undefined;
+          let latency: LatencyStats | undefined;
           if (opts.warmup !== false) {
             this.set({ ...at, phase: "warmup" });
-            const tw = clock.now();
             try {
-              await engine.evaluate(WARMUP_STATE, WARMUP_QUESTIONS);
+              const tw = clock.now();
+              let r = await engine.evaluate(WARMUP_STATE, WARMUP_QUESTIONS);
+              warmupMs = Math.round(clock.now() - tw);
+              // WebGPU compiles its pipelines on the first pass: time a second one for the latency estimate.
+              if (plan.device === "webgpu") r = await engine.evaluate(WARMUP_STATE, WARMUP_QUESTIONS);
+              const ms = Math.round(r.timings.total);
+              latency = { p50: ms, p90: ms, n: 0, tokensP50: r.usage.input_tokens, msPerToken: round3(ms / r.usage.input_tokens), source: "warmup" };
             } catch (e) {
               await engine.release().catch(() => undefined);
               throw e;
             }
-            warmupMs = Math.round(clock.now() - tw);
           }
           if (this.disposed) {
             await engine.release().catch(() => undefined);
@@ -229,6 +263,7 @@ export class ModelBackend {
             bytes: vf.bytes.byteLength,
             fromCache: vf.fromCache,
             ...(warmupMs !== undefined ? { warmupMs } : {}),
+            ...(latency ? { latency } : {}),
             ...(attempts.length ? { attempts } : {}),
           });
           return;
@@ -279,12 +314,13 @@ export class ModelBackend {
    * itself never fetches (offline second loads; nothing goes through the runtime's instrumented fetch). If that
    * fails, ORT loads it from the same prefix on its own.
    */
-  private async prefetchWasm(ort: OrtLike, fenv: FetchEnv, wasmBase: string, version: string): Promise<void> {
+  private async prefetchWasm(ort: OrtLike, fenv: FetchEnv, wasmBase: string, version: string, build: OrtBuild): Promise<void> {
     const w = ort.env.wasm as { wasmBinary?: ArrayBuffer | Uint8Array; wasmPaths?: unknown };
     if (w.wasmBinary) return;
     try {
-      const url = new URL(ORT_WASM_FILE, wasmBase).href;
-      const got = await fetchFile(fenv, url, { file: ORT_WASM_FILE }, `onnxruntime-web@${version}`);
+      const file = ORT_WASM_FILES[build];
+      const url = new URL(file, wasmBase).href;
+      const got = await fetchFile(fenv, url, { file }, `onnxruntime-web@${version}`);
       w.wasmBinary = got.bytes;
       await got.stored;
     } catch {
@@ -341,6 +377,8 @@ export class ModelBackend {
     this.set({ state: "off" });
   }
 }
+
+const round3 = (x: number) => Math.round(x * 1000) / 1000;
 
 function globalLocation(): string | undefined {
   const loc = (globalThis as { location?: { href?: string } }).location;

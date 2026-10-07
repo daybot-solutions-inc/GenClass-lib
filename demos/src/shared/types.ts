@@ -52,7 +52,11 @@ export interface InterventionSummary {
 
 export interface GcStats {
   runtime: "real" | "shim";
+  /** The page was cross-origin isolated (WASM threads possible). */
+  isolated?: boolean;
   status: string;
+  /** Model name/version as reported by the runtime (ModelStatus.model). */
+  model?: string;
   device?: string;
   variant?: string;
   loadMs?: number;

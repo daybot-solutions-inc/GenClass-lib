@@ -57,9 +57,32 @@ export interface ModelStatus {
   progress?: { loaded: number; total: number };
   device?: "webgpu" | "wasm";
   variant?: string;
+  /** Model card name. */
   model?: string;
   loadMs?: number;
   error?: string;
+  /** What the load is doing now (model host). */
+  phase?: "card" | "download" | "runtime" | "session" | "warmup";
+  /** Model card version. */
+  version?: string;
+  /** Size of the loaded variant file. */
+  bytes?: number;
+  /** The variant came from Cache Storage (no download). */
+  fromCache?: boolean;
+  /** WASM threads (1 unless the page is crossOriginIsolated). */
+  threads?: number;
+  /** Duration of the warm-up forward pass. */
+  warmupMs?: number;
+  /** Inference runs in a Worker (false: inline on the main thread). */
+  worker?: boolean;
+  /** Why the Worker was not used (inline fallback). */
+  workerError?: string;
+  /** What the WebGPU probe found. */
+  gpu?: string;
+  /** Plans that failed before the one that loaded (or all of them, on error). */
+  attempts?: { variant: string; device: string; error: string }[];
+  /** onnxruntime-web version. */
+  ort?: string;
 }
 
 /**
@@ -92,6 +115,8 @@ export interface EvaluateRequest {
   priority?: number;
   /** What is being decided (tests/sim). Never part of the model input. */
   subject?: SubjectRef;
+  /** Drop the request if it cannot be answered within this many ms (queued requests are not computed). */
+  timeoutMs?: number;
 }
 
 /** The seam between the runtime and whatever answers its questions: the local model, a test double, the sim. */
@@ -248,8 +273,11 @@ export interface PolicyOptions {
   /** Action names. When set, only these non-passive actions may run. */
   allow?: string[];
   deny?: string[];
-  /** Default 300: max time a write/request waits for the model. */
-  holdBudgetMs?: number;
+  /**
+   * Max time a write/request waits for the model. Default "auto": clamp(1.5 × median of the last 20 model
+   * latencies (the model's warm-up time before any), 150, 800) ms.
+   */
+  holdBudgetMs?: number | "auto";
   /** Default false. */
   holdUserWrites?: boolean;
   /** Default 60 non-passive actions per minute; beyond it the passive action runs and a warning is emitted. */
@@ -313,6 +341,11 @@ export interface InitOptions {
   vocabulary?: Vocabulary;
   /** Quiet time after the last mutation before a settled point (default 60 ms). */
   settleMs?: number;
+  /**
+   * Size of the situation text the model reads, in characters. Default "auto": by device from the model status
+   * (webgpu 3,200; wasm 1,100 + 300 per extra thread up to 4 threads: 2,000; unknown device 3,200).
+   */
+  situation?: { budget?: number | "auto" };
 }
 
 export interface CreateOptions extends InitOptions {
@@ -454,6 +487,8 @@ export interface ActionRecord {
   changed: string;
   /** Reverses the action when it is reversible (discard: apply the dropped write now; rollback: restore). */
   undo?: () => void;
+  /** The subject had already proceeded (hold budget expired): the action reverted it afterwards. */
+  late?: boolean;
 }
 
 export interface Report {
@@ -464,6 +499,8 @@ export interface Report {
 }
 
 export interface Explanation {
+  /** The console line for this decision/action (as printed with report: "console"). */
+  message: string;
   decision: Decision;
   situationText: string;
   facts: string[];
@@ -582,6 +619,10 @@ export interface Runtime {
   interventions(n?: number): ActionRecord[];
   /** In-flight ops (introspection). */
   inflight(): Op[];
+  /** The current hold budget in ms (policy.holdBudgetMs, "auto" by default). */
+  holdBudgetMs(): number;
+  /** The current situation size in characters (situation.budget, "auto" by default). */
+  situationBudget(): number;
   setMode(mode: Mode): void;
   pause(): void;
   resume(): void;

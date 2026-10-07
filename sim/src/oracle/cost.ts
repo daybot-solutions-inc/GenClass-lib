@@ -1,6 +1,7 @@
 // Divergence of client/server state from the intended (ideal-run) state, the run cost, and soft action labels.
 //
 // cost(run) = A·∫ D(t) dt (decision time .. +10 s horizon, seconds)          time-integrated client divergence
+//           + R·∫ (#violated app relations) dt + Rf·(#violated at the end)   internal consistency
 //           + Fc·D(final) + S(final)                                         final client / weighted server divergence
 //           + E·(user-visible error episodes) + U·(uncaught errors)          errors the ideal run does not have
 //           + W·(requests beyond the ideal run, per endpoint)                wasted / duplicate requests
@@ -25,18 +26,28 @@ export const W = {
   serverField: 6.0,
   shownError: 1.5,
   uncaught: 1.0,
+  /** Per second a relation the app maintains (total = Σ items, counts, badges) is violated in the client state. */
+  relation: 0.8,
+  /** Per relation still violated at decision + finalMs. */
+  relationFinal: 2.0,
   wasted: 0.08,
   latency: 0.25,
 } as const;
 
-/** Intervention risk premium by tier (precision first) and the exact-tie penalty; softmax temperature. */
+/**
+ * Label parameters. Each action's cost (per future) gets a tier premium (precision first). An action whose mean
+ * cost is within `tieEps` of the passive action's is a practical tie and is pinned to passive + `exactTie`. Then
+ * p_a ∝ exp(−gap_a / τ_a) with gap_a = mean over futures of (adjusted cost_a − adjusted cost_best) and
+ * τ_a = tau0 + seMul · SE of that paired difference: clear-cut cases are sharp, cases whose futures disagree stay
+ * soft.
+ */
 export const LABEL = {
-  tier: { passive: 0, guard: 0.1, heal: 0.3 } as Record<string, number>,
+  tier: { passive: 0, guard: 0.25, heal: 0.5 } as Record<string, number>,
   exactTie: 1.5,
-  /** Softmax temperature: tau + tauRel * (lowest cost). High-cost situations have noisier comparisons. */
-  tau: 0.25,
-  tauRel: 0.04,
-} as const;
+  tieEps: 0.05,
+  tau0: 0.1,
+  seMul: 1.0,
+};
 
 export const TIER: Record<string, "passive" | "guard" | "heal"> = {
   apply: "passive", send: "passive", deliver: "passive", wait: "passive", ignore: "passive",
@@ -91,8 +102,26 @@ export function valueDist(a: unknown, b: unknown, depth = 0): number {
   return canonical(a) === canonical(b) ? 0 : 1;
 }
 
-export function clientDist(real: Record<string, unknown>, ideal: Record<string, unknown>, weights: Map<string, Record<string, number>>): number {
+/**
+ * Weighted divergence of a client snapshot from the ideal one. The derived field of every app relation that the real
+ * state violates (a total that does not match its items, a stale count) counts as fully wrong even if it happens to
+ * equal the ideal value: a value that contradicts the state it summarises is not correct.
+ */
+export function clientDist(real: Record<string, unknown>, ideal: Record<string, unknown>, weights: Map<string, Record<string, number>>, relations: RunResult["relations"] = []): number {
   let d = 0;
+  const bad = new Set<string>();
+  for (const r of relations) {
+    try {
+      if (!r.check(real)) bad.add(r.fields[0]!);
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const path of bad) {
+    const [store, field] = path.split(".");
+    const w = weights.get(store!) ?? {};
+    d += w[field!] ?? 1;
+  }
   for (const [store, rv] of Object.entries(real)) {
     const iv = ideal[store];
     if (rv === iv) continue;
@@ -102,6 +131,7 @@ export function clientDist(real: Record<string, unknown>, ideal: Record<string, 
       for (const k of keys) {
         const wk = w[k] ?? 1;
         if (wk <= 0) continue;
+        if (bad.has(`${store}.${k}`)) continue;
         const a = (rv as Record<string, unknown>)[k];
         const b = (iv as Record<string, unknown>)[k];
         if (a === b) continue;
@@ -113,7 +143,7 @@ export function clientDist(real: Record<string, unknown>, ideal: Record<string, 
 }
 
 /** ∫ D(t) dt over [from, to] (seconds), with both runs' states piecewise constant between snapshots. */
-export function divergenceArea(real: Snapshot[], ideal: Snapshot[], from: number, to: number, weights: Map<string, Record<string, number>>, init: Record<string, unknown>): number {
+export function divergenceArea(real: Snapshot[], ideal: Snapshot[], from: number, to: number, weights: Map<string, Record<string, number>>, init: Record<string, unknown>, relations: RunResult["relations"] = []): number {
   const times = new Set<number>([from]);
   for (const s of real) if (s.t > from && s.t < to) times.add(s.t);
   for (const s of ideal) if (s.t > from && s.t < to) times.add(s.t);
@@ -135,7 +165,7 @@ export function divergenceArea(real: Snapshot[], ideal: Snapshot[], from: number
     const key = `${ri}|${ii}`;
     let d = cache.get(key);
     if (d === undefined) {
-      d = clientDist(ri >= 0 ? real[ri]!.state : init, ii >= 0 ? ideal[ii]!.state : init, weights);
+      d = clientDist(ri >= 0 ? real[ri]!.state : init, ii >= 0 ? ideal[ii]!.state : init, weights, relations);
       cache.set(key, d);
     }
     area += (d * (t2 - t)) / 1000;
@@ -176,8 +206,38 @@ export function serverDist(a: ServerSnapshot, b: ServerSnapshot): number {
   return d;
 }
 
+/** ∫ (number of violated app relations) dt over [from, to] in seconds, and the count violated at `to`. */
+export function relationViolation(snaps: Snapshot[], relations: RunResult["relations"], from: number, to: number, init: Record<string, unknown>): { area: number; final: number } {
+  if (!relations.length) return { area: 0, final: 0 };
+  const count = (st: Record<string, unknown>) => {
+    let n = 0;
+    for (const r of relations) {
+      try {
+        if (!r.check(st)) n++;
+      } catch {
+        /* ignore */
+      }
+    }
+    return n;
+  };
+  let area = 0;
+  let cur = stateAt(snaps, from, init);
+  let t = from;
+  for (const s of snaps) {
+    if (s.t <= from) continue;
+    if (s.t >= to) break;
+    area += (count(cur) * (s.t - t)) / 1000;
+    cur = s.state;
+    t = s.t;
+  }
+  area += (count(cur) * (to - t)) / 1000;
+  return { area, final: count(stateAt(snaps, to, init)) };
+}
+
 export interface CostBreakdown {
   total: number;
+  relationS: number;
+  relationFinal: number;
   area: number;
   finalClient: number;
   finalServer: number;
@@ -220,8 +280,8 @@ function serverAt(ideal: RunResult, t: number): ServerSnapshot {
 export function runCost(real: RunResult, ideal: RunResult, from: number, tEnd: number): CostBreakdown {
   const stop = Math.min(tEnd, from + W.finalMs, real.tStop);
   const init = real.snapshots.length ? real.snapshots[0]!.state : real.final;
-  const area = divergenceArea(real.snapshots, ideal.snapshots, from, Math.min(stop, from + W.horizonMs), real.weights, init);
-  const finalClient = clientDist(stateAt(real.snapshots, stop, init), stateAt(ideal.snapshots, stop, init), real.weights);
+  const area = divergenceArea(real.snapshots, ideal.snapshots, from, Math.min(stop, from + W.horizonMs), real.weights, init, real.relations);
+  const finalClient = clientDist(stateAt(real.snapshots, stop, init), stateAt(ideal.snapshots, stop, init), real.weights, real.relations);
   const finalServer = serverDist(real.tStop <= stop ? real.server : real.server, serverAt(ideal, stop));
   const within = (ts: number[]) => ts.filter((t) => t >= from && t <= stop).length;
   const shownErrors = Math.max(0, within(real.shownErrorTimes) - within(ideal.shownErrorTimes));
@@ -243,46 +303,65 @@ export function runCost(real: RunResult, ideal: RunResult, from: number, tEnd: n
     if (b > a) latencyMs += b - a;
   }
   const latencyS = latencyMs / 1000;
-  const total = W.area * area + W.finalClient * finalClient + finalServer + W.shownError * shownErrors + W.uncaught * uncaught + W.wasted * wasted + W.latency * latencyS;
-  return { total, area, finalClient, finalServer, shownErrors, uncaught, wasted, latencyS };
+  const rv = relationViolation(real.snapshots, real.relations, from, Math.min(stop, from + W.horizonMs), init);
+  const rf = relationViolation(real.snapshots, real.relations, stop, stop, init).final;
+  const total =
+    W.area * area + W.finalClient * finalClient + finalServer + W.shownError * shownErrors + W.uncaught * uncaught + W.wasted * wasted + W.latency * latencyS + W.relation * rv.area + W.relationFinal * rf;
+  return { total, relationS: rv.area, relationFinal: rf, area, finalClient, finalServer, shownErrors, uncaught, wasted, latencyS };
 }
 
 export interface ActionLabel {
   dist: Record<string, number>;
   best: string;
-  /** Cost after tier premiums / tie handling, relative to the minimum. */
+  /** Mean adjusted cost (premiums, tie rule) relative to the best action. */
   adjusted: Record<string, number>;
+  /** Standard error of each action's paired difference to the best action over futures (0 with one future). */
+  se: Record<string, number>;
   passiveBest: boolean;
+  /** Probability mass on non-passive actions. */
+  nonPassiveMass: number;
 }
 
-export function actionLabel(costs: Record<string, number>, passive: string): ActionLabel {
-  const cp = costs[passive];
-  const adj: Record<string, number> = {};
-  for (const [a, c] of Object.entries(costs)) {
-    let x = c + (LABEL.tier[TIER[a] ?? "heal"] ?? LABEL.tier.heal!);
-    if (a !== passive && cp !== undefined && Math.abs(c - cp) < 1e-6) x = cp + LABEL.exactTie;
-    adj[a] = x;
+const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+function sd(xs: number[]): number {
+  if (xs.length < 2) return 0;
+  const m = mean(xs);
+  return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1));
+}
+
+/** Soft action label from per-action costs (one number, or one per counterfactual future: paired by index). */
+export function actionLabel(costs: Record<string, number | number[]>, passive: string): ActionLabel {
+  const arr: Record<string, number[]> = {};
+  for (const [a, c] of Object.entries(costs)) arr[a] = Array.isArray(c) ? c : [c];
+  const actions = Object.keys(arr);
+  const K = Math.min(...actions.map((a) => arr[a]!.length));
+  const cp = arr[passive];
+  const meanP = cp ? mean(cp.slice(0, K)) : undefined;
+  const adj: Record<string, number[]> = {};
+  for (const a of actions) {
+    const prem = LABEL.tier[TIER[a] ?? "heal"] ?? LABEL.tier.heal!;
+    const xs = arr[a]!.slice(0, K);
+    if (a !== passive && cp && meanP !== undefined && Math.abs(mean(xs) - meanP) < LABEL.tieEps) adj[a] = cp.slice(0, K).map((x) => x + LABEL.exactTie);
+    else adj[a] = xs.map((x) => x + prem);
   }
-  const min = Math.min(...Object.values(adj));
-  const tau = LABEL.tau + LABEL.tauRel * Math.max(0, Math.min(...Object.values(costs)));
-  let z = 0;
+  let best = actions.includes(passive) ? passive : actions[0]!;
+  for (const a of actions) if (mean(adj[a]!) < mean(adj[best]!) - 1e-12) best = a;
   const raw: Record<string, number> = {};
-  for (const [a, x] of Object.entries(adj)) {
-    raw[a] = Math.exp(-(x - min) / tau);
+  const rel: Record<string, number> = {};
+  const se: Record<string, number> = {};
+  let z = 0;
+  for (const a of actions) {
+    const d = adj[a]!.map((x, j) => x - adj[best]![j]!);
+    const gap = Math.max(0, mean(d));
+    const e = K > 1 ? sd(d) / Math.sqrt(K) : 0;
+    const tau = LABEL.tau0 + LABEL.seMul * e;
+    raw[a] = Math.exp(-gap / tau);
     z += raw[a]!;
+    rel[a] = Math.round(gap * 1000) / 1000;
+    se[a] = Math.round(e * 1000) / 1000;
   }
   const dist: Record<string, number> = {};
-  let best = passive;
-  let bp = -1;
-  for (const [a, v] of Object.entries(raw)) {
-    const p = Math.round((v / z) * 1e4) / 1e4;
-    dist[a] = p;
-    if (p > bp || (p === bp && a === passive)) {
-      bp = p;
-      best = a;
-    }
-  }
-  const rel: Record<string, number> = {};
-  for (const [a, x] of Object.entries(adj)) rel[a] = Math.round((x - min) * 1000) / 1000;
-  return { dist, best, adjusted: rel, passiveBest: best === passive };
+  for (const a of actions) dist[a] = Math.round((raw[a]! / z) * 1e4) / 1e4;
+  const nonPassiveMass = Math.round(actions.filter((a) => a !== passive).reduce((acc, a) => acc + dist[a]!, 0) * 1e4) / 1e4;
+  return { dist, best, adjusted: rel, se, passiveBest: best === passive, nonPassiveMass };
 }

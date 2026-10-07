@@ -73,6 +73,9 @@
 .sx-box input::-webkit-search-cancel-button {
   display: none;
 }
+.sx-box input:focus-visible {
+  box-shadow: none;
+}
 .sx-spin {
   width: 16px;
   height: 16px;
@@ -197,6 +200,9 @@
   margin-top: 6px;
   font-size: 13px;
   color: var(--text-3);
+}
+.sx-empty[hidden] {
+  display: none;
 }
 .sx-empty button {
   height: 28px;

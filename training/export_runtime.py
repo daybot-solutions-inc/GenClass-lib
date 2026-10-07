@@ -147,6 +147,14 @@ def make_q8(src: Path, dst: Path, vocab: int, block: int = 32) -> dict:
     m = qz.model.model
     left = [n.name for n in m.graph.node if n.op_type == "MatMul" and any(i.name in n.input for i in m.graph.initializer)]
     st = quantize_embedding(m, vocab, "float32")
+    # WebGPU without shader-f16 (MODEL README): the q8 variant must not contain any fp16 tensor or fp16 cast
+    from onnx import TensorProto
+    f16_inits = [i.name for i in m.graph.initializer if i.data_type == TensorProto.FLOAT16]
+    f16_casts = [n.name for n in m.graph.node if n.op_type == "Cast" and
+                 any(a.name == "to" and a.i == TensorProto.FLOAT16 for a in n.attribute)]
+    if f16_inits or f16_casts:
+        raise ValueError(f"q8 graph contains fp16 tensors {f16_inits[:3]} / casts {f16_casts[:3]}")
+    st["fp16_free"] = True
     st["matmul_unquantized_with_weight"] = left
     st["matmulnbits"] = sum(1 for n in m.graph.node if n.op_type == "MatMulNBits")
     st["gemm_converted"] = n_gemm

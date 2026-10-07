@@ -10,9 +10,11 @@ export function installNav(g: Record<string, unknown>, _rt: unknown, onNav: (rou
   const route = () => truncate(`${loc.pathname ?? ""}${loc.search ?? ""}${loc.hash ?? ""}`, 80);
   const push = hist.pushState;
   const replace = hist.replaceState;
+  let disabled = false;
   const wrap = (orig: History["pushState"]) =>
     function (this: History, ...args: Parameters<History["pushState"]>) {
       const r = orig.apply(this, args);
+      if (disabled) return r;
       try {
         onNav(route());
       } catch {
@@ -32,6 +34,7 @@ export function installNav(g: Record<string, unknown>, _rt: unknown, onNav: (rou
   t.addEventListener("popstate", onPop);
   t.addEventListener("hashchange", onPop);
   return () => {
+    disabled = true;
     try {
       if (wp && hist.pushState === wp) hist.pushState = push;
       if (wr && hist.replaceState === wr) hist.replaceState = replace;

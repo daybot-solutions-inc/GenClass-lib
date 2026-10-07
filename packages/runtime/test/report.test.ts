@@ -15,6 +15,8 @@ describe("reporting, explain, undo (CONTRACT §0.5, §8)", () => {
     expect(r.kind).toBe("intervene");
     expect(r.message).toMatch(/^\[GenClass\] Prevented a stale write: .* Dropped the write to profile\.name from task load \(#\d+\); profile stays at version 0\. \(stale, 0\.97; discard 0\.97\)$/);
     const ex = rt.explain(r.action!.id)!;
+    expect(ex.message).toBe(r.message);
+    expect(rt.explain(r.decision!.id)!.message).toBe(r.message);
     expect(ex.decision.id).toBe(r.decision!.id);
     expect(ex.situationText).toMatch(/^app: \/search\ntrigger: A write to profile\.name from task load/);
     expect(ex.changed).toBe(r.action!.changed);

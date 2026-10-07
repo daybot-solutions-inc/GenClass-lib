@@ -54,7 +54,7 @@ describe("situations per trigger (CONTRACT §5, §6)", () => {
     check(req);
     show("mutation", req);
     expect(s.rt.hub.get("search")!.value).toEqual({ query: "reac", results: ["reac-1", "reac-2"] });
-    expect((req.state.facts as string[])[0]).toMatch(/^search\.results was written once by other operations since this write's cause \(#\d+\) started/);
+    expect((req.state.facts as string[])[0]).toMatch(/^search\.results was written once by other operations since this write's cause \(#\d+\) started \(v0 → v1\), last \d\.\d\ds ago by GET \/api\/search\?q=reac \(#\d+\), which started 0\.09s after #\d+, from a later user action \(#\d+\)\.$/);
     expect(req.subject).toMatchObject({ kind: "mutation", store: "search", paths: ["search.results"] });
   });
 

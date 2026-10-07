@@ -156,14 +156,78 @@ export function ordinal(n: number): string {
 
 // ------------------------------------------------------------------------------------------ redaction
 
-export const SENSITIVE_KEY = /pass|token|secret|card|cvv|ssn|auth/i;
 export const REDACTED = "[redacted]";
 
 export type Redactor = (path: string, value: unknown) => unknown;
 
+/** Words of an identifier: camelCase, snake_case, kebab-case and spaces split, lower-cased. */
+export function words(s: string): string[] {
+  return s
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase());
+}
+
+const SECRET_WORDS = new Set([
+  "password",
+  "passwd",
+  "passcode",
+  "passphrase",
+  "pass",
+  "pwd",
+  "secret",
+  "token",
+  "cvv",
+  "cvc",
+  "csc",
+  "ssn",
+  "iban",
+  "otp",
+  "totp",
+  "pin",
+  "cookie",
+  "authorization",
+  "auth",
+  "apikey",
+  "creditcard",
+  "cardnumber",
+]);
+/** Word pairs that name a secret ("card number", "api key", "session id", ...). */
+const SECRET_PAIRS: [string, Set<string>][] = [
+  ["card", new Set(["number", "num", "no", "cvc", "cvv", "code", "security"])],
+  ["credit", new Set(["card"])],
+  ["cc", new Set(["number", "num", "no", "exp", "csc"])],
+  ["api", new Set(["key", "secret"])],
+  ["private", new Set(["key"])],
+  ["access", new Set(["key"])],
+  ["secret", new Set(["key"])],
+  ["session", new Set(["id", "token", "key"])],
+  ["security", new Set(["code"])],
+  ["one", new Set(["time"])],
+  ["social", new Set(["security"])],
+];
+
+/**
+ * Whether an identifier names a secret by its meaning (password, token, card number, cvv, ssn, iban, ...), not by
+ * any substring: "author", "cards", "passengers" or a kanban "card" are not secrets.
+ */
+export function isSensitiveName(name: string): boolean {
+  const ws = words(name);
+  for (let i = 0; i < ws.length; i++) {
+    const w = ws[i];
+    if (SECRET_WORDS.has(w)) return true;
+    const next = ws[i + 1];
+    if (next) for (const [a, set] of SECRET_PAIRS) if (w === a && set.has(next)) return true;
+  }
+  return false;
+}
+
+/** Default redactor: any path segment that names a secret (see isSensitiveName). */
 export const defaultRedact: Redactor = (path, value) => {
   const segs = path.split(".");
-  for (const s of segs) if (SENSITIVE_KEY.test(s)) return REDACTED;
+  for (const s of segs) if (isSensitiveName(s)) return REDACTED;
   return value;
 };
 
@@ -244,10 +308,28 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LONG_HEX = /^(?=[0-9a-f]*\d)[0-9a-f]{8,}$/i;
 const LONG_TOKEN = /^(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{16,}$/;
 
-/** True for path segments that look like ids (numbers, uuids, long hex, long mixed tokens). */
+/**
+ * Short slug ids (conservative): ≥ 4 chars of [A-Za-z0-9_-] with letters and digits where a part starts with a
+ * digit ("tasks-1cam"), letters and digits alternate at least twice ("x7k2p", "ab12cd") or, from 6 chars, both
+ * letter cases mix with digits ("PPBqWA9"). Words with a number suffix ("sha256", "oauth2", "ipv4", "item42")
+ * and versions ("v1", "v2beta1") are not ids.
+ */
+function isSlugId(seg: string): boolean {
+  if (seg.length < 4 || !/^[A-Za-z0-9_-]+$/.test(seg) || !/\d/.test(seg) || !/[A-Za-z]/.test(seg)) return false;
+  if (/^v\d+([a-z]+\d*)?$/i.test(seg)) return false;
+  for (const part of seg.split(/[-_]/)) {
+    if (!part || !/\d/.test(part) || !/[A-Za-z]/.test(part)) continue;
+    if (/^\d/.test(part)) return true;
+    const transitions = (part.match(/[A-Za-z](?=\d)|\d(?=[A-Za-z])/g) ?? []).length;
+    if (transitions >= 2) return true;
+  }
+  return seg.length >= 6 && /[a-z]/.test(seg) && /[A-Z]/.test(seg) && /\d/.test(seg);
+}
+
+/** True for path segments that look like ids (numbers, uuids, long hex, long mixed tokens, short slug ids). */
 export function isIdSegment(seg: string): boolean {
   if (!seg) return false;
-  return /^\d+$/.test(seg) || UUID.test(seg) || LONG_HEX.test(seg) || LONG_TOKEN.test(seg);
+  return /^\d+$/.test(seg) || UUID.test(seg) || LONG_HEX.test(seg) || LONG_TOKEN.test(seg) || isSlugId(seg);
 }
 
 export function normalizePath(pathname: string): string {
@@ -265,11 +347,14 @@ export function normalizePath(pathname: string): string {
     .join("/");
 }
 
-/** Normalise a dotted store path for profiles: id-like keys become ":id". */
+/**
+ * Normalise a dotted store path for transition profiles: keys that look like ids, or contain a digit (entity keys
+ * such as "m21", "u3x", "row7"), become ":id", so adding a new entity is the same shape as adding the previous one.
+ */
 export function normalizeFieldPath(path: string): string {
   return path
     .split(".")
-    .map((s) => (isIdSegment(s) ? ":id" : s))
+    .map((s, i) => (i > 0 && (isIdSegment(s) || /\d/.test(s)) ? ":id" : s))
     .join(".");
 }
 
@@ -305,6 +390,7 @@ export function requestSignature(method: string, where: string): string {
 
 /** Query string with sensitive parameter values redacted, truncated. */
 export function redactSearch(search: string, redact: Redactor, max = 60): string {
+  if (search.length > 4096) search = search.slice(0, 4096);
   if (!search || search === "?") return "";
   try {
     const p = new URLSearchParams(search);

@@ -74,7 +74,7 @@ function sparkline(values: (number | null)[]): string {
   const w = 132;
   const hgt = 30;
   const pts = values.slice(-24);
-  if (!pts.length) return `<svg viewBox="0 0 ${w} ${hgt}" aria-hidden="true"></svg>`;
+  if (!pts.length) return `<svg viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none" aria-hidden="true"></svg>`;
   const max = Math.max(150, ...pts.map((v) => v ?? 0));
   const step = w / 23;
   let d = "";
@@ -91,7 +91,7 @@ function sparkline(values: (number | null)[]): string {
     d += `${pen ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
     pen = true;
   });
-  return `<svg viewBox="0 0 ${w} ${hgt}" aria-hidden="true"><path d="${d}"/>${fails.join("")}</svg>`;
+  return `<svg viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" vector-effect="non-scaling-stroke"/>${fails.join("")}</svg>`;
 }
 
 function ago(t: number | null): string {

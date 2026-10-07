@@ -74,6 +74,8 @@ def action_question(sc: Scen, st: Style, rng: random.Random) -> tuple[dict, dict
         items.insert(pos, (x, DISTRACTOR_ACTIONS[x]))
         crit = dict(items)
     instr = pick_from(rng, ACTION_INSTR[sc.trigger], st.test).format(subj=sc.subj)
+    if rng.random() < 0.1:  # bare names (the runtime's compact questions at small budgets)
+        crit = {k: None for k in crit}
     q = {"type": "choice", "instructions": instr, "criteria": crit}
     if isinstance(sc.action, str):
         lab = {"type": "choice", "label": names[sc.action]}
@@ -98,6 +100,8 @@ def diagnosis_question(sc: Scen, st: Style, rng: random.Random) -> tuple[dict, d
     for x in labels:
         descs = DIAG_DESC[x]
         crit[x] = descs[0] if rng.random() < 0.5 else pick_from(rng, descs, st.test)
+    if rng.random() < 0.1:  # bare labels (compact questions)
+        crit = {k: None for k in crit}
     q = {"type": "choice", "instructions": pick_from(rng, DIAG_INSTR, st.test), "criteria": crit}
     if isinstance(sc.diag, str):
         lab = {"type": "choice", "label": sc.diag}

@@ -50,8 +50,8 @@ export const toggle: FeatureDef<ToggleSpec> = {
       rollback: rng.bool(0.6),
       echo: rng.bool(0.5),
       pendingGuard: rng.bool(0.35),
-      countField: rng.bool(0.5),
-      countPartial: rng.bool(0.35),
+      countField: rng.bool(0.65),
+      countPartial: rng.bool(0.5),
       label: `button "${title(flag.replace(/ed$/, "").replace(/_/g, " "))}"`,
     };
   },

@@ -44,7 +44,7 @@ export const poll: FeatureDef<PollSpec> = {
       path: naming.route(rng.pick(["metrics", "stats", "status", "health", "summary"])),
       rangeParam: rng.pick(["range", "window", "period", "since"]),
       ranges: rng.pick([["1h", "24h", "7d"], ["15m", "1h", "6h"], ["today", "week", "month"]]),
-      intervalMs: rng.pick([1000, 1500, 2000, 3000, 5000]),
+      intervalMs: rng.weighted([[800, 2], [1000, 3], [1500, 3], [2000, 2], [3000, 1], [5000, 1]] as const),
       mode: rng.weighted([["interval", 3], ["chain", 3]] as const),
       skipIfInflight: rng.bool(0.5),
       onFail: rng.weighted([["backoff", 3], ["tight", 2], ["ignore", 3], ["throw", 1]] as const),

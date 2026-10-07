@@ -68,7 +68,7 @@ export const PASSIVE: Record<string, string> = {
 };
 
 export const DIAGNOSES = [
-  "expected", "stale", "conflict", "duplicate", "inconsistent", "failing", "slow", "overload", "unusual",
+  "expected", "stale", "conflict", "duplicate", "inconsistent", "failing", "slow", "overload", "unusual", "transient",
 ] as const;
 export type Diagnosis = (typeof DIAGNOSES)[number];
 

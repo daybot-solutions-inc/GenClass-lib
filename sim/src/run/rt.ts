@@ -46,6 +46,8 @@ export interface RuntimeOptions {
   /** Action description overrides, through the runtime's `vocabulary.actions`. */
   actions?: Record<string, string>;
   hooks?: RuntimeHooksLike;
+  /** Situation size in characters (`situation.budget`). */
+  budget?: number;
   app: () => { title?: string; route?: string };
 }
 
@@ -60,7 +62,7 @@ export function createOptions(o: RuntimeOptions): Record<string, unknown> {
     model: false,
     mode: "heal",
     report: "silent",
-    observe: { fetch: true, timers: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false },
+    observe: { fetch: true, timers: true, websocket: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false },
     triage: "salient",
     policy: { thresholds: { report: 0, guard: 0, heal: 0 }, holdBudgetMs: 1e9, maxActionsPerMinute: 1e9, requireDiagnosis: false },
     historySize: 500,
@@ -71,6 +73,7 @@ export function createOptions(o: RuntimeOptions): Record<string, unknown> {
   if (o.actions) vocabulary.actions = o.actions;
   if (Object.keys(vocabulary).length) opts.vocabulary = vocabulary;
   if (o.hooks) opts.hooks = o.hooks;
+  if (o.budget) opts.situation = { budget: o.budget };
   return opts;
 }
 
@@ -84,6 +87,11 @@ export async function realRuntimeFactory(): Promise<RuntimeFactory> {
   const mod = (await import(spec)) as unknown as { createRuntime?: (o: Record<string, unknown>) => RuntimeLike };
   if (typeof mod.createRuntime !== "function") throw new Error("@genclass/runtime does not export createRuntime yet");
   const create = mod.createRuntime;
-  cached = (o) => create(createOptions(o));
+  // Until the runtime's default vocabulary has every contract label, pass the contract's defaults explicitly (same
+  // wording and order), so default-vocabulary rows still offer every label.
+  const defaults = (mod as unknown as { DEFAULT_DIAGNOSES?: Record<string, string> }).DEFAULT_DIAGNOSES;
+  const { DEFAULT_DIAGNOSES: contract } = await import("../world/scenario.js");
+  const missing = !defaults || Object.keys(contract).some((k) => !(k in defaults));
+  cached = (o) => create(createOptions(missing && !o.diagnoses ? { ...o, diagnoses: contract } : o));
   return cached;
 }

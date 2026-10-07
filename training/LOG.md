@@ -74,3 +74,55 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
 - onnxruntime-web 1.30.0 (WASM backend in Node 22) loads and runs the q8 file with outputs identical to ORT CPU;
   WASM p50 154 ms on these requests (p50 175 tokens) with 1 thread; numThreads=4 gives no speed-up in Node
   (no worker threads there); ORT-node CPU 34 ms (1 thread) / 18 ms (4 threads).
+
+### 18:00–18:20 Runtime-exact rendering (`curriculum/rt.py`) and a restart into stage 1c
+- CORE's situation code landed (`packages/runtime/src/situation/*`). `rt.py` ports its formats to the curriculum's
+  world model: subject sentences, facts (provenance, versions with same-chain/other-writer logic, inputs moved,
+  concurrency, repetition, outcomes, baselines, cache, method semantics, invariants, transitions, errors) with CORE's
+  ordering, `#id` refs, `secs()`/`rel()` time formats, timeline `eventLine`s, in-flight/state/stats lines, the
+  3,200-char budget, and the standing questions exactly (diagnosis first, "What is happening here?", canonical
+  descriptions; action question only when ≥ 2 actions apply). Scenarios whose labels need facts CORE cannot produce
+  (offline) are never rendered this way.
+- `cur2` = 400k train rows (seed 2) with 60% of decision rows in the runtime-exact style; `rt1` = runtime-style-only
+  dev (6k) / test (12k) sets for evaluation and calibration.
+- The 4-rank × 20-thread layout left ranks waiting (R32 throughput fell 215k → 134k tok/s, 45% of each step in
+  collectives): per-micro-batch Python overhead is a large share for these small models. A 1-node pilot with
+  8 ranks × 10 threads gave 93–95k tok/s for R17 vs 68–70k with 4 × 20.
+- Stopped `r32-s1` (step 190) and `r17-s1` (step 382) cleanly (checkpoints written), relaunched as `r32-s1c`
+  (7 nodes × 8 ranks, grad-accum 3, lr 1.2e-4 / 5e-4) and `r17-s1c` (3 nodes × 8 ranks, grad-accum 2, lr 2.5e-4 /
+  1.5e-3), both initialised from the stopped weights, 1 pass of `mix_s1c.json` (cur2 0.55, cur1 0.37, gen 0.03,
+  cu 0.05; 520M tokens).
+- Cost so far ≈ $120 (c01 since 13:00 incl. idle ≈ $45; 10 training nodes since 17:58 ≈ $75 including the 18:20 restart).
+
+### 18:20–18:32 Baseline and SIM samples
+- Baseline (GenClass 0.1, full vocab, zero-shot) on `rt1/test` (runtime-exact, 12k rows, held-out domains):
+  action acc 37.6%, diagnosis acc 8.0%, heal-mode FIR 0.33% with 39% precision (it almost never clears the
+  gate; when it does it is mostly wrong). The pruned v1 behaves the same (eval queued).
+- SIM has 200 sample rows (`sim/samples/sample.jsonl`) in exactly the runtime format with cost-based soft labels:
+  they validate `rt.py`'s port (same sentences) and serve as a tiny zero-shot check. SIM's passive-best shares
+  are much higher than the curriculum's (request 0.88, mutation 0.83, failure 0.73) and its inconsistency triggers
+  are mostly coincidental learned relations (e.g. `x.total_count ∈ y.results[*].version`, held at 3–6 points) with
+  diagnosis `expected` — the curriculum's inconsistency cases are mostly meaningful relations (sums/counts), so the
+  stage-1 prior there is more interventionist than SIM's; stage 2 must correct it (and the curriculum replay for
+  stage 2 should add coincidental-relation cases).
+
+### 18:41–19:02 SIM r300k arrives; stage 2 launched
+- SIM run `~/gcl/sim/sim/out/r300k` on the train VM (gen.js, 599 s): train 224,051 / dev 7,426 / test 68,790 rows.
+  Imported with `training/import_sim.sh` (c01: `data/sim1/{dev,test}.jsonl`, train sharded into `data/s2/sim1/`,
+  64 shards), plus `data/sim1e/test.jsonl` = 20k random test rows for evaluation.
+  Passive-best shares (train): mutation 0.86, inconsistency 0.86, failure 0.69, request 0.74, stall 0.61,
+  error 0.96, transition 0.83. Packed length with the runtime tokenizer (dev): mean 1,108, p95 1,523, max 1,761
+  tokens; 3.9% exceed 1,536 → stage 2 uses `--max-len 2048`. States run at 2.4 chars/token (NEEDS.md 6a).
+- Coordinator/MODEL (19:00): latency is the binding constraint (32M ≈ 0.9 s / 600-token state single-thread WASM in
+  Chromium), so R17 is strategically important; the runtime will shrink situations to 3,200 / 2,000 / 1,100 chars by
+  device; q8 must be fp16-free. Actions: `rt.py` now renders runtime-style rows at all three budgets (40/35/25%);
+  the stage-2 replay set `cur3` (300k rows, seed 4, 80% runtime-exact, incl. coincidental-invariant cases) was
+  regenerated with them; the exporter refuses q8 graphs with any fp16 tensor/cast (int8 table + fp32 row scales);
+  R17 gets 6 of the 10 nodes and 4 passes in stage 2.
+- Stage 1c finished: `r32-s1c` 312 steps / 36 min (c02–c08), `r17-s1c` 1,092 steps / 39 min (c09–c11); no dropped
+  questions, no bad labels. Checkpoints copied to c01 (`models/r{32,17}-s1c`), evals running there.
+- Stage 2 (`training/launch_s2.sh`, `configs/mix_s2.json`: sim1 0.76, cur3 0.12, cur2 0.05, cur1 0.03, gen 0.01,
+  cu 0.03; pass = 420M tokens; `--max-len 2048`):
+  `r32-s2` c02–c05 (32 ranks), 1.5 passes, lr 1e-4 / 4e-4, ≈ 168k tok/s (ETA ≈ 20:02);
+  `r17-s2` c09–c11 + c06–c08 (48 ranks), 4 passes, lr 2e-4 / 1e-3, ≈ 449k tok/s (ETA ≈ 20:05).
+  Both initialised from the stage-1c weights; first-step loss 0.76 / 0.80 (SIM's soft labels and new situations).

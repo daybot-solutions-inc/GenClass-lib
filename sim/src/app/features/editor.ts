@@ -25,6 +25,7 @@ export interface EditorSpec {
   onConflict: "refetch" | "overwrite" | "show";
   live: boolean;
   liveApply: "blind" | "if-clean";
+  topic: string;
   retry: "none" | "once" | "backoff";
   timeoutMs: number;
   savedFlag: boolean;
@@ -61,6 +62,7 @@ export const editor: FeatureDef<EditorSpec> = {
       versionCheck: rng.bool(0.4),
       onConflict: rng.weighted([["refetch", 2], ["overwrite", 1], ["show", 2]] as const),
       live: rng.bool(0.4),
+      topic: `${noun.split(" ").slice(-1)[0]!}s/${rng.int(10, 9999)}/${rng.pick(["live", "changes", "presence", "edits"])}`,
       liveApply: rng.weighted([["blind", 1], ["if-clean", 1]] as const),
       retry: rng.weighted([["none", 3], ["once", 2], ["backoff", 2]] as const),
       timeoutMs: rng.weighted([[0, 3], [rng.int(3000, 10000), 2]] as const),
@@ -123,6 +125,7 @@ export const editor: FeatureDef<EditorSpec> = {
     let timer: unknown = null;
     let lastSentSig = sig(s.init);
     let dirty = false;
+    let remoteAt = -1;
     const S = env.store(s.store, s.id, init, {
       weights: weightsOf(wts),
       resync: async () => {
@@ -189,6 +192,7 @@ export const editor: FeatureDef<EditorSpec> = {
             const localSig = sig(S.get());
             const unchanged = localSig === sentSig;
             const stale = () => {
+              if (remoteAt > op.t0 && sig(S.get()) !== sentSig) return "conflict";
               if (intent === undefined) return undefined;
               const shown = shownIntent();
               return shown !== undefined && shown > intent ? "stale" : "expected";
@@ -271,8 +275,9 @@ export const editor: FeatureDef<EditorSpec> = {
           }, s.saveMs);
         }
         if (s.live) {
-          env.subscribe(`${s.id}:doc`, (msg) => {
+          env.socket(s.topic, (msg) => {
             const m = msg as Record<string, unknown>;
+            remoteAt = env.now();
             const localDirty = sig(S.get()) !== lastSentSig || inflight > 0 || dirty;
             const competing = localDirty;
             if (s.liveApply === "if-clean" && localDirty) return;
@@ -332,12 +337,16 @@ export const editor: FeatureDef<EditorSpec> = {
     }
     return steps;
   },
-  external(s, rng, win) {
+  external(s, rng, win, steps) {
     const out: import("../feature.js").ExternalEvent[] = [];
-    for (let i = 0; i < s.externalEdits; i++) {
-      const t = rng.float(win.t0 + 1500, Math.max(win.t0 + 1600, win.t1 - 1500));
-      const field = rng.pick(s.fields);
-      const add = " " + rng.pick(s.words);
+    const plan: { t: number; field: string; add: string }[] = [];
+    for (let i = 0; i < s.externalEdits; i++) plan.push({ t: rng.float(win.t0 + 1500, Math.max(win.t0 + 1600, win.t1 - 1500)), field: rng.pick(s.fields), add: " " + rng.pick(s.words) });
+    // A collaborator editing at the same time as the user (conflicting edits), when the doc is shared live.
+    if (s.live) {
+      const saves = steps.filter((st) => st.action === "save" || (st.action === "edit" && rng.bool(0.04)));
+      for (const st of saves.slice(0, 3)) if (rng.bool(0.5)) plan.push({ t: st.t + rng.float(20, 900), field: rng.pick(s.fields), add: " " + rng.pick(s.words) });
+    }
+    for (const { t, field, add } of plan) {
       out.push({
         t,
         feature: s.id,
@@ -347,7 +356,7 @@ export const editor: FeatureDef<EditorSpec> = {
           const d = w.db.doc(name);
           const nv = String(d.fields[field] ?? "") + add;
           w.db.writeDoc(name, { [field]: nv }, w.now());
-          if (s.live) w.publish(`${s.id}:doc`, { ...w.db.doc(name).fields, version: w.db.doc(name).version });
+          if (s.live) w.publish(s.topic, { ...w.db.doc(name).fields, version: w.db.doc(name).version });
         },
       });
     }

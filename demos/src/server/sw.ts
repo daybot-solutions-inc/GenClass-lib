@@ -154,12 +154,40 @@ async function resolveSid(clientId: string): Promise<string | undefined> {
   return undefined;
 }
 
+// Cross-origin isolation (COOP + COEP) for our documents and workers, the way a static host would set headers:
+// it lets the model worker use WASM threads (SharedArrayBuffer). Opt out with ?coi=0 on the page URL.
+const ISOLATE = new Set(["document", "iframe", "worker", "sharedworker"]);
+
+function coiOff(req: Request): boolean {
+  try {
+    const u = new URL(req.destination === "document" || req.destination === "iframe" ? req.url : req.referrer || req.url);
+    return u.searchParams.get("coi") === "0";
+  } catch {
+    return false;
+  }
+}
+
+async function isolated(req: Request): Promise<Response> {
+  const res = await fetch(req);
+  if (res.type === "opaqueredirect" || res.status === 0) return res;
+  const headers = new Headers(res.headers);
+  headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+  headers.set("Cross-Origin-Resource-Policy", "same-origin");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 self.addEventListener("fetch", (event: FetchEvent) => {
   const url = new URL(event.request.url);
   const scope = new URL(self.registration.scope);
   if (url.origin !== scope.origin) return;
   const apiRoot = scope.pathname + "api/";
-  if (!url.pathname.startsWith(apiRoot)) return;
+  if (!url.pathname.startsWith(apiRoot)) {
+    if (ISOLATE.has(event.request.destination) && event.request.method === "GET" && !coiOff(event.request)) {
+      event.respondWith(isolated(event.request));
+    }
+    return;
+  }
   const path = "/" + url.pathname.slice(apiRoot.length);
   event.respondWith(
     (async () => {

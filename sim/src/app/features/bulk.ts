@@ -54,8 +54,8 @@ export const bulk: FeatureDef<BulkSpec> = {
       listPath: naming.route(entity.p),
       bulkPath: naming.route(entity.p, rng.pick(["bulk", "batch", `bulk-${verb}`])),
       applyAll: rng.bool(0.45),
-      countsField: rng.bool(0.6),
-      countsPartial: rng.bool(0.35),
+      countsField: rng.bool(0.7),
+      countsPartial: rng.bool(0.5),
       disable: rng.bool(0.5),
       label: `button "${title(verb)} selected"`,
     };

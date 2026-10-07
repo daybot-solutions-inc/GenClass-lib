@@ -1,25 +1,68 @@
 # @genclass/runtime: status (CORE)
 
-Updated: 2026-10-07. Owner: CORE. SIM, DEMOS, UI and MODEL read this file. Contract: docs/runtime/CONTRACT.md.
-API reference: docs/runtime/API.md.
+Updated: 2026-10-07 (batch 2: model integration, latency, UI requests). Owner: CORE. SIM, DEMOS, UI and MODEL read
+this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
 
 ## State
 
-Everything in CORE's brief is implemented and tested (adapters and devtools moved to UI). On the VM:
-`tsc --noEmit` clean for CORE files; `vitest run` (CORE tests, excluding test/model, test/browser, UI tests):
-**14 files, 110 tests, all passing**.
+On the VM (`npm install` at the repo root, then in packages/runtime, `GENCLASS_MODEL_DIR=~/gcl/model/.cache-model`):
+`tsc --noEmit` clean, `tsup` build OK, `vitest run` excluding `test/browser/**` and REVIEW's `test/review-*.test.ts`:
+**26 files, 239 tests, all passing** (CORE 124, UI 53, MODEL 62). REVIEW's audit tests (`test/review-*.test.ts`:
+8 files, 28 of 29 failing at the time of writing) are its findings, to be handled in the next batch.
 
 | area | files | notes |
 |---|---|---|
-| public facade | `src/index.ts`, `src/types.ts`, `src/errors.ts` | `GenClass`, `createRuntime`, all public types, `GenClassUnavailableError` |
+| public facade | `src/index.ts`, `src/types.ts`, `src/errors.ts` | `GenClass`, `createRuntime`, all public types, `GenClassUnavailableError`, model host + error classes re-exported |
 | clock | `src/clock.ts` | `browserClock` (performance.now, timers captured at load, setImmediate/MessageChannel afterTask) |
 | trace | `src/trace/{events,ops,context}.ts` | ring buffer, ops registry (id-normalised signatures), ambient-op propagation (§3) incl. lazy timer ops |
-| state | `src/state/{hub,fields,invariants}.ts` | atoms, guard, adapter seam, field versions + histories, mutation pipeline, invariant miner |
-| observers | `src/observe/*.ts` | fetch, XHR, DOM user actions, errors, nav, storage, perf (longtask), websocket, timers, response cache |
+| state | `src/state/{hub,fields,invariants}.ts` | atoms, guard, adapter seam, field versions + histories, mutation pipeline, late revert, invariant miner |
+| observers | `src/observe/*.ts` | fetch, XHR, DOM user actions (`data-genclass-ignore` aware), errors, nav, storage, perf, websocket, timers, response cache |
 | learn | `src/learn/{baselines,profiles}.ts` | latency median/p95, EWMA error rate, failure streaks, frequency vs usual, identical-request gaps, transition profiles |
-| situation | `src/situation/*.ts` | facts, serializer (3,200-char budget), questions, triage, subject refs (shared with the sim) |
-| decide | `src/decide/*.ts` | priority queue + cache, policy gate (§8), executor seam, console reports |
-| runtime | `src/runtime.ts` | wiring, actions (rollback/resync/undo), settled points, plugins, ask/decide, explain |
+| situation | `src/situation/*.ts` | facts, budget-shaped serializer, questions, triage, subject refs (shared with the sim) |
+| decide | `src/decide/*.ts` | priority queue with deadlines + cache + latency samples, policy gate (§8) + auto hold budget, executor seam, reports |
+| runtime | `src/runtime.ts` | wiring, actions (rollback/resync/revert/undo), settled points, plugins, ask/decide, explain |
+
+## Batch 2 (done)
+
+**Model integration**
+- `src/index.ts` exports `createModelHost`, `DEFAULT_MODEL_BASE_URL`, `ModelOptions`, the host types (`ModelHost`,
+  `ModelHostOptions`, `ModelHostStatus`, `ModelHostStats`, `ModelEvaluateRequest`) and the model error classes
+  (`GenClassModelError`, `ModelNotReadyError`, `MaxTokensExceededError`, `ModelTimeoutError`, `ModelBusyError`, ...).
+- `ModelStatus` (types.ts) has MODEL's fields as optional: `phase, version, bytes, fromCache, threads, warmupMs,
+  worker, workerError, gpu, attempts, ort`.
+- `GenClass.init`/`createRuntime({ model })` pass the runtime clock and the native fetch to the host.
+- Every provider error (`not_ready`, `max_tokens_exceeded`, `timeout`, `busy`, anything else) fails open at once:
+  passive action, no hold, no decision record. `max_tokens_exceeded` also shrinks automatic situation budgets by
+  20% (floor 50%).
+- `EvaluateRequest.timeoutMs` (new optional seam field): the time left for the answer. Held requests/failures: the
+  remaining hold budget; held writes: the remaining hold budget + 2 s (late revert); background triggers 5 s;
+  `ask` its `timeoutMs`. The runtime's own queue drops a request whose deadline passed while it waited (never
+  computed) and hands the rest to the host with `timeoutMs`.
+
+**Latency**
+- `situation: { budget?: number | "auto" }` (Create/InitOptions; chars). `"auto"` (default): webgpu 3,200; wasm
+  1,100 + 300 per extra thread (1 thread 1,100; 4 threads 2,000); unknown device (custom providers, before load)
+  3,200. SIM: pass a number (any budget ≥ 500 works; sample them).
+- Every section is shaped by the budget (`sectionLimits(budget)`, exported): at 1,100 chars ≤ 6 facts, 2 in-flight,
+  3 timeline lines, 3 state fields, 1 stats line; at 3,200 the contract's 12/6/16/8/4; linear in between (2,000:
+  9/4/9/5/2). If still over: timeline lines go first (oldest first), then state, then facts (least informative
+  first), then in-flight and stats. Facts are ordered non-neutral first, so the most informative survive.
+  Deterministic (tested). Reports and `explain()` keep all facts (≤ 12); the model reads the budgeted set.
+- `policy.holdBudgetMs: "auto"` (default) = clamp(1.5 × median of the last 20 provider latencies, 150, 800) ms;
+  before any latency, 1.5 × `status.warmupMs`; with neither, 300 ms. Numbers still work (`rt.holdBudgetMs()` shows
+  the current value).
+- Late revert: when a held write's budget expired (it applied, fail-open) and the model then returns a `discard`
+  that passes the policy gate (guard tier), GenClass reverts exactly that write if none of its fields changed since
+  and it applied ≤ 2 s ago; else the decision records `reason: "superseded: ..."` / `"too late to revert: ..."`.
+  `ActionRecord.late = true`, `changed`: "Reverted the write to v from task w (#2) (decided 0.30s after it
+  applied); v is back to 0.", console: "[GenClass] Reverted a stale write: ...". `undo` re-applies the write.
+  Late `defer`/`apply` are only recorded. Requests have no late path.
+
+**UI requests (UI-NEEDS.md)**
+- DOM user observer ignores events whose target or `composedPath()[0]` is inside `[data-genclass-ignore]`
+  (walks out of shadow roots, so clicks inside the overlay's shadow DOM are ignored too).
+- `Explanation.message`: the console line for that decision/action (intervention line, detection line, or
+  "[GenClass] Checked ..." for a decision that was neither).
 
 ## How to drive it headless (SIM, tests)
 
@@ -32,6 +75,7 @@ const rt = createRuntime({
   observe: { fetch: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, timers: false },
   mode: "heal", triage: "salient", report: "silent",
   policy: { thresholds: { report: 0, guard: 0, heal: 0 }, holdBudgetMs: 1e9, maxActionsPerMinute: 1e9, requireDiagnosis: false },
+  situation: { budget: 1100 },                        // sample budgets per trajectory (e.g. 1100 / 2000 / 3200)
   hooks: { opCreated(op) {}, mutationProposed(m) {} },
   vocabulary: { diagnoses: {...}, actions: {...} },   // optional wording overrides
 });
@@ -41,8 +85,10 @@ const rt = createRuntime({
 - `observe` defaults: every observer on, except `timers`, on only when `global.document` exists. Pass
   `timers: true` to get timer provenance ("timer 300ms", "interval 5.00s") and debounce causality headless.
 - `createRuntime` has no model unless you pass `decider` or `model: {...}`. `GenClass.init()` creates the model host
-  (`src/model/host.ts`, passing the native fetch captured at module load). Outside a browser (no `window` and
+  (passing the runtime clock and the native fetch captured at module load). Outside a browser (no `window` and
   `document`) `GenClass.init()` returns an inert runtime (no observers, no model): SSR-safe.
+- With `holdBudgetMs: 1e9` held writes wait for the answer; a decider that answers asynchronously still gets
+  `timeoutMs` (ignore it).
 - User actions: `rt.user({ kind, target?, value?, key?, sensitive? }, handler?)`; `kind`: `click | type | change |
   submit | key | nav | navigate | <any>`. Typing on the same target within 1 s is one timeline event per burst; each
   keystroke is still its own user op. The user op stays ambient until `clock.afterTask`: every write in that task
@@ -53,9 +99,8 @@ const rt = createRuntime({
   (read when the situation is built; "unknown" when neither exists). `global.location.href` is the base for URLs.
 - Settled points (invariants, transition profiles, consistent snapshots) need `settleMs` (default 60 ms) of quiet,
   no in-flight op younger than 10 s and no held write; scheduled with `clock.setTimeout`.
-- Only the injected clock is used (now/setTimeout/clearTimeout/afterTask); no Math.random/Date.now/performance.now
-  or global timers in runtime code (the `browserClock` default aside). Ids come from per-runtime counters, so two
-  runtimes fed the same inputs produce byte-identical situations (tested).
+- Only the injected clock is used; ids come from per-runtime counters, so the same inputs give byte-identical
+  situations at any budget (tested).
 
 ## SIM requests (sim/NEEDS.md): done
 
@@ -73,24 +118,26 @@ const rt = createRuntime({
    built-in or custom actions by name. (The earlier `diagnoses` option was removed in favour of this.)
 5. DONE `runtime.situation(trigger?)` consumes no ids and records no events (tested); for a trigger built before it
    returns the last situation built for it, otherwise an "ask about now" situation. Token counting: MODEL's
-   `src/model/tokenizer.ts`; the runtime keeps the state ≤ 3,200 characters (`STATE_CHAR_BUDGET`, `stateChars`).
+   `src/model/tokenizer.ts`; the runtime keeps the state within the character budget (`stateChars`).
+6. NEW `situation: { budget }` for budget sampling (see Latency).
+
+Fact wording changed in batch 2 (shorter: `v0 → v1`, "which started 0.09s after #6", compact provenance), so
+rows generated before this batch should be regenerated.
 
 ## For UI (adapters, devtools)
 
 - Everything the devtools needs is public: `on("decide"|"detect"|"act"|"event"|"status"|"report")`, `decisions()`,
-  `interventions()`, `explain(id)`, `situation()`, `history()`, `inflight()`, `status`, `mode`, `setMode()`,
-  `pause()/resume()`. `on("report", r)` receives every report line even when `report: "silent"`.
-  Note: reading `rt.ready` starts a lazy model load (`preload: "lazy"`); prefer `rt.status` + `on("status")`.
-- `runtime.adapter(name, { get, set?, subscribe? }, opts)` returns `{ propose({ fn | value, commit }), dispose() }`:
-  the write is previewed with `fn(prev)` (e.g. the reducer), held when salient, and `commit` (e.g. the original
-  `dispatch(action)`) runs when it applies, never when it is discarded. Without `set`, rollback skips the store.
-  `runtime.guard(name, io)` also works when replacing the whole state is fine.
+  `interventions()`, `explain(id)` (with `message`), `situation()`, `history()`, `inflight()`, `status` (with
+  MODEL's fields), `mode`, `setMode()`, `pause()/resume()`. `on("report", r)` receives every report line even with
+  `report: "silent"`. Reading `rt.ready` starts a lazy model load (`preload: "lazy"`); prefer `rt.status` +
+  `on("status")`. `ActionRecord.late` marks late reverts.
+- `runtime.adapter(name, { get, set?, subscribe? })` returns `{ propose({ fn | value, commit }), dispose() }`.
 
 ## Triggers and triage
 
 | trigger | raised when | waits? | actions offered (passive first) |
 |---|---|---|---|
-| mutation | a non-user, non-GenClass write to a holdable store | yes (≤ holdBudgetMs) | apply, discard, defer (if < 2 defers) |
+| mutation | a non-user, non-GenClass write to a holdable store | yes (hold budget; late revert ≤ 2 s after) | apply, discard, defer (if < 2 defers) |
 | request | every instrumented fetch/XHR not issued by GenClass | yes | send, coalesce*, delay, block, serve_cached* |
 | failure | network error, timeout (`TimeoutError` abort), 5xx/429/408 | fetch: yes; XHR: no | deliver, retry* (replayable, < 4 attempts), serve_cached* |
 | stall | in flight > max(4×median, 2×p95, 500 ms), ≥ 5 latency samples | no | wait, hedge* (idempotent GET), serve_cached* |
@@ -110,15 +157,69 @@ record); with `preload: "lazy"` the first salient situation starts the load. In 
 decisions are still made, recorded and reported.
 
 Precision rules (beyond the policy gate): invariant candidates count only snapshots where they hold
-non-trivially (e.g. membership among ≥ 2 items, non-zero equal values) and skip id-keyed collections; an op whose
-usual write set is empty (a poll of stable data) is not "unusual" for writing something; an op and its descendant
-flagged for the same anomaly raise one transition trigger (the descendant); undoing a rollback mutes that
-violation until it holds again.
+non-trivially and skip id-keyed collections; an op whose usual write set is empty is not "unusual" for writing
+something; an op and its descendant flagged for the same anomaly raise one transition trigger; undoing a rollback
+mutes that violation until it holds again; a late revert only touches a write nothing has overwritten.
 
-## Example situations (from test/situation.test.ts; the model gets the Jev state object, shown with `stateText`)
+## Example situations: compact budgets (from test/budget.test.ts)
 
-Diagnosis criteria (identical in every row, omitted below): expected, stale, conflict, duplicate, inconsistent,
-failing, slow, overload, unusual with the §6 descriptions.
+The same stale-write situation as the full example below, at the 1,100-char (1-thread WASM) and 2,000-char
+(4-thread WASM) budgets. The header shows the budget and the actual size.
+
+### mutation at 1100 chars (1059)
+
+```
+app: /search
+trigger: A write to search.results from GET /api/search?q=rea (#6) is about to be applied.
+facts:
+  search.results was written once by other operations since this write's cause (#6) started (v0 → v1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
+  search.query changed since this write's cause (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
+  This write comes from GET /api/search?q=rea (#6), started 0.90s ago, ended 0.00s ago with 200; its chain began with user typed "rea" into input "Search" (#5).
+  This write would change search.results: 2 items ["reac-1", "reac-2"] → 2 items ["rea-1", "rea-2"].
+in_flight: none
+timeline:
+  -0.69s write search.results: 0 items → 2 items ["reac-1", "reac-2"] (by #8)
+  -0.00s end GET /api/search?q=rea (#6): 200 in 0.90s
+state:
+  search.results = 2 items ["reac-1", "reac-2"] (v1, by #8 0.69s ago)
+  search.query = "reac" (v4, by #7 0.81s ago)
+stats:
+  GET /api/search: 4 done, errors 0%, 4 in last 10s
+```
+
+### mutation at 2000 chars (1479)
+
+```
+app: /search
+trigger: A write to search.results from GET /api/search?q=rea (#6) is about to be applied.
+facts:
+  search.results was written once by other operations since this write's cause (#6) started (v0 → v1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
+  search.query changed since this write's cause (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
+  This write comes from GET /api/search?q=rea (#6), started 0.90s ago, ended 0.00s ago with 200; its chain began with user typed "rea" into input "Search" (#5).
+  This write would change search.results: 2 items ["reac-1", "reac-2"] → 2 items ["rea-1", "rea-2"].
+in_flight: none
+timeline:
+  -0.90s write search.query: "re" → "rea" (by #5, user)
+  -0.90s start GET /api/search?q=rea (#6, by #5)
+  -0.85s end GET /api/search?q=re (#4): 200 in 0.12s
+  -0.85s GenClass Dropped the write to search.results from GET /api/search?q=re (#4); search stays at version 3.
+  -0.81s write search.query: "rea" → "reac" (by #7, user)
+  -0.81s start GET /api/search?q=reac (#8, by #7)
+  -0.69s end GET /api/search?q=reac (#8): 200 in 0.12s
+  -0.69s write search.results: 0 items → 2 items ["reac-1", "reac-2"] (by #8)
+  -0.00s end GET /api/search?q=rea (#6): 200 in 0.90s
+state:
+  search.results = 2 items ["reac-1", "reac-2"] (v1, by #8 0.69s ago)
+  search.query = "reac" (v4, by #7 0.81s ago)
+stats:
+  GET /api/search: 4 done, errors 0%, 4 in last 10s
+```
+
+
+## Example situations: full budget, one per trigger (from test/situation.test.ts)
+
+The model gets the Jev state object; shown with `stateText`. Diagnosis criteria (identical in every row, omitted):
+expected, stale, conflict, duplicate, inconsistent, failing, slow, overload, unusual with the §6 descriptions.
 
 ### mutation
 
@@ -126,9 +227,9 @@ failing, slow, overload, unusual with the §6 descriptions.
 app: /search
 trigger: A write to search.results from GET /api/search?q=rea (#6) is about to be applied.
 facts:
-  search.results was written once by other operations since this write's cause (#6) started (version 0 → 1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after it, from a later user action (#7).
-  search.query changed since this write's cause (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after it started.
-  This write comes from GET /api/search?q=rea (#6), which started 0.90s ago and ended 0.00s ago (200); its chain began with user typed "rea" into input "Search" (#5) 0.90s ago.
+  search.results was written once by other operations since this write's cause (#6) started (v0 → v1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
+  search.query changed since this write's cause (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
+  This write comes from GET /api/search?q=rea (#6), started 0.90s ago, ended 0.00s ago with 200; its chain began with user typed "rea" into input "Search" (#5).
   This write would change search.results: 2 items ["reac-1", "reac-2"] → 2 items ["rea-1", "rea-2"].
 in_flight: none
 timeline:
@@ -168,7 +269,7 @@ app: /search
 trigger: POST /api/orders {items: [1], card: [redacted]} (#4) is about to be sent.
 facts:
   1 identical POST /api/orders request in the last 10s: #2 in flight (started 0.12s ago); #2 started 0.12s before this one; they come from separate user actions 0.12s apart.
-  This request comes from user clicked button "Place order" (#3), which started 0.00s ago.
+  This request comes from user clicked button "Place order" (#3), started 0.00s ago.
   POST is not idempotent; its body (46 bytes) can be replayed.
 in_flight:
   POST /api/orders {items: [1], card: [redacted]} (#2) 0.12s so far, by #1
@@ -198,7 +299,7 @@ facts:
   4 identical GET /api/status requests in the last 10s (latest 3: #6 answered 200 6.00s ago; #8 ended 503 4.00s ago; #10 ended 503 2.00s ago); #10 started 2.00s before this one, neither from a user action.
   This is the 3rd GET /api/status failure in a row (recent outcomes: 200, 200, 503, 503, 503; last success 6.00s ago); error rate 27% over 6 requests.
   GET /api/status was requested 5 times in the last 10s (no usual rate learned yet).
-  This request comes from task poll (#11), which started 0.06s ago.
+  This request comes from task poll (#11), started 0.06s ago.
   GET is idempotent.
   A cached 200 response from 6.00s ago exists for this request.
 in_flight:
@@ -242,7 +343,7 @@ facts:
   The request #16 has been in flight for 0.96s; GET /api/report/:id usually takes 0.24s (p95 0.27s, 7 samples), 4.0× the median.
   1 identical GET /api/report/:id request in the last 10s: #14 answered 200 5.69s ago; #14 started 5.00s before this one, neither from a user action.
   Recent GET /api/report/:id outcomes: 200, 200, 200, 200, 200.
-  This request comes from task refresh (#15), which started 0.96s ago.
+  This request comes from task refresh (#15), started 0.96s ago.
   GET is idempotent.
   A cached 200 response from 5.69s ago exists for this request.
 in_flight:
@@ -317,7 +418,7 @@ facts:
   In the previous 22 completions of POST /api/cart its chain wrote cart.items and cart.total (22 of 22 times); this time it wrote only cart.items.
   The last consistent state from before #45 started is 0.40s old; 1 field write happened since.
   It ended 0.06s ago with 200 after 0.08s (usual 0.08s).
-  The completed operation #46 comes from user clicked button "Add" (#45), which started 0.14s ago.
+  The completed operation #46 comes from user clicked button "Add" (#45), started 0.14s ago.
   cart.items is now 23 items [1, 2, 3, …].
 in_flight: none
 timeline:
@@ -378,19 +479,20 @@ questions:
 
 ## Deviations from the contract (and why)
 
-- `retry` backoff is `min(200 ms · 2^(attempt-1), 5 s)`: the first retry waits 200 ms (the contract's formula with a
-  1-based attempt would start at 400 ms).
+- `retry` backoff is `min(200 ms · 2^(attempt-1), 5 s)`: the first retry waits 200 ms.
 - `coalesce` is not offered for XHR, and XHR failures/stalls are detection-only (the app receives XHR events
   directly, so they cannot be held). XHR `serve_cached` uses responses cached by fetch.
 - `situation(trigger)` returns the last situation built for that trigger (an "ask about now" one otherwise).
 - Extra public surface: `Runtime.adapter()`, `Runtime.inflight()`, `on("report")`, `Situation.salient/facts`,
-  `Decision.tier/ran/answers/subjectRef`, `StandingQuestion.always`, `InitOptions.vocabulary/settleMs/learn`,
-  `CreateOptions.app/hooks`, `ActionDef.tier`, `ActionContext.builtin/describe/onUndo`.
-- Token budget: characters (3,200 ≈ 1,000 tokens), not the tokenizer, so the runtime does not need the model
-  files to build situations. MODEL's packer still rejects anything over the position limit.
+  `Decision.tier/ran/answers/subjectRef`, `ActionRecord.late`, `Explanation.message`, `StandingQuestion.always`,
+  `InitOptions.vocabulary/settleMs/learn/situation`, `CreateOptions.app/hooks`, `ActionDef.tier`,
+  `ActionContext.builtin/describe/onUndo`, `EvaluateRequest.timeoutMs/subject`.
+- Token budget: characters, not tokens, so situations can be built before the model files load. MODEL's packer still
+  rejects anything over the position limit (the runtime then fails open and shrinks its automatic budget).
 
 ## Open issues
 
-- UI's `src/adapters/redux.ts` currently has one type error (`prev` implicit any, line ~102); not CORE's file.
-- Situations are tuned for the sim's training distribution; wording changes must be coordinated with SIM (one
-  implementation, `src/situation/*`).
+- REVIEW's findings (`test/review-*.test.ts`) are pending the next batch.
+- Lead (UI-NEEDS item 2): `react-dom` is not a devDependency of `@genclass/runtime`; UI's React tests resolve it only
+  through the workspace root install (`npm install` at the repo root).
+- Any change to situation wording must be coordinated with SIM (one implementation, `src/situation/*`).

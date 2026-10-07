@@ -1,50 +1,66 @@
-// XMLHttpRequest observer (basics): ops with causes, request gate (send/delay/block/serve_cached; a blocked or
-// cached answer is replayed onto the XHR as a completed 503/cached response), failures and stalls observed for
-// detection (the app sees XHR failures directly, so only the passive action applies), context set when the
-// request completes (readystatechange 4, registered in open() so it runs before handlers set after open).
+// XMLHttpRequest observer (basics): ops with causes and identities, request gate (send/delay/block/serve_cached;
+// a blocked or cached answer is replayed onto the XHR as a completed response, honouring responseType), failures
+// and stalls observed for detection (the app sees XHR failures directly, so only the passive action applies),
+// context set when the request completes. Synchronous XHRs are never held. An abort() while GenClass holds the
+// request means it is never sent. Listeners are added once per XHR object; values faked onto an XHR are removed
+// when it is opened again.
 
 import type { ActionEffect, Controller, NetHost } from "../decide/exec.js";
 import type { OpRec } from "../trace/ops.js";
 import { opLabel } from "../situation/describe.js";
-import { secs } from "../util.js";
-import { parseRequest } from "./fetch.js";
+import { fnv1a, secs } from "../util.js";
+import { bodyInfo, parseRequest } from "./fetch.js";
 import type { Buffered } from "./cache.js";
+
+const VOLATILE = /^(traceparent|tracestate|baggage|sentry-trace|x-request-id|x-correlation-id|request-id|x-amzn-trace-id|x-cloud-trace-context|b3|x-b3-.*|x-datadog-.*|newrelic|date|x-request-start|x-genclass)$/i;
 
 interface XhrState {
   method: string;
   url: string;
+  async: boolean;
+  headers: Map<string, string>;
   op?: OpRec;
-  listening?: boolean;
   failed?: "error" | "timeout" | "abort";
+  /** Waiting for a decision (native send not called yet). */
+  held: boolean;
+  abortedWhileHeld: boolean;
+  /** Own properties defined by fake(), removed on the next open(). */
+  faked: string[];
+  onEnd?: () => void;
 }
 
-const KEY = Symbol.for("genclass.xhr");
+const states = new WeakMap<object, XhrState>();
 
-function fake(xhr: XMLHttpRequest, status: number, statusText: string, text: string, headers: [string, string][]): void {
+function fake(xhr: XMLHttpRequest, st: XhrState, status: number, statusText: string, text: string, headers: [string, string][]): void {
   const define = (k: string, v: unknown) => {
     try {
       Object.defineProperty(xhr, k, { configurable: true, get: () => v });
+      st.faked.push(k);
     } catch {
       /* ignore */
     }
   };
-  define("readyState", 4);
-  define("status", status);
-  define("statusText", statusText);
-  define("responseText", text);
+  const type = xhr.responseType || "";
   let response: unknown = text;
-  if (xhr.responseType === "json") {
+  if (type === "json") {
     try {
-      response = JSON.parse(text);
+      response = text ? JSON.parse(text) : null;
     } catch {
       response = null;
     }
-  }
+  } else if (type === "arraybuffer") response = new TextEncoder().encode(text).buffer;
+  else if (type === "blob") response = typeof Blob !== "undefined" ? new Blob([text]) : text;
+  else if (type === "document") response = null;
+  define("readyState", 4);
+  define("status", status);
+  define("statusText", statusText);
   define("response", response);
+  if (type === "" || type === "text") define("responseText", text);
   const map = new Map(headers.map(([k, v]) => [k.toLowerCase(), v]));
   try {
     Object.defineProperty(xhr, "getResponseHeader", { configurable: true, value: (k: string) => map.get(String(k).toLowerCase()) ?? null });
     Object.defineProperty(xhr, "getAllResponseHeaders", { configurable: true, value: () => [...map].map(([k, v]) => `${k}: ${v}`).join("\r\n") });
+    st.faked.push("getResponseHeader", "getAllResponseHeaders");
   } catch {
     /* ignore */
   }
@@ -60,7 +76,19 @@ function fake(xhr: XMLHttpRequest, status: number, statusText: string, text: str
   fire("loadend");
 }
 
+function unfake(xhr: XMLHttpRequest, st: XhrState): void {
+  for (const k of st.faked) {
+    try {
+      delete (xhr as unknown as Record<string, unknown>)[k];
+    } catch {
+      /* ignore */
+    }
+  }
+  st.faked = [];
+}
+
 function decode(b: Buffered): string {
+  if (b.kind !== "body") return "";
   try {
     return new TextDecoder().decode(b.body);
   } catch {
@@ -71,29 +99,87 @@ function decode(b: Buffered): string {
 export function installXHR(host: NetHost): (() => void) | null {
   const X = host.global.XMLHttpRequest as { prototype: XMLHttpRequest } | undefined;
   if (!X || !X.prototype) return null;
-  const P = X.prototype as XMLHttpRequest & Record<symbol, XhrState | undefined>;
+  const P = X.prototype;
   const open = P.open;
   const send = P.send;
+  const abort = P.abort;
+  const setHeader = P.setRequestHeader;
+  let disabled = false;
 
-  const wOpen = function (this: XMLHttpRequest & Record<symbol, XhrState | undefined>, ...args: unknown[]) {
-    const st: XhrState = { method: String(args[0] ?? "GET"), url: String(args[1] ?? "") };
-    this[KEY] = st;
-    if (!st.listening) {
-      st.listening = true;
-      this.addEventListener("readystatechange", () => {
-        if (this.readyState === 4 && st.op) host.ctx.stick(st.op);
+  const stateOf = (xhr: XMLHttpRequest): XhrState => {
+    let st = states.get(xhr);
+    if (!st) {
+      st = { method: "GET", url: "", async: true, headers: new Map(), held: false, abortedWhileHeld: false, faked: [] };
+      states.set(xhr, st);
+      const s = st;
+      // added once per XHR object (reused objects do not accumulate listeners)
+      xhr.addEventListener("readystatechange", () => {
+        if (xhr.readyState === 4 && s.op) host.ctx.stick(s.op);
       });
-      this.addEventListener("error", () => (st.failed = "error"));
-      this.addEventListener("timeout", () => (st.failed = "timeout"));
-      this.addEventListener("abort", () => (st.failed = "abort"));
+      xhr.addEventListener("error", () => (s.failed = "error"));
+      xhr.addEventListener("timeout", () => (s.failed = "timeout"));
+      xhr.addEventListener("abort", () => (s.failed = "abort"));
+      xhr.addEventListener("loadend", () => {
+        const f = s.onEnd;
+        s.onEnd = undefined;
+        f?.();
+      });
     }
+    return st;
+  };
+
+  const wOpen = function (this: XMLHttpRequest, ...args: unknown[]) {
+    if (disabled) return (open as (...a: unknown[]) => void).apply(this, args);
+    const st = stateOf(this);
+    unfake(this, st);
+    st.method = String(args[0] ?? "GET");
+    st.url = String(args[1] ?? "");
+    st.async = args.length < 3 || args[2] !== false;
+    st.headers = new Map();
+    st.op = undefined;
+    st.failed = undefined;
+    st.held = false;
+    st.abortedWhileHeld = false;
+    st.onEnd = undefined;
     return (open as (...a: unknown[]) => void).apply(this, args);
   };
 
-  const wSend = function (this: XMLHttpRequest & Record<symbol, XhrState | undefined>, body?: Document | XMLHttpRequestBodyInit | null) {
-    const st = this[KEY];
+  const wSetHeader = function (this: XMLHttpRequest, name: string, value: string) {
+    if (!disabled) {
+      const st = states.get(this);
+      if (st) st.headers.set(String(name).toLowerCase(), String(value));
+    }
+    return setHeader.call(this, name, value);
+  };
+
+  const wAbort = function (this: XMLHttpRequest) {
+    const st = disabled ? undefined : states.get(this);
+    if (st && st.held && !st.abortedWhileHeld) {
+      // the request was never sent: end it as aborted, tell the app like a real abort, never send it
+      st.abortedWhileHeld = true;
+      st.held = false;
+      if (st.op && st.op.end === undefined) host.endOp(st.op, "aborted", { code: "aborted" });
+      const fire = (t: string) => {
+        try {
+          this.dispatchEvent(new Event(t));
+        } catch {
+          /* ignore */
+        }
+      };
+      fire("abort");
+      fire("loadend");
+      return;
+    }
+    return abort.call(this);
+  };
+
+  const wSend = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
+    const st = disabled ? undefined : states.get(this);
     if (!st) return send.call(this, body as XMLHttpRequestBodyInit | null | undefined);
-    const parsed = parseRequest(host, st.method, st.url, body, true);
+    const b = bodyInfo(body, host);
+    if (b.key === undefined) b.key = host.uniqueId(); // a Blob body: not read for XHR identities
+    const hdr = [...st.headers].filter(([k]) => !VOLATILE.test(k)).sort(([a], [x]) => (a < x ? -1 : a > x ? 1 : 0));
+    const parsed = parseRequest(host, st.method, st.url, b, hdr.length ? fnv1a(hdr.map(([k, v]) => `${k}:${v}`).join("\n")) : "");
     parsed.meta.transport = "xhr";
     const req = parsed.meta;
     const op = host.startOp("xhr", req.signature, { detail: parsed.detail, identity: req.identity, method: req.method, url: req.url });
@@ -101,7 +187,7 @@ export function installXHR(host: NetHost): (() => void) | null {
     st.failed = undefined;
     const xhr = this;
     let cancelStall: () => void = () => undefined;
-    const onEnd = () => {
+    st.onEnd = () => {
       cancelStall();
       if (op.end !== undefined) return;
       const status = xhr.status;
@@ -116,40 +202,52 @@ export function installXHR(host: NetHost): (() => void) | null {
       host.endOp(op, failed ? "error" : "ok", { code: status, ...(failed ? { errorText: `HTTP ${status}`, failure: true } : {}) });
       if (failed && host.gated(op)) host.trigger({ trigger: "failure", op, req, failure: { kind: "http", status, statusText: xhr.statusText, durMs: (op.end ?? 0) - op.start } }, passiveOnly(), { hold: false, priority: 1 });
     };
-    xhr.addEventListener("loadend", onEnd, { once: true } as AddEventListenerOptions);
     const doSend = () => {
-      if (host.gated(op)) cancelStall = host.watchStall(op, req, passiveOnly);
+      st.held = false;
+      if (st.abortedWhileHeld) return;
+      if (host.gated(op) && st.async) cancelStall = host.watchStall(op, req, passiveOnly);
       try {
         send.call(xhr, body as XMLHttpRequestBodyInit | null | undefined);
       } catch (e) {
+        st.onEnd = undefined;
         host.endOp(op, "error", { code: "network", errorText: String((e as Error)?.message ?? e), failure: true });
         throw e;
       }
     };
-    if (!host.gated(op)) return doSend();
+    // synchronous XHRs complete inside send(): never held
+    if (!host.gated(op) || !st.async) return doSend();
+    st.held = true;
     let decided = false;
     const ctl: Controller = {
       passive: () => {
         if (decided) return;
         decided = true;
-        doSend();
+        try {
+          doSend();
+        } catch (e) {
+          host.emit("xhr.send-failed", { error: String((e as Error)?.message ?? e) }, op);
+        }
       },
       run: (action): ActionEffect | Promise<ActionEffect> => {
-        if (decided) throw new Error("already decided");
+        if (decided || st.abortedWhileHeld) throw new Error("already decided");
         if (action === "block") {
           decided = true;
+          st.held = false;
+          st.onEnd = undefined;
           host.endOp(op, "blocked", { code: 503, synthetic: true });
           host.ctx.stick(op);
-          fake(xhr, 503, "Blocked by GenClass", "", [["x-genclass", "blocked"]]);
+          fake(xhr, st, 503, "Blocked by GenClass", "", [["x-genclass", "blocked"]]);
           return { changed: `Did not send ${opLabel(op)}; answered 503 (x-genclass: blocked).` };
         }
         if (action === "serve_cached") {
           const b = host.cache.get(req.identity);
-          if (!b) throw new Error("no cached response");
+          if (!b || b.kind !== "body") throw new Error("no cached response");
           decided = true;
+          st.held = false;
+          st.onEnd = undefined;
           host.endOp(op, "ok", { code: b.status, synthetic: true });
           host.ctx.stick(op);
-          fake(xhr, b.status, b.statusText, decode(b), [...b.headers, ["x-genclass", "cached"]]);
+          fake(xhr, st, b.status, b.statusText, decode(b), [...b.headers, ["x-genclass", "cached"]]);
           return { changed: `Did not send ${opLabel(op)}; answered with the cached ${b.status} response from ${secs(host.clock.now() - b.t)} ago (x-genclass: cached).` };
         }
         if (action === "delay") {
@@ -157,7 +255,11 @@ export function installXHR(host: NetHost): (() => void) | null {
           const ms = Math.min(250 * 2 ** host.failureStreak(req.signature), 8000);
           return new Promise<ActionEffect>((resolve) => {
             host.clock.setTimeout(() => {
-              doSend();
+              try {
+                doSend();
+              } catch {
+                /* reported through the op */
+              }
               resolve({ changed: `Delayed ${opLabel(op)} by ${secs(ms)} before sending it.` });
             }, ms);
           });
@@ -177,10 +279,19 @@ export function installXHR(host: NetHost): (() => void) | null {
     };
   }
 
-  P.open = wOpen as XMLHttpRequest["open"];
-  P.send = wSend as XMLHttpRequest["send"];
+  try {
+    P.open = wOpen as XMLHttpRequest["open"];
+    P.send = wSend as XMLHttpRequest["send"];
+    P.abort = wAbort as XMLHttpRequest["abort"];
+    P.setRequestHeader = wSetHeader as XMLHttpRequest["setRequestHeader"];
+  } catch {
+    return null;
+  }
   return () => {
+    disabled = true;
     if (P.open === (wOpen as unknown)) P.open = open;
     if (P.send === (wSend as unknown)) P.send = send;
+    if (P.abort === (wAbort as unknown)) P.abort = abort;
+    if (P.setRequestHeader === (wSetHeader as unknown)) P.setRequestHeader = setHeader;
   };
 }

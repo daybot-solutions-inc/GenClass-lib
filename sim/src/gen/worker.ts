@@ -53,6 +53,8 @@ async function main(): Promise<void> {
         rows: res.rows.length,
         rowTriggers: res.rows.map((r) => String(r.meta.trigger)),
         rowSplits: res.rows.map((r) => r.split),
+        rowBudgets: res.rows.map((r) => Number(r.meta.budget ?? 0)),
+        stateChars: res.rows.map((r) => JSON.stringify(r.state).length),
         askKinds: res.rows.filter((r) => r.meta.trigger === "ask").flatMap((r) => r.meta.kinds as string[]),
         askLabels: res.rows.filter((r) => r.meta.trigger === "ask").flatMap((r) => Object.entries(r.labels).map(([q, l]) => `${q}=${JSON.stringify("p" in l ? l.p : "level" in l ? l.level : "label" in l ? l.label : "")}`)),
         lens,

@@ -32,10 +32,41 @@ export interface RequestFixture {
   questions: Record<string, { type: string; instructions?: unknown; criteria?: unknown }>;
 }
 
-export const requests = (): RequestFixture[] => readJson<RequestFixture[]>(join(FIX, "requests50.json"));
-export const packs = (): PackFixture[] => readJson<PackFixture[]>(join(FIX, "pack_fixtures.json"));
-export const torch = (): TorchFixture[] => readJson<TorchFixture[]>(join(FIX, "torch_fixtures.json"));
+/**
+ * Parity fixtures: from the model directory when it ships them (TRAIN's export_runtime.py writes requests.json,
+ * pack_fixtures.json, torch_fixtures.json and parity.json next to the model), else the v0.1 set in fixtures/model.
+ */
+export const FIXTURES_FROM_MODEL = ["requests.json", "pack_fixtures.json", "torch_fixtures.json"].every((f) => existsSync(join(MODEL_DIR, f)));
+const fixture = (own: string, v01: string) => (FIXTURES_FROM_MODEL ? join(MODEL_DIR, own) : join(FIX, v01));
+export const requests = (): RequestFixture[] => readJson<RequestFixture[]>(fixture("requests.json", "requests50.json"));
+
+/**
+ * Ids of fixture requests whose JSON holds integral floats written Python-style ("25.0"): Python renders them as
+ * "25.0", but a JavaScript runtime can only ever produce "25", so their packing cannot match (and such rows teach
+ * the model a text the runtime never sends). Uses JSON.parse source-text access (Node >= 21).
+ */
+export function pythonOnlyFloatRequests(): Set<string> {
+  const text = readFileSync(fixture("requests.json", "requests50.json"), "utf8");
+  const ids = new Set<string>();
+  let hit = false;
+  const reviver = function (this: unknown, key: string, value: unknown, ctx?: { source?: string }) {
+    if (typeof value === "number" && Number.isInteger(value) && ctx?.source && /[.eE]/.test(ctx.source)) hit = true;
+    if (value && typeof value === "object" && !Array.isArray(value) && typeof (value as { id?: unknown }).id === "string" && "state" in (value as object) && "questions" in (value as object)) {
+      if (hit) ids.add((value as { id: string }).id);
+      hit = false;
+    }
+    return value;
+  };
+  JSON.parse(text, reviver as (k: string, v: unknown) => unknown);
+  return ids;
+}
+export const packs = (): PackFixture[] => readJson<PackFixture[]>(fixture("pack_fixtures.json", "pack_fixtures.json"));
+export const torch = (): TorchFixture[] => readJson<TorchFixture[]>(fixture("torch_fixtures.json", "torch_fixtures.json"));
+/** The export's own parity report (ORT CPU vs PyTorch), when the model directory has one. */
+export const exportParity = (): Record<string, any> | null => (existsSync(join(MODEL_DIR, "parity.json")) ? readJson(join(MODEL_DIR, "parity.json")) : null);
 export const pyFixturesPath = join(FIX, "py_fixtures.json");
+/** The v0.1 GenClass tokenizer (50,009 merges): the HF edge-case fixtures were generated from it. */
+export const isV01Tokenizer = (json: any): boolean => json?.model?.merges?.length === 50009 && Object.keys(json?.model?.vocab ?? {}).length === 50280;
 
 /**
  * Wire questions with choice criteria as Maps in the order Python used (JSON.parse would move integer-like keys

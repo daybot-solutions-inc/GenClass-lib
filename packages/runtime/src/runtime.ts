@@ -55,10 +55,10 @@ import { computeFacts } from "./situation/facts.js";
 import type { ErrorInfo, ReqMeta, SitEnv, SubjectSpec, Violation } from "./situation/env.js";
 import { opLabel } from "./situation/describe.js";
 import { BUILTIN_ACTIONS, diagnosisVocabulary, PASSIVE } from "./situation/questions.js";
-import { stateText } from "./situation/serialize.js";
+import { COMPACT_BUDGET, STATE_CHAR_BUDGET, stateText } from "./situation/serialize.js";
 import { DeciderQueue } from "./decide/decider.js";
-import { gate, policyConfig, RateLimiter, type PolicyConfig } from "./decide/policy.js";
-import { detectionLine, interventionLine, Reporter } from "./decide/report.js";
+import { gate, holdBudget, policyConfig, RateLimiter, type PolicyConfig } from "./decide/policy.js";
+import { decisionLine, detectionLine, interventionLine, Reporter } from "./decide/report.js";
 import type { ActionEffect, Controller, EndOpts, NetHost, TriggerOpts } from "./decide/exec.js";
 import { ResponseCache } from "./observe/cache.js";
 import { installFetch } from "./observe/fetch.js";
@@ -73,6 +73,10 @@ import { installTimers } from "./observe/timers.js";
 import { defaultRedact, normalizeFieldPath, secs, truncate, type Redactor } from "./util.js";
 
 const DECISIONS_KEPT = 200;
+/** A held write that applied because its hold budget expired can still be reverted this long after it applied. */
+const LATE_REVERT_MS = 2000;
+/** Non-held triggers (stall, inconsistency, transition, error) are not worth answering after this long. */
+const BACKGROUND_DEADLINE_MS = 5000;
 const STALL_MIN_MS = 500;
 const LONG_RUNNING_MS = 10_000;
 const PROFILED: ReadonlySet<OpKind> = new Set<OpKind>(["fetch", "xhr", "user", "task", "ws"]);
@@ -122,6 +126,8 @@ export class RuntimeImpl implements Runtime {
   private readonly vocab: Vocabulary | undefined;
   private readonly hooks: RuntimeHooks;
   private readonly settleMs: number;
+  private readonly budgetOpt: number | "auto";
+  private budgetScale = 1;
   private readonly appFn: (() => { title?: string; route?: string }) | undefined;
   private readonly debug: boolean;
   private readonly persist: boolean;
@@ -178,12 +184,17 @@ export class RuntimeImpl implements Runtime {
     this.vocab = o.vocabulary;
     this.hooks = o.hooks ?? {};
     this.settleMs = o.settleMs ?? 60;
+    this.budgetOpt = o.situation?.budget ?? "auto";
     this.appFn = o.app;
     this.debug = !!o.debug;
     this.persist = !!o.learn?.persist;
     this.decider = o.decider ?? null;
     this.ownsDecider = !!o.ownsDecider;
-    this.queue = new DeciderQueue(this.clock, () => this.decider, (e) => this.log("model error", e));
+    this.queue = new DeciderQueue(this.clock, () => this.decider, (e) => {
+      // the model could not fit the situation: use smaller automatic budgets from now on
+      if ((e as { code?: string })?.code === "max_tokens_exceeded") this.budgetScale = Math.max(0.5, this.budgetScale * 0.8);
+      this.log("model error", e);
+    });
     this.reporter = new Reporter(o.report ?? "console", this.clock, (id) => this.explain(id), (r) => this.fire("report", r));
     this.env = this.makeEnv();
     this.hub.hooks = {
@@ -266,11 +277,7 @@ export class RuntimeImpl implements Runtime {
     return {
       global: this.global,
       ctx: this.ctx,
-      lazyTimer: (parent: OpRec | LazyOp | null, label: string) =>
-        new LazyOp(() => {
-          const cause = parent instanceof LazyOp ? parent.materialize() : parent;
-          return this.startOp("timer", label, { cause, instant: true });
-        }),
+      lazyTimer: (parent: OpRec | null, label: string) => new LazyOp(parent, (cause) => this.startOp("timer", label, { cause, instant: true })),
     };
   }
 
@@ -365,9 +372,30 @@ export class RuntimeImpl implements Runtime {
       questions: this.standing,
       pluginFacts,
       triage: this.triage,
+      budget: this.situationBudget(),
     };
     if (this.vocab) o.vocab = this.vocab;
     return o;
+  }
+
+  /**
+   * Situation size in characters: the configured number, or "auto" by the model's device: webgpu 3,200; wasm
+   * 1,100 + 300 per extra thread (4 threads: 2,000); unknown device (custom providers) 3,200.
+   */
+  situationBudget(): number {
+    if (typeof this.budgetOpt === "number") return this.budgetOpt;
+    const st = this.decider?.status;
+    let b: number = STATE_CHAR_BUDGET;
+    if (st?.device === "wasm") {
+      const threads = Math.min(4, Math.max(1, st.threads ?? 1));
+      b = COMPACT_BUDGET + (threads - 1) * 300;
+    }
+    return Math.round(b * this.budgetScale);
+  }
+
+  /** The current hold budget in ms (policy.holdBudgetMs, "auto" by default). */
+  holdBudgetMs(): number {
+    return holdBudget(this.policy, this.queue.latencies(), this.decider?.status.warmupMs);
   }
 
   /** Side-effect free situation building (apart from caching op.reads). */
@@ -417,17 +445,22 @@ export class RuntimeImpl implements Runtime {
     if (opts.hold && !waits) passive();
     let expired = false;
     let budgetTimer: unknown = null;
+    const t0 = this.clock.now();
+    const budget = this.holdBudgetMs();
     if (waits) {
       budgetTimer = this.clock.setTimeout(() => {
         expired = true;
         passive();
-      }, this.policy.holdBudgetMs);
+      }, budget);
     }
-    const t0 = this.clock.now();
+    // deadline for the answer: held subjects need it within the hold budget (a held write may still be reverted
+    // shortly after it applied); background triggers within a few seconds
+    const lateOk = waits && !!ctl.revert;
+    const deadline = waits ? t0 + budget + (lateOk ? LATE_REVERT_MS : 0) : t0 + BACKGROUND_DEADLINE_MS;
     this.queue
       .submit(
         { trigger: spec.trigger, state: built.situation.state, questions: built.situation.questions, priority: opts.priority, subject: built.subjectRef },
-        () => expired,
+        deadline,
       )
       .then((res) => {
         if (budgetTimer !== null) this.clock.clearTimeout(budgetTimer);
@@ -463,20 +496,27 @@ export class RuntimeImpl implements Runtime {
     const tier: Tier = opt?.tier ?? "passive";
     const now = this.clock.now();
     let reason: string | null = null;
+    let late = false;
+    const gateNow = () =>
+      gate(this.policy, this.rate, {
+        action,
+        tier,
+        probability: confidence,
+        diagnosis,
+        mode: this._mode,
+        inBudget: true,
+        paused: this.paused,
+        now,
+      });
     if (tier !== "passive") {
       if (st.hold && !st.waits) reason = "observe mode never changes execution";
-      else if (st.hold && (st.expired || st.passiveRan())) reason = "the decision arrived after the hold budget expired";
-      else
-        reason = gate(this.policy, this.rate, {
-          action,
-          tier,
-          probability: confidence,
-          diagnosis,
-          mode: this._mode,
-          inBudget: true,
-          paused: this.paused,
-          now,
-        });
+      else if (st.hold && (st.expired || st.passiveRan())) {
+        if (action === "discard" && ctl.revert && ctl.revertable) {
+          // late revert: the write already applied (fail-open); revert exactly that write if nothing changed since
+          late = true;
+          reason = gateNow() ?? ctl.revertable();
+        } else reason = "the decision arrived after the hold budget expired";
+      } else reason = gateNow();
       if (reason?.startsWith("rate limit")) this.reporter.emit({ kind: "status", message: `[GenClass] Rate limit reached (${this.policy.maxActionsPerMinute} actions/minute): running passive actions until it clears.` });
     }
     const willRun = tier !== "passive" && reason === null;
@@ -546,6 +586,7 @@ export class RuntimeImpl implements Runtime {
         changed: eff?.changed ?? (err ? `Tried to ${action} ${decision.subject} but it failed; the passive action ran instead.` : `Ran ${action}.`),
       };
       if (err) record.error = err instanceof Error ? err.message : String(err);
+      if (late) record.late = true;
       if (eff?.undo) {
         const undo = eff.undo;
         let undone = false;
@@ -566,7 +607,8 @@ export class RuntimeImpl implements Runtime {
     };
     try {
       let r: ActionEffect | Promise<ActionEffect>;
-      if (def) r = this.runCustom(def, decision, built, ctl);
+      if (late) r = ctl.revert!();
+      else if (def) r = this.runCustom(def, decision, built, ctl);
       else r = ctl.run(action);
       Promise.resolve(r).then(
         (eff) => finish(eff),
@@ -658,6 +700,29 @@ export class RuntimeImpl implements Runtime {
           return { changed: `Held the write to ${m.changes.map((c) => c.path).join(", ")} until the related in-flight operations finish, to decide again.` };
         }
         throw new Error(`unsupported action ${action}`);
+      },
+      revertable: () => {
+        if (m.appliedAt === undefined) return "the write has not applied yet";
+        const age = this.clock.now() - m.appliedAt;
+        if (age > LATE_REVERT_MS) return `too late to revert: decided ${secs(age)} after the write applied`;
+        return this.hub.revertable(m);
+      },
+      revert: () => {
+        const age = this.clock.now() - (m.appliedAt ?? this.clock.now());
+        const changes = this.runAsGenClass("revert", () => this.hub.revert(m, this.ctx.op()));
+        if (!changes) throw new Error("the write could not be reverted");
+        const paths = (m.applied ?? []).map((c) => c.path);
+        const shown = paths.slice(0, 3).join(", ") + (paths.length > 3 ? ` and ${paths.length - 3} more` : "");
+        const back = changes
+          .slice(0, 2)
+          .map((c) => `${c.path} is back to ${this.hub.describeValue(c.path, c.after)}`)
+          .join("; ");
+        return {
+          changed: `Reverted the write to ${shown}${m.cause ? ` from ${opLabel(m.cause)}` : ""} (decided ${secs(age)} after it applied)${back ? `; ${back}` : ""}.`,
+          undo: () => {
+            this.hub.reapply(m, this.ctx.op());
+          },
+        };
       },
     };
     this.trigger({ trigger: "mutation", m }, ctl, { hold: true, priority: 2 });
@@ -1050,7 +1115,10 @@ export class RuntimeImpl implements Runtime {
     const about = opts.about ?? "now";
     const built = this.build({ trigger: "ask", about });
     const questions = { answer: q } as Record<string, Question>;
-    const sub = this.queue.submit({ trigger: "ask", state: built.situation.state, questions, priority: 1, subject: built.subjectRef });
+    const sub = this.queue.submit(
+      { trigger: "ask", state: built.situation.state, questions, priority: 1, subject: built.subjectRef },
+      opts.timeoutMs !== undefined ? this.clock.now() + opts.timeoutMs : undefined,
+    );
     let res;
     if (opts.timeoutMs !== undefined) {
       let h: unknown;
@@ -1265,7 +1333,10 @@ export class RuntimeImpl implements Runtime {
   explain(id: string): Explanation | null {
     const r = this.explainMap.get(id);
     if (!r) return null;
-    const e: Explanation = { decision: r.decision, situationText: r.situationText, facts: r.facts, timeline: r.timeline, answers: r.answers };
+    const d = r.decision;
+    const detected = d.diagnosis !== "expected" && d.diagnosisConfidence >= this.policy.thresholds.report;
+    const message = r.action ? interventionLine(d, r.action) : detected ? detectionLine(d) : decisionLine(d);
+    const e: Explanation = { message, decision: d, situationText: r.situationText, facts: r.facts, timeline: r.timeline, answers: r.answers };
     if (r.action) {
       e.action = r.action;
       e.changed = r.action.changed;

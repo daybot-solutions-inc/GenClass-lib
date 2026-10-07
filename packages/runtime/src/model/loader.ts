@@ -34,7 +34,7 @@ export interface FileSpec {
 export interface VariantSpec extends FileSpec {
   /** Where this variant is meant to run ("wasm" | "webgpu"); informative. */
   provider?: string;
-  /** WebGPU feature the variant requires, e.g. "shader-f16". */
+  /** WebGPU feature the variant needs to run on WebGPU, e.g. "shader-f16" (WASM ignores it). */
   needs?: string;
 }
 

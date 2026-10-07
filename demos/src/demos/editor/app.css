@@ -129,6 +129,10 @@
   padding: 0;
   margin-bottom: 10px;
 }
+.ed-title:focus-visible,
+.ed-body:focus-visible {
+  box-shadow: none;
+}
 .ed-body {
   flex: 1;
   min-height: 300px;

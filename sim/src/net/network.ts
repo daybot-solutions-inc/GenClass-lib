@@ -125,6 +125,10 @@ export interface NetEntry {
   cause: NetCause;
   committed: boolean;
   slowCause?: "spike" | "slow-period" | "overload";
+  /** Future salt active when the request was sent (counterfactual futures). */
+  salt?: number;
+  /** Name of the abort reason when the app aborted the request ("TimeoutError" = app timeout). */
+  abortReason?: string;
 }
 
 function inWin(w: Win, t: number): boolean {
@@ -141,6 +145,12 @@ export interface PushSub {
 
 export class Network {
   readonly log: NetEntry[] = [];
+  /**
+   * Counterfactual futures: once set (when the decider sees the labelled decision), every random draw for a request
+   * sent or a push published from then on is re-seeded with this salt. Draws made before stay identical, so the
+   * replayed prefix is byte-identical while the future varies.
+   */
+  future: number | null = null;
   private occ = new Map<string, number>();
   private arrivals: number[] = [];
   private arrivalsBySig = new Map<string, number[]>();
@@ -176,7 +186,8 @@ export class Network {
     const n = this.pushSeq++;
     const text = JSON.stringify(msg);
     const now = this.loop.now();
-    const d = this.profile.ideal ? 0 : new Rng(hashAll(this.seed, "push", topic, n)).lognormal(this.profile.push.median, this.profile.push.sigma);
+    const key = this.future === null ? hashAll(this.seed, "push", topic, n) : hashAll(this.seed, this.future, "push", topic, n);
+    const d = this.profile.ideal ? 0 : new Rng(key).lognormal(this.profile.push.median, this.profile.push.sigma);
     const at = Math.max(now + d, this.lastPush.get(topic) ?? 0);
     this.lastPush.set(topic, at);
     for (const s of this.subs.slice()) {
@@ -224,7 +235,8 @@ export class Network {
     const meta = this.server.meta(method, url.pathname);
     const signature = meta?.signature ?? `${method} ${url.pathname}`;
     const P = this.profile;
-    const r = new Rng(hashAll(this.seed, identity, occurrence));
+    const salt = this.future;
+    const r = new Rng(salt === null ? hashAll(this.seed, identity, occurrence) : hashAll(this.seed, salt, identity, occurrence));
     const kind = meta?.kind ?? "read";
     let latency = 0;
     let slowCause: NetEntry["slowCause"];
@@ -273,6 +285,7 @@ export class Network {
       committed: false,
     };
     if (slowCause) e.slowCause = slowCause;
+    if (salt !== null) e.salt = salt;
     if (simOp) e.simOp = Number(simOp);
     this.log.push(e);
     this.inflight++;
@@ -299,6 +312,7 @@ export class Network {
         e.outcome = "aborted";
         if (e.cause === "ok") e.cause = "aborted";
         const reason = signal?.reason ?? new DOMException("The operation was aborted.", "AbortError");
+        e.abortReason = String((reason as { name?: string })?.name ?? "AbortError");
         finish(() => reject(reason));
       };
       if (signal) {
@@ -434,7 +448,8 @@ export class Network {
     // Replica lag: a read soon after a write to the same resource may observe the pre-write state.
     let restore: (() => void) | null = null;
     const meta = this.server.meta(method, url.pathname);
-    const lagMs = bug === "stale-replica" ? 2500 : P.replicaLag && new Rng(hashAll(this.seed, "lag", e.identity, e.occurrence)).next() < P.replicaLag.p ? P.replicaLag.ms : 0;
+    const lagKey = e.salt === undefined ? hashAll(this.seed, "lag", e.identity, e.occurrence) : hashAll(this.seed, e.salt, "lag", e.identity, e.occurrence);
+    const lagMs = bug === "stale-replica" ? 2500 : P.replicaLag && new Rng(lagKey).next() < P.replicaLag.p ? P.replicaLag.ms : 0;
     if (!P.ideal && method === "GET" && meta?.resource && lagMs > 0) {
       restore = this.applyLag(meta.resource, t, lagMs);
       lagged = restore !== null;

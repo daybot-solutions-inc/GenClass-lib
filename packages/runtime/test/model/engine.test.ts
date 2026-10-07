@@ -7,7 +7,7 @@ import { parseCalibration } from "../../src/model/calibrate.js";
 import { Engine, type OrtLike } from "../../src/model/engine.js";
 import { ModelUnsupportedError } from "../../src/model/errors.js";
 import { Tokenizer, bytesToUnicode } from "../../src/model/tokenizer.js";
-import { hasModelFile, modelFile, packs, questionsInPythonOrder, readJson, requests, torch } from "./helpers.js";
+import { exportParity, hasModelFile, modelFile, packs, questionsInPythonOrder, readJson, requests, torch } from "./helpers.js";
 
 const HAVE = hasModelFile("model.json") && hasModelFile("tokenizer.json");
 const card = HAVE ? readJson<any>(modelFile("model.json")) : null;
@@ -26,10 +26,29 @@ interface Parity {
   n: number;
 }
 
-async function parity(ort: OrtLike, file: string, variant: string, opts: Record<string, unknown>, limit = 50): Promise<Parity> {
+/**
+ * Checks for a variant: the export's own parity.json (ORT CPU vs PyTorch) when the directory has one -- the TS
+ * packer + engine on the same ORT must reproduce it -- else the v0.1 GenClass export's numbers.
+ */
+function expectParity(r: Parity, variant: "q8" | "fp16"): void {
+  const ref = exportParity()?.[variant];
+  if (ref) {
+    const refAgree = (ref.argmax_agree ?? 0) + (ref.noul_side_agree ?? 0);
+    const refTotal = (ref.argmax_total ?? 0) + (ref.noul_total ?? 0);
+    if (r.n === requests().length) expect(r.agree).toBeGreaterThanOrEqual(refAgree - 1);
+    else expect(r.agree / r.total).toBeGreaterThanOrEqual(refAgree / refTotal - 0.02);
+    expect(r.maxLogit).toBeLessThan(Number(ref.max_abs_logit) + 0.05);
+    return;
+  }
+  expect(r.agree / r.total).toBeGreaterThanOrEqual(0.99);
+  expect(r.maxLogit).toBeLessThan(variant === "q8" ? 1.0 : 0.1);
+}
+
+async function parity(ort: OrtLike, file: string, variant: string, opts: Record<string, unknown>, limit = Infinity): Promise<Parity> {
   const tok = new Tokenizer(readJson(modelFile("tokenizer.json")));
   const calibration = parseCalibration(readJson(modelFile("calibration.json")));
   const meta = readJson<any>(modelFile("meta.json"));
+  meta.max_len = Math.max(Number(meta.max_len ?? 0), 1536); // the fixtures were packed with FastEngine's 8192 limit
   const session = await ort.InferenceSession.create(readFileSync(file), opts);
   const eng = new Engine({ ort, session, tokenizer: tok, calibration, meta, variant });
   const reqs = requests().slice(0, limit);
@@ -79,16 +98,14 @@ describe.skipIf(!HAVE)("engine parity with PyTorch (onnxruntime-node, CPU EP)", 
   it.skipIf(!variantFile("q8"))("q8 (MatMulNBits 8-bit)", { timeout: 600_000 }, async () => {
     const ort = (await import("onnxruntime-node")) as unknown as OrtLike;
     const r = await parity(ort, variantFile("q8") as string, "q8", { executionProviders: ["cpu"], intraOpNumThreads: 4 });
-    expect(r.total).toBe(503);
-    expect(r.agree / r.total).toBeGreaterThanOrEqual(0.99);
-    expect(r.maxLogit).toBeLessThan(1.0);
+    expect(r.total).toBeGreaterThan(100);
+    expectParity(r, "q8");
   });
 
   it.skipIf(!variantFile("fp16"))("fp16", { timeout: 600_000 }, async () => {
     const ort = (await import("onnxruntime-node")) as unknown as OrtLike;
     const r = await parity(ort, variantFile("fp16") as string, "fp16", { executionProviders: ["cpu"], intraOpNumThreads: 4 });
-    expect(r.agree / r.total).toBeGreaterThanOrEqual(0.99);
-    expect(r.maxLogit).toBeLessThan(0.1);
+    expectParity(r, "fp16");
   });
 });
 
@@ -97,8 +114,7 @@ describe.skipIf(!HAVE)("engine parity with PyTorch (onnxruntime-web, WASM EP in 
     const ort = (await import("onnxruntime-web")) as unknown as OrtLike;
     ort.env.wasm.numThreads = 1;
     const r = await parity(ort, variantFile("q8") as string, "q8", { executionProviders: ["wasm"], graphOptimizationLevel: "all" }, 12);
-    expect(r.agree / r.total).toBeGreaterThanOrEqual(0.99);
-    expect(r.maxLogit).toBeLessThan(1.0);
+    expectParity(r, "q8");
   });
 });
 

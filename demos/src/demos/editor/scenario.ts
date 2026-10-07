@@ -39,7 +39,7 @@ export function editorScenario(seed: number, kind: TrialKind): Scenario {
   const chaos =
     kind === "clean"
       ? CLEAN_CHAOS
-      : sampleChaos(rng, { latency: [250, 900], jitter: [150, 700], reorder: [0.15, 0.8], failRate: [0, 0.1], spikeRate: [0, 0.1] }, { spikeFactor: 4 });
+      : sampleChaos(rng, { latency: [100, 900], jitter: [60, 700], reorder: [0, 0.8], failRate: [0, 0.1], spikeRate: [0, 0.1] }, { spikeFactor: 4 });
 
   return {
     seed,

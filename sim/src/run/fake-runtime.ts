@@ -49,6 +49,7 @@ const DIAG: Record<string, string> = {
   slow: "an operation is far slower than usual",
   overload: "work is being triggered far more often than usual",
   unusual: "this differs from how the same operation normally behaves",
+  transient: "a one-off failure that is likely to succeed if tried again",
 };
 
 export function createFakeRuntime(o: RuntimeOptions): RuntimeLike {

@@ -7,7 +7,8 @@
 //       verifies sizes and sha256, skips files that are already present and valid, and writes a model.json that
 //       lists exactly the downloaded files with their sizes and hashes.
 //   genclass-runtime info <dir>
-//       Show the model card of a directory and verify every file it lists.
+//       Show the model card of a directory, verify every file it lists, and check each variant's ONNX graph against
+//       the card rule "any fp16 tensor -> needs: shader-f16" (WebGPU without shader-f16 cannot run fp16 tensors).
 
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -91,6 +92,107 @@ function parseCard(j) {
     variants,
     files,
   };
+}
+
+// ------------------------------------------------------------------------------------- ONNX graph scan
+
+/** Protobuf fields of buf[start, end): {field, wire, value} or {field, wire, start, end} for length-delimited ones. */
+function* pbFields(buf, start, end) {
+  let p = start;
+  const varint = () => {
+    let x = 0;
+    let mul = 1;
+    let b;
+    do {
+      b = buf[p++];
+      x += (b & 0x7f) * mul;
+      mul *= 128;
+    } while (b & 0x80);
+    return x;
+  };
+  while (p < end) {
+    const key = varint();
+    const field = Math.floor(key / 8);
+    const wire = key % 8;
+    if (wire === 0) yield { field, wire, value: varint() };
+    else if (wire === 1) p += 8;
+    else if (wire === 2) {
+      const len = varint();
+      yield { field, wire, start: p, end: p + len };
+      p += len;
+    } else if (wire === 5) p += 4;
+    else throw new Error(`not an ONNX protobuf (wire type ${wire})`);
+  }
+}
+
+const FLOAT16 = 10;
+const INT8 = 3;
+const tensorDtype = (buf, s, e) => {
+  for (const f of pbFields(buf, s, e)) if (f.field === 2 && f.wire === 0) return f.value;
+  return 0;
+};
+
+function scanGraph(buf, s, e, out) {
+  for (const f of pbFields(buf, s, e)) {
+    if (f.wire !== 2) continue;
+    if (f.field === 5) {
+      // initializer (TensorProto)
+      const dt = tensorDtype(buf, f.start, f.end);
+      if (dt === FLOAT16) out.fp16Initializers++;
+      if (dt === INT8) out.int8Initializers++;
+    } else if (f.field === 1) {
+      // node (NodeProto): op_type 4, attribute 5 (AttributeProto: name 1, i 3, t 5, g 6)
+      let op = "";
+      let castToFp16 = false;
+      let fp16Const = false;
+      for (const g of pbFields(buf, f.start, f.end)) {
+        if (g.field === 4 && g.wire === 2) op = buf.toString("utf8", g.start, g.end);
+        else if (g.field === 5 && g.wire === 2) {
+          let name = "";
+          let i = null;
+          for (const a of pbFields(buf, g.start, g.end)) {
+            if (a.field === 1 && a.wire === 2) name = buf.toString("utf8", a.start, a.end);
+            else if (a.field === 3 && a.wire === 0) i = a.value;
+            else if (a.field === 5 && a.wire === 2 && tensorDtype(buf, a.start, a.end) === FLOAT16) fp16Const = true;
+            else if (a.field === 6 && a.wire === 2) scanGraph(buf, a.start, a.end, out); // If/Loop bodies
+          }
+          if (name === "to" && i === FLOAT16) castToFp16 = true;
+        }
+      }
+      out.ops[op] = (out.ops[op] || 0) + 1;
+      if (op === "Cast" && castToFp16) out.castToFp16++;
+      if (fp16Const) out.fp16Constants++;
+    }
+  }
+}
+
+/** Op counts and fp16/int8 tensor usage of an .onnx file (no dependencies; raw tensor data is skipped). */
+function scanOnnx(buf) {
+  const out = { ops: {}, fp16Initializers: 0, int8Initializers: 0, castToFp16: 0, fp16Constants: 0 };
+  for (const f of pbFields(buf, 0, buf.length)) if (f.field === 7 && f.wire === 2) scanGraph(buf, f.start, f.end, out);
+  out.usesFp16 = out.fp16Initializers + out.castToFp16 + out.fp16Constants > 0;
+  return out;
+}
+
+/** One line about a variant's graph, plus a warning when it breaks the shader-f16 card rule. */
+async function graphNote(path, spec) {
+  let scan;
+  try {
+    scan = scanOnnx(await readFile(path));
+  } catch (e) {
+    return { line: `graph unreadable (${e.message})`, warn: null };
+  }
+  const top = Object.entries(scan.ops)
+    .filter(([op]) => ["MatMulNBits", "MatMul", "Gather", "GatherBlockQuantized", "MatMulInteger", "DynamicQuantizeLinear"].includes(op))
+    .map(([op, n]) => `${op}×${n}`)
+    .join(" ");
+  const f16 = scan.usesFp16 ? `fp16 tensors (${scan.fp16Initializers} initializers, ${scan.castToFp16} casts)` : "no fp16 tensors";
+  const line = `${top}; ${f16}${scan.int8Initializers ? `; ${scan.int8Initializers} int8 initializers` : ""}`;
+  let warn = null;
+  if (scan.usesFp16 && spec.needs !== "shader-f16") {
+    warn = `${spec.file} has fp16 tensors but the card does not say "needs": "shader-f16": WebGPU devices without shader-f16 will fail it (the runtime then falls back to WASM)`;
+  }
+  return { line, warn };
 }
 
 async function sha256File(path) {
@@ -216,6 +318,10 @@ async function fetchModel(dirArg, flags) {
       out.variants[job.key] = entry;
     } else out.files[job.key] = entry;
     say(`  ${job.spec.file.padEnd(28)} ${mb(got.bytes).padStart(9)}  ${note}`);
+    if (job.kind === "variant") {
+      const g = await graphNote(path, job.spec);
+      if (g.warn) console.warn(`  warning: ${g.warn}`);
+    }
   }
   // Keep variants an earlier run downloaded (same model) that this run did not ask for, if still valid on disk.
   let prev = null;
@@ -263,7 +369,11 @@ async function info(dirArg) {
     } else state = "present (no hash in card)";
     console.log(`  ${label.padEnd(12)} ${spec.file.padEnd(28)} ${size === null ? "" : mb(size).padStart(9)}  ${state}`);
   };
-  for (const [name, v] of Object.entries(card.variants)) await check(`${name}${v.needs ? `*` : ""}`, v);
+  const notes = [];
+  for (const [name, v] of Object.entries(card.variants)) {
+    await check(`${name}${v.needs ? `*` : ""}`, v);
+    if ((await sizeOf(safeJoin(dir, v.file))) !== null) notes.push([name, await graphNote(safeJoin(dir, v.file), v)]);
+  }
   for (const role of ROLES) await check(role, card.files[role]);
   try {
     const meta = JSON.parse(await readFile(safeJoin(dir, card.files.meta.file), "utf8"));
@@ -276,6 +386,10 @@ async function info(dirArg) {
     ok = false;
   }
   if (Object.values(card.variants).some((v) => v.needs)) console.log("            * needs a WebGPU feature (e.g. shader-f16)");
+  for (const [name, n] of notes) {
+    console.log(`graph ${name.padEnd(6)} ${n.line}`);
+    if (n.warn) console.log(`WARNING     ${n.warn}`);
+  }
   if (!ok) {
     console.error("some files are missing or invalid; run fetch-model again");
     process.exitCode = 1;

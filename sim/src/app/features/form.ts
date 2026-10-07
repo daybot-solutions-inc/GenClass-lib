@@ -63,7 +63,7 @@ export const form: FeatureDef<FormSpec> = {
       optimistic: rng.bool(0.35),
       rollback: rng.bool(0.6),
       countField: rng.bool(0.7),
-      countOnAllPaths: rng.bool(0.55),
+      countOnAllPaths: rng.bool(0.4),
       onError: rng.weighted([["show", 4], ["throw", 1]] as const),
       submitLabel: `button "${title(entity.create)} ${entity.s}"`,
       labels,

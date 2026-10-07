@@ -91,7 +91,8 @@ export interface FeatureDef<S> {
   server(spec: S, srv: VirtualServer, db: Db): void;
   client(spec: S, env: AppEnv, kit: Kit): FeatureClient;
   session(spec: S, user: UserModel, win: { t0: number; t1: number }): UserStep[];
-  external?(spec: S, rng: Rng, win: { t0: number; t1: number }): ExternalEvent[];
+  /** External events (other users, data drift). `steps` is the user's session, for correlated (conflicting) edits. */
+  external?(spec: S, rng: Rng, win: { t0: number; t1: number }, steps: UserStep[]): ExternalEvent[];
   relations?(spec: S): Relation[];
 }
 

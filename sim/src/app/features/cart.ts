@@ -67,7 +67,7 @@ export const cart: FeatureDef<CartSpec> = {
       },
       mode: rng.weighted([["optimistic", 3], ["server", 3], ["echo", 3]] as const),
       rollback: rng.bool(0.6),
-      recompute: rng.weighted([["always", 4], ["skip-rollback", 2], ["skip-echo", 3], ["items-only-qty", 1]] as const),
+      recompute: rng.weighted([["always", 3], ["skip-rollback", 4], ["skip-echo", 2], ["items-only-qty", 1]] as const),
       addGuard: rng.bool(0.4),
       checkout: { disable: rng.bool(0.5), idem: retry === "same-key" || rng.bool(0.3), retry, timeoutMs: rng.weighted([[0, 2], [rng.int(2000, 7000), 3]] as const) },
       addLabel: `button "${rng.pick(["Add to cart", "Add", "Add to basket", "+ Add"])}"`,

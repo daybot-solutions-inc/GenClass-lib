@@ -95,6 +95,23 @@ describe("DOM user-action observer", () => {
     await clock.flush();
   });
 
+  it("ignores events from inside [data-genclass-ignore] (devtools overlay, app debug UI)", async () => {
+    page(`<div data-genclass-ignore><button id="dbg">Debug</button></div><button id="app">App</button>`);
+    const host = document.createElement("genclass-devtools");
+    host.setAttribute("data-genclass-ignore", "");
+    document.body.appendChild(host);
+    const root = host.attachShadow({ mode: "open" });
+    root.innerHTML = `<button id="inner">Clear</button>`;
+    const clock = new FakeClock();
+    rt = createRuntime({ clock, global: window, decider: new ScriptedDecider(), report: "silent", observe: { ...OFF, user: true } }) as RuntimeImpl;
+    (document.getElementById("dbg") as HTMLButtonElement).click();
+    (root.getElementById("inner") as HTMLButtonElement).click();
+    (document.getElementById("app") as HTMLButtonElement).click();
+    const names = rt.history().filter((e) => e.kind === "user").map((e) => e.name);
+    expect(names).toEqual(['click button "App"']);
+    await clock.flush();
+  });
+
   it("destroy() removes the listeners", () => {
     page(`<button id="b">B</button>`);
     rt = createRuntime({ clock: new FakeClock(), global: window, decider: new ScriptedDecider(), report: "silent", observe: { ...OFF, user: true } }) as RuntimeImpl;

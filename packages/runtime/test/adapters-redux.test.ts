@@ -1,6 +1,6 @@
 // Redux enhancer: dispatch passthrough, held dispatches applied later through the original dispatch (reducer
 // runs once, subscribers notified once), drops, middleware order, thunks, replaceReducer, GenClass writes.
-import { applyMiddleware, compose, legacy_createStore as createStore, type Middleware, type Reducer, type UnknownAction } from "redux";
+import { applyMiddleware, compose, legacy_createStore as createStore, type Middleware, type Reducer, type StoreEnhancer, type UnknownAction } from "redux";
 import { describe, expect, it, vi } from "vitest";
 import { genclassEnhancer, GENCLASS_REPLACE } from "../src/adapters/redux.js";
 import { MockRuntime } from "./browser/ui/mock-runtime.js";
@@ -133,6 +133,32 @@ describe("genclassEnhancer (scripted runtime)", () => {
     expect(store.getState().count).toBe(2);
   });
 
+  it("shows inner enhancers (e.g. Redux DevTools) the real action at apply time, and GenClass writes as REPLACE", () => {
+    const rt = new MockRuntime();
+    rt.holdWrites = true;
+    const { reducer, calls } = makeReducer();
+    const log: string[] = [];
+    const recorder: StoreEnhancer = (next) => (r, p) => {
+      const s = next(r, p);
+      return {
+        ...s,
+        dispatch: ((a: UnknownAction) => {
+          log.push(a.type);
+          return s.dispatch(a);
+        }) as typeof s.dispatch,
+      };
+    };
+    const store = createStore(reducer, compose(genclassEnhancer(rt, { name: "app" }), recorder) as StoreEnhancer);
+    store.dispatch({ type: "results", items: ["react"] });
+    expect(log.filter((t) => !t.startsWith("@@redux/"))).toEqual([]);
+    rt.flushHeld();
+    expect(log.filter((t) => !t.startsWith("@@redux/"))).toEqual(["results"]);
+    rt.genclassWrite("app", { query: "", results: [], count: 7 }); // e.g. a rollback to a consistent snapshot
+    expect(log[log.length - 1]).toBe(GENCLASS_REPLACE);
+    expect(store.getState()).toEqual({ query: "", results: [], count: 7 });
+    expect(typesOf(calls)).toEqual(["results"]); // REPLACE never reaches the app's reducer
+  });
+
   it("returns the store unchanged without a runtime", () => {
     const { reducer } = makeReducer();
     const store = createStore(reducer, genclassEnhancer(null, { name: "app" }));
@@ -157,7 +183,7 @@ describe("genclassEnhancer + the real runtime", () => {
     expect(decider.pending).toHaveLength(0);
     const ev = S.rt.history().filter((e) => e.kind === "state");
     expect(ev.map((e) => e.data?.paths)).toEqual([["app.query"]]);
-    expect(S.rt.situation().state.state).toEqual(expect.arrayContaining([expect.stringContaining("app.query")]));
+    expect(ev[0].data?.user).toBe(true);
     S.rt.destroy();
   });
 
@@ -192,17 +218,5 @@ describe("genclassEnhancer + the real runtime", () => {
     expect(listener).toHaveBeenCalledTimes(2);
     S.rt.destroy();
   });
-
-  it("writes GenClass values back with a visible replace action", async () => {
-    const { S, store } = make();
-    const types: string[] = [];
-    const original = store.dispatch;
-    void original;
-    store.subscribe(() => types.push(String(store.getState().query)));
-    // a guarded store written by GenClass itself (rollback/resync/undo paths use io.set with a whole value)
-    const g = S.rt.guard("other", { get: () => 1, set: () => {} });
-    void g;
-    expect(GENCLASS_REPLACE).toBe("@@genclass/REPLACE");
-    S.rt.destroy();
-  });
 });
+

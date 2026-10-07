@@ -295,6 +295,21 @@ describe("devtools: feeds", () => {
     expect($(".pc.d b")?.textContent).toBe("3");
   });
 
+  it("keeps at most 200 cards per feed, even while closed", async () => {
+    const rt = new MockRuntime();
+    const { $$, h } = mount(rt);
+    for (let i = 1; i <= 210; i++) {
+      const d = rt.decision(decision(`d${i}`, i * 100_000, { trigger: "request", subject: `GET /x/${i} is about to be sent.`, diagnosisProbabilities: { duplicate: 0.95, expected: 0.05 }, probabilities: { coalesce: 0.96, send: 0.04 }, tier: "guard" }));
+      rt.act(makeAction(d, { id: `a${i}`, changed: `Reused #${i}.` }));
+    }
+    h.open();
+    await frame();
+    const cards = $$('[data-pane="interventions"] article.card');
+    expect(cards.length).toBe(200);
+    expect(cards[0].dataset.id).toBe("a210");
+    expect(cards[199].dataset.id).toBe("a11");
+  });
+
   it("explains a decision held back by policy rather than by the mode", async () => {
     const rt = new MockRuntime();
     rt.decision(

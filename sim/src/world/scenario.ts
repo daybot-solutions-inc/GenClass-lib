@@ -46,6 +46,8 @@ export interface Scenario {
   actionWords: Record<string, string> | null;
   /** Model latency (virtual ms) median for the recording decider. */
   modelMs: number;
+  /** Situation size in characters (runtime `situation.budget`): 3,200 WebGPU, 2,000 WASM ≥4 threads, 1,100 WASM 1 thread. */
+  budget: number;
 }
 
 // ------------------------------------------------------------------------------------------------- splits
@@ -75,6 +77,7 @@ export const DEFAULT_DIAGNOSES: Record<string, string> = {
   slow: "an operation is far slower than usual",
   overload: "work is being triggered far more often than usual",
   unusual: "this differs from how the same operation normally behaves",
+  transient: "a one-off failure that is likely to succeed if tried again",
 };
 
 const DIAG_PARA: Record<string, string[]> = {
@@ -87,12 +90,13 @@ const DIAG_PARA: Record<string, string[]> = {
   slow: ["this is taking much longer than it normally does", "latency is far above its usual level", "the request is unusually slow"],
   overload: ["too much work is being triggered, far above the usual rate", "requests are being fired in a storm", "the app is hammering the service much more than normal"],
   unusual: ["this operation behaved differently from its usual pattern", "the result has an unexpected shape compared with previous runs", "a normally consistent operation produced an atypical outcome"],
+  transient: ["an isolated failure that should work if retried", "a momentary glitch, not a pattern; trying again would likely succeed", "a single failed attempt that a retry would probably fix"],
 };
 
 function diagVocab(rng: Rng): Record<string, string> | null {
   if (rng.bool(0.5)) return null;
   const out: Record<string, string> = {};
-  const drop = rng.bool(0.3) ? new Set(rng.sample(["conflict", "slow", "overload", "unusual", "inconsistent", "duplicate"], rng.int(1, 2))) : new Set<string>();
+  const drop = rng.bool(0.3) ? new Set(rng.sample(["conflict", "slow", "overload", "unusual", "inconsistent", "duplicate", "transient"], rng.int(1, 2))) : new Set<string>();
   for (const [k, v] of Object.entries(DEFAULT_DIAGNOSES)) {
     if (drop.has(k)) continue;
     out[k] = rng.bool(0.6) ? rng.pick(DIAG_PARA[k]!) : v;
@@ -226,7 +230,8 @@ export function buildScenario(seed: number, opts: BuildOptions = {}): Scenario {
   const patterns = features.flatMap((f) => f.pattern);
   // Timing.
   const rT = R.fork("timing");
-  const tUser = opts.duration ?? rT.float(20000, 75000);
+  // 15% long sessions (2-5 min) so transition profiles (>= 20 completions per op) are reached more often.
+  const tUser = opts.duration ?? (rT.bool(0.15) ? rT.float(120000, 300000) : rT.float(20000, 75000));
   const warmup = tUser * rT.float(0.3, 0.6);
   const tEnd = tUser + rT.float(2500, 5000);
   // Chaos.
@@ -245,14 +250,15 @@ export function buildScenario(seed: number, opts: BuildOptions = {}): Scenario {
     const len = tUser * cover;
     const t0 = ru.float(0, tUser - len);
     const user = new UserModel(ru.fork("user"), persona, f.id);
-    for (const st of def.session(f.spec, user, { t0, t1: t0 + len })) if (st.t < tUser) steps.push(st);
-    if (def.external) for (const ev of def.external(f.spec, R.fork("external", i), { t0: 0, t1: tUser })) external.push(ev);
+    const mine = def.session(f.spec, user, { t0, t1: t0 + len }).filter((st) => st.t < tUser);
+    steps.push(...mine);
+    if (def.external) for (const ev of def.external(f.spec, R.fork("external", i), { t0: 0, t1: tUser }, mine)) external.push(ev);
   });
   steps.sort((a, b) => a.t - b.t);
   external.sort((a, b) => a.t - b.t);
   const rA = R.fork("ask");
   const askTimes: number[] = [];
-  const nAsk = rA.int(2, 5);
+  const nAsk = rA.int(1, 3);
   for (let i = 0; i < nAsk; i++) askTimes.push(rA.float(warmup * 0.5, tEnd - 200));
   askTimes.sort((a, b) => a - b);
   return {
@@ -276,6 +282,7 @@ export function buildScenario(seed: number, opts: BuildOptions = {}): Scenario {
     diagnoses: diagVocab(R.fork("vocab")),
     actionWords: actionVocab(R.fork("action-vocab")),
     modelMs: R.fork("model").float(6, 25),
+    budget: R.fork("budget").weighted([[3200, 40], [2000, 30], [1100, 30]] as const),
   };
 }
 

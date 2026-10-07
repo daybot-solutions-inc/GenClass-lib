@@ -126,9 +126,10 @@
 }
 .mode-card-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px 12px;
 }
 .mode-card-top .label {
   font-size: 12px;
@@ -181,27 +182,18 @@
 .demo-side {
   display: grid;
   gap: 16px;
-  position: sticky;
-  top: 74px;
-  max-height: calc(100vh - 90px);
-  overflow: auto;
-  scrollbar-width: thin;
-  padding-bottom: 4px;
+  align-content: start;
 }
 @media (max-width: 1100px) {
   .demo-hero {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
   }
   .mode-card {
     min-width: 0;
   }
   .demo-grid {
-    grid-template-columns: 1fr;
-  }
-  .demo-side {
-    position: static;
-    max-height: none;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -236,6 +228,7 @@
 }
 .app-chrome .url {
   flex: 1;
+  min-width: 0;
   max-width: 420px;
   margin: 0 auto;
   display: flex;
@@ -283,8 +276,9 @@
 }
 .netlane-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 4px 10px;
   font-size: 11.5px;
   color: var(--text-3);
   margin-bottom: 6px;
@@ -314,7 +308,7 @@
 }
 .netlane-track {
   position: relative;
-  height: 92px;
+  height: 104px;
   overflow: hidden;
   border-radius: var(--radius-sm);
   background:
@@ -324,7 +318,7 @@
 }
 .netlane-bar {
   position: absolute;
-  height: 9px;
+  height: 8px;
   border-radius: 3px;
   background: color-mix(in srgb, var(--accent) 55%, transparent);
   min-width: 3px;
@@ -357,6 +351,27 @@
 @keyframes lane-move {
   to {
     background-position: -16px 0;
+  }
+}
+
+.app-frame.gc-flash {
+  animation: gc-flash 1.4s var(--ease);
+}
+@keyframes gc-flash {
+  0% {
+    box-shadow:
+      0 0 0 0 var(--accent-soft),
+      var(--shadow-md);
+  }
+  25% {
+    box-shadow:
+      0 0 0 6px var(--accent-soft),
+      var(--shadow-md);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 transparent,
+      var(--shadow-md);
   }
 }
 
@@ -532,6 +547,17 @@
   line-height: 1.5;
   color: var(--text-2);
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+}
+.act.open .act-msg,
+.act[data-kind="status"] .act-msg {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
 }
 .act-meta {
   display: flex;
@@ -688,23 +714,27 @@
 
 .explain {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-top: 20px;
+}
+.explain .explain-code {
+  grid-column: 1 / -1;
 }
 .explain .card {
   padding: 18px 20px;
 }
 .explain h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  font-size: 14.5px;
+  letter-spacing: -0.005em;
+  text-wrap: wrap;
   margin-bottom: 10px;
 }
 .explain h3 svg {
   width: 16px;
   height: 16px;
+  margin-right: 8px;
+  vertical-align: -3px;
   color: var(--text-3);
 }
 .explain ul {
@@ -716,12 +746,12 @@
   color: var(--text-2);
 }
 .explain .codeblock {
-  font-size: 12px;
-  line-height: 1.65;
+  font-size: 12.5px;
+  line-height: 1.7;
 }
 @media (max-width: 1100px) {
   .explain {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -732,9 +762,10 @@
 }
 .section-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 20px;
+  gap: 14px 20px;
   margin-bottom: 14px;
 }
 .section-head h2 {
@@ -754,7 +785,7 @@
 }
 @media (max-width: 1100px) {
   .trials-body {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .trial-controls {
@@ -790,7 +821,7 @@
 }
 .trial-stage {
   position: relative;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 11;
   background: var(--bg-sunken);
   overflow: hidden;
 }
@@ -816,6 +847,13 @@
   font-size: 13px;
 }
 
+.table-scroll {
+  overflow-x: auto;
+}
+.results-table th,
+.results-table td {
+  white-space: nowrap;
+}
 .results-table td .meter {
   display: flex;
   align-items: center;
@@ -1207,30 +1245,48 @@
 
 @media (max-width: 1100px) {
   .hero-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .modes,
   .demo-cards {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .steps {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .mode .arrow {
     display: none;
   }
 }
 @media (max-width: 720px) {
+  .app-chrome .gc-chip {
+    display: none;
+  }
+  .netlane-head .legend {
+    margin-left: 0;
+  }
   .hero {
     padding: 44px 0 36px;
   }
   .modes,
   .demo-cards,
   .steps {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .chaos-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .topbar-inner {
+    flex-wrap: wrap;
+    height: auto;
+    padding-top: 10px;
+    padding-bottom: 6px;
+    row-gap: 4px;
+  }
+  .topbar .nav {
+    order: 3;
+    width: 100%;
+    margin: 0 -6px;
   }
   .demo-hero h1 {
     font-size: 26px;

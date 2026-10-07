@@ -27,7 +27,7 @@ do_sync() {
   timeout 600 rsync -az --delete -e "ssh ${SSH_OPTS[*]}" \
     --exclude node_modules --exclude .git --exclude 'dist/' --exclude '.vite' --exclude '/data/' \
     --exclude 'test-results/' --exclude 'playwright-report/' --exclude '__pycache__' --exclude '.DS_Store' \
-    --exclude '/models/' --exclude '/runs/' --exclude '/extension/' --exclude '/sim/out/' \
+    --exclude '/models/' --exclude '/runs/' --exclude '/extension/' --exclude '/sim/out/' --exclude '.cache-model/' \
     "${ROOT}/" "${DEST}:gcl/${slot}/"
 }
 

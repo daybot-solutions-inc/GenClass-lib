@@ -22,6 +22,10 @@ export interface GenOptions {
   testKeep: number;
   /** Probability of an exploratory (non-passive) action per decision in the base run (per-trajectory scale). */
   exploreScale: number;
+  /** Counterfactual futures per labelled decision (paired across actions). Default 3. */
+  futures?: number;
+  /** Only run the extra futures when some non-passive action beats passive by > 0.05 in the first. Default true. */
+  adaptive?: boolean;
 }
 
 export interface PointStat {
@@ -35,6 +39,11 @@ export interface PointStat {
   split: string;
   explored: boolean;
   correlated: boolean;
+  /** Label mass on non-passive actions. */
+  nonPassiveMass: number;
+  /** Mean raw cost of passive minus the cheapest action's (≥ 0). */
+  gain: number;
+  futures: number;
 }
 
 export interface TrajectoryOut {
@@ -112,21 +121,23 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
     out.skipped = `base-error: ${String((base.internalErrors[0] as Error)?.stack ?? base.internalErrors[0]).slice(0, 300)}`;
     return out;
   }
-  const meta0 = { seed, domain: scn.domain, family: scn.family, chaos: scn.chaos, runtime: o.runtimeName, features: scn.features.map((f) => f.kind), patterns: scn.patterns };
+  const meta0 = { seed, domain: scn.domain, family: scn.family, chaos: scn.chaos, budget: scn.budget, runtime: o.runtimeName, features: scn.features.map((f) => f.kind), patterns: scn.patterns };
   // -------------------------------------------------------------------------------------- decision rows
   const points = pickPoints(base.decisions, o.maxPoints, R.fork("points"));
   for (const p of points) {
     const passive = PASSIVE[p.trigger] ?? p.actions[0]!;
     const forcedPrefix = new Map<number, string>();
     for (const d of base.decisions) if (d.k < p.k && d.explored) forcedPrefix.set(d.k, d.chosen);
-    const pc = await pointCosts(scn, ideal, base, p, o.factory);
+    const pc = await pointCosts(scn, ideal, base, p, o.factory, o.futures ?? 3, o.adaptive ?? true);
     out.runs += pc.runs;
     if (pc.drop) drop(pc.drop);
     const ok = !pc.drop;
-    const costs = pc.costs;
+    const futures = pc.costs;
     const parts = pc.parts;
     if (!ok) continue;
-    const lab = actionLabel(costs, passive);
+    const costs: Record<string, number> = {};
+    for (const [a, xs] of Object.entries(futures)) costs[a] = Math.round((xs.reduce((x, y) => x + y, 0) / xs.length) * 1e4) / 1e4;
+    const lab = actionLabel(futures, passive);
     const harm: Record<string, number> = {};
     for (const a of p.actions) if (a !== passive) harm[a] = Math.round((costs[a]! - costs[passive]!) * 1e3) / 1e3;
     const tr = transformQuestions(p.questions, lab.dist, passive, lab.best, R.fork("transform", p.k));
@@ -152,8 +163,12 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
         best: lab.best,
         passive_best: lab.passiveBest,
         costs,
+        cost_futures: futures,
+        futures: futures[passive]?.length ?? 1,
         adjusted: lab.adjusted,
-        cost_parts: Object.fromEntries(Object.entries(parts).map(([a, c]) => [a, { area: r3(c.area), final_client: r3(c.finalClient), final_server: r3(c.finalServer), errors: c.shownErrors, uncaught: c.uncaught, wasted: c.wasted, latency_s: r3(c.latencyS) }])),
+        se: lab.se,
+        non_passive_mass: lab.nonPassiveMass,
+        cost_parts: Object.fromEntries(Object.entries(parts).map(([a, c]) => [a, { area: r3(c.area), final_client: r3(c.finalClient), final_server: r3(c.finalServer), relation_s: r3(c.relationS), relation_final: c.relationFinal, errors: c.shownErrors, uncaught: c.uncaught, wasted: c.wasted, latency_s: r3(c.latencyS) }])),
         tiers: Object.fromEntries(p.actions.map((a) => [a, TIER[a] ?? "heal"])),
         diagnosis: diag ?? null,
         subject: p.subject,
@@ -162,7 +177,24 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
       },
     };
     out.rows.push(row);
-    out.points.push({ trigger: p.trigger, ...(diag ? { diagnosis: diag } : {}), best: lab.best, passiveBest: lab.passiveBest, harm, costs, split, explored: forcedPrefix.size > 0, correlated: p.subject.kind !== "unknown" });
+    out.points.push({ trigger: p.trigger, ...(diag ? { diagnosis: diag } : {}), best: lab.best, passiveBest: lab.passiveBest, harm, costs, split, explored: forcedPrefix.size > 0, correlated: p.subject.kind !== "unknown", nonPassiveMass: lab.nonPassiveMass, gain: Math.round((costs[passive]! - Math.min(...Object.values(costs))) * 1e3) / 1e3, futures: futures[passive]?.length ?? 1 });
+  }
+  // ------------------------------------------------------------------------------- diagnosis-only rows
+  // Decisions with a single applicable action (e.g. a harmless uncaught error whose chain wrote nothing) carry
+  // only the diagnosis question: no counterfactuals needed. Keep up to 3 per trajectory.
+  const single = base.decisions.filter((d) => d.actions.length < 2 && d.diagnosis && d.subject.kind !== "unknown");
+  for (const d of R.fork("single").sample(single, 3)) {
+    const dq = d.questions.diagnosis;
+    if (!dq || dq.type !== "choice" || !(d.diagnosis! in dq.criteria)) continue;
+    out.rows.push({
+      id: `sim-${seed}-s${d.k}`,
+      split,
+      family: `${scn.family}/${d.trigger}`,
+      state: d.state,
+      questions: d.questions,
+      labels: { diagnosis: { type: "choice", label: d.diagnosis! } },
+      meta: { ...meta0, trigger: d.trigger, decision: d.k, t: Math.round(d.t), diagnosis: d.diagnosis, diagnosis_only: true, subject: d.subject },
+    });
   }
   // ------------------------------------------------------------------------------------------- ask rows
   if (o.askRows) {
@@ -192,38 +224,62 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
 
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
 
-/** Counterfactual costs of every applicable action at decision point `p` of the base run. */
+/**
+ * Counterfactual costs of every applicable action at decision point `p` of the base run, over K paired futures:
+ * future 0 keeps all randomness; futures 1..K-1 re-seed everything drawn after the decision (network, pushes,
+ * model latency, other users' timing) with a salt shared by all actions (common random numbers). Each future is a
+ * separate run whose decision prefix must be byte-identical to the base run.
+ */
 export async function pointCosts(
   scn: Scenario,
   ideal: RunResult,
   base: RunResult,
   p: DecisionRec,
   factory: RuntimeFactory,
-): Promise<{ costs: Record<string, number>; parts: Record<string, CostBreakdown>; runs: number; drop?: string; results: Record<string, RunResult> }> {
+  K = 3,
+  adaptive = true,
+): Promise<{ costs: Record<string, number[]>; parts: Record<string, CostBreakdown>; runs: number; drop?: string; results: Record<string, RunResult> }> {
   const forcedPrefix = new Map<number, string>();
   for (const d of base.decisions) if (d.k < p.k && d.explored) forcedPrefix.set(d.k, d.chosen);
-  const costs: Record<string, number> = {};
+  const costs: Record<string, number[]> = {};
   const parts: Record<string, CostBreakdown> = {};
   const results: Record<string, RunResult> = {};
   let runs = 0;
-  for (const a of p.actions) {
-    const forced = new Map(forcedPrefix);
-    forced.set(p.k, a);
-    let cf: RunResult;
-    try {
-      cf = await runScenario(scn, { ideal: false, factory, forced, fpUpTo: p.k, tStop: p.t + W.finalMs });
-    } catch {
-      return { costs, parts, runs, drop: "cf-exception", results };
+  const passive = PASSIVE[p.trigger] ?? p.actions[0]!;
+  const laterExternal = scn.external.some((e) => e.t > p.t);
+  for (let j = 0; j < Math.max(1, K); j++) {
+    if (j === 1 && adaptive) {
+      const cp = costs[passive]?.[0];
+      const gain = cp === undefined ? 0 : Math.max(...p.actions.filter((a) => a !== passive).map((a) => cp - (costs[a]?.[0] ?? cp)));
+      if (!(gain > 0.05)) break;
     }
-    runs++;
-    if (cf.internalErrors.length) return { costs, parts, runs, drop: "cf-internal-error", results };
-    // Replay check: every decision up to k must be byte-identical to the base run.
-    const mine = cf.decisions.filter((d) => d.k <= p.k);
-    if (mine.length !== p.k + 1 || mine.some((d) => d.fp !== base.decisions[d.k]?.fp)) return { costs, parts, runs, drop: "prefix-mismatch", results };
-    const c = runCost(cf, ideal, p.t, scn.tEnd);
-    costs[a] = Math.round(c.total * 1e4) / 1e4;
-    parts[a] = c;
-    results[a] = cf;
+    const future = j === 0 ? undefined : { k: p.k, salt: hashAll("future", scn.seed, p.k, j), t: p.t };
+    let idealJ = ideal;
+    if (future && laterExternal) {
+      idealJ = await runScenario(scn, { ideal: true, serverTimeline: true, future: { k: -1, salt: future.salt, t: p.t } });
+      runs++;
+    }
+    for (const a of p.actions) {
+      const forced = new Map(forcedPrefix);
+      forced.set(p.k, a);
+      let cf: RunResult;
+      try {
+        cf = await runScenario(scn, { ideal: false, factory, forced, fpUpTo: p.k, tStop: p.t + W.finalMs, ...(future ? { future } : {}) });
+      } catch {
+        return { costs, parts, runs, drop: "cf-exception", results };
+      }
+      runs++;
+      if (cf.internalErrors.length) return { costs, parts, runs, drop: "cf-internal-error", results };
+      // Replay check: every decision up to k must be byte-identical to the base run.
+      const mine = cf.decisions.filter((d) => d.k <= p.k);
+      if (mine.length !== p.k + 1 || mine.some((d) => d.fp !== base.decisions[d.k]?.fp)) return { costs, parts, runs, drop: "prefix-mismatch", results };
+      const c = runCost(cf, idealJ, p.t, scn.tEnd);
+      (costs[a] ??= []).push(Math.round(c.total * 1e4) / 1e4);
+      if (j === 0) {
+        parts[a] = c;
+        results[a] = cf;
+      }
+    }
   }
   return { costs, parts, runs, results };
 }

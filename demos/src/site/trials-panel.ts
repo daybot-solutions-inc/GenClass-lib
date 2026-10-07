@@ -25,8 +25,10 @@ function plan(n: number, clean: number, base: number): Job[] {
 function runInFrame(stage: HTMLElement, job: Job, timeoutMs: number): Promise<TrialResult> {
   return new Promise((resolve, reject) => {
     const url = new URL(location.href);
+    const keep = ["budget", "model", "coi"].map((k) => [k, url.searchParams.get(k)] as const).filter(([, v]) => v !== null);
     url.search = "";
     url.hash = "";
+    for (const [k, v] of keep) url.searchParams.set(k, v!);
     url.searchParams.set("embed", "trial");
     url.searchParams.set("mode", job.mode);
     url.searchParams.set("kind", job.kind);
@@ -92,12 +94,12 @@ function renderTable(summaries: ModeSummary[]): HTMLElement {
         "tr",
         null,
         h("th", null, "Mode"),
-        h("th", null, "Bug rate · chaos"),
-        h("th", { class: "num", title: "Non-passive actions GenClass took on clean runs. Each one is a false positive." }, "False interventions · clean"),
-        h("th", { class: "num" }, "Bug rate · clean"),
-        h("th", { class: "num", title: "Paired with Off on the same seeds" }, "Fixed / introduced"),
-        h("th", { class: "num" }, "Latency (clean, p50)"),
-        h("th", { class: "num" }, "Model p50"),
+        h("th", { title: "Share of chaos trials where the oracle found a bug" }, "Bug rate (chaos)"),
+        h("th", { class: "num", title: "Non-passive actions GenClass took on clean runs. Each one is a false positive." }, "False interventions"),
+        h("th", { class: "num", title: "Bug rate on clean runs (no chaos, calm user)" }, "Clean bugs"),
+        h("th", { class: "num", title: "Paired with Off on the same seeds: bugs fixed / bugs introduced" }, "Fixed / new"),
+        h("th", { class: "num", title: "The demo's user-visible latency, median over clean runs" }, "Latency"),
+        h("th", { class: "num", title: "Median time the runtime waited for a model decision" }, "Model"),
       ),
     ),
   );
@@ -115,11 +117,11 @@ function renderTable(summaries: ModeSummary[]): HTMLElement {
           "td",
           { class: "num" },
           h("span", { class: fpClass }, String(s.falseInterventions)),
-          h("span", { class: "muted" }, ` in ${s.cleanTrialsWithIntervention}/${s.cleanTrials} runs`),
+          h("span", { class: "muted" }, ` / ${s.cleanTrials} runs`),
         ),
-        h("td", { class: "num" }, `${pct(s.clean.rate)} · ${s.clean.k}/${s.clean.n}`),
+        h("td", { class: "num" }, `${s.clean.k}/${s.clean.n}`),
         h("td", { class: "num" }, s.mode === "off" ? "–" : `${s.fixed} / ${s.introduced}`),
-        h("td", { class: "num" }, fmtMs(s.latencyMs), delta !== null ? h("span", { class: "muted" }, ` (${delta >= 0 ? "+" : ""}${Math.round(delta)} ms)`) : null),
+        h("td", { class: "num" }, fmtMs(s.latencyMs), delta !== null ? h("span", { class: "muted" }, ` ${delta >= 0 ? "+" : "−"}${Math.abs(Math.round(delta))}`) : null),
         h("td", { class: "num" }, s.decisionP50 === null ? "–" : fmtMs(s.decisionP50)),
       ),
     );
@@ -186,7 +188,7 @@ export function mountTrials(demo: DemoId): HTMLElement {
 
   const paint = () => {
     const summaries = MODES.map((m) => summarizeMode(results, m)).filter((s): s is ModeSummary => Boolean(s));
-    tableHost.replaceChildren(summaries.length ? renderTable(summaries) : emptyTable);
+    tableHost.replaceChildren(summaries.length ? h("div", { class: "table-scroll" }, renderTable(summaries)) : emptyTable);
     logHost.replaceChildren(results.length ? renderLog(results) : h("div"));
     const rt = [...new Set(results.map((r) => r.gc.runtime))];
     const st = [...new Set(results.filter((r) => r.mode !== "off").map((r) => r.gc.status))];

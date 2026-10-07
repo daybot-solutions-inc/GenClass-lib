@@ -20,8 +20,10 @@ export function installStorage(g: Record<string, unknown>, cb: Cb): (() => void)
   const set = P.setItem;
   const remove = P.removeItem;
   const clear = P.clear;
+  let disabled = false;
   const wSet = function (this: Storage, k: string, v: string) {
     const r = set.call(this, k, v);
+    if (disabled) return r;
     try {
       cb(area(this), "setItem", String(k));
     } catch {
@@ -31,6 +33,7 @@ export function installStorage(g: Record<string, unknown>, cb: Cb): (() => void)
   };
   const wRemove = function (this: Storage, k: string) {
     const r = remove.call(this, k);
+    if (disabled) return r;
     try {
       cb(area(this), "removeItem", String(k));
     } catch {
@@ -40,6 +43,7 @@ export function installStorage(g: Record<string, unknown>, cb: Cb): (() => void)
   };
   const wClear = function (this: Storage) {
     const r = clear.call(this);
+    if (disabled) return r;
     try {
       cb(area(this), "clear", "");
     } catch {
@@ -55,6 +59,7 @@ export function installStorage(g: Record<string, unknown>, cb: Cb): (() => void)
     return null;
   }
   return () => {
+    disabled = true;
     if (P.setItem === wSet) P.setItem = set;
     if (P.removeItem === wRemove) P.removeItem = remove;
     if (P.clear === wClear) P.clear = clear;

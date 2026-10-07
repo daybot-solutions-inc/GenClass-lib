@@ -45,21 +45,29 @@ function netOf(op: SimOp | undefined, net: Network): NetEntry | undefined {
   return net.log[op.net[op.net.length - 1]!];
 }
 
+/**
+ * Failure diagnosis (failure triggers, and errors/transitions caused by a failed op):
+ *   timeout / gateway timeout: transient when a latency spike caused it (a retry would be fast again), slow when a
+ *     slow period or overload did;
+ *   outage (any mode, including hangs): failing (a retry will not succeed while it lasts);
+ *   429/503 load shedding: overload when the client itself sends >= 3 requests/s (or a storm code path), else failing;
+ *   server bug: unusual;
+ *   random 5xx / network error: failing when it continues a streak (>= 2 in a row), else transient.
+ */
 export function diagnoseFailure(op: SimOp | undefined, e: NetEntry | undefined, ctx: DiagCtx): string {
   const { know, network, now } = ctx;
   const sig = e?.signature ?? (op ? sigOf(op) : "?");
   const streak = (op ? know.streak.get(sigOf(op)) ?? 0 : 0) + 1;
   const cause = e?.cause ?? "transient";
-  if (op?.outcome === "timeout" || cause === "gateway-timeout") return "slow";
-  if (cause === "outage") {
-    const o = network.profile.outages.find((x) => (e?.ta ?? now) >= x.start && (e?.ta ?? now) < x.end);
-    if (o?.mode === "hang") return "slow";
-    return "failing";
+  if (cause === "outage") return "failing";
+  if (op?.outcome === "timeout" || cause === "gateway-timeout" || e?.abortReason === "TimeoutError") {
+    if (e?.slowCause === "slow-period" || e?.slowCause === "overload") return "slow";
+    return streak >= 2 ? "slow" : "transient";
   }
   if (cause === "overload" || cause === "ratelimit") return clientRate(network, sig, now) >= 3 || op?.anomaly === "storm" ? "overload" : "failing";
   if (cause === "bug") return "unusual";
   if (op?.anomaly === "storm") return "overload";
-  return streak >= 2 ? "failing" : "expected";
+  return streak >= 2 ? "failing" : "transient";
 }
 
 export function diagnose(trigger: string, s: Subject, ctx: DiagCtx): string | undefined {
@@ -139,10 +147,7 @@ export function diagnose(trigger: string, s: Subject, ctx: DiagCtx): string | un
         const entries = (o.net ?? []).map((id) => network.log[id]).filter(Boolean) as NetEntry[];
         if (entries.some((e) => e.cause === "bug" || e.cause === "replica-lag" || (e.cause === "outage" && (e.status ?? 0) < 400))) return "unusual";
         if (know.writes.some((w) => w.op === o.id && (w.anomaly === "partial" || w.anomaly === "shape"))) return "unusual";
-        if (o.outcome && o.outcome !== "ok" && o.outcome !== "aborted") {
-          const d = diagnoseFailure(o, netOf(o, network), ctx);
-          failed = d === "expected" ? "unusual" : d;
-        }
+        if (o.outcome && o.outcome !== "ok" && o.outcome !== "aborted") failed = diagnoseFailure(o, netOf(o, network), ctx);
       }
       if (s.intent !== undefined && know.writes.some((w) => w.intent === s.intent && (w.anomaly === "partial" || w.anomaly === "shape"))) return "unusual";
       return failed ?? "expected";
@@ -153,10 +158,8 @@ export function diagnose(trigger: string, s: Subject, ctx: DiagCtx): string | un
       if (tag.diagnosis === "expected") return "expected";
       const op = know.getOp(tag.op);
       if (op) {
-        if (op.outcome === "timeout") return "slow";
         if (op.outcome === "parse-error") return "unusual";
-        const d = diagnoseFailure(op, netOf(op, network), ctx);
-        return d === "expected" ? "failing" : d;
+        return diagnoseFailure(op, netOf(op, network), ctx);
       }
       return tag.diagnosis;
     }

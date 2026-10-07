@@ -79,11 +79,28 @@ async function run(name, ort, opts) {
       }
     }
   }
+  // latency model ms ≈ a + b·L + c·L² (least squares over all requests) -> estimates at the runtime's budgets
+  // (sequence lengths ≈ state + standing questions: ~330 / 600 / 1,000-token states ≈ 500 / 780 / 1,170 tokens)
+  const Ls = packs.map((p) => p.input_ids.length);
+  const fit = (() => {
+    const X = Ls.map((L) => [1, L, L * L]);
+    const XtX = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], Xty = [0, 0, 0];
+    X.forEach((r, i) => { for (let a = 0; a < 3; a++) { Xty[a] += r[a] * ms[i]; for (let b = 0; b < 3; b++) XtX[a][b] += r[a] * r[b]; } });
+    const M = XtX.map((r, i) => [...r, Xty[i]]);
+    for (let c = 0; c < 3; c++) { let p = c; for (let r = c + 1; r < 3; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+      [M[c], M[p]] = [M[p], M[c]]; for (let r = 0; r < 3; r++) if (r !== c) { const f = M[r][c] / M[c][c]; for (let k = c; k < 4; k++) M[r][k] -= f * M[c][k]; } }
+    return M.map((r, i) => r[3] / r[i]);
+  })();
+  const est = Object.fromEntries([500, 780, 1170].map((L) => [L, Math.round(fit[0] + fit[1] * L + fit[2] * L * L)]));
+  const longMs = ms.filter((_, i) => packs[i].input_ids.length >= 400).sort((a, b) => a - b);
+  const longTok = packs.filter((p) => p.input_ids.length >= 400).map((p) => p.input_ids.length).sort((a, b) => a - b);
   ms.sort((a, b) => a - b);
   const tokens = packs.map((p) => p.input_ids.length).sort((a, b) => a - b);
+  const q = (arr, f) => (arr.length ? arr[Math.min(arr.length - 1, Math.floor(arr.length * f))] : null);
   return { backend: name, missing_inputs: missing, requests: packs.length, max_abs_logit: worst,
-           argmax_agree: agree, argmax_total: tot, ms_p50: ms[Math.floor(ms.length / 2)], ms_p90: ms[Math.floor(ms.length * 0.9)],
-           tokens_p50: tokens[Math.floor(tokens.length / 2)] };
+           argmax_agree: agree, argmax_total: tot, ms_p50: q(ms, 0.5), ms_p90: q(ms, 0.9),
+           tokens_p50: q(tokens, 0.5), runtime_sized: { requests: longMs.length, tokens_p50: q(longTok, 0.5),
+           ms_p50: q(longMs, 0.5), ms_p90: q(longMs, 0.9) }, est_ms_at_seq_tokens: est };
 }
 
 const report = { dir, variant, file: card.variants[variant].file, bytes: modelBytes.length, results: [] };

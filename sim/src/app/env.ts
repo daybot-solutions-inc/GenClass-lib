@@ -118,6 +118,17 @@ export class AppEnv {
     return this.pushSub(topic, fn);
   }
 
+  /** Open a live channel: a WebSocket to wss://<host>/ws/<path> whose JSON messages go to fn. */
+  socket(path: string, fn: (msg: unknown) => void): void {
+    const WS = this.G.WebSocket as (new (url: string) => EventTarget) | undefined;
+    if (!WS) {
+      this.pushSub(path, fn);
+      return;
+    }
+    const ws = new WS(`wss://${this.G.location.host}/ws/${path.split("/").map(encodeURIComponent).join("/")}`);
+    ws.addEventListener("message", (e) => fn(JSON.parse(String((e as MessageEvent).data))));
+  }
+
   store<T>(name: string, feature: string, initial: T, opts: StoreOpts = {}): Store<T> {
     const atomOpts: { resync?: () => Promise<unknown> | unknown } = {};
     if (opts.resync) atomOpts.resync = opts.resync;

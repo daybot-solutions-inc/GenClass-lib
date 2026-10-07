@@ -325,6 +325,7 @@ Default diagnosis vocabulary:
 | `slow` | an operation is far slower than usual |
 | `overload` | work is being triggered far more often than usual |
 | `unusual` | this differs from how the same operation normally behaves |
+| `transient` | a one-off failure that is likely to succeed if tried again |
 
 **Situation** (Jev state object; keys in this order; arrays of strings render one per line):
 `app` (title and route), `trigger` (one sentence naming the subject), `facts` (≤ 12), `in_flight` (≤ 6 or
@@ -371,10 +372,13 @@ interface PolicyOptions {
   maxActionsPerMinute?: number;      // default 60 non-passive actions; beyond it run passive and emit a warning
 }
 ```
-**Gate for a non-passive action** (all must hold, else the passive action runs and `reason` says why): the mode
-permits its tier (observe: none; guard: guard tier; heal: guard + heal); its calibrated probability
-`probabilities[action]` ≥ the tier threshold; the model's top diagnosis is not `expected`; not denied (and
-allowed, if `allow` is set); under the rate limit; the decision arrived within the hold budget.
+**Gate for a non-passive action** (all must hold, else the passive action runs and `reason` says why). Let
+*A* = the applicable non-passive actions the mode permits (observe: none; guard: guard tier; heal: guard + heal),
+minus denied ones (and only allowed ones, if `allow` is set). The candidate is the argmax of `probabilities` over
+*A*; it runs only if the **summed calibrated probability of A** ≥ the candidate's tier threshold (i.e. the model
+is that sure some permitted action beats doing nothing, which is robust when two good actions such as
+`discard`/`defer` split the mass), the model's top diagnosis is not `expected` (unless `requireDiagnosis: false`),
+it is under the rate limit, and the decision arrived within the hold budget (else late-revert rules apply).
 
 Every model decision produces a `Decision { id, trigger, subject, at, latencyMs, model, diagnosis,
 diagnosisConfidence, diagnosisProbabilities, action, confidence (= probabilities[action]), probabilities,
@@ -465,8 +469,9 @@ runtime handed to the decider. Requirements:
   documented). The `action` label is a soft distribution from costs (ties favour the passive action).
   The `diagnosis` label comes from the sim's own knowledge of intents (superseded intent → stale; competing
   intents → conflict; repeated intent effect → duplicate; broken derived relation → inconsistent; failure
-  streak → failing; latency anomaly → slow; rate anomaly → overload; an op behaving unlike its usual
-  transition shape → unusual; otherwise expected).
+  streak → failing; an isolated transient failure (5xx/network/timeout that would succeed if tried again) →
+  transient; latency anomaly → slow; rate anomaly → overload; an op behaving unlike its usual transition shape →
+  unusual; otherwise expected).
 - **Precision first.** Benign situations that still look salient (concurrency that resolves correctly,
   intentional repeats, expected failures the app handles, legitimate changes in an op's behaviour) must be
   well represented, so the model learns when NOT to intervene. Report, per trigger, the fraction of rows whose

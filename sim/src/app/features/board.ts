@@ -56,12 +56,12 @@ export const board: FeatureDef<BoardSpec> = {
       }),
       listPath: naming.route(entity.p),
       cardPath: naming.route(entity.p, ":id"),
-      topic: `${id}:board`,
+      topic: rng.pick(["board", "updates", "live", "changes"]) + rng.pick(["", "-feed", "-events"]),
       push: rng.weighted([["blind", 4], ["version", 3], ["skip-pending", 2]] as const),
       echo: rng.bool(0.5),
       rollback: rng.bool(0.6),
-      countsField: rng.bool(0.6),
-      countsOnPush: rng.bool(0.55),
+      countsField: rng.bool(0.7),
+      countsOnPush: rng.bool(0.4),
       versionInBody: rng.bool(0.3),
       label: `${rng.pick(["card", "tile", "item", "row", "ticket"])} "${title(entity.s)}"`,
       externalMoves: rng.int(1, 5),
@@ -101,6 +101,7 @@ export const board: FeatureDef<BoardSpec> = {
     const init: Record<string, unknown> = { [F.cards]: [] as Item[], [F.error]: null };
     if (s.countsField) init[F.counts] = countsOf([], s.col, s.columns);
     const pending = new Map<string, number>();
+    const remoteAt = new Map<string, number>();
     const S = env.store(s.store, s.id, init, {
       weights: weightsOf([[F.cards, 1], [F.counts, 0.5], [F.error, 0]]),
       resync: () => load(true),
@@ -140,7 +141,12 @@ export const board: FeatureDef<BoardSpec> = {
           if (r.ok) {
             if (s.echo) {
               const it = kit.api.unone(r.body);
-              const classify = () => (env.know.superseded(intent) && String(((S.get()[F.cards] as Item[]) ?? []).find((c) => c.id === id)?.[s.col]) !== String(it[s.col]) ? "stale" : undefined);
+              const classify = () => {
+                const cur = String(((S.get()[F.cards] as Item[]) ?? []).find((c) => c.id === id)?.[s.col]);
+                if (cur === String(it[s.col])) return undefined;
+                if ((remoteAt.get(id) ?? -1) > op.t0) return "conflict";
+                return env.know.superseded(intent) ? "stale" : undefined;
+              };
               kit.write(S, setCard(id, String(it[s.col]), Number(it.version), true), { role: "echo", op, intent, key, classify });
             }
             return;
@@ -161,7 +167,7 @@ export const board: FeatureDef<BoardSpec> = {
     return {
       init() {
         kit.spawn(() => load(true), "swallow");
-        env.subscribe(s.topic, (msg) => {
+        env.socket(s.topic, (msg) => {
           const m = msg as Record<string, unknown>;
           const id = String(m.id);
           const key = `${s.id}.card.${id}`;
@@ -171,6 +177,7 @@ export const board: FeatureDef<BoardSpec> = {
           if (s.push === "skip-pending" && hasPending) return;
           if (s.push === "version" && typeof local.version === "number" && Number(m.version) <= local.version) return;
           const fromOther = m.by !== "you";
+          if (fromOther) remoteAt.set(id, env.now());
           const latestLocal = env.know.latestIntent(key);
           const classify = () => {
             const cur = ((S.get()[F.cards] as Item[]) ?? []).find((c) => c.id === id);
@@ -210,12 +217,17 @@ export const board: FeatureDef<BoardSpec> = {
     }
     return steps;
   },
-  external(s, rng, win) {
+  external(s, rng, win, steps) {
     const out: ExternalEvent[] = [];
-    for (let i = 0; i < s.externalMoves; i++) {
-      const t = rng.float(win.t0 + 500, win.t1);
-      const idx = rng.int(0, s.cards.length - 1);
-      const to = rng.pick(s.columns);
+    const plan: { t: number; idx: number; to: string }[] = [];
+    for (let i = 0; i < s.externalMoves; i++) plan.push({ t: rng.float(win.t0 + 500, win.t1), idx: rng.int(0, s.cards.length - 1), to: rng.pick(s.columns) });
+    // Other users often act on the same card right after this user did (conflicting moves).
+    for (const st of steps) {
+      if (st.action !== "move" || !rng.bool(0.3)) continue;
+      const idx = Number(st.args?.card ?? 0);
+      plan.push({ t: st.t + rng.float(30, 700), idx, to: rng.pick(s.columns.filter((c) => c !== st.args?.to)) });
+    }
+    for (const { t, idx, to } of plan) {
       out.push({
         t,
         feature: s.id,

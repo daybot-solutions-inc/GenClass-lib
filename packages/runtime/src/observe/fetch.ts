@@ -1,34 +1,64 @@
 // fetch observer (CONTRACT §3, §6, §7). Wraps global.fetch:
 //   - creates the request op synchronously inside the call (cause = ambient op);
+//   - request identity = method + URL + semantic headers + body content (bodies that cannot be read cheaply get a
+//     unique identity: they are never "identical" to anything);
 //   - request gate: triage, and when salient the request waits for the model (send/coalesce/delay/block/
-//     serve_cached), fail-open after the hold budget;
+//     serve_cached), fail-open after the hold budget; keepalive requests are never held;
 //   - failure gate: network errors, timeouts, 5xx/429/408 wait for the model before the app sees them
 //     (deliver/retry/serve_cached);
 //   - stall watch: far past the learned latency, the model may hedge or serve a cached response;
 //   - the app always gets its own Response; GenClass buffers a clone for coalescing and the GET cache;
 //   - context: the op is ambient when the fetch promise and the Response body methods settle.
+// Whatever an action does, the app's promise always settles: a failed action falls back to sending.
 
 import type { NetHost, Controller, ActionEffect } from "../decide/exec.js";
 import type { ReqMeta, FailureInfo } from "../situation/env.js";
 import type { OpRec } from "../trace/ops.js";
 import { opLabel } from "../situation/describe.js";
-import {
-  describe,
-  fnv1a,
-  IDEMPOTENT_METHODS,
-  parseUrl,
-  redactSearch,
-  requestSignature,
-  secs,
-  stableStringify,
-  truncate,
-} from "../util.js";
+import { describe, fnv1a, IDEMPOTENT_METHODS, parseUrl, redactSearch, requestSignature, secs, stableStringify, truncate } from "../util.js";
 import { blockedResponse, bufferResponse, makeResponse, type Buffered } from "./cache.js";
 
 type FetchFn = (input: unknown, init?: Record<string, unknown>) => Promise<Response>;
 
+/** Bodies up to this size are read to compute the request identity. */
+export const IDENTITY_BODY_MAX = 64 * 1024;
+const STRING_BODY_MAX = 1024 * 1024;
+const IDENTITY_READ_MS = 100;
+/** A coalesced request waits at most this long for the identical one's response, then sends itself. */
+const COALESCE_MAX_WAIT_MS = 8000;
+const SUMMARY_PARSE_MAX = 16 * 1024;
+
+/** Per-request tracing headers that do not change what a request means. */
+const VOLATILE_HEADERS = new Set([
+  "traceparent",
+  "tracestate",
+  "baggage",
+  "sentry-trace",
+  "x-request-id",
+  "x-correlation-id",
+  "request-id",
+  "x-amzn-trace-id",
+  "x-cloud-trace-context",
+  "b3",
+  "x-b3-traceid",
+  "x-b3-spanid",
+  "x-b3-parentspanid",
+  "x-b3-sampled",
+  "x-b3-flags",
+  "x-datadog-trace-id",
+  "x-datadog-parent-id",
+  "x-datadog-sampling-priority",
+  "x-datadog-origin",
+  "newrelic",
+  "date",
+  "x-request-start",
+  "x-genclass",
+]);
+
 interface BodyInfo {
-  key: string;
+  /** Identity key of the body ("" = no body). Undefined while `pending`. */
+  key?: string;
+  pending?: Promise<string>;
   bytes: number;
   replayable: boolean;
   summary: string;
@@ -39,80 +69,152 @@ function isRequestLike(x: unknown): x is Request {
 }
 
 function bytesKey(u8: Uint8Array): string {
-  let s = "";
-  const n = Math.min(u8.length, 65536);
-  for (let i = 0; i < n; i++) s += String.fromCharCode(u8[i]);
-  return fnv1a(s) + ":" + u8.length;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < u8.length; i++) {
+    h ^= u8[i];
+    h = Math.imul(h, 0x01000193);
+  }
+  return "b:" + (h >>> 0).toString(16).padStart(8, "0") + ":" + u8.length;
 }
 
-export function bodyInfo(body: unknown, redact: NetHost["redact"]): BodyInfo {
+/** Read up to IDENTITY_BODY_MAX bytes of a stream: the bytes' key, or null when larger (cancelled). */
+async function readKey(stream: ReadableStream<Uint8Array>): Promise<string | null> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      total += value.byteLength;
+      if (total > IDENTITY_BODY_MAX) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      chunks.push(value);
+    }
+  }
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.byteLength;
+  }
+  return bytesKey(out);
+}
+
+function summarizeText(s: string, redact: NetHost["redact"]): string {
+  const t = s.trim();
+  if (t.length <= SUMMARY_PARSE_MAX && (t.startsWith("{") || t.startsWith("["))) {
+    try {
+      return describe(JSON.parse(t), "body", redact(), 60);
+    } catch {
+      /* not JSON */
+    }
+  }
+  return `${s.length} bytes`;
+}
+
+export function bodyInfo(body: unknown, host: Pick<NetHost, "redact" | "uniqueId">): BodyInfo {
   if (body === undefined || body === null) return { key: "", bytes: 0, replayable: true, summary: "" };
   if (typeof body === "string") {
-    let summary = `${body.length} bytes`;
-    const t = body.trim();
-    if (t.startsWith("{") || t.startsWith("[")) {
-      try {
-        summary = describe(JSON.parse(t), "body", redact(), 60);
-      } catch {
-        /* not JSON */
-      }
-    }
-    return { key: body.length > 65536 ? fnv1a(body) + ":" + body.length : body, bytes: body.length, replayable: true, summary };
+    const key = body.length <= 256 ? "s:" + body : body.length <= STRING_BODY_MAX ? `S:${fnv1a(body)}:${body.length}` : host.uniqueId();
+    return { key, bytes: body.length, replayable: true, summary: summarizeText(body, host.redact) };
   }
   if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
     const s = body.toString();
-    return { key: s, bytes: s.length, replayable: true, summary: redactSearch("?" + s, redact(), 60) };
+    return { key: "q:" + s, bytes: s.length, replayable: true, summary: redactSearch("?" + s, host.redact(), 60) };
   }
   if (typeof FormData !== "undefined" && body instanceof FormData) {
     const parts: string[] = [];
     let bytes = 0;
+    let files = false;
     body.forEach((v, k) => {
       if (typeof v === "string") {
         parts.push(`${k}=${v}`);
         bytes += v.length;
       } else {
-        parts.push(`${k}=file:${(v as Blob).size}`);
+        files = true;
         bytes += (v as Blob).size;
       }
     });
-    return { key: "form:" + parts.join("&"), bytes, replayable: true, summary: `form ${parts.length} fields` };
+    return { key: files ? host.uniqueId() : "f:" + fnv1a(parts.join("&")), bytes, replayable: true, summary: `form ${parts.length + (files ? 1 : 0)} fields` };
   }
-  if (typeof Blob !== "undefined" && body instanceof Blob) return { key: `blob:${body.size}:${body.type}`, bytes: body.size, replayable: true, summary: `${body.size} bytes` };
-  if (body instanceof ArrayBuffer) return { key: bytesKey(new Uint8Array(body)), bytes: body.byteLength, replayable: true, summary: `${body.byteLength} bytes` };
+  if (typeof Blob !== "undefined" && body instanceof Blob) {
+    const info: BodyInfo = { bytes: body.size, replayable: true, summary: `${body.size} bytes` };
+    if (body.size > IDENTITY_BODY_MAX) info.key = host.uniqueId();
+    else info.pending = body.arrayBuffer().then((b) => bytesKey(new Uint8Array(b)));
+    return info;
+  }
+  if (body instanceof ArrayBuffer) {
+    return { key: body.byteLength <= IDENTITY_BODY_MAX ? bytesKey(new Uint8Array(body)) : host.uniqueId(), bytes: body.byteLength, replayable: true, summary: `${body.byteLength} bytes` };
+  }
   if (ArrayBuffer.isView(body)) {
     const u8 = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
-    return { key: bytesKey(u8), bytes: body.byteLength, replayable: true, summary: `${body.byteLength} bytes` };
+    return { key: u8.length <= IDENTITY_BODY_MAX ? bytesKey(u8) : host.uniqueId(), bytes: body.byteLength, replayable: true, summary: `${body.byteLength} bytes` };
   }
-  if (typeof ReadableStream !== "undefined" && body instanceof ReadableStream) return { key: "stream", bytes: 0, replayable: false, summary: "stream" };
+  if (typeof ReadableStream !== "undefined" && body instanceof ReadableStream) return { key: host.uniqueId(), bytes: 0, replayable: false, summary: "stream" };
   const s = stableStringify(body, 4096);
-  return { key: s, bytes: s.length, replayable: true, summary: truncate(s, 40) };
+  return { key: "j:" + fnv1a(s), bytes: s.length, replayable: true, summary: truncate(s, 40) };
+}
+
+function headerPairs(h: unknown, out: Map<string, string>): void {
+  if (!h) return;
+  try {
+    if (typeof (h as Headers).forEach === "function" && !Array.isArray(h)) {
+      (h as Headers).forEach((v, k) => out.set(k.toLowerCase(), String(v)));
+    } else if (Array.isArray(h)) {
+      for (const pair of h) if (Array.isArray(pair) && pair.length >= 2) out.set(String(pair[0]).toLowerCase(), String(pair[1]));
+    } else if (typeof h === "object") {
+      for (const [k, v] of Object.entries(h as Record<string, unknown>)) if (v !== undefined) out.set(k.toLowerCase(), String(v));
+    }
+  } catch {
+    /* exotic headers object */
+  }
+}
+
+/** Identity part for headers: every header except per-request tracing ids, sorted. */
+export function headersKey(input: unknown, init: Record<string, unknown> | undefined): string {
+  const m = new Map<string, string>();
+  if (isRequestLike(input)) headerPairs(input.headers, m);
+  if (init && "headers" in init) headerPairs(init.headers, m);
+  const parts = [...m].filter(([k]) => !VOLATILE_HEADERS.has(k)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return parts.length ? fnv1a(parts.map(([k, v]) => `${k}:${v}`).join("\n")) : "";
 }
 
 export interface ParsedRequest {
   meta: ReqMeta;
   detail: string;
+  /** Resolves with the final identity when the body must be read first. */
+  pendingIdentity?: Promise<string>;
 }
 
-export function parseRequest(host: NetHost, method: string, rawUrl: string, body: unknown, bodyKnown: boolean): ParsedRequest {
+export function parseRequest(
+  host: Pick<NetHost, "redact" | "uniqueId" | "baseHref">,
+  method: string,
+  rawUrl: string,
+  b: BodyInfo,
+  hdrKey: string,
+): ParsedRequest {
   const m = method.toUpperCase();
   const u = parseUrl(rawUrl, host.baseHref());
-  const b = bodyKnown ? bodyInfo(body, host.redact) : { key: "request-body", bytes: 0, replayable: true, summary: "body" };
   const signature = requestSignature(m, u.where);
   const search = redactSearch(u.search, host.redact());
   const detail = search + (b.summary && m !== "GET" && m !== "HEAD" ? ` ${b.summary}` : "");
-  return {
-    meta: {
-      method: m,
-      url: u.href,
-      signature,
-      identity: fnv1a(`${m} ${u.href} ${b.key}`),
-      idempotent: IDEMPOTENT_METHODS.has(m),
-      replayable: b.replayable,
-      bodyBytes: b.bytes,
-      transport: "fetch",
-    },
-    detail,
+  const prefix = `${m} ${u.href} ${hdrKey} `;
+  const meta: ReqMeta = {
+    method: m,
+    url: u.href,
+    signature,
+    identity: b.key !== undefined ? fnv1a(prefix + b.key) : "",
+    idempotent: IDEMPOTENT_METHODS.has(m),
+    replayable: b.replayable,
+    bodyBytes: b.bytes,
+    transport: "fetch",
   };
+  const out: ParsedRequest = { meta, detail };
+  if (b.key === undefined && b.pending) out.pendingIdentity = b.pending.then((k) => fnv1a(prefix + k));
+  return out;
 }
 
 const FAILURE_STATUS = (s: number) => s >= 500 || s === 429 || s === 408;
@@ -154,71 +256,129 @@ export function instrumentResponse(host: NetHost, res: Response, op: OpRec): Res
   return res;
 }
 
+/** Resolve with `p`, or with `fallback` after `ms` of the host clock. */
+function within<T>(host: NetHost, p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let done = false;
+    const h = host.clock.setTimeout(() => {
+      if (!done) {
+        done = true;
+        resolve(fallback);
+      }
+    }, ms);
+    p.then(
+      (v) => {
+        if (done) return;
+        done = true;
+        host.clock.clearTimeout(h);
+        resolve(v);
+      },
+      () => {
+        if (done) return;
+        done = true;
+        host.clock.clearTimeout(h);
+        resolve(fallback);
+      },
+    );
+  });
+}
+
 export function installFetch(host: NetHost): (() => void) | null {
   const g = host.global;
   const native = g.fetch as FetchFn | undefined;
   if (typeof native !== "function") return null;
   const R = (g.Response ?? (globalThis as Record<string, unknown>).Response) as typeof Response | undefined;
   const nativeFetch: FetchFn = (input, init) => native.call(g, input, init);
+  let disabled = false;
 
   function wrapped(this: unknown, input: unknown, init?: Record<string, unknown>): Promise<Response> {
+    if (disabled) return nativeFetch(input, init);
     let method = "GET";
     let rawUrl = "";
     let body: unknown;
     let bodyKnown = true;
+    let keepalive = false;
     try {
       if (isRequestLike(input)) {
         method = input.method;
         rawUrl = input.url;
-        if (init && "body" in init) body = init.body;
-        else if (method !== "GET" && method !== "HEAD" && input.body) bodyKnown = false;
+        keepalive = !!(input as { keepalive?: boolean }).keepalive;
+        if (!(init && "body" in init) && method !== "GET" && method !== "HEAD" && input.body) bodyKnown = false;
       } else rawUrl = typeof input === "string" ? input : String(input);
       if (init?.method) method = String(init.method);
       if (init && "body" in init) {
         body = init.body;
         bodyKnown = true;
       }
+      if (init && "keepalive" in init) keepalive = !!init.keepalive;
     } catch {
       return nativeFetch(input, init);
     }
-    const parsed = parseRequest(host, method, rawUrl, body, bodyKnown);
-    const req = parsed.meta;
-    // Keep a pristine copy of Request inputs so retries/hedges can replay them.
+    let parsed: ParsedRequest;
     let template: Request | null = null;
-    if (isRequestLike(input) && !bodyKnown) {
-      try {
-        template = input.clone();
-      } catch {
-        req.replayable = false;
+    try {
+      let b: BodyInfo;
+      if (bodyKnown) b = bodyInfo(body, host);
+      else {
+        // a Request with a body: keep a pristine copy for replays, and read another copy for the identity
+        const req = input as Request;
+        try {
+          template = req.clone();
+        } catch {
+          template = null;
+        }
+        const len = Number(req.headers.get("content-length") ?? "NaN");
+        b = { bytes: Number.isFinite(len) ? len : 0, replayable: template !== null, summary: Number.isFinite(len) ? `${len} bytes` : "body" };
+        if ((Number.isFinite(len) && len > IDENTITY_BODY_MAX) || !template) b.key = host.uniqueId();
+        else {
+          let copy: Request | null = null;
+          try {
+            copy = req.clone();
+          } catch {
+            copy = null;
+          }
+          const stream = copy?.body as ReadableStream<Uint8Array> | null | undefined;
+          if (stream && typeof stream.getReader === "function") {
+            const uid = host.uniqueId();
+            b.pending = readKey(stream).then((k) => k ?? uid, () => uid);
+          } else b.key = host.uniqueId();
+        }
       }
+      parsed = parseRequest(host, method, rawUrl, b, headersKey(input, init));
+    } catch {
+      return nativeFetch(input, init);
     }
-    const op = host.startOp("fetch", req.signature, { detail: parsed.detail, identity: req.identity, method: req.method, url: req.url });
-    return runRequest(op, req, input, init, template, true);
+    const req = parsed.meta;
+    const op = host.startOp("fetch", req.signature, { detail: parsed.detail, method: req.method, url: req.url, ...(req.identity ? { identity: req.identity } : {}) });
+    return runRequest(op, parsed, input, init, template, !keepalive);
   }
 
   function replayInput(input: unknown, template: Request | null): unknown {
     return template ? template.clone() : input;
   }
 
-  function runRequest(op: OpRec, req: ReqMeta, input: unknown, init: Record<string, unknown> | undefined, template: Request | null, gateRequest: boolean): Promise<Response> {
+  function runRequest(op: OpRec, parsed: ParsedRequest, input: unknown, init: Record<string, unknown> | undefined, template: Request | null, gateRequest: boolean): Promise<Response> {
+    const req = parsed.meta;
     return new Promise<Response>((resolve, reject) => {
       const signal = (init?.signal ?? (isRequestLike(input) ? input.signal : undefined)) as AbortSignal | undefined;
       let answered = false;
       let sent = false;
       let cancelStall: () => void = () => undefined;
-      const answer = (res: Response | null, err?: unknown) => {
-        if (answered) return;
-        answered = true;
-        cancelStall();
-        host.ctx.stick(op);
-        if (res) resolve(instrumentResponse(host, res, op));
-        else reject(err);
-      };
       const onAbort = () => {
         if (!sent && !answered) {
           host.endOp(op, "aborted", { code: "aborted" });
           answer(null, signal?.reason ?? new DOMException("The operation was aborted.", "AbortError"));
         }
+      };
+      const unlisten = () => signal?.removeEventListener?.("abort", onAbort);
+      const answer = (res: Response | null, err?: unknown) => {
+        if (answered) return;
+        answered = true;
+        unlisten();
+        cancelStall();
+        host.ctx.stick(op);
+        if (res) resolve(instrumentResponse(host, res, op));
+        else reject(err);
       };
       if (signal?.aborted) {
         host.endOp(op, "aborted", { code: "aborted" });
@@ -229,7 +389,11 @@ export function installFetch(host: NetHost): (() => void) | null {
 
       let firstInput = input;
       const send = (sendOp: OpRec, primary: boolean): void => {
-        if (primary) sent = true;
+        if (primary) {
+          if (sent && sendOp === op) return;
+          sent = true;
+          unlisten(); // from here on the native fetch handles the app's signal
+        }
         let p: Promise<Response>;
         try {
           p = nativeFetch(firstInput, init);
@@ -237,24 +401,19 @@ export function installFetch(host: NetHost): (() => void) | null {
         } catch (e) {
           p = Promise.reject(e);
         }
-        let body: Promise<Buffered | null> | null = null;
         let resolveBody: (b: Buffered | null) => void = () => undefined;
-        let tracked: ReturnType<NetHost["cache"]["track"]> | null = null;
-        if (R) {
-          body = new Promise((r) => (resolveBody = r));
-          tracked = host.cache.track(req.identity, sendOp, body);
-        }
+        const tracked = R && req.identity ? host.cache.track(req.identity, sendOp, new Promise<Buffered | null>((r) => (resolveBody = r))) : null;
         if (primary && host.gated(op)) cancelStall = host.watchStall(op, req, () => stallController());
         p.then(
           (res) => {
             const failed = FAILURE_STATUS(res.status);
             // buffer a clone for coalescing / the GET cache before anyone reads the body
-            if (R && body) {
-              bufferResponse(res, () => host.clock.now()).then((b) => {
-                if (b && !failed && res.ok && req.method === "GET") host.cache.put(req.identity, b);
+            if (tracked) {
+              tracked.settledAt = host.clock.now();
+              bufferResponse(res, host.clock).then((b) => {
+                if (b && b.kind === "body" && !failed && res.ok && req.method === "GET") host.cache.put(req.identity, b);
                 resolveBody(failed ? null : b);
               });
-              if (tracked) tracked.settledAt = host.clock.now();
             }
             host.endOp(sendOp, failed ? "error" : "ok", { code: res.status, ...(failed ? { errorText: `HTTP ${res.status}`, failure: true } : {}) });
             if (!primary) return; // hedges answer through their own path
@@ -284,19 +443,20 @@ export function installFetch(host: NetHost): (() => void) | null {
 
       // ------------------------------------------------------------------ failure gate (deliver/retry/serve_cached)
       const failureGate = (failedOp: OpRec, res: Response | null, err: unknown, failure: FailureInfo) => {
-        let done = false;
+        let handled = false;
         const deliver = () => {
-          if (done) return;
-          done = true;
+          if (handled || answered) return;
+          handled = true;
           if (res) answer(res);
           else answer(null, err);
         };
         const ctl: Controller = {
           passive: deliver,
           run: (action): ActionEffect | Promise<ActionEffect> => {
+            if (handled || answered) throw new Error("the failure was already delivered");
             if (action === "retry") {
               if (!req.replayable) throw new Error("the request body cannot be replayed");
-              done = true;
+              handled = true;
               const backoff = Math.min(200 * 2 ** (failedOp.attempt - 1), 5000);
               return new Promise<ActionEffect>((resolveEff, rejectEff) => {
                 host.clock.setTimeout(() => {
@@ -307,7 +467,7 @@ export function installFetch(host: NetHost): (() => void) | null {
                   }
                   const retryOp = host.startOp("fetch", req.signature, {
                     detail: failedOp.detail ?? "",
-                    identity: req.identity,
+                    ...(req.identity ? { identity: req.identity } : {}),
                     method: req.method,
                     url: req.url,
                     attempt: failedOp.attempt + 1,
@@ -323,8 +483,9 @@ export function installFetch(host: NetHost): (() => void) | null {
             if (action === "serve_cached") {
               const b = host.cache.get(req.identity);
               if (!b || !R) throw new Error("no cached response");
-              done = true;
-              answer(makeResponse(R, b, "cached"));
+              const out = makeResponse(R, b, "cached");
+              handled = true;
+              answer(out);
               return { changed: `Replaced the failed response of ${opLabel(failedOp)} with the cached ${b.status} response from ${secs(host.clock.now() - b.t)} ago (x-genclass: cached).` };
             }
             throw new Error(`unsupported action ${action}`);
@@ -346,7 +507,7 @@ export function installFetch(host: NetHost): (() => void) | null {
           }
           if (action === "hedge") {
             if (!req.replayable || !req.idempotent) throw new Error("not hedgeable");
-            const hedgeOp = host.startOp("fetch", req.signature, { detail: `${op.detail ?? ""} (hedge)`.trim(), identity: req.identity, method: req.method, url: req.url, attempt: op.attempt, cause: op });
+            const hedgeOp = host.startOp("fetch", req.signature, { detail: `${op.detail ?? ""} (hedge)`.trim(), ...(req.identity ? { identity: req.identity } : {}), method: req.method, url: req.url, attempt: op.attempt, cause: op });
             let hp: Promise<Response>;
             try {
               hp = nativeFetch(replayInput(input, template), init);
@@ -374,66 +535,86 @@ export function installFetch(host: NetHost): (() => void) | null {
       });
 
       // ------------------------------------------------------------------ request gate
-      if (!gateRequest || !host.gated(op)) {
-        send(op, true);
-        return;
-      }
-      let decided = false;
+      const sendNow = () => {
+        if (!answered && !sent && !signal?.aborted) send(op, true);
+      };
       const reqCtl: Controller = {
-        passive: () => {
-          if (decided) return;
-          decided = true;
-          if (!answered) send(op, true);
-        },
+        // the request goes out unless it already went out or was answered (also after a failed action)
+        passive: sendNow,
         run: (action): ActionEffect | Promise<ActionEffect> => {
-          if (decided) throw new Error("already decided");
+          if (answered || sent) throw new Error("the request was already sent");
           if (action === "block") {
             if (!R) throw new Error("no Response constructor");
-            decided = true;
+            const out = blockedResponse(R);
             host.endOp(op, "blocked", { code: 503, synthetic: true });
-            answer(blockedResponse(R));
+            answer(out);
             return { changed: `Did not send ${opLabel(op)}; answered 503 (x-genclass: blocked).` };
           }
           if (action === "serve_cached") {
             const b = host.cache.get(req.identity);
             if (!b || !R) throw new Error("no cached response");
-            decided = true;
+            const out = makeResponse(R, b, "cached");
             host.endOp(op, "ok", { code: b.status, synthetic: true });
-            answer(makeResponse(R, b, "cached"));
+            answer(out);
             return { changed: `Did not send ${opLabel(op)}; answered with the cached ${b.status} response from ${secs(host.clock.now() - b.t)} ago (x-genclass: cached).` };
           }
           if (action === "delay") {
-            decided = true;
             const streak = host.failureStreak(req.signature);
             const ms = Math.min(250 * 2 ** streak, 8000);
             return new Promise<ActionEffect>((resolveEff) => {
               host.clock.setTimeout(() => {
-                if (!answered && !signal?.aborted) send(op, true);
+                sendNow();
                 resolveEff({ changed: `Delayed ${opLabel(op)} by ${secs(ms)} before sending it.` });
               }, ms);
             });
           }
           if (action === "coalesce") {
-            const shared = host.cache.shareable(req.identity, op.id, host.clock.now());
+            const shared = req.identity ? host.cache.shareable(req.identity, op.id, host.clock.now()) : undefined;
             if (!shared || !R) throw new Error("no identical request to share");
-            decided = true;
             const other = shared.op;
-            return shared.body.then((b) => {
+            return within(host, shared.body, COALESCE_MAX_WAIT_MS, null).then((b) => {
               if (answered) return { changed: `Coalesced ${opLabel(op)} with #${other.id}, but the app was already answered.` };
-              if (!b) {
-                // the shared response could not be buffered (or failed): fail open and send
-                send(op, true);
+              let out: Response | null = null;
+              if (b) {
+                try {
+                  out = makeResponse(R, b, "coalesced");
+                } catch {
+                  out = null;
+                }
+              }
+              if (!out || !b) {
+                sendNow();
                 throw new Error(`the response of #${other.id} could not be shared; sent the request instead`);
               }
               host.endOp(op, "ok", { code: b.status, synthetic: true });
-              answer(makeResponse(R, b, "coalesced"));
-              return { changed: `Did not send ${opLabel(op)}; reused the ${b.status} response of the identical request #${other.id} (x-genclass: coalesced).` };
+              answer(out);
+              return { changed: `Did not send ${opLabel(op)}; reused the ${b.status} response of the identical request #${other.id}${b.kind === "body" ? " (x-genclass: coalesced)" : ""}.` };
             });
           }
           throw new Error(`unsupported action ${action}`);
         },
       };
-      host.trigger({ trigger: "request", op, req }, reqCtl, { hold: true, priority: 2 });
+      const gate = () => {
+        if (answered) return;
+        if (!gateRequest || !host.gated(op)) {
+          sendNow();
+          return;
+        }
+        host.trigger({ trigger: "request", op, req }, reqCtl, { hold: true, priority: 2 });
+      };
+      if (parsed.pendingIdentity && gateRequest) {
+        // the identity needs the body: read it first (bounded), then decide
+        within(host, parsed.pendingIdentity, IDENTITY_READ_MS, "").then((id) => {
+          host.setIdentity(op, req, id || host.uniqueId());
+          gate();
+        });
+      } else {
+        if (parsed.pendingIdentity) {
+          host.setIdentity(op, req, host.uniqueId());
+          parsed.pendingIdentity.then((id) => host.setIdentity(op, req, id), () => undefined);
+        }
+        gate();
+      }
     });
   }
 
@@ -441,6 +622,7 @@ export function installFetch(host: NetHost): (() => void) | null {
   wrappedFetch.__genclass = true;
   g.fetch = wrappedFetch;
   return () => {
+    disabled = true; // pass-through if another library wrapped fetch after us
     if (g.fetch === wrappedFetch) g.fetch = native;
   };
 }

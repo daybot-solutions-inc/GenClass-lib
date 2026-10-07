@@ -9,6 +9,8 @@
 
 import type {
   ActionRecord,
+  AdapterHandle,
+  AdapterIO,
   Answer,
   AnswerOf,
   Atom,
@@ -72,6 +74,7 @@ export class MockRuntime implements Runtime {
 
   private heldQ: Held[] = [];
   private subsByStore = new Map<string, Set<unknown>>();
+  private writers = new Map<string, (v: unknown) => void>();
   private listeners = new Map<string, Set<(v: unknown) => void>>();
   private seq = 0;
   private opSeq = 0;
@@ -137,6 +140,13 @@ export class MockRuntime implements Runtime {
     return this.listeners.get(type)?.size ?? 0;
   }
 
+  /** A write GenClass itself makes (rollback, resync): goes straight to the store's io.set. */
+  genclassWrite(store: string, v: unknown): void {
+    const w = this.writers.get(store);
+    if (!w) throw new Error(`store ${store} cannot be written by GenClass`);
+    w(v);
+  }
+
   /** Current subscribers of a store's atom/guard handle. */
   subscribers(store: string): number {
     return this.subsByStore.get(store)?.size ?? 0;
@@ -160,6 +170,7 @@ export class MockRuntime implements Runtime {
   }
 
   guard<T>(name: string, io: StoreIO<T>, opts: StoreOptions<T> = {}): Guarded<T> {
+    this.writers.set(name, io.set as (v: unknown) => void);
     const subs = new Set<(v: T) => void>();
     this.subsByStore.set(name, subs as Set<unknown>);
     let last = io.get();
@@ -196,6 +207,31 @@ export class MockRuntime implements Runtime {
         return () => {
           subs.delete(fn);
         };
+      },
+    };
+  }
+
+  adapter<T>(name: string, io: AdapterIO<T>, opts: StoreOptions<T> = {}): AdapterHandle<T> {
+    if (io.set) this.writers.set(name, io.set as (v: unknown) => void);
+    return {
+      name,
+      propose: (w) => {
+        this.calls.sets.push(name);
+        const resolve = (): T => (w.fn ? w.fn(io.get()) : (w.value as T));
+        const apply = (v: T): void => {
+          const before = io.get();
+          w.commit(v);
+          if (!Object.is(io.get(), before)) this.event("state", name, { data: { store: name } });
+        };
+        const proposal = resolve();
+        if (!Object.is(proposal, io.get()) && this.holdWrites && this.inUser === 0 && opts.hold !== false) {
+          this.heldQ.push({ store: name, run: () => apply(resolve()) });
+          return;
+        }
+        apply(proposal);
+      },
+      dispose: () => {
+        this.writers.delete(name);
       },
     };
   }
@@ -290,6 +326,14 @@ export class MockRuntime implements Runtime {
 
   inflight(): Op[] {
     return this.ops;
+  }
+
+  holdBudgetMs(): number {
+    return 300;
+  }
+
+  situationBudget(): number {
+    return 3200;
   }
 
   setMode(m: Mode): void {

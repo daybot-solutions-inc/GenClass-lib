@@ -1,0 +1,5 @@
+{
+  "bucket_weights": {"sim1": 0.76, "cur3": 0.12, "cur2": 0.05, "cur1": 0.03, "gen": 0.01, "cu": 0.03},
+  "pass_tokens": 420000000,
+  "max_repeat": {"*": 2.0, "sim1": 1.5}
+}

@@ -17,11 +17,11 @@ export const searchWorld: WorldDef<SearchState> = {
         const q = req.query.get("q") ?? "";
         const r = searchCities(q);
         w.state.queries++;
-        // Short prefixes match more cities and cost more to rank, like a real index.
+        // Short prefixes match more rows and cost more to rank, like a real search backend (1 letter ≈ 0.4 s).
         return {
           status: 200,
           json: { query: q, total: r.total, items: r.items },
-          work: 10 + Math.min(r.total, 60) * 2.5,
+          work: 20 + Math.min(r.total, 60) * 9,
           effect: `${r.total} matches`,
         };
       },

@@ -206,7 +206,14 @@ interface ResultsFile {
     Partial<
       Record<
         "off" | "guard" | "heal",
-        { chaos: { rate: number; k: number; n: number }; falseInterventions: number; cleanTrials: number; decisionP50: number | null }
+        {
+          chaos: { rate: number; k: number; n: number };
+          falseInterventions: number;
+          cleanTrials: number;
+          decisionP50: number | null;
+          notExecuted: Record<string, number>;
+          actions: Record<string, number>;
+        }
       >
     >
   >;
@@ -214,7 +221,7 @@ interface ResultsFile {
 
 function results(): HTMLElement {
   const host = h("div", { class: "card results-card" }, h("div", { class: "activity-empty" }, "Loading the latest measurements…"));
-  void fetch(new URL("results.json", root).href, { cache: "no-store" })
+  void fetch(new URL("results-summary.json", root).href, { cache: "no-store" })
     .then((r) => (r.ok ? (r.json() as Promise<ResultsFile>) : null))
     .then((data) => {
       if (!data?.demos) {
@@ -238,13 +245,23 @@ function results(): HTMLElement {
         class: "table",
         html: `<thead><tr><th>Demo</th><th class="num">Bug rate · Off</th><th class="num">Guard</th><th class="num">Heal</th><th class="num">False interventions · Guard</th><th class="num">Heal</th></tr></thead><tbody>${rows.join("")}</tbody>`,
       });
+      const lat = Object.values(data.demos)
+        .map((m) => m.guard?.decisionP50)
+        .filter((x): x is number => typeof x === "number")
+        .sort((a, b) => a - b);
+      const budgetMisses = (ne?: Record<string, number>) => Object.entries(ne ?? {}).reduce((n, [k, v]) => n + (/hold budget/i.test(k) ? v : 0), 0);
+      const late = Object.values(data.demos).reduce((n, m) => n + budgetMisses(m.guard?.notExecuted) + budgetMisses(m.heal?.notExecuted), 0);
+      const acted = Object.values(data.demos).reduce((n, m) => n + Object.values(m.guard?.actions ?? {}).reduce((a, b) => a + b, 0) + Object.values(m.heal?.actions ?? {}).reduce((a, b) => a + b, 0), 0);
+      const timing = lat.length
+        ? ` Median model decision time ${Math.round(lat[Math.floor(lat.length / 2)])} ms against a 300 ms hold budget: ${late} decisions arrived too late to act, ${acted} interventions ran.`
+        : "";
       const note = h("div", {
         class: "note",
-        html: `${esc(data.model?.note ?? "")} Bug rate: share of chaos trials where the demo's oracle found a bug. False interventions: non-passive actions GenClass took on clean runs (no chaos, correct behaviour); every one counts as a false positive. ${data.trials ? `${data.trials.chaos} chaos + ${data.trials.clean} clean trials per mode per demo.` : ""} ${data.generatedAt ? `Measured ${esc(new Date(data.generatedAt).toLocaleString())}.` : ""}`,
+        html: `${esc(data.model?.note ?? "")}${esc(timing)} Bug rate: share of chaos trials where the demo's oracle found a bug. False interventions: non-passive actions GenClass took on clean runs (no chaos, correct behaviour); every one counts as a false positive. ${data.trials ? `${data.trials.chaos} chaos + ${data.trials.clean} clean trials per mode per demo.` : ""} ${data.generatedAt ? `Measured ${esc(new Date(data.generatedAt).toLocaleString())}.` : ""}`,
       });
       host.replaceChildren(h("div", { style: { overflowX: "auto" } }, table), note);
     })
-    .catch(() => host.replaceChildren(h("div", { class: "activity-empty" }, "Could not load results.json.")));
+    .catch(() => host.replaceChildren(h("div", { class: "activity-empty" }, "Could not load the measurements.")));
   return h(
     "section",
     { class: "section", id: "results" },

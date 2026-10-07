@@ -1,18 +1,19 @@
 """Runtime-model evaluation: accuracy, calibration, and the product metrics (precision / false interventions).
 
+Gate (CONTRACT §8 as of 2026-10-07): A = applicable non-passive actions permitted by the mode (guard: guard tier;
+heal: guard + heal); candidate = argmax p over A; it runs iff sum_{a∈A} p(a) ≥ the candidate's tier threshold
+(guard 0.9 / heal 0.8) and the top diagnosis is not `expected`.
+
     python training/eval_runtime.py --ckpt CKPT --data DIR --split test [--fit-split dev] [--limit N] \
         [--out report.json] [--write-calibration calibration.json]
 
-Reads CONTRACT-D rows (curriculum or SIM). For rows that carry the standing questions `action` and `diagnosis`
-(meta.kind == "decision" or SIM rows), it applies the runtime's gate (CONTRACT §8):
-
-    act  <=>  top action is non-passive  AND  p(action) >= tier threshold  AND  top diagnosis != expected
-
-with tier thresholds guard 0.9 / heal 0.8 and modes observe (never acts), guard (guard-tier actions only) and heal
-(guard + heal tiers). Reported per mode: false-intervention rate (FIR) on rows whose best action is passive,
-precision of fired actions (fired == gold best action), recall on rows whose best action is non-passive, and the same
-per trigger. Plus per-question accuracy, NLL, Brier and ECE (15 bins), diagnosis confusion, and calibration fitted on
---fit-split (per kind, plus separate action / diagnosis temperatures) evaluated on --split (split-half check).
+Reads CONTRACT-D rows (curriculum or SIM). For rows that carry the standing questions `action` and `diagnosis` it
+applies the gate above in guard mode and in heal mode and reports: false-intervention rate (FIR) on rows whose best
+action is passive, precision of fired actions (candidate == best action), recall on rows whose best action is a
+permitted non-passive action, per trigger / case / style, a threshold sweep, diagnosis confusion, and — for SIM rows
+with `meta.costs` — the mean counterfactual cost of the gated policy vs always-passive vs the oracle, and the harm
+(cost increase) of interventions on passive-best rows. Plus per-question accuracy, NLL, Brier and ECE (15 bins), and
+temperatures fitted on --fit-split (per kind, per standing question, per exact header) with a split-half check.
 """
 
 from __future__ import annotations
@@ -129,6 +130,35 @@ def collect(ckpt: Path, path: Path, limit: int | None, batch: int) -> list[dict]
     return out
 
 
+def dump_records(recs: list[dict], path: Path) -> None:
+    with path.open("w") as f:
+        for r in recs:
+            f.write(json.dumps({**r, "logits": [float(x) for x in r["logits"]],
+                                "target": [float(x) for x in r["target"]]}) + "\n")
+
+
+def load_records(path: Path) -> list[dict]:
+    out = []
+    with path.open() as f:
+        for line in f:
+            r = json.loads(line)
+            r["logits"] = np.asarray(r["logits"], np.float64)
+            r["target"] = np.asarray(r["target"], np.float64)
+            out.append(r)
+    return out
+
+
+def get_records(ckpt: Path, path: Path, limit: int | None, batch: int, cache: Path | None) -> list[dict]:
+    """Collect raw logits once; with --records-dir they are cached as jsonl next to the report and reused."""
+    if cache is not None and cache.is_file():
+        return load_records(cache)
+    recs = collect(ckpt, path, limit, batch)
+    if cache is not None:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        dump_records(recs, cache)
+    return recs
+
+
 def group_of(rec: dict) -> str:
     if rec["qid"] in ("action", "diagnosis"):
         return rec["qid"]
@@ -148,6 +178,12 @@ def fit_calibration(recs: list[dict]) -> dict:
     taus = {"noul": fit_tau_noul(by["noul"])}
     for g in ("choice", "score", "action", "diagnosis"):
         taus[g] = fit_tau(by[g])
+    # per exact header (the runtime's fixed instructions) for the standing questions, when well populated
+    hdr = defaultdict(list)
+    for r in recs:
+        if r["qid"] in ("action", "diagnosis"):
+            hdr[r["header"]].append((r["logits"], r["target"]))
+    taus["by_header"] = {h: fit_tau(v) for h, v in hdr.items() if len(v) >= 300}
     return taus
 
 
@@ -156,7 +192,10 @@ def probs(rec: dict, taus: dict | None, mode: str) -> np.ndarray:
     tau = 1.0
     if taus and mode != "raw":
         g = group_of(rec)
-        tau = taus.get(g if mode == "group" else rec["kind"], 1.0)
+        if mode == "header" and rec["header"] in taus.get("by_header", {}):
+            tau = taus["by_header"][rec["header"]]
+        else:
+            tau = taus.get(g if mode == "group" else rec["kind"], 1.0)
     if rec["kind"] == "noul":
         z = float(rec["logits"][0]) / tau
         return np.array([1 / (1 + math.exp(-z))])
@@ -245,26 +284,46 @@ def decision_metrics(recs: list[dict], rows: dict[str, dict], taus: dict | None,
             c["act_ok"] += int(top_a == gold_a)
             c["diag_ok"] += int(top_d == gold_d)
             c["passive_rows"] += int(passive_best)
-        tier = TIER.get(top_a, "heal")  # unknown (plugin/distractor) actions default to heal tier
+        costs = meta.get("costs") if isinstance(meta.get("costs"), dict) else None
         for m in ("guard", "heal"):
-            allowed = (tier == "guard") if m == "guard" else (tier in ("guard", "heal"))
-            thr = THRESH["guard"] if tier == "guard" else THRESH["heal"]
-            fire = tier != "passive" and allowed and p_top >= thr and top_d != "expected"
+            # CONTRACT §8 (2026-10-07): A = applicable non-passive actions the mode permits; candidate = argmax of p
+            # over A; it runs iff sum_{a in A} p(a) >= the candidate's tier threshold and the top diagnosis is not
+            # `expected`. Unknown (plugin/distractor) actions default to the heal tier.
+            permitted = ("guard",) if m == "guard" else ("guard", "heal")
+            A = [i for i, a in enumerate(a_names) if TIER.get(a, "heal") in permitted]
+            fire, cand = False, None
+            if A:
+                ci = max(A, key=lambda i: pa[i])
+                cand = a_names[ci]
+                thr = THRESH[TIER.get(cand, "heal")]
+                fire = float(sum(pa[i] for i in A)) >= thr and top_d != "expected"
+            gold_permitted = TIER.get(gold_a, "heal") in permitted
             for c in (stats["all"], by_trig[trig], by_case[case], by_style[meta.get("style", "sim")]):
                 c[f"{m}_rows_passive"] += int(passive_best)
-                c[f"{m}_rows_active"] += int(not passive_best)
+                c[f"{m}_rows_active"] += int(not passive_best and gold_permitted)
                 c[f"{m}_fires"] += int(fire)
-                c[f"{m}_fires_correct"] += int(fire and top_a == gold_a)
+                c[f"{m}_fires_correct"] += int(fire and cand == gold_a)
                 c[f"{m}_false_fires"] += int(fire and passive_best)
-                c[f"{m}_recall_hits"] += int(fire and not passive_best and top_a == gold_a)
+                c[f"{m}_recall_hits"] += int(fire and not passive_best and cand == gold_a and gold_permitted)
+                if costs and passive in costs:
+                    done = cand if fire else passive
+                    c[f"{m}_cost_rows"] += 1
+                    c[f"{m}_cost_policy_x1e3"] += int(1000 * float(costs.get(done, costs[passive])))
+                    c[f"{m}_cost_passive_x1e3"] += int(1000 * float(costs[passive]))
+                    c[f"{m}_cost_oracle_x1e3"] += int(1000 * min(float(v) for v in costs.values()))
+                    if fire and passive_best:
+                        c[f"{m}_harm_x1e3"] += int(1000 * (float(costs.get(cand, costs[passive])) - float(costs[passive])))
             if fire and passive_best:
-                fires_detail[f"{m}:{trig}:{top_a}<-{gold_a}"] += 1
-        # threshold sweep for the curve (any non-passive top action, diagnosis gate on)
+                fires_detail[f"{m}:{trig}:{cand}<-{gold_a}"] += 1
+        # threshold sweep (heal-mode permitted set, summed probability, diagnosis gate on)
+        A = [i for i, a in enumerate(a_names) if TIER.get(a, "heal") in ("guard", "heal")]
+        s_a = float(sum(pa[i] for i in A)) if A else 0.0
+        cand = a_names[max(A, key=lambda i: pa[i])] if A else None
         for thr in (0.5, 0.6, 0.7, 0.8, 0.9, 0.95):
-            fire = tier != "passive" and p_top >= thr and top_d != "expected"
+            fire = bool(A) and s_a >= thr and top_d != "expected"
             stats["all"][f"sweep{thr}_fires"] += int(fire)
             stats["all"][f"sweep{thr}_false"] += int(fire and passive_best)
-            stats["all"][f"sweep{thr}_correct"] += int(fire and top_a == gold_a)
+            stats["all"][f"sweep{thr}_correct"] += int(fire and cand == gold_a)
 
     def summ(c: Counter) -> dict:
         o = {}
@@ -275,6 +334,12 @@ def decision_metrics(recs: list[dict], rows: dict[str, dict], taus: dict | None,
                     "false_fires": c[f"{m}_false_fires"], "passive_rows": rp,
                     "precision": round(fc / f, 4) if f else None, "fires": f,
                     "recall": round(c[f"{m}_recall_hits"] / ra_, 4) if ra_ else None, "active_rows": ra_}
+            n_c = c[f"{m}_cost_rows"]
+            if n_c:  # SIM rows: mean counterfactual cost of running the gate vs always-passive vs the oracle
+                o[m]["mean_cost"] = {"policy": round(c[f"{m}_cost_policy_x1e3"] / 1000 / n_c, 4),
+                                     "always_passive": round(c[f"{m}_cost_passive_x1e3"] / 1000 / n_c, 4),
+                                     "oracle": round(c[f"{m}_cost_oracle_x1e3"] / 1000 / n_c, 4), "rows": n_c,
+                                     "harm_on_passive_rows": round(c[f"{m}_harm_x1e3"] / 1000, 3)}
         return o
 
     out = {"n": act_acc["n"], "action_acc": round(act_acc["ok"] / max(act_acc["n"], 1), 4), "modes": summ(stats["all"]),
@@ -311,31 +376,48 @@ def main() -> None:
     ap.add_argument("--threads", type=int, default=32)
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--write-calibration", type=Path, default=None)
+    ap.add_argument("--calibration", type=Path, default=None, help="evaluate with this calibration.json's temperatures")
+    ap.add_argument("--records-dir", type=Path, default=None,
+                    help="cache raw logits here (<ckpt>__<data>__<split>.jsonl); later runs reuse them (metrics only)")
+    ap.add_argument("--header-calibration", action="store_true",
+                    help="also write per-header temperatures for the standing questions (check split_half first)")
     args = ap.parse_args()
     import torch
 
     torch.set_num_threads(args.threads)
     test_path = args.data / f"{args.split}.jsonl"
     rows = load_rows(test_path, args.limit)
-    recs = collect(args.ckpt, test_path, args.limit, args.batch)
+    rd = args.records_dir
+    tag = f"{args.ckpt.name}__{args.data.name}"
+    recs = get_records(args.ckpt, test_path, args.limit, args.batch, rd / f"{tag}__{args.split}.jsonl" if rd else None)
     report = {"ckpt": str(args.ckpt), "data": str(args.data), "split": args.split, "n_rows": len(rows),
               "n_questions": len(recs)}
     taus = None
+    if args.calibration:
+        cal = json.loads(args.calibration.read_text())
+        taus = {"noul": float(cal.get("noul", 1.0)), "choice": float(cal.get("choice", 1.0)),
+                "score": float(cal.get("score", 1.0)), "by_header": dict(cal.get("by_header") or {})}
+        taus["action"] = taus["diagnosis"] = taus["choice"]
+        report["calibration_from"] = str(args.calibration)
+        report["taus"] = taus
     if args.fit_split:
         fit_path = args.data / f"{args.fit_split}.jsonl"
-        fit_recs = collect(args.ckpt, fit_path, args.limit, args.batch)
+        fit_recs = get_records(args.ckpt, fit_path, args.limit, args.batch,
+                               rd / f"{tag}__{args.fit_split}.jsonl" if rd else None)
         taus = fit_calibration(fit_recs)
         report["calibration_fit_on"] = args.fit_split
-        report["taus"] = {k: round(v, 4) for k, v in taus.items()}
+        report["taus"] = {k: (round(v, 4) if not isinstance(v, dict) else {h: round(x, 4) for h, x in v.items()})
+                          for k, v in taus.items()}
         # split-half check on the fit split itself: fit on even ids, evaluate on odd ids
         ev = [r for r in fit_recs if zlib.crc32(r["id"].encode()) % 2 == 0]
         od = [r for r in fit_recs if zlib.crc32(r["id"].encode()) % 2 == 1]
         t_even = fit_calibration(ev)
-        report["split_half"] = {"taus_even": {k: round(v, 4) for k, v in t_even.items()},
+        report["split_half"] = {"taus_even": {k: v for k, v in t_even.items() if not isinstance(v, dict)},
                                 "odd_raw": question_metrics(od, None, "raw").get("all"),
                                 "odd_with_even_taus_kind": question_metrics(od, t_even, "kind").get("all"),
-                                "odd_with_even_taus_group": question_metrics(od, t_even, "group").get("all")}
-    for mode in ("raw", "kind", "group") if taus else ("raw",):
+                                "odd_with_even_taus_group": question_metrics(od, t_even, "group").get("all"),
+                                "odd_with_even_taus_header": question_metrics(od, t_even, "header").get("all")}
+    for mode in ("raw", "kind", "group", "header") if taus else ("raw",):
         report[f"questions_{mode}"] = question_metrics(recs, taus, mode)
         report[f"decisions_{mode}"] = decision_metrics(recs, rows, taus, mode)
     fam = defaultdict(lambda: [0, 0])
@@ -353,8 +435,10 @@ def main() -> None:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(txt)
     if args.write_calibration and taus:
+        use_hdr = args.header_calibration
         cal = {"noul": round(taus["noul"], 4), "choice": round(taus["choice"], 4), "score": round(taus["score"], 4),
-               "by_header": {}, "_fit": {"split": args.fit_split, "data": str(args.data), "taus": report["taus"]}}
+               "by_header": ({h: round(v, 4) for h, v in taus["by_header"].items()} if use_hdr else {}),
+               "_fit": {"split": args.fit_split, "data": str(args.data), "taus": report["taus"]}}
         args.write_calibration.write_text(json.dumps(cal, indent=2))
     d = report.get("decisions_kind") or report["decisions_raw"]
     print(json.dumps({"n_rows": len(rows), "questions": (report.get("questions_kind") or report["questions_raw"]).get("all"),

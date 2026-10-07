@@ -97,7 +97,14 @@ export function createBoardStore(gc: Runtime) {
         set({ notice: null });
       },
   });
-  return create<BoardState>()(genclass(gc, "board")(creator));
+  // resync: the app's own loader, offered to GenClass as "reload this store from the server".
+  const self: { store?: { getState(): BoardState } } = {};
+  const resync = async (): Promise<void> => {
+    await self.store?.getState().load();
+  };
+  const store = create<BoardState>()(genclass(gc, "board", { resync })(creator));
+  self.store = store;
+  return store;
 }
 
 export type BoardStore = ReturnType<typeof createBoardStore>;

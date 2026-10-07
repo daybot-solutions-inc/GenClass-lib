@@ -39,7 +39,7 @@ export const chat: FeatureDef<ChatSpec> = {
       f: { messages: naming.field("messages", id), draft: naming.field("draft", id), sending: naming.field("submitting", id), unread: naming.field("unread", id), error: naming.field("error", id) },
       textField: naming.word(rng.pick(["text", "body", "content", "message"])),
       path: naming.route(rng.pick(["messages", "comments", "posts", "replies"])),
-      topic: `${id}:chat`,
+      topic: rng.pick(["chat", "messages", "thread", "comments", "room"]) + rng.pick(["", "-live", "-stream"]),
       optimistic: rng.bool(0.6),
       dedupe: rng.weighted([["id", 2], ["clientId", 2], ["none", 3]] as const),
       onResponse: rng.weighted([["replace", 3], ["append", 2], ["ignore", 1]] as const),
@@ -144,7 +144,7 @@ export const chat: FeatureDef<ChatSpec> = {
     return {
       init() {
         kit.spawn(() => load(true), "swallow");
-        env.subscribe(s.topic, (msg) => {
+        env.socket(s.topic, (msg) => {
           const m = msg as Item;
           const list = (S.get()[F.messages] as Item[]) ?? [];
           const mine = m.author === "you";

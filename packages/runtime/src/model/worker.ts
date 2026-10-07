@@ -1,14 +1,16 @@
 // Module Worker entry (built as dist/worker.js): runs the model backend off the main thread. The host creates it
 // with `new Worker(new URL("./worker.js", import.meta.url), { type: "module" })` and talks to it with the messages
-// in protocol.ts. onnxruntime-web is imported statically so a bundler that follows the worker URL bundles it into
-// the worker chunk, and "hello" means ORT is loaded too.
+// in protocol.ts.
 //
-// When the page is crossOriginIsolated, ORT starts WASM threads as workers of *this* script (emscripten pthreads,
-// named "em-pthread*"); in those the ORT import handles everything and the model host must stay out of the way.
+// onnxruntime-web is imported dynamically once the WebGPU probe has run: onnxruntime-web/wasm (3.1 MB brotli wasm)
+// when no WebGPU plan will be tried, onnxruntime-web/webgpu (5.5 MB) otherwise. Both specifiers are static strings,
+// so bundlers emit each as its own chunk and a page only downloads the one it uses.
+//
+// When the page is crossOriginIsolated, ORT starts WASM threads as workers of the script that holds ORT (emscripten
+// pthreads, named "em-pthread*"); if that is this script, the model host must stay out of the way.
 
-import * as ort from "onnxruntime-web/webgpu";
 import { browserClock } from "../clock.js";
-import { ModelBackend } from "./backend.js";
+import { ModelBackend, type OrtBuild } from "./backend.js";
 import type { OrtLike } from "./engine.js";
 import { serializeError } from "./errors.js";
 import type { FromWorker, ToWorker } from "./protocol.js";
@@ -35,8 +37,11 @@ if (!isOrtThread) {
     cachesRef = null;
   }
 
+  const loadOrt = async (build: OrtBuild): Promise<OrtLike> =>
+    (build === "webgpu" ? await import("onnxruntime-web/webgpu") : await import("onnxruntime-web/wasm")) as unknown as OrtLike;
+
   const backend = new ModelBackend({
-    ort: async () => ort as unknown as OrtLike,
+    ort: loadOrt,
     fetch: scope.fetch.bind(scope),
     caches: cachesRef,
     clock: browserClock,

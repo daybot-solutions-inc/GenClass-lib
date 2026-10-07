@@ -22,9 +22,10 @@ const TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
-export function serveStatic(rootDir: string, base: string, port: number): Promise<Server> {
+export function serveStatic(rootDir: string, base: string, port: number, mounts: Record<string, string> = {}): Promise<Server> {
   const root = resolve(rootDir);
   const prefix = base.endsWith("/") ? base : base + "/";
+  const extra = Object.entries(mounts).map(([sub, dir]) => [sub.replace(/^\/|\/$/g, "") + "/", resolve(dir)] as const);
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -39,13 +40,20 @@ export function serveStatic(rootDir: string, base: string, port: number): Promis
       }
       let rel = decodeURIComponent(url.pathname.slice(prefix.length));
       if (rel === "" || rel.endsWith("/")) rel += "index.html";
-      const file = normalize(join(root, rel));
-      if (!file.startsWith(root)) {
+      let base = root;
+      for (const [sub, dir] of extra) {
+        if (rel.startsWith(sub)) {
+          base = dir;
+          rel = rel.slice(sub.length);
+        }
+      }
+      const file = normalize(join(base, rel));
+      if (!file.startsWith(base)) {
         res.writeHead(403).end("forbidden");
         return;
       }
-      let st = await stat(file).catch(() => null);
-      let path = file;
+      const st = await stat(file).catch(() => null);
+      const path = file;
       if (st?.isDirectory()) {
         res.writeHead(301, { location: url.pathname + "/" });
         res.end();

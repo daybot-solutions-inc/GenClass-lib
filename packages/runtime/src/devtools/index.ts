@@ -156,6 +156,15 @@ interface OpRow {
   start: number;
 }
 
+/** Keep a Map (insertion-ordered) to its newest `max` entries; `drop` sees evicted values. */
+function bound<K, V>(m: Map<K, V>, max: number, drop?: (v: V) => void): void {
+  for (const [k, v] of m) {
+    if (m.size <= max) break;
+    m.delete(k);
+    drop?.(v);
+  }
+}
+
 function safe<T>(fn: () => T, fallback: T): T {
   try {
     const v = fn();
@@ -343,7 +352,16 @@ class Devtools {
       h("div", { class: "body" }, Object.values(this.panes)),
     );
 
-    const root = h("div", { class: "root", "data-theme": o.theme ?? "auto", "data-pos": pos }, this.pill, this.panel);
+    const root = h("div", { class: "root", "data-pos": pos }, this.pill, this.panel);
+    // "auto" follows the OS setting live; "light"/"dark" are fixed.
+    const theme = o.theme ?? "auto";
+    const mql = theme === "auto" ? safe(() => (globalThis as { matchMedia?: (q: string) => MediaQueryList }).matchMedia?.("(prefers-color-scheme: dark)") ?? null, null) : null;
+    const applyTheme = (): void => root.setAttribute("data-theme", theme === "auto" ? (mql?.matches ? "dark" : "light") : theme);
+    applyTheme();
+    if (mql?.addEventListener) {
+      mql.addEventListener("change", applyTheme);
+      this.offs.push(() => mql.removeEventListener("change", applyTheme));
+    }
     sr.appendChild(root);
     (o.container ?? doc.body ?? doc.documentElement).appendChild(host);
 
@@ -409,7 +427,7 @@ class Devtools {
     on("act", (a) => this.addAct(a, true));
     on("report", (r) => this.addReport(r));
     on("event", (e) => this.addEvent(e));
-    on("status", () => this.mark(STATUS));
+    on("status", () => this.mark(STATUS | MODE)); // setMode() is announced as a status change too
     // The runtime's clock (virtual in tests/sim), for "4s ago" labels and the overlay's own timers.
     try {
       const off = this.rt.use({
@@ -450,6 +468,7 @@ class Devtools {
 
   private addDecision(d: Decision): void {
     this.decs.set(d.id, d);
+    bound(this.decs, 500);
     this.seen(d.at);
     const e = this.dets.get(this.detOf.get(d.id) ?? "") ?? this.acts.get(this.actOf.get(d.id) ?? "");
     if (e) {
@@ -469,6 +488,8 @@ class Devtools {
     }
     this.acts.set(a.id, { kind: "act", id: a.id, at: a.at, action: a, decision: this.decs.get(a.decisionId), open: false, dirty: false, fresh: live, count: 1 });
     this.actOf.set(a.decisionId, a.id);
+    bound(this.acts, MAX_CARDS, (e) => e.el?.remove());
+    bound(this.actOf, 1000);
     // A decision that ended up acting moves from Detections to Interventions.
     const detId = this.detOf.get(a.decisionId);
     const det = detId ? this.dets.get(detId) : undefined;
@@ -508,6 +529,8 @@ class Devtools {
       this.dets.set(d.id, { kind: "det", id: d.id, at: d.at, decision: d, open: false, dirty: false, fresh: live, count: 1, key });
       this.detOf.set(d.id, d.id);
     }
+    bound(this.dets, MAX_CARDS, (e) => e.el?.remove());
+    bound(this.detOf, 1000);
     if (live) this.notify("d");
     this.mark(LISTS);
   }
@@ -517,6 +540,7 @@ class Devtools {
     const id = r.kind === "intervene" ? r.action?.id ?? (r.decision ? this.actOf.get(r.decision.id) ?? r.decision.id : undefined) : r.decision?.id;
     if (!id) return;
     this.msgs.set(id, r.message);
+    bound(this.msgs, 500);
     const e = this.acts.get(id) ?? this.dets.get(this.detOf.get(id) ?? "");
     if (e) {
       e.dirty = true;
@@ -526,9 +550,18 @@ class Devtools {
 
   private addEvent(e: RtEvent): void {
     this.seen(e.t);
+    // An intervention undone elsewhere (console, app code) shows as undone here too.
+    if (e.kind === "action" && e.name === "undo" && typeof e.data?.id === "string") {
+      const ent = this.acts.get(e.data.id);
+      if (ent && !ent.undone) {
+        ent.undone = true;
+        ent.dirty = true;
+        this.mark(LISTS);
+      }
+    }
     if (e.op != null && (e.kind === "user" || e.kind === "op.start")) {
       this.opNames.set(e.op, eventText(e));
-      if (this.opNames.size > 2000) this.opNames.delete(this.opNames.keys().next().value as number);
+      bound(this.opNames, 2000);
     }
     this.evq.push(e);
     if (this.evq.length > MAX_ROWS) this.evq.splice(0, this.evq.length - MAX_ROWS);
@@ -663,14 +696,6 @@ class Devtools {
   }
 
   private renderList(m: Map<string, Entry>, list: HTMLElement, emptyEl: HTMLElement): void {
-    if (m.size > MAX_CARDS) {
-      let extra = m.size - MAX_CARDS;
-      for (const [k, e] of m) {
-        if (extra-- <= 0) break;
-        e.el?.remove();
-        m.delete(k);
-      }
-    }
     for (const e of m.values()) {
       if (!e.el) {
         e.el = this.card(e);
@@ -705,7 +730,7 @@ class Devtools {
     const dp = d ? diagP(d) : NaN;
     const el = h(
       "article",
-      { class: `card ${e.kind}${e.undone ? " undone" : ""}${e.fresh ? " new" : ""}`, "data-id": e.id, "aria-label": title },
+      { class: `card ${e.kind}${e.undone ? " undone" : ""}${e.fresh ? " new" : ""}${e.open ? " open" : ""}`, "data-id": e.id, "aria-label": title },
       h("div", { class: "ci" }, icon(isAct ? "shield" : "eye")),
       h(
         "div",
@@ -888,7 +913,6 @@ class Devtools {
               this.applyFilter();
             },
           },
-          h("span", { class: "cd" }),
           label,
         ),
       ),

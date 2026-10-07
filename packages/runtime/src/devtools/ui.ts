@@ -1,6 +1,6 @@
 // Devtools building blocks: a tiny DOM helper, inline icons, and display formatting. Reporting only: nothing
-// here decides anything, it only renders what the runtime reports. Runtime-provided text is always set with
-// textContent (never innerHTML); innerHTML is used only for the constant SVG markup below.
+// here decides anything, it only renders what the runtime reports. Text is always set with textContent and icons
+// are built with createElementNS: no innerHTML anywhere (safe with app data, works under Trusted Types).
 
 import type { Answer, Decision, RtEvent } from "../types.js";
 
@@ -35,10 +35,24 @@ export function add(el: Node, kids: Kid[]): void {
   }
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Build an SVG element tree from constant markup with createElementNS (no innerHTML: works under Trusted Types). */
 function svg(markup: string): Element {
-  const t = D.createElement("template");
-  t.innerHTML = markup;
-  return t.content.firstElementChild as Element;
+  const stack: Element[] = [];
+  let root: Element | null = null;
+  for (const [, close, tag, attrs, selfClose] of markup.matchAll(/<(\/?)(\w+)([^>]*?)(\/?)>/g)) {
+    if (close) {
+      stack.pop();
+      continue;
+    }
+    const el = D.createElementNS(SVG_NS, tag);
+    for (const [, k, v] of attrs.matchAll(/([\w:-]+)="([^"]*)"/g)) el.setAttribute(k, v);
+    if (stack.length) stack[stack.length - 1].appendChild(el);
+    else root = el;
+    if (!selfClose) stack.push(el);
+  }
+  return root as Element;
 }
 
 const ICONS = {

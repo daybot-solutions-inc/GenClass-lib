@@ -11,7 +11,7 @@
 
 import { browserClock } from "../clock.js";
 import type { Answer, Clock, DecisionProvider, EvaluateRequest, ModelOptions } from "../types.js";
-import { ModelBackend, type BackendLoadOptions, type ModelHostStatus } from "./backend.js";
+import { ModelBackend, type BackendLoadOptions, type LatencyStats, type ModelHostStatus, type OrtBuild } from "./backend.js";
 import type { OrtLike } from "./engine.js";
 import {
   ModelBusyError,
@@ -41,6 +41,9 @@ const IDLE_TIMEOUT_MS = 2_000;
 const LOAD_EVENT_WAIT_MS = 5_000;
 /** A loading worker that sends nothing for this long is considered stuck (e.g. inside a broken WebGPU driver). */
 const LOAD_STALL_MS = 180_000;
+/** status.latency covers this many recent evaluations; listeners hear about changes at most every LATENCY_EMIT_MS. */
+const LATENCY_WINDOW = 20;
+const LATENCY_EMIT_MS = 5_000;
 
 /** Minimal Worker surface the host uses (tests pass a fake). */
 export interface WorkerLike {
@@ -65,8 +68,8 @@ export interface ModelHostOptions extends ModelOptions {
   maxThreads?: number;
   /** Tests: create the worker (return null to force the inline path). */
   workerFactory?: () => WorkerLike | null;
-  /** Inline path: how to load onnxruntime-web (default: dynamic import of onnxruntime-web/webgpu). */
-  ortLoader?: () => Promise<OrtLike>;
+  /** Inline path: how to load onnxruntime-web (default: dynamic import of onnxruntime-web/webgpu or /wasm). */
+  ortLoader?: (build: OrtBuild) => Promise<OrtLike>;
   /** Inline path: WebGPU probe override (tests). */
   probeGpu?: () => Promise<GpuInfo>;
   /** Worker startup budget before falling back inline. Default 15 s. */
@@ -120,7 +123,7 @@ class InlineTransport implements Transport {
 
   constructor(
     private readonly onMessage: (m: FromWorker) => void,
-    env: { fetch: typeof fetch; clock: Clock; ort: () => Promise<OrtLike>; probeGpu?: () => Promise<GpuInfo> },
+    env: { fetch: typeof fetch; clock: Clock; ort: (build: OrtBuild) => Promise<OrtLike>; probeGpu?: () => Promise<GpuInfo> },
   ) {
     let cachesRef: CacheStorage | null = null;
     try {
@@ -199,7 +202,9 @@ function defaultWorkerFactory(): WorkerLike | null {
   return new Worker(new URL("./worker.js", import.meta.url), { type: "module" }) as unknown as WorkerLike;
 }
 
-const defaultOrtLoader = async (): Promise<OrtLike> => (await import("onnxruntime-web/webgpu")) as unknown as OrtLike;
+/** Both specifiers are static strings so bundlers split them; only the one the plans need is loaded. */
+const defaultOrtLoader = async (build: OrtBuild): Promise<OrtLike> =>
+  (build === "webgpu" ? await import("onnxruntime-web/webgpu") : await import("onnxruntime-web/wasm")) as unknown as OrtLike;
 
 // ------------------------------------------------------------------------------------------------- host
 
@@ -232,6 +237,9 @@ class Host implements ModelHost {
   private wasmRetried = false;
   private priorAttempts: NonNullable<ModelHostStatus["attempts"]> = [];
   private stallTimer: unknown = null;
+  private activeOptions!: BackendLoadOptions;
+  private readonly lat: { ms: number; tokens: number }[] = [];
+  private lastLatencyEmit = -Infinity;
   private helloTimer: unknown = null;
   private idleCancel: (() => void) | null = null;
   private readyWaiters: { resolve: () => void; reject: (e: Error) => void }[] = [];
@@ -274,8 +282,8 @@ class Host implements ModelHost {
     };
   }
 
-  private setStatus(s: ModelHostStatus): void {
-    this.st = s;
+  private notify(): void {
+    const s = this.st;
     for (const fn of [...this.listeners]) {
       try {
         fn(s);
@@ -283,6 +291,11 @@ class Host implements ModelHost {
         // listeners never break the host
       }
     }
+  }
+
+  private setStatus(s: ModelHostStatus): void {
+    this.st = s;
+    this.notify();
     if (s.state === "ready") this.settleReady(null);
     else if (s.state === "error") this.settleReady(new ModelLoadError(s.error ?? "the GenClass model failed to load", s.attempts ?? []));
   }
@@ -319,6 +332,8 @@ class Host implements ModelHost {
   private useWorker(w: WorkerLike, options: BackendLoadOptions = this.loadOptions): void {
     const t = new WorkerTransport(w);
     this.transport = t;
+    this.activeOptions = options;
+    this.lat.length = 0;
     this.hello = false;
     w.addEventListener("message", (ev) => {
       if (this.transport === t) this.onMessage(ev.data);
@@ -330,7 +345,15 @@ class Host implements ModelHost {
         this.clock.clearTimeout(this.helloTimer);
         t.close();
         this.useInline(why, options);
-      } else this.onWorkerCrash(why);
+        return;
+      }
+      // Died while setting up WebGPU: one more try on WASM in a fresh worker.
+      const st = this.st;
+      if (st.state === "loading" && st.device === "webgpu") {
+        const attempts = [...(st.attempts ?? []), { variant: st.variant ?? "?", device: "webgpu", error: why }];
+        if (this.retryOnWasm({ ...st, state: "error", error: why, attempts })) return;
+      }
+      this.onWorkerCrash(why);
     };
     w.addEventListener("error", (ev) => {
       // Keep our worker's failures out of the page's error stream (and the runtime's error observer).
@@ -373,6 +396,8 @@ class Host implements ModelHost {
       ...(this.opts.probeGpu ? { probeGpu: this.opts.probeGpu } : {}),
     });
     this.transport = t;
+    this.activeOptions = options;
+    this.lat.length = 0;
     if (why) this.workerError = why;
     this.setStatus({ state: "loading", worker: false, ...(why ? { workerError: why } : {}) });
     t.send({ type: "load", options });
@@ -455,6 +480,7 @@ class Host implements ModelHost {
           this.st0.completed++;
           this.st0.lastMs = this.clock.now() - j.t0;
           this.st0.lastForwardMs = v.timings?.forward;
+          this.recordLatency(v);
           this.finish(j, null, v);
         } else {
           this.st0.failed++;
@@ -463,6 +489,33 @@ class Host implements ModelHost {
         this.pump();
         break;
       }
+    }
+  }
+
+  /** Rolling inference-time stats for status.latency (adaptive hold budgets and situation sizes). */
+  private recordLatency(v: EvaluateOk): void {
+    const ms = Number(v.timings?.total);
+    const tokens = Number(v.usage?.input_tokens);
+    if (!(ms >= 0) || !(tokens > 0)) return;
+    this.lat.push({ ms, tokens });
+    if (this.lat.length > LATENCY_WINDOW) this.lat.shift();
+    const rank = (xs: number[], p: number) => {
+      const a = [...xs].sort((x, y) => x - y);
+      return a[Math.max(0, Math.ceil(p * a.length) - 1)];
+    };
+    const latency: LatencyStats = {
+      p50: Math.round(rank(this.lat.map((x) => x.ms), 0.5)),
+      p90: Math.round(rank(this.lat.map((x) => x.ms), 0.9)),
+      n: this.lat.length,
+      tokensP50: rank(this.lat.map((x) => x.tokens), 0.5),
+      msPerToken: Math.round(rank(this.lat.map((x) => x.ms / x.tokens), 0.5) * 1000) / 1000,
+      source: "evaluations",
+    };
+    this.st = { ...this.st, latency };
+    const now = this.clock.now();
+    if (this.lat.length === 1 || now - this.lastLatencyEmit >= LATENCY_EMIT_MS) {
+      this.lastLatencyEmit = now;
+      this.notify();
     }
   }
 
@@ -483,7 +536,8 @@ class Host implements ModelHost {
       if (this.transport) {
         const p = new Promise<void>((resolve, reject) => this.readyWaiters.push({ resolve, reject }));
         this.setStatus({ state: "loading", worker: this.transport.inWorker });
-        this.transport.send({ type: "load", options: this.loadOptions });
+        this.transport.send({ type: "load", options: this.activeOptions });
+        this.armStallWatch();
         return p;
       }
       this.started = false;

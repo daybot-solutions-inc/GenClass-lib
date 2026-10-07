@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { browserClock } from "../../src/clock.js";
-import { ModelBackend, ORT_WASM_FILE, type ModelHostStatus } from "../../src/model/backend.js";
+import { ModelBackend, ORT_WASM_FILES, type ModelHostStatus, type OrtBuild } from "../../src/model/backend.js";
 import type { OrtLike } from "../../src/model/engine.js";
 import { ModelIntegrityError, ModelLoadError, ModelNotReadyError, ModelUnsupportedError } from "../../src/model/errors.js";
 import { fetchCard, fetchFile, parseCard, planOrder, type GpuInfo } from "../../src/model/loader.js";
@@ -89,7 +89,7 @@ function modelDir(opts: { onnxBytes?: number; v01?: boolean } = {}) {
     const url = String(input);
     log.push(url);
     if (down) throw new TypeError("network down");
-    if (url.endsWith(ORT_WASM_FILE)) return new Response(wasm, { status: 200 });
+    if (url.endsWith(ORT_WASM_FILES.webgpu) || url.endsWith(ORT_WASM_FILES.wasm)) return new Response(wasm, { status: 200 });
     const name = url.replace("https://cdn.test/model/", "");
     const body = files[name];
     if (!body) return new Response("not found", { status: 404 });
@@ -168,6 +168,11 @@ describe("model card", () => {
     expect(fmt(GPU_F16, "wasm")).toEqual(["wasm+q8"]);
     expect(fmt({ ...GPU_F16, fallback: true }, "auto")).toEqual(["wasm+q8"]);
     expect(fmt({ ...GPU_F16, fallback: true }, "webgpu")).toEqual(["webgpu+fp16", "webgpu+q8", "wasm+q8"]);
+    // a q8 with fp16 tensors (the v0.1 export's fp16 embedding table) declares shader-f16 and skips non-f16 WebGPU;
+    // an int8-embedding q8 has no fp16 tensor and runs there
+    const f16q8 = parseCard({ ...modelDir().card, variants: { ...modelDir().card.variants, q8: { ...modelDir().card.variants.q8, needs: "shader-f16" } } });
+    expect(planOrder(f16q8, "auto", { ...GPU_F16, f16: false }).map((p) => `${p.device}+${p.variant}`)).toEqual(["wasm+q8"]);
+    expect(planOrder(f16q8, "auto", GPU_F16).map((p) => `${p.device}+${p.variant}`)).toEqual(["webgpu+fp16", "webgpu+q8", "wasm+q8"]);
   });
 });
 
@@ -242,8 +247,12 @@ describe("cached downloads", () => {
 describe("ModelBackend load", () => {
   function backend(d: ReturnType<typeof modelDir>, caches: FakeCacheStorage | null, gpu: GpuInfo, ort = fakeOrt()) {
     const statuses: ModelHostStatus[] = [];
+    const builds: OrtBuild[] = [];
     const b = new ModelBackend({
-      ort: async () => ort,
+      ort: async (build) => {
+        builds.push(build);
+        return ort;
+      },
       fetch: d.fetch,
       caches: caches as unknown as CacheStorage,
       clock: browserClock,
@@ -251,18 +260,21 @@ describe("ModelBackend load", () => {
       probeGpu: async () => gpu,
       inWorker: true,
     });
-    return { b, statuses, ort };
+    return { b, statuses, ort, builds };
   }
 
   it("falls back through the plans, reports phases, progress and timings, then answers", async () => {
     const d = modelDir();
     const caches = new FakeCacheStorage();
-    const { b, statuses, ort } = backend(d, caches, GPU_F16);
+    const { b, statuses, ort, builds } = backend(d, caches, GPU_F16);
     await expect(b.evaluate({ s: "x" }, {})).rejects.toBeInstanceOf(ModelNotReadyError);
     await b.load({ baseUrl: "https://cdn.test/model/" });
+    expect(builds).toEqual(["webgpu"]); // a WebGPU plan exists: the WebGPU bundle (it also runs the WASM fallback)
     expect(ort.created).toEqual(["webgpu", "webgpu", "wasm"]);
     const last = statuses.at(-1) as ModelHostStatus;
-    expect(last).toMatchObject({ state: "ready", device: "wasm", variant: "q8", model: "toy-model", version: "1.2.3", fromCache: false, worker: true, threads: 1, ort: "1.30.0" });
+    expect(last).toMatchObject({ state: "ready", device: "wasm", variant: "q8", model: "toy-model", version: "1.2.3", fromCache: false, worker: true, threads: 1, ort: "1.30.0", ortBuild: "webgpu" });
+    expect(last.latency).toMatchObject({ n: 0, source: "warmup" });
+    expect(last.latency!.tokensP50).toBeGreaterThan(100);
     expect(last.bytes).toBe(300_000);
     expect(last.attempts?.map((a) => `${a.device}+${a.variant}`)).toEqual(["webgpu+fp16", "webgpu+q8"]);
     expect(typeof last.loadMs).toBe("number");
@@ -273,7 +285,8 @@ describe("ModelBackend load", () => {
     expect(prog.length).toBeGreaterThan(0);
     expect(prog).toEqual([...prog].sort((x, y) => x - y));
     // the ORT wasm was fetched once, through the same cache, and handed to ORT (then released)
-    expect(d.log.filter((u) => u.endsWith(ORT_WASM_FILE)).length).toBe(1);
+    expect(d.log.filter((u) => u.endsWith(ORT_WASM_FILES.webgpu)).length).toBe(1);
+    expect(d.log.filter((u) => u.endsWith(ORT_WASM_FILES.wasm)).length).toBe(0);
     expect(ort.env.wasm.wasmBinary).toBeUndefined();
     const r = await b.evaluate({ s: "x" }, { c: { type: "choice", instructions: "?", criteria: { a: null, b: null } }, n: { type: "noul", instructions: "?" } });
     expect(r.answers.c).toMatchObject({ type: "choice", choice: "b" });
@@ -285,11 +298,15 @@ describe("ModelBackend load", () => {
   it("second load: everything from Cache Storage, no network for model files or the ORT wasm", async () => {
     const d = modelDir();
     const caches = new FakeCacheStorage();
-    await backend(d, caches, NO_GPU).b.load({ baseUrl: "https://cdn.test/model/" });
+    const first = backend(d, caches, NO_GPU);
+    await first.b.load({ baseUrl: "https://cdn.test/model/" });
+    expect(first.builds).toEqual(["wasm"]); // no usable WebGPU: the smaller WASM bundle and its wasm
+    expect(d.log.filter((u) => u.endsWith(ORT_WASM_FILES.wasm)).length).toBe(1);
+    expect(d.log.filter((u) => u.endsWith(ORT_WASM_FILES.webgpu)).length).toBe(0);
     d.log.length = 0;
     const { b, statuses } = backend(d, caches, NO_GPU);
     await b.load({ baseUrl: "https://cdn.test/model/" });
-    expect(statuses.at(-1)).toMatchObject({ state: "ready", fromCache: true });
+    expect(statuses.at(-1)).toMatchObject({ state: "ready", fromCache: true, ortBuild: "wasm" });
     expect(d.log).toEqual(["https://cdn.test/model/model.json"]); // the card is revalidated; nothing else moves
   });
 
@@ -309,6 +326,7 @@ describe("ModelBackend load", () => {
         (o?.executionProviders as string[])[0] === "webgpu" ? new Promise(() => undefined) : create(bytes, o);
       const statuses: ModelHostStatus[] = [];
       const b = new ModelBackend({ ort: async () => ort, fetch: d.fetch, caches: null, clock: browserClock, emit: (s) => statuses.push(s), probeGpu: async () => GPU_F16, inWorker });
+
       const res = await b.load({ baseUrl: "https://cdn.test/model/", warmup: false, sessionTimeoutMs: { webgpu: 30 } }).then(() => "ready", (e) => e);
       if (inWorker) {
         expect(res).toBeInstanceOf(ModelLoadError);

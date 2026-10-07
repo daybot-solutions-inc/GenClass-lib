@@ -20,7 +20,7 @@ import { eventLine, opLabel, opPhrase } from "./describe.js";
 import type { SitEnv, SubjectSpec } from "./env.js";
 import { computeFacts, MAX_FACTS, orderFacts } from "./facts.js";
 import { actionDescription, BUILTIN_ACTIONS, buildQuestions, TRIGGER_ACTIONS } from "./questions.js";
-import { LIMITS, toJevState, type SituationParts } from "./serialize.js";
+import { sectionLimits, STATE_CHAR_BUDGET, toJevState, type SectionLimits, type SituationParts } from "./serialize.js";
 
 export interface BuildOptions {
   vocab?: Vocabulary;
@@ -29,6 +29,8 @@ export interface BuildOptions {
   questions: StandingQuestion[];
   pluginFacts: { name: string; fn: (d: SituationDraft) => string[] }[];
   triage: "salient" | "always";
+  /** Situation size in characters (default 3,200). */
+  budget?: number;
 }
 
 export interface ActionOption {
@@ -155,7 +157,7 @@ function involvedFields(s: SubjectSpec): string[] {
 
 // ----------------------------------------------------------------------------------------------- sections
 
-function timelineLines(env: SitEnv, s: SubjectSpec, subj: OpRec | undefined, stores: string[]): string[] {
+function timelineLines(env: SitEnv, s: SubjectSpec, subj: OpRec | undefined, stores: string[], L: SectionLimits): string[] {
   const now = env.now();
   const recent = env.events.last(96);
   const rel = new Set<number>();
@@ -183,34 +185,34 @@ function timelineLines(env: SitEnv, s: SubjectSpec, subj: OpRec | undefined, sto
     const line = eventLine(e, now, (id) => env.ops.get(id));
     if (line) lines.push({ seq: e.seq, line, relevant: isRelevant(e) });
   }
-  const relevant = lines.filter((l) => l.relevant).slice(-LIMITS.timeline);
+  const relevant = lines.filter((l) => l.relevant).slice(-L.timeline);
   let picked = relevant;
-  if (picked.length < LIMITS.timeline) {
-    const extra = lines.filter((l) => !l.relevant).slice(-(LIMITS.timeline - picked.length));
+  if (picked.length < L.timeline) {
+    const extra = lines.filter((l) => !l.relevant).slice(-(L.timeline - picked.length));
     picked = [...picked, ...extra].sort((a, b) => a.seq - b.seq);
   }
   void s;
   return picked.map((l) => l.line);
 }
 
-function inFlightLines(env: SitEnv, subj: OpRec | undefined): string[] {
+function inFlightLines(env: SitEnv, subj: OpRec | undefined, L: SectionLimits): string[] {
   const now = env.now();
   const ops = [...env.ops.inFlight].filter((o) => o.kind !== "user" && o !== subj);
   const score = (o: OpRec) => (subj && o.name === subj.name ? 0 : subj && o.root === subj.root ? 1 : 2);
   ops.sort((a, b) => score(a) - score(b) || a.start - b.start);
-  return ops.slice(0, LIMITS.in_flight).map((o) => {
+  return ops.slice(0, L.in_flight).map((o) => {
     const by = o.cause !== undefined ? `, by #${o.cause}` : "";
     return `${truncate(opPhrase(o), 80)} (#${o.id}) ${secs(now - o.start)} so far${by}`;
   });
 }
 
-function stateLines(env: SitEnv, s: SubjectSpec, stores: string[]): string[] {
+function stateLines(env: SitEnv, s: SubjectSpec, stores: string[], L: SectionLimits): string[] {
   const now = env.now();
   const first = involvedFields(s);
   const out: string[] = [];
   const seen = new Set<string>();
   const add = (path: string) => {
-    if (seen.has(path) || out.length >= LIMITS.state) return;
+    if (seen.has(path) || out.length >= L.state) return;
     seen.add(path);
     const f = env.hub.field(path);
     const store = env.hub.get(path.split(".")[0]);
@@ -227,7 +229,7 @@ function stateLines(env: SitEnv, s: SubjectSpec, stores: string[]): string[] {
     const rec = env.hub.get(st);
     if (!rec) continue;
     if (rec.opts.describe && !seen.has(rec.name)) {
-      if (out.length < LIMITS.state) {
+      if (out.length < L.state) {
         out.push(`${rec.name} = ${truncate(String(rec.opts.describe(env.hub.read(rec))), 110)} (v${rec.version})`);
         seen.add(rec.name);
       }
@@ -246,14 +248,14 @@ function stateLines(env: SitEnv, s: SubjectSpec, stores: string[]): string[] {
   return out;
 }
 
-function statsLines(env: SitEnv, subj: OpRec | undefined): string[] {
+function statsLines(env: SitEnv, subj: OpRec | undefined, L: SectionLimits): string[] {
   const now = env.now();
   const sigs: string[] = [];
   if (subj && (subj.kind === "fetch" || subj.kind === "xhr" || subj.kind === "ws" || subj.kind === "task")) sigs.push(subj.name);
   for (const o of env.ops.inFlight) if ((o.kind === "fetch" || o.kind === "xhr") && !sigs.includes(o.name)) sigs.push(o.name);
   const out: string[] = [];
   for (const sig of sigs) {
-    if (out.length >= LIMITS.stats) break;
+    if (out.length >= L.stats) break;
     const st = env.base.stats(sig);
     if (!st || st.count === 0) continue;
     const lat = env.base.latency(sig);
@@ -314,6 +316,8 @@ function builtinApplicable(env: SitEnv, s: SubjectSpec, name: string): boolean {
 
 export function buildSituation(env: SitEnv, s: SubjectSpec, o: BuildOptions, precomputed?: Fact[]): BuiltSituation {
   const now = env.now();
+  const budget = o.budget ?? STATE_CHAR_BUDGET;
+  const L = sectionLimits(budget);
   const { sentence, subject } = subjectOf(env, s);
   const subj = subjectOp(env, s);
   const stores = involvedStores(env, s);
@@ -356,6 +360,7 @@ export function buildSituation(env: SitEnv, s: SubjectSpec, o: BuildOptions, pre
       /* a plugin's facts never break situation building */
     }
   }
+  // all ordered facts (≤ 12) are kept for reports and explain(); the budget decides how many the model reads
   facts = orderFacts(facts).slice(0, MAX_FACTS);
   draft.facts = facts;
   // actions
@@ -385,12 +390,12 @@ export function buildSituation(env: SitEnv, s: SubjectSpec, o: BuildOptions, pre
     app: appText(env),
     trigger: sentence,
     facts: facts.map((f) => f.text),
-    in_flight: inFlightLines(env, subj),
-    timeline: timelineLines(env, s, subj, stores),
-    state: stateLines(env, s, stores),
-    stats: statsLines(env, subj),
+    in_flight: inFlightLines(env, subj, L),
+    timeline: timelineLines(env, s, subj, stores, L),
+    state: stateLines(env, s, stores, L),
+    stats: statsLines(env, subj, L),
   };
-  const state = toJevState(parts);
+  const state = toJevState(parts, budget);
   const salient = o.triage === "always" || s.trigger === "ask" || facts.some((f) => !f.neutral);
   const situation: Situation = {
     trigger: s.trigger,

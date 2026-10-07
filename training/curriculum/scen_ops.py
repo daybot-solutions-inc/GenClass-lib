@@ -388,7 +388,7 @@ def failure(rng: random.Random, app: App, st: Style) -> Scen:
         facts.append(pick(rng, "app_retry", test, n=n_prev, a=n_prev + 1, req=X.req))
     # labels
     if case in ("transient_get", "timeout_get", "post_with_key"):
-        label_a, diag = "retry", "failing"
+        label_a, diag = "retry", "transient"  # an isolated failure that would succeed if tried again (CONTRACT §11)
     elif case == "outage_cached":
         label_a, diag = {"serve_cached": 0.7, "deliver": 0.2, "retry": 0.1}, "failing"
     elif case == "offline" and cached:
@@ -397,6 +397,8 @@ def failure(rng: random.Random, app: App, st: Style) -> Scen:
         label_a, diag = "deliver", ("overload" if high_rate else "failing")
     elif case == "longpoll_expected":
         label_a, diag = "deliver", "expected"
+    elif case == "post_no_key":  # isolated failure (transient), but retrying a non-idempotent POST is unsafe
+        label_a, diag = "deliver", "transient"
     else:
         label_a, diag = "deliver", "failing"
     prims = P.failure_q(rng, st, X, has_key) + P.streak_q(rng, st, sig, outcomes) + P.temporal(rng, tr, st)

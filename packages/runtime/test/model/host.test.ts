@@ -78,8 +78,8 @@ class FakeWorker implements WorkerLike {
     this.emit({ type: "hello" });
     this.emit({ type: "status", status: { state: "ready", device: "wasm", variant: "q8", model: "genclass-test", version: "0.0.1", loadMs: 12, bytes: 1000, fromCache: false } });
   }
-  answer(id: number, choice = "a"): void {
-    this.emit({ type: "result", id, ok: true, value: { answers: { q: { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } } }, model: "m", usage: { input_tokens: 10, positions: 10 }, timings: { pack: 1, forward: 5, total: 6 } } });
+  answer(id: number, choice = "a", total = 6, tokens = 10): void {
+    this.emit({ type: "result", id, ok: true, value: { answers: { q: { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } } }, model: "m", usage: { input_tokens: tokens, positions: tokens }, timings: { pack: 1, forward: total - 1, total } } });
   }
 }
 
@@ -213,6 +213,30 @@ describe("ModelHost", () => {
     expect(host.stats.busy).toBe(2);
   });
 
+  it("status.latency: p50/p90 over the last 20 evaluations; listeners hear about it at most every 5 s", async () => {
+    const { host, w, clock } = setup();
+    w().ready();
+    await flush();
+    let notes = 0;
+    host.onStatus(() => notes++);
+    const one = async (ms: number) => {
+      const p = host.evaluate(req());
+      await flush();
+      const ev = w().evaluates();
+      w().answer(ev[ev.length - 1].id, "a", ms, 500);
+      await p;
+    };
+    for (let k = 0; k < 25; k++) await one(100 + k * 10);
+    // window = the last 20 (150..340 ms); nearest rank: p50 = 10th = 240, p90 = 18th = 320
+    expect(host.status.latency).toEqual({ p50: 240, p90: 320, n: 20, tokensP50: 500, msPerToken: 0.48, source: "evaluations" });
+    expect(notes).toBe(1); // only the first evaluation: the clock has not moved 5 s
+    await clock.advance(5000);
+    await one(1000);
+    expect(notes).toBe(2);
+    expect(host.status.latency?.p90).toBe(330);
+    expect(host.status.state).toBe("ready");
+  });
+
   it("errors cross the worker boundary as typed errors", async () => {
     const { host, w } = setup();
     w().ready();
@@ -295,6 +319,18 @@ describe("ModelHost WebGPU recovery", () => {
     expect(host.status.attempts?.map((a) => a.device)).toEqual(["webgpu"]);
     // only once: a second WebGPU failure is reported
     expect(workers.length).toBe(2);
+  });
+
+  it("a worker that dies while loading on WebGPU is replaced by a WASM-only worker", async () => {
+    const { host, workers, w } = setup();
+    w().emit({ type: "hello" });
+    w().emit({ type: "status", status: { state: "loading", phase: "session", device: "webgpu", variant: "fp16" } });
+    w().fail("GPU process crashed");
+    expect(workers.length).toBe(2);
+    expect(w().sent[0]).toMatchObject({ type: "load", options: { device: "wasm" } });
+    w().ready();
+    expect(host.status.state).toBe("ready");
+    expect(host.status.attempts?.[0]).toMatchObject({ device: "webgpu", variant: "fp16", error: "GPU process crashed" });
   });
 
   it("a loading worker that goes silent is treated as stuck: on WebGPU it is retried on WASM, otherwise it errors", async () => {

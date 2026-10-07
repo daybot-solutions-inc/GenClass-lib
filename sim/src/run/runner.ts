@@ -80,6 +80,11 @@ export interface RunOptions {
   tStop?: number;
   /** Record the server state over time (ideal run: costs compare the server at decision + horizon). */
   serverTimeline?: boolean;
+  /**
+   * Re-seeded future: from decision `k` on (ideal runs: k = -1, i.e. from time `t`), network draws, push latencies,
+   * model latencies and the times of other users' events after `t` use `salt`. The prefix stays byte-identical.
+   */
+  future?: { k: number; salt: number; t: number };
 }
 
 export interface RunResult {
@@ -108,7 +113,59 @@ export interface RunResult {
   storeFeature: Map<string, string>;
 }
 
-function makeGlobal(loop: VirtualLoop, net: Network, title: string): SimGlobal {
+/** A WebSocket over the network's push channel (`wss://host/ws/<topic path>`); instrumentable by the runtime. */
+function makeWebSocketClass(loop: VirtualLoop, net: Network, ideal: boolean): unknown {
+  class VirtualWebSocket extends EventTarget {
+    static readonly CONNECTING = 0;
+    static readonly OPEN = 1;
+    static readonly CLOSING = 2;
+    static readonly CLOSED = 3;
+    readonly url: string;
+    readonly protocol = "";
+    readonly extensions = "";
+    bufferedAmount = 0;
+    binaryType = "blob";
+    readyState = 0;
+    onopen: ((e: Event) => void) | null = null;
+    onmessage: ((e: MessageEvent) => void) | null = null;
+    onclose: ((e: Event) => void) | null = null;
+    onerror: ((e: Event) => void) | null = null;
+    private unsub: (() => void) | null = null;
+    constructor(url: string | URL) {
+      super();
+      this.url = String(url);
+      const topic = decodeURIComponent(new URL(this.url).pathname.replace(/^\/ws\//, ""));
+      const connectMs = ideal ? 0 : 40 + (topic.length % 7) * 10;
+      loop.schedule(connectMs, () => {
+        if (this.readyState !== 0) return;
+        this.readyState = 1;
+        this.unsub = net.subscribe(topic, (msg) => {
+          if (this.readyState !== 1) return;
+          const ev = new MessageEvent("message", { data: JSON.stringify(msg) });
+          this.dispatchEvent(ev);
+          this.onmessage?.(ev);
+        });
+        const ev = new Event("open");
+        this.dispatchEvent(ev);
+        this.onopen?.(ev);
+      }, "net");
+    }
+    send(_data: unknown): void {
+      /* client -> server messages are not modelled */
+    }
+    close(): void {
+      if (this.readyState === 3) return;
+      this.readyState = 3;
+      this.unsub?.();
+      const ev = Object.assign(new Event("close"), { code: 1000 });
+      this.dispatchEvent(ev);
+      this.onclose?.(ev);
+    }
+  }
+  return VirtualWebSocket;
+}
+
+function makeGlobal(loop: VirtualLoop, net: Network, title: string, ideal: boolean): SimGlobal {
   const intervals = new Set<{ cancelled: boolean; task: unknown }>();
   const url = new URL(BASE_URL);
   const G: SimGlobal = {
@@ -135,6 +192,7 @@ function makeGlobal(loop: VirtualLoop, net: Network, title: string): SimGlobal {
     },
     location: { href: `${url.origin}/`, pathname: "/", search: "", origin: url.origin, host: url.host },
     document: { title },
+    WebSocket: makeWebSocketClass(loop, net, ideal),
   };
   return G;
 }
@@ -164,7 +222,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
     if (def.relations) relations.push(...def.relations(f.spec));
   }
   const network = new Network(loop, server, o.ideal ? IDEAL_PROFILE : scn.net, hashAll("net", scn.seed));
-  const G = makeGlobal(loop, network, scn.appTitle);
+  const G = makeGlobal(loop, network, scn.appTitle, o.ideal);
   const know = new Knowledge();
   know.now = () => loop.now();
   network.onSend = (e) => {
@@ -237,7 +295,9 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
         }
         decisions.push(rec);
       }
-      const ms = new Rng(hashAll("model-latency", scn.seed, idx)).lognormal(scn.modelMs, 0.35);
+      if (o.future && idx === o.future.k) network.future = o.future.salt;
+      const fut = o.future && idx > o.future.k ? o.future.salt : undefined;
+      const ms = new Rng(fut === undefined ? hashAll("model-latency", scn.seed, idx) : hashAll("model-latency", scn.seed, idx, fut)).lognormal(scn.modelMs, 0.35);
       return new Promise((resolve) => loop.schedule(ms, () => resolve(answers), "runtime"));
     },
   };
@@ -318,6 +378,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       decider,
       ...(scn.diagnoses ? { diagnoses: scn.diagnoses } : {}),
       ...(scn.actionWords ? { actions: scn.actionWords } : {}),
+      budget: scn.budget,
       // Exact correlation: the runtime creates the fetch op synchronously inside the app's fetch call and the
       // mutation synchronously inside atom.set, while the sim's ambient tag (callingOp / writing) is set.
       hooks: {
@@ -417,8 +478,13 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       } else client.handle(st, it.id);
     }, "user");
   }
-  // External events (other users, metric changes).
-  for (const ev of scn.external) loop.at(ev.t, () => ev.apply(world), "sim");
+  // External events (other users, metric changes). In a re-seeded future, events after the decision time move
+  // later by 0-600 ms (other people's timing is part of the future's randomness).
+  scn.external.forEach((ev, i) => {
+    let t = ev.t;
+    if (o.future && t > o.future.t) t += new Rng(hashAll("ext-jitter", o.future.salt, i)).float(0, 600);
+    loop.at(t, () => ev.apply(world), "sim");
+  });
   // Ask probes.
   if (!o.ideal && o.probeAsk && runtime) {
     const rt = runtime;

@@ -10,15 +10,32 @@
 import type { Clock } from "../types.js";
 import type { OpRec } from "./ops.js";
 
+/**
+ * A timer op created only if something uses it. Its parent is always a real op (or null), never another lazy op:
+ * a recursive setTimeout loop links each tick to the nearest op that exists, so no chain of closures builds up.
+ */
 export class LazyOp {
   private made: OpRec | null = null;
-  constructor(private readonly make: () => OpRec) {}
+  private make: ((parent: OpRec | null) => OpRec) | null;
+  private parentOp: OpRec | null;
+  constructor(parent: OpRec | null, make: (parent: OpRec | null) => OpRec) {
+    this.parentOp = parent;
+    this.make = make;
+  }
   materialize(): OpRec {
-    if (!this.made) this.made = this.make();
+    if (!this.made) {
+      this.made = this.make!(this.parentOp);
+      this.make = null;
+      this.parentOp = null;
+    }
     return this.made;
   }
   get materialized(): OpRec | null {
     return this.made;
+  }
+  /** The op that timers scheduled from inside this one should link to. */
+  get nearest(): OpRec | null {
+    return this.made ?? this.parentOp;
   }
 }
 

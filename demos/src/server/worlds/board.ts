@@ -79,7 +79,7 @@ export const boardWorld: WorldDef<BoardState> = {
     const ranks: Record<string, number> = {};
     for (const [id, title, column, tag] of BOARD_SEED) {
       ranks[column] = (ranks[column] ?? 0) + 1;
-      cards[id] = { id, title, column, rank: ranks[column], version: 1, updatedBy: "seed", updatedAt: t, tag };
+      cards[id] = { id, title, column, rank: ranks[column], version: 1, updatedBy: TEAMMATES[Number(id.slice(1)) % TEAMMATES.length], updatedAt: t, tag };
     }
     return { cards, moves: [], lastUserCard: null };
   },

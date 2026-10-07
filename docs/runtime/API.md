@@ -62,8 +62,16 @@ interface InitOptions {
   learn?: { persist?: boolean };                        // keep transition profiles in localStorage
   vocabulary?: { diagnoses?: Record<string, string>; actions?: Record<string, string> };
   settleMs?: number;                                    // quiet time that makes a settled point, default 60
+  situation?: { budget?: number | "auto" };             // size of what the model reads, in characters (default "auto")
 }
 ```
+
+Performance: GenClass computes cheap facts for every write and request, and asks the model only about salient ones.
+The situation the model reads is sized to the device (`situation.budget: "auto"`): 3,200 characters on WebGPU,
+2,000 on 4-thread WASM (crossOriginIsolated pages), 1,100 on single-thread WASM. Held writes and requests wait at
+most the hold budget (`policy.holdBudgetMs: "auto"`: 1.5 × the model's recent median latency, 150 to 800 ms), then
+proceed unchanged. Serving your page with `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp` enables WASM threads (about 3× faster without WebGPU).
 
 Self-hosting the model: `npx genclass-runtime fetch-model public/genclass-model` then
 `GenClass.init({ model: { baseUrl: "/genclass-model/" } })`.
@@ -103,8 +111,9 @@ search.set((s) => ({ ...s, results: data }));                           // async
 
 How writes flow: `set` proposes a mutation. Writes made while handling a user action (in the same task) and writes
 made by GenClass itself apply immediately. Other writes are checked: if nothing about them is unusual they apply
-immediately; otherwise they are held until the model answers (at most `policy.holdBudgetMs`, default 300 ms, then
-they apply: fail-open). Writes to one store apply in the order they were proposed. A functional update runs again
+immediately; otherwise they are held until the model answers (at most the hold budget, then they apply:
+fail-open). If the model answers `discard` within 2 s after such a write applied, and nothing has overwritten it
+since, GenClass reverts exactly that write (a "late revert", reported as such and undoable). Writes to one store apply in the order they were proposed. A functional update runs again
 on the value at apply time; a held value write is re-applied as a patch of the fields it changed, so newer user
 input to other fields of the same store is kept. Reading `get()` while a write is held returns the current value.
 
@@ -182,11 +191,13 @@ rt.on("report", (r: Report) => void)         // every report line (even with rep
 ## Introspection and control
 
 ```ts
-rt.status: ModelStatus             // { state: "off"|"loading"|"ready"|"error", progress?, device?, variant?, error? }
+rt.status: ModelStatus             // { state: "off"|"loading"|"ready"|"error", progress?, device?, variant?, threads?, phase?, error?, ... }
 rt.ready: Promise<void>            // resolves when the model is ready (immediately with no model); reading it starts a lazy load
 rt.mode: "observe" | "guard" | "heal"
 rt.situation(trigger?): Situation  // what the model would see: { trigger, subject, state, questions, actions, salient, facts }
-rt.explain(id): Explanation | null // a decision ("d3") or action ("a1") id -> the evidence and what changed
+rt.explain(id): Explanation | null // a decision ("d3") or action ("a1") id -> { message, decision, situationText, facts, timeline, answers, action?, changed? }
+rt.holdBudgetMs(): number          // the current hold budget
+rt.situationBudget(): number       // the current situation size in characters
 rt.history(n?): RtEvent[]          // recent events, oldest first
 rt.decisions(n?): Decision[]       // last 200 decisions
 rt.interventions(n?): ActionRecord[]
@@ -211,7 +222,7 @@ every observer and restores the globals it wrapped.
 
 | action | tier | effect |
 |---|---|---|
-| `discard` | guard | drop the write (undo: apply it now) |
+| `discard` | guard | drop the write (undo: apply it now); decided after the write applied: revert exactly that write if nothing overwrote it (undo: re-apply) |
 | `defer` | guard | hold the write until related requests finish, then decide again (twice at most) |
 | `coalesce` | guard | do not send; reuse the response of the identical request in flight or just finished (`x-genclass: coalesced`) |
 | `delay` | guard | wait min(250 ms · 2^failure streak, 8 s), then send |
@@ -233,7 +244,7 @@ interface PolicyOptions {
   thresholds?: { report?: number; guard?: number; heal?: number };  // defaults 0.6 / 0.9 / 0.8
   allow?: string[];                 // only these non-passive actions may run
   deny?: string[];                  // these never run
-  holdBudgetMs?: number;            // default 300
+  holdBudgetMs?: number | "auto";   // default "auto": clamp(1.5 × median recent model latency, 150, 800) ms
   holdUserWrites?: boolean;         // default false
   maxActionsPerMinute?: number;     // default 60
   requireDiagnosis?: boolean;       // default true
@@ -254,7 +265,7 @@ changed, how to undo it and how to deny that action. Repeats within a minute are
 minute".
 
 ```
-[GenClass] Prevented a stale write: search.results was written once by other operations since this write's cause (#6) started (version 0 → 1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after it, from a later user action (#7). Dropped the write to search.results from GET /api/search?q=rea (#6); search stays at version 2. (stale, 0.97; discard 0.96)
+[GenClass] Prevented a stale write: search.results was written once by other operations since this write's cause (#6) started (v0 → v1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7). Dropped the write to search.results from GET /api/search?q=rea (#6); search stays at version 2. (stale, 0.97; discard 0.96)
 ```
 
 ```ts
@@ -265,6 +276,10 @@ rt.explain(a.id);   // { decision, situationText, facts, timeline, answers, acti
 ```
 
 A custom `report` function receives `{ kind: "detect" | "intervene" | "status", message, decision?, action? }`.
+`explain(id).message` is the same line for any decision or action, also when it was not printed.
+
+Your own debug UI: GenClass ignores user events from inside any element marked `data-genclass-ignore` (the devtools
+overlay uses it), so debugging tools never become causes in situations.
 
 ## Plugins
 
@@ -330,14 +345,20 @@ const rt = createRuntime({
 interface DecisionProvider {
   readonly status: ModelStatus;
   ready(): Promise<void>;
-  evaluate(req: { trigger; state; questions; priority?; subject? }): Promise<Record<string, Answer>>;
+  evaluate(req: { trigger; state; questions; priority?; subject?; timeoutMs? }): Promise<Record<string, Answer>>;
   onStatus?(fn): () => void;
   dispose?(): void;
 }
 ```
 
 The runtime only uses the injected clock (no `Date.now`, `Math.random` or global timers), so a virtual clock makes
-runs deterministic: the same inputs give byte-identical situations.
+runs deterministic: the same inputs give byte-identical situations. Pass `situation: { budget }` to fix the
+situation size.
+
+The local model host is exported for direct use: `createModelHost(options)` (a `DecisionProvider` with `measure()`,
+`evaluateDetailed()`, `stats`), `DEFAULT_MODEL_BASE_URL`, and the model errors (`ModelNotReadyError`,
+`MaxTokensExceededError`, `ModelTimeoutError`, `ModelBusyError`, `ModelLoadError`, ...; each has a `code`). Any
+provider error makes the runtime fail open.
 
 ## Adapters and devtools
 
@@ -364,8 +385,8 @@ interface Decision {
   tier: "passive" | "guard" | "heal"; ran: string; answers: Record<string, Answer>; subjectRef?: SubjectRef;
 }
 type Detection = Decision;
-interface ActionRecord { id: string; decisionId: string; action: string; tier; trigger; subject: string; at: number; ok: boolean; error?: string; changed: string; undo?: () => void }
-interface Explanation { decision: Decision; situationText: string; facts: string[]; timeline: string[]; answers: Record<string, Answer>; action?: ActionRecord; changed?: string }
+interface ActionRecord { id: string; decisionId: string; action: string; tier; trigger; subject: string; at: number; ok: boolean; error?: string; changed: string; undo?: () => void; late?: boolean }
+interface Explanation { message: string; decision: Decision; situationText: string; facts: string[]; timeline: string[]; answers: Record<string, Answer>; action?: ActionRecord; changed?: string }
 interface RtEvent { seq: number; t: number; kind: "user"|"op.start"|"op.end"|"state"|"error"|"nav"|"perf"|"storage"|"custom"|"decision"|"action"; name: string; op?: number; cause?: number; data?: Record<string, unknown> }
 interface Op { id: number; kind: "user"|"fetch"|"xhr"|"ws"|"task"|"timer"|"genclass"; name: string; detail?: string; start: number; end?: number; status?: "ok"|"error"|"aborted"|"blocked"; code?: number | string; cause?: number; root?: number; attempt: number; reads: Map<string, number>; identity?: string }
 ```

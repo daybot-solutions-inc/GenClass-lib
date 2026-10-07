@@ -20,15 +20,17 @@ export interface GcSession {
   readyAt: number | null;
 }
 
-export function startGenClass(mode: GcMode, opts: { baseUrl?: string; plugins?: Plugin[]; debug?: boolean }): GcSession {
+export function startGenClass(mode: GcMode, opts: { baseUrl?: string; plugins?: Plugin[]; debug?: boolean; holdBudgetMs?: number }): GcSession {
+  const policy = opts.holdBudgetMs ? { holdBudgetMs: opts.holdBudgetMs } : undefined;
   const gc =
     mode === "off"
-      ? GenClass.init({ mode: "observe", model: false, plugins: opts.plugins })
+      ? GenClass.init({ mode: "observe", model: false, plugins: opts.plugins, policy })
       : GenClass.init({
           mode,
           model: { ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}), preload: "eager" },
           plugins: opts.plugins,
           debug: opts.debug,
+          policy,
         });
   const s: GcSession = {
     gc,
@@ -67,12 +69,18 @@ export function collectStats(s: GcSession): GcStats {
   const diagnoses: Record<string, number> = {};
   for (const d of s.decisions) {
     diagnoses[d.diagnosis] = (diagnoses[d.diagnosis] ?? 0) + 1;
-    if (!d.executed && d.reason) notExecuted[d.reason] = (notExecuted[d.reason] ?? 0) + 1;
+    if (!d.executed && d.reason) {
+      // "probability 0.42 is below the guard threshold 0.9" -> "probability # is below the guard threshold #"
+      const key = d.reason.replace(/\d+(\.\d+)?/g, "#");
+      notExecuted[key] = (notExecuted[key] ?? 0) + 1;
+    }
   }
   const st = s.gc.status;
   return {
     runtime: RUNTIME_KIND,
+    isolated: typeof crossOriginIsolated !== "undefined" ? crossOriginIsolated : false,
     status: st.state,
+    model: st.model,
     device: st.device,
     variant: st.variant,
     loadMs: st.loadMs ?? (s.readyAt !== null ? Math.round(s.readyAt - s.initAt) : undefined),

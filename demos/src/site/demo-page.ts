@@ -11,7 +11,7 @@ import type { DemoDefinition } from "../shared/demo-def.ts";
 import { startGenClass, statusText, RUNTIME_KIND } from "../shared/genclass.ts";
 import { TrialHarness } from "../shared/harness.ts";
 import { ServerLink, ensureServiceWorker, wait } from "../shared/server.ts";
-import { getMode, loadChaos, modelBaseUrl, sessionId, setMode, siteRoot, trialParams, urlParams, type TrialParams } from "../shared/settings.ts";
+import { getMode, holdBudget, loadChaos, modelBaseUrl, sessionId, setMode, siteRoot, trialParams, urlParams, type TrialParams } from "../shared/settings.ts";
 import { MODES, type GcMode } from "../shared/types.ts";
 import { mountActivity } from "./activity.ts";
 import { mountChaosPanel } from "./chaos-panel.ts";
@@ -79,7 +79,11 @@ function modeCard(gc: Runtime, mode: GcMode): HTMLElement {
   const hint = h(
     "div",
     { class: "mode-hint" },
-    kill ? `Runtime kill switch in the URL (?genclass=${kill}): the runtime follows it, not this switch.` : MODE_HINT[mode],
+    kill
+      ? `Runtime kill switch in the URL (?genclass=${kill}): the runtime follows it, not this switch.`
+      : holdBudget()
+        ? `${MODE_HINT[mode]} Experiment: hold budget ${holdBudget()} ms (?budget).`
+        : MODE_HINT[mode],
   );
   const dot = h("span", { class: "dot" });
   const txt = h("span", null, "");
@@ -99,7 +103,8 @@ function modeCard(gc: Runtime, mode: GcMode): HTMLElement {
       barWrap.hidden = !(p && p.total);
       if (p && p.total) fill.style.width = `${(p.loaded / p.total) * 100}%`;
     } else if (st.state === "ready") {
-      txt.textContent = `Model ready · ${[st.device, st.variant].filter(Boolean).join(" · ")}${st.loadMs ? ` · ${(st.loadMs / 1000).toFixed(1)} s` : ""}`;
+      const threads = st.device === "wasm" ? (crossOriginIsolated ? "threads" : "1 thread") : "";
+      txt.textContent = `Model ready · ${[st.device, st.variant, threads].filter(Boolean).join(" · ")}${st.loadMs ? ` · loaded in ${(st.loadMs / 1000).toFixed(1)} s` : ""}`;
       barWrap.hidden = true;
     } else {
       txt.textContent = `Model unavailable${st.error ? `: ${st.error}` : ""} · acting passively`;
@@ -123,30 +128,19 @@ function modeCard(gc: Runtime, mode: GcMode): HTMLElement {
 
 function explainCards(def: DemoDefinition): HTMLElement {
   const info = DEMO_BY_ID[def.id];
+  const head = (ic: string, text: string) => h("h3", { html: `${icon(ic)}<span>${esc(text)}</span>` });
   return h(
     "div",
     { class: "explain" },
+    h("div", { class: "card" }, head("alert", "What can go wrong"), h("ul", null, info.wrong.map((w) => h("li", null, w)))),
+    h("div", { class: "card" }, head("target", "What the trials score"), h("ul", null, info.scored.map((w) => h("li", null, w)))),
     h(
       "div",
-      { class: "card" },
-      h("h3", { html: `${icon("alert")}What can go wrong` }),
-      h(
-        "ul",
-        null,
-        info.wrong.map((w) => h("li", null, w)),
-      ),
+      { class: "card explain-code" },
+      head("code", "How it is wired"),
+      h("p", { class: "muted", style: { fontSize: "13px", margin: "-4px 0 12px" } }, "The integration is the normal one; the comments mark the latent bugs this app ships with."),
+      h("pre", { class: "codeblock", html: def.code }),
     ),
-    h(
-      "div",
-      { class: "card" },
-      h("h3", { html: `${icon("target")}What the trials score` }),
-      h(
-        "ul",
-        null,
-        info.scored.map((w) => h("li", null, w)),
-      ),
-    ),
-    h("div", { class: "card" }, h("h3", { html: `${icon("code")}How it is wired` }), h("pre", { class: "codeblock", html: def.code })),
   );
 }
 
@@ -165,7 +159,7 @@ async function bootInteractive(def: DemoDefinition): Promise<void> {
   };
   addEventListener("pagehide", () => link.stop());
 
-  const gcs = startGenClass(mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.() });
+  const gcs = startGenClass(mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget() });
   const gc = gcs.gc;
 
   const { frame, body } = appFrame(def, mode);
@@ -212,12 +206,19 @@ async function bootInteractive(def: DemoDefinition): Promise<void> {
     world: (a: string, args?: unknown) => link.world(a, args),
   };
 
-  try {
-    const opts = urlParams.get("devtools") === "open" ? { open: true } : {};
-    (mountDevtools as (rt: Runtime, o?: Record<string, unknown>) => unknown)(gc, opts);
-  } catch (e) {
-    console.warn("devtools overlay failed to mount", e);
-  }
+  // The runtime's devtools overlay (pill in the corner; ?devtools=open starts it open).
+  let devtools: { unmount(): void } | null = null;
+  const mountOverlay = (collapsed: boolean) => {
+    devtools?.unmount();
+    const forced = document.documentElement.dataset.theme;
+    try {
+      devtools = mountDevtools(gc, { collapsed, theme: forced === "dark" || forced === "light" ? forced : "auto", position: "bottom-right" });
+    } catch (e) {
+      console.warn("devtools overlay failed to mount", e);
+    }
+  };
+  mountOverlay(urlParams.get("devtools") !== "open");
+  addEventListener("gc-theme", () => mountOverlay(true));
 }
 
 async function bootTrial(def: DemoDefinition, trial: TrialParams): Promise<void> {
@@ -229,7 +230,7 @@ async function bootTrial(def: DemoDefinition, trial: TrialParams): Promise<void>
   link.startHeartbeat();
   addEventListener("pagehide", () => void link.bye());
 
-  const gcs = startGenClass(trial.mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.() });
+  const gcs = startGenClass(trial.mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget() });
   if (trial.mode !== "off") await Promise.race([gcs.gc.ready.catch(() => undefined), wait(120000)]);
 
   const { frame, body } = appFrame(def, trial.mode);

@@ -64,24 +64,25 @@ function userRelation(env: SitEnv, ref: OpRec, w: OpRec | undefined): string {
   return `, from an earlier user action (#${uw.id})`;
 }
 
+/** "started 0.09s after #6" */
 function startedRel(w: OpRec, ref: OpRec): string {
   const d = w.start - ref.start;
-  if (d === 0) return "which started at the same time as it";
-  return `which started ${secs(Math.abs(d))} ${d > 0 ? "after" : "before"} it`;
+  if (d === 0) return `started at the same time as #${ref.id}`;
+  return `started ${secs(Math.abs(d))} ${d > 0 ? "after" : "before"} #${ref.id}`;
 }
 
 function writerText(env: SitEnv, ref: OpRec, h: FieldHist): string {
   const w = env.ops.get(h.writer);
   if (!w) return h.user ? "a user action" : "an operation that is no longer tracked";
-  return `${opLabel(w)}, ${startedRel(w, ref)}${userRelation(env, ref, w)}`;
+  return `${opLabel(w)}, which ${startedRel(w, ref)}${userRelation(env, ref, w)}`;
 }
 
 function provenance(env: SitEnv, what: string, op: OpRec | null | undefined, now: number): Fact {
   if (!op) return fact(`${what} has no known cause: no operation was active when it started.`, "provenance", true);
   const root = env.ops.rootOf(op);
-  let p = `${what} comes from ${opLabel(op)}, which started ${secs(now - op.start)} ago`;
-  if (op.end !== undefined && !op.instant) p += ` and ended ${secs(now - op.end)} ago (${statusText(op)})`;
-  if (root && root.id !== op.id) p += `; its chain began with ${opLabel(root)} ${secs(now - root.start)} ago`;
+  let p = `${what} comes from ${opLabel(op)}, started ${secs(now - op.start)} ago`;
+  if (op.end !== undefined && !op.instant) p += `, ended ${secs(now - op.end)} ago with ${statusText(op)}`;
+  if (root && root.id !== op.id) p += `; its chain began with ${opLabel(root)}`;
   return fact(p + ".", "provenance", true);
 }
 
@@ -114,6 +115,7 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
   out.push(provenance(env, "This write", C, now));
   if (C) {
     const ref = `this write's cause (#${C.id})`;
+    const Ref = `This write's cause (#${C.id})`;
     for (const path of written.slice(0, 3)) {
       const vStart = env.hub.versionAt(path, C.startSeq);
       C.reads.set(path, vStart);
@@ -124,15 +126,15 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
         const last = others[others.length - 1];
         out.push(
           fact(
-            `${path} was written ${times(others.length)} by other operations since ${ref} started (version ${vStart} → ${vNow}), last ${secs(now - last.t)} ago by ${writerText(env, C, last)}.`,
+            `${path} was written ${times(others.length)} by other operations since ${ref} started (v${vStart} → v${vNow}), last ${secs(now - last.t)} ago by ${writerText(env, C, last)}.`,
             "versions",
             false,
           ),
         );
       } else if (since.length) {
-        out.push(fact(`${path} was written ${times(since.length)} by this write's own chain since ${ref} started (version ${vStart} → ${vNow}).`, "versions", true));
+        out.push(fact(`${path} was written ${times(since.length)} by this write's own chain since ${ref} started (v${vStart} → v${vNow}).`, "versions", true));
       } else {
-        out.push(fact(`${path} has not changed since ${ref} started (version ${vNow}).`, "versions", true));
+        out.push(fact(`${path} has not changed since ${ref} started (v${vNow}).`, "versions", true));
       }
     }
     // inputs moved: other fields changed since the cause started, by other chains
@@ -148,7 +150,7 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
       const last = x.hist[x.hist.length - 1];
       const cur = env.hub.valueAt(x.path);
       const w = env.ops.get(last.writer);
-      const by = w ? `${opLabel(w)} ${secs(Math.max(0, last.t - C.start))} after it started` : "an untracked writer";
+      const by = w ? `${opLabel(w)} ${secs(Math.max(0, last.t - C.start))} after #${C.id} started` : "an untracked writer";
       out.push(
         fact(
           `${x.path} changed since ${ref} started: ${describe(first.before, x.path, env.redact, 40)} → ${describe(cur, x.path, env.redact, 40)}, last by ${by}${x.hist.length > 1 ? ` (${x.hist.length} writes)` : ""}.`,
@@ -163,7 +165,7 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
     const same = others.filter((o) => o.name === C.name && o.kind === C.kind);
     if (same.length) {
       const newer = same.filter((o) => o.start > C.start);
-      const items = same.slice(0, 3).map((o) => `#${o.id} ${truncate(o.detail ?? "", 30)} ${startedRel(o, C).replace("which ", "")}`.replace(/\s+/g, " "));
+      const items = same.slice(0, 3).map((o) => `#${o.id} ${truncate(o.detail ?? "", 30)} ${startedRel(o, C)}`.replace(/\s+/g, " "));
       out.push(
         fact(
           `${plural(same.length, `other ${C.name} operation`)} ${same.length === 1 ? "is" : "are"} in flight (${newer.length} newer than ${ref}): ${items.join("; ")}.`,
@@ -189,9 +191,9 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
       const b = env.base.latency(C.name);
       if (b) {
         const slow = lat > 3 * b.median && lat - b.median >= 100;
-        out.push(fact(`${ref.charAt(0).toUpperCase() + ref.slice(1)} took ${secs(lat)}, ${ratio(lat, b.median)} its usual ${secs(b.median)} (p95 ${secs(b.p95)}).`, "baseline", !slow));
+        out.push(fact(`${Ref} took ${secs(lat)}, ${ratio(lat, b.median)} its usual ${secs(b.median)} (p95 ${secs(b.p95)}).`, "baseline", !slow));
       }
-      if (C.status === "error") out.push(fact(`${ref.charAt(0).toUpperCase() + ref.slice(1)} failed (${statusText(C)}) before this write.`, "outcome", true));
+      if (C.status === "error") out.push(fact(`${Ref} failed (${statusText(C)}) before this write.`, "outcome", true));
     }
   }
   // repetition: the same change (same store, paths and delta) applied recently
@@ -279,7 +281,7 @@ function requestCommon(env: SitEnv, trigger: "request" | "failure" | "stall", op
   // same signature, different input, in flight
   const sameSig = [...env.ops.inFlight].filter((o) => o.id !== op.id && o.name === op.name && o.identity !== req.identity);
   if (sameSig.length) {
-    const items = sameSig.slice(0, 3).map((o) => `#${o.id}${o.detail ? ` ${truncate(o.detail, 30)}` : ""} (${startedRel(o, op).replace("which ", "")})`);
+    const items = sameSig.slice(0, 3).map((o) => `#${o.id}${o.detail ? ` ${truncate(o.detail, 30)}` : ""} (${startedRel(o, op)})`);
     out.push(fact(`${plural(sameSig.length, `other ${req.signature} request`)} with different input ${sameSig.length === 1 ? "is" : "are"} in flight: ${items.join("; ")}.`, "concurrency", true));
   }
   const st = env.base.stats(req.signature);

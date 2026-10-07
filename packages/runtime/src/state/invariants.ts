@@ -4,17 +4,23 @@
 // Learned invariants that break at a settled point are reported (once per episode by the runtime).
 // No domain knowledge: the templates apply to whatever fields exist. Fields under id-like keys (dynamic
 // collections) are skipped, and a candidate whose field disappeared is not evaluated.
+//
+// Precision: `a != null` is only proposed for fields never seen null (initial value included) and needs 6
+// supporting snapshots (closing a selection is not an inconsistency). Per-array statistics (column sums, products,
+// value sets) are computed once per array version, so settled points stay cheap with large stores.
 
 import type { Violation } from "../situation/env.js";
-import { describe, defaultRedact, fmtNum, isIdSegment, isPlainObject } from "../util.js";
+import { describe, fmtNum, isIdSegment, isPlainObject, type Redactor } from "../util.js";
 import type { Leaf } from "./fields.js";
 
 export const LEARN_AFTER = 3;
+export const LEARN_AFTER_NONNULL = 6;
 const MAX_NUMERIC = 64;
 const MAX_SCALAR = 96;
 const MAX_ARRAYS = 24;
 const MAX_COLUMNS = 8;
 const MAX_CANDIDATES = 4000;
+const MAX_DROPPED = 50_000;
 
 type Tpl = "eq" | "len" | "sum" | "sumprod" | "nonneg" | "in" | "unique" | "type" | "nonnull";
 
@@ -39,6 +45,19 @@ interface Expectation {
   pred: () => boolean;
 }
 
+/** Statistics of one array version (cached per leaf object; unchanged arrays reuse their leaf). */
+interface ArrayStats {
+  n: number;
+  /** Every element is a plain object. */
+  objs: boolean;
+  numCols: string[];
+  scalarCols: string[];
+  sums: Map<string, number>;
+  prods: Map<string, number>;
+  sets: Map<string, Set<unknown>>;
+  unique: Map<string, boolean>;
+}
+
 export function numEq(a: number, b: number): boolean {
   if (a === b) return true;
   const d = Math.abs(a - b);
@@ -50,21 +69,34 @@ function dynamicPath(p: string): boolean {
   return p.split(".").some((s) => isIdSegment(s));
 }
 
-function column(arr: unknown[], k: string): unknown[] {
-  return arr.map((x) => (isPlainObject(x) ? x[k] : undefined));
-}
-
 export class InvariantMiner {
   private cands = new Map<string, Cand>();
   private dropped = new Set<string>();
   private changed = new Set<string>();
   private expects = new Map<string, Expectation>();
   private violated: Violation[] = [];
+  private nullSeen = new Set<string>();
+  private statsCache = new WeakMap<Leaf, ArrayStats>();
+  private changedNow = new Set<string>();
+  private leavesNow: Map<string, Leaf> = new Map();
   /** Settled points observed. */
   points = 0;
 
+  constructor(private readonly redact: () => Redactor = () => (_p, v) => v) {}
+
   noteChanged(paths: string[]): void {
     for (const p of paths) this.changed.add(p);
+  }
+
+  /** Record fields that hold null/undefined (at registration and on every write): they never get `a != null`. */
+  noteValues(leaves: Iterable<[string, Leaf | undefined]>): void {
+    for (const [p, l] of leaves) {
+      if (!l || l.value === null || l.value === undefined) {
+        this.nullSeen.add(p);
+        const c = this.cands.get(`nonnull:${p}`);
+        if (c && !c.learned) this.drop(c.id);
+      }
+    }
   }
 
   addExpect(name: string, pred: () => boolean): () => void {
@@ -87,6 +119,77 @@ export class InvariantMiner {
     return this.cands.size;
   }
 
+  private drop(id: string): void {
+    this.cands.delete(id);
+    if (this.dropped.size >= MAX_DROPPED) this.dropped.clear();
+    this.dropped.add(id);
+  }
+
+  private stats(l: Leaf): ArrayStats | null {
+    if (l.kind !== "array" || !Array.isArray(l.value)) return null;
+    let st = this.statsCache.get(l);
+    if (st) return st;
+    const arr = l.value as unknown[];
+    const objs = arr.length > 0 && arr.every((x) => isPlainObject(x));
+    let numCols: string[] = [];
+    let scalarCols: string[] = [];
+    const sums = new Map<string, number>();
+    if (objs) {
+      const os = arr as Record<string, unknown>[];
+      const keys = Object.keys(os[0]).slice(0, 32);
+      numCols = keys.filter((k) => os.every((o) => typeof o[k] === "number")).slice(0, MAX_COLUMNS);
+      scalarCols = keys.filter((k) => os.every((o) => typeof o[k] === "number" || typeof o[k] === "string")).slice(0, MAX_COLUMNS);
+      for (const k of numCols) {
+        let s = 0;
+        for (const o of os) s += o[k] as number;
+        sums.set(k, s);
+      }
+    }
+    st = { n: arr.length, objs, numCols, scalarCols, sums, prods: new Map(), sets: new Map(), unique: new Map() };
+    this.statsCache.set(l, st);
+    return st;
+  }
+
+  private prod(l: Leaf, st: ArrayStats, f: string, g: string): number {
+    const key = `${f}*${g}`;
+    let v = st.prods.get(key);
+    if (v === undefined) {
+      v = 0;
+      for (const o of l.value as Record<string, unknown>[]) v += (o[f] as number) * (o[g] as number);
+      st.prods.set(key, v);
+    }
+    return v;
+  }
+
+  private colSet(l: Leaf, st: ArrayStats, k: string): Set<unknown> {
+    let s = st.sets.get(k);
+    if (!s) {
+      s = new Set();
+      for (const o of l.value as unknown[]) if (isPlainObject(o)) s.add(o[k]);
+      st.sets.set(k, s);
+    }
+    return s;
+  }
+
+  private colUnique(l: Leaf, st: ArrayStats, k: string): boolean {
+    let u = st.unique.get(k);
+    if (u === undefined) {
+      const seen = new Set<unknown>();
+      u = true;
+      for (const o of l.value as unknown[]) {
+        const v = isPlainObject(o) ? o[k] : undefined;
+        if (v === undefined || v === null) continue;
+        if (seen.has(v)) {
+          u = false;
+          break;
+        }
+        seen.add(v);
+      }
+      st.unique.set(k, u);
+    }
+    return u;
+  }
+
   /** Evaluate a candidate on leaves: true / false / null (not applicable: a field is missing). */
   private holds(c: Cand, L: Map<string, Leaf>): boolean | null {
     const val = (p: string | undefined) => (p === undefined ? undefined : L.get(p));
@@ -102,47 +205,40 @@ export class InvariantMiner {
         const a = val(c.a);
         const B = val(c.B);
         if (!a || !B || B.kind !== "array" || typeof a.value !== "number") return null;
-        return a.value === (B.value as unknown[]).length;
+        return a.value === B.len;
       }
       case "sum":
       case "sumprod": {
         const a = val(c.a);
         const B = val(c.B);
         if (!a || !B || B.kind !== "array" || typeof a.value !== "number") return null;
-        const arr = B.value as unknown[];
-        let s = 0;
-        for (const x of arr) {
-          if (!isPlainObject(x)) return false;
-          const f = x[c.f!];
-          const g = c.tpl === "sumprod" ? x[c.g!] : 1;
-          if (typeof f !== "number" || typeof g !== "number") return false;
-          s += f * g;
-        }
+        if (B.len === 0) return numEq(a.value, 0);
+        const st = this.stats(B);
+        if (!st || !st.objs || !st.numCols.includes(c.f!) || (c.tpl === "sumprod" && !st.numCols.includes(c.g!))) return false;
+        const s = c.tpl === "sum" ? st.sums.get(c.f!)! : this.prod(B, st, c.f!, c.g!);
         return numEq(a.value, s);
       }
       case "nonneg": {
         const a = val(c.a);
-        if (!a || typeof a.value !== "number") return a ? a.value === null || a.value === undefined ? null : false : null;
-        return a.value >= 0;
+        if (!a) return null;
+        if (a.value === null || a.value === undefined) return null;
+        return typeof a.value === "number" && a.value >= 0;
       }
       case "in": {
         const a = val(c.a);
         const B = val(c.B);
         if (!a || !B || B.kind !== "array") return null;
         if (a.value === null || a.value === undefined || a.value === "") return null;
-        return column(B.value as unknown[], c.f!).some((v) => v === a.value);
+        const st = this.stats(B);
+        if (!st || !st.objs) return false;
+        return this.colSet(B, st, c.f!).has(a.value);
       }
       case "unique": {
         const B = val(c.B);
         if (!B || B.kind !== "array") return null;
-        const col = column(B.value as unknown[], c.f!);
-        const seen = new Set<unknown>();
-        for (const v of col) {
-          if (v === undefined || v === null) continue;
-          if (seen.has(v)) return false;
-          seen.add(v);
-        }
-        return true;
+        const st = this.stats(B);
+        if (!st || !st.objs) return true;
+        return this.colUnique(B, st, c.f!);
       }
       case "type": {
         const a = val(c.a);
@@ -162,7 +258,7 @@ export class InvariantMiner {
   private nonTrivial(c: Cand, L: Map<string, Leaf>): boolean {
     const a = c.a ? L.get(c.a) : undefined;
     const B = c.B ? L.get(c.B) : undefined;
-    const n = B && Array.isArray(B.value) ? B.value.length : 0;
+    const n = B && B.kind === "array" ? B.len : 0;
     switch (c.tpl) {
       case "eq":
         return !!a && a.value !== 0 && a.value !== "" && a.value !== false;
@@ -182,16 +278,17 @@ export class InvariantMiner {
   }
 
   private valuesText(c: Cand, L: Map<string, Leaf>): string {
+    const redact = this.redact();
     const show = (p: string | undefined) => {
       const l = p ? L.get(p) : undefined;
-      return l ? describe(l.value, p!, defaultRedact, 40) : "missing";
+      return l ? describe(l.value, p!, redact, 40) : "missing";
     };
     switch (c.tpl) {
       case "eq":
         return `${c.a} = ${show(c.a)}, ${c.b} = ${show(c.b)}`;
       case "len": {
         const B = L.get(c.B!);
-        return `${c.a} = ${show(c.a)}, len(${c.B}) = ${B && Array.isArray(B.value) ? B.value.length : "?"}`;
+        return `${c.a} = ${show(c.a)}, len(${c.B}) = ${B && B.kind === "array" ? B.len : "?"}`;
       }
       case "sum":
       case "sumprod": {
@@ -200,7 +297,8 @@ export class InvariantMiner {
         if (B && Array.isArray(B.value))
           for (const x of B.value) if (isPlainObject(x)) s += (Number(x[c.f!]) || 0) * (c.tpl === "sumprod" ? Number(x[c.g!]) || 0 : 1);
         const expr = c.tpl === "sum" ? `sum(${c.B}[*].${c.f})` : `sum(${c.B}[*].${c.f} * ${c.B}[*].${c.g})`;
-        return `${c.a} = ${show(c.a)}, ${expr} = ${fmtNum(s)}`;
+        const r = redact(`${c.B}.${c.f}`, s);
+        return `${c.a} = ${show(c.a)}, ${expr} = ${r !== s ? String(r) : fmtNum(s)}`;
       }
       case "nonneg":
       case "nonnull":
@@ -216,8 +314,6 @@ export class InvariantMiner {
     }
   }
 
-  private changedNow = new Set<string>();
-
   private involved(watch: string[], changed: Set<string>): boolean {
     for (const p of watch) {
       if (changed.has(p)) return true;
@@ -226,34 +322,36 @@ export class InvariantMiner {
     return false;
   }
 
-  private leavesNow: Map<string, Leaf> = new Map();
-
   private add(c: Omit<Cand, "held" | "learned">): void {
     if (this.cands.size >= MAX_CANDIDATES || this.cands.has(c.id) || this.dropped.has(c.id)) return;
     const cand: Cand = { ...c, held: 0, learned: false };
     if (!this.nonTrivial(cand, this.leavesNow)) return;
     // the snapshot that creates a candidate counts as its first one when one of its fields changed
     cand.held = this.involved(c.watch, this.changedNow) ? 1 : 0;
-    cand.learned = cand.held >= LEARN_AFTER;
+    cand.learned = cand.held >= this.need(cand);
     this.cands.set(c.id, cand);
+  }
+
+  private need(c: Cand): number {
+    return c.tpl === "nonnull" ? LEARN_AFTER_NONNULL : LEARN_AFTER;
   }
 
   /** Create candidates that hold non-trivially on these leaves. */
   private propose(L: Map<string, Leaf>): void {
     const numeric: [string, number][] = [];
     const scalar: [string, Leaf][] = [];
-    const arrays: [string, unknown[]][] = [];
+    const arrays: [string, Leaf][] = [];
     for (const [p, l] of L) {
       if (dynamicPath(p)) continue;
       if (l.kind === "number" && Number.isFinite(l.value as number)) {
         if (numeric.length < MAX_NUMERIC) numeric.push([p, l.value as number]);
       }
       if ((l.kind === "number" || l.kind === "string") && scalar.length < MAX_SCALAR) scalar.push([p, l]);
-      if (l.kind === "array" && arrays.length < MAX_ARRAYS) arrays.push([p, l.value as unknown[]]);
+      if (l.kind === "array" && arrays.length < MAX_ARRAYS) arrays.push([p, l]);
       // per-field templates
       if (l.kind !== "null" && l.kind !== "undefined") {
         this.add({ id: `type:${p}`, tpl: "type", text: `typeof ${p} stable`, a: p, watch: [p], typeKind: l.kind });
-        this.add({ id: `nonnull:${p}`, tpl: "nonnull", text: `${p} != null`, a: p, watch: [p] });
+        if (!this.nullSeen.has(p)) this.add({ id: `nonnull:${p}`, tpl: "nonnull", text: `${p} != null`, a: p, watch: [p] });
       }
       if (l.kind === "number" && (l.value as number) > 0) this.add({ id: `nonneg:${p}`, tpl: "nonneg", text: `${p} >= 0`, a: p, watch: [p] });
     }
@@ -266,31 +364,29 @@ export class InvariantMiner {
         const same = la.kind === "number" ? numEq(la.value as number, lb.value as number) : la.value === lb.value;
         if (same) this.add({ id: `eq:${pa}:${pb}`, tpl: "eq", text: `${pa} == ${pb}`, a: pa, b: pb, watch: [pa, pb] });
       }
-    for (const [B, arr] of arrays) {
-      if (!arr.length) continue;
-      const objs = arr.filter(isPlainObject) as Record<string, unknown>[];
-      const keys = objs.length === arr.length ? Object.keys(objs[0]).slice(0, 32) : [];
-      const numCols = keys.filter((k) => objs.every((o) => typeof o[k] === "number")).slice(0, MAX_COLUMNS);
-      const scalarCols = keys.filter((k) => objs.every((o) => typeof o[k] === "number" || typeof o[k] === "string")).slice(0, MAX_COLUMNS);
+    for (const [B, leaf] of arrays) {
+      if (!leaf.len) continue;
+      const st = this.stats(leaf);
+      if (!st) continue;
       for (const [a, av] of numeric) {
         if (av === 0) continue;
-        if (av === arr.length) this.add({ id: `len:${a}:${B}`, tpl: "len", text: `${a} == len(${B})`, a, B, watch: [a, B] });
-        for (const f of numCols) {
-          const s = objs.reduce((x, o) => x + (o[f] as number), 0);
-          if (numEq(av, s)) this.add({ id: `sum:${a}:${B}:${f}`, tpl: "sum", text: `${a} == sum(${B}[*].${f})`, a, B, f, watch: [a, B] });
-          for (const g of numCols) {
+        if (av === leaf.len) this.add({ id: `len:${a}:${B}`, tpl: "len", text: `${a} == len(${B})`, a, B, watch: [a, B] });
+        if (!st.objs) continue;
+        for (const f of st.numCols) {
+          if (numEq(av, st.sums.get(f)!)) this.add({ id: `sum:${a}:${B}:${f}`, tpl: "sum", text: `${a} == sum(${B}[*].${f})`, a, B, f, watch: [a, B] });
+          for (const g of st.numCols) {
             if (g <= f) continue;
-            const sp = objs.reduce((x, o) => x + (o[f] as number) * (o[g] as number), 0);
-            if (numEq(av, sp)) this.add({ id: `sumprod:${a}:${B}:${f}:${g}`, tpl: "sumprod", text: `${a} == sum(${B}[*].${f} * ${B}[*].${g})`, a, B, f, g, watch: [a, B] });
+            if (numEq(av, this.prod(leaf, st, f, g))) this.add({ id: `sumprod:${a}:${B}:${f}:${g}`, tpl: "sumprod", text: `${a} == sum(${B}[*].${f} * ${B}[*].${g})`, a, B, f, g, watch: [a, B] });
           }
         }
       }
-      for (const k of scalarCols) {
-        const col = objs.map((o) => o[k]);
-        if (arr.length >= 2 && new Set(col).size === col.length) this.add({ id: `unique:${B}:${k}`, tpl: "unique", text: `${B}[*].${k} unique`, B, f: k, watch: [B] });
+      if (!st.objs) continue;
+      for (const k of st.scalarCols) {
+        if (leaf.len >= 2 && this.colUnique(leaf, st, k)) this.add({ id: `unique:${B}:${k}`, tpl: "unique", text: `${B}[*].${k} unique`, B, f: k, watch: [B] });
+        const set = this.colSet(leaf, st, k);
         for (const [a, l] of scalar) {
           if (a.startsWith(B + ".") || l.value === "" || l.value === 0) continue;
-          if (col.some((v) => v === l.value)) this.add({ id: `in:${a}:${B}:${k}`, tpl: "in", text: `${a} ∈ ${B}[*].${k}`, a, B, f: k, watch: [a, B] });
+          if (set.has(l.value)) this.add({ id: `in:${a}:${B}:${k}`, tpl: "in", text: `${a} ∈ ${B}[*].${k}`, a, B, f: k, watch: [a, B] });
         }
       }
     }
@@ -311,11 +407,10 @@ export class InvariantMiner {
           if (involved) c.held++;
         } else violations.push({ id: c.id, text: c.text, fields: fieldsOf(c), values: this.valuesText(c, L), held: c.held });
       } else if (!h) {
-        this.cands.delete(c.id);
-        this.dropped.add(c.id);
+        this.drop(c.id);
       } else if (involved && this.nonTrivial(c, L)) {
         c.held++;
-        if (c.held >= LEARN_AFTER) c.learned = true;
+        if (c.held >= this.need(c)) c.learned = true;
       }
     }
     this.changedNow = changed;

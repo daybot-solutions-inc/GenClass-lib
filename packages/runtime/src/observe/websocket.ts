@@ -20,7 +20,8 @@ export interface WsHost {
 
 function summary(data: unknown, redact: Redactor): string {
   if (typeof data === "string") {
-    const t = data.trim();
+    const t = data.length > 16 * 1024 ? "" : data.trim();
+    if (!t) return `${data.length} chars`;
     if (t.startsWith("{") || t.startsWith("[")) {
       try {
         return describe(JSON.parse(t), "message", redact, 60);
@@ -39,9 +40,11 @@ export function installWebSocket(h: WsHost): (() => void) | null {
   const g = h.global;
   const Native = g.WebSocket as (new (url: string | URL, protocols?: string | string[]) => WebSocket) | undefined;
   if (typeof Native !== "function") return null;
+  let disabled = false;
   class GenClassWebSocket extends (Native as unknown as typeof WebSocket) {
     constructor(url: string | URL, protocols?: string | string[]) {
       super(url, protocols);
+      if (disabled) return; // a reference kept by another library after destroy(): plain WebSocket
       const u = parseUrl(String(url), h.baseHref());
       const path = normalizePath(u.where);
       let conn: OpRec | null = null;
@@ -81,6 +84,7 @@ export function installWebSocket(h: WsHost): (() => void) | null {
   }
   g.WebSocket = GenClassWebSocket;
   return () => {
+    disabled = true;
     if (g.WebSocket === GenClassWebSocket) g.WebSocket = Native;
   };
 }

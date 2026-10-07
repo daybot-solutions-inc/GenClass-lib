@@ -23,8 +23,10 @@ export function ortDistDir() {
 }
 
 /** @returns {Promise<{ url: string, log: {path: string, t: number}[], close: () => Promise<void> }>} */
-export async function startServer({ appDir, modelDir }) {
+export async function startServer({ appDir, modelDir, models = {} }) {
   const roots = { app: resolve(appDir), model: resolve(modelDir), ort: resolve(ortDistDir()) };
+  // extra model directories at /m/<name>/
+  for (const [name, dir] of Object.entries(models)) roots[`m:${name}`] = resolve(dir);
   const log = [];
   const server = createServer((req, res) => {
     const u = new URL(req.url, "http://x");
@@ -32,13 +34,15 @@ export async function startServer({ appDir, modelDir }) {
     let path = decodeURIComponent(u.pathname);
     const coi = path.startsWith("/coi/");
     if (coi) path = path.slice(4);
-    const [, top, ...rest] = path.split("/");
+    let [, top, ...rest] = path.split("/");
+    if (top === "m" && rest.length) top = `m:${rest.shift()}`;
     const root = roots[top];
     if (coi) {
       res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
       res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
     }
-    res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    res.setHeader("Access-Control-Allow-Origin", "*"); // pages served by another origin (e.g. a Vite dev server) load models from here
     res.setHeader("Cache-Control", "no-store");
     if (!root) {
       res.writeHead(404).end("not found");

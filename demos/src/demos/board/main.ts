@@ -30,7 +30,7 @@ bootDemo({
   chaosExtras: extras,
   serverParams: { teamEveryMs: 9000 },
   code: highlight(`const gc = GenClass.init();
-const useBoard = create(genclass(gc, "board")((set, get) => ({
+const useBoard = create(genclass(gc, "board", { resync: load })((set, get) => ({
   async move(id, column) {
     const before = get().cards;
     set(optimistic(id, column));

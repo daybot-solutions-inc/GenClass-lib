@@ -25,13 +25,13 @@ export const DEMOS: DemoInfo[] = [
     tagline: "Out-of-order responses",
     failure: "stale responses",
     tryIt:
-      'Pick <b>Busy</b> under Network chaos, then type a city such as <kbd>santiago</kbd> at normal speed. With GenClass <b>Off</b>, the list often ends up showing results for <i>sa</i> or <i>san</i>. Switch to <b>Guard</b> and try again: stale responses are dropped and listed under Activity.',
+      'Pick <b>Busy</b> under Network chaos, then type a city such as <kbd>santiago</kbd> at normal speed. With GenClass <b>Off</b>, the list flickers back to older results and sometimes ends up showing the results for <i>sa</i> or <i>san</i>; the server log below shows the answers landing out of order. Then try <b>Guard</b>: GenClass is consulted about those late writes, and anything it does is listed under Activity.',
     stack: "Vanilla TS · gc.atom",
     summary:
       "A city search that fetches as you type. Short prefixes match more cities and take longer to answer, so an older response can land after a newer one and replace the right results with the wrong ones.",
     wrong: [
-      "Every keystroke (after a 150 ms debounce) sends GET /api/search?q=… with no request ordering guard.",
-      "Under latency jitter the answer for “sa” can arrive after the answer for “san” and overwrite it.",
+      "Typing sends GET /api/search?q=… after a 150 ms debounce, with no request ordering guard.",
+      "Short prefixes match many cities and take longest to answer, so the answer for “sa” can arrive after the answer for “santiago” and overwrite it.",
       "The list then shows results for a query that is no longer in the box, sometimes until the next keystroke.",
     ],
     scored: [
@@ -52,8 +52,8 @@ export const DEMOS: DemoInfo[] = [
     summary:
       "A notes editor that autosaves while you type and replaces the note with the server's echo of each save. When saves overlap, the echo of an older save can wipe out what you typed since, and the “Saved” badge can lie.",
     wrong: [
-      "Saves fire on a 600 ms debounce and at least every 2.5 s while typing, without waiting for the previous save.",
-      "Each response replaces the local note with the server copy, even when newer keystrokes exist.",
+      "Saves fire 700 ms after typing stops and at least every 3 s while typing, without waiting for the previous save.",
+      "Each response replaces the note with the server copy unless the user typed in the last 300 ms, a guard that only works when saves answer quickly.",
       "Any successful response shows “Saved”, even the echo of an older version.",
       "Saves can reach the server out of order and leave an older text stored.",
     ],
@@ -98,7 +98,7 @@ export const DEMOS: DemoInfo[] = [
       "An ops dashboard that polls six services every 2 s. The status API itself is flaky: one failed poll flips a healthy service to “Unreachable”, failures are retried immediately, and slow polls pile up.",
     wrong: [
       "Polling runs on setInterval and never waits for the previous round.",
-      "Failed polls are retried up to three times with no backoff.",
+      "Failed polls are retried right away, up to three attempts, with no backoff.",
       "A single failed poll marks the service unreachable and raises an error banner.",
     ],
     scored: [
@@ -135,10 +135,10 @@ export const DEMOS: DemoInfo[] = [
     tagline: "Ask GenClass about the current moment",
     failure: "bad timing",
     tryIt:
-      'Type in the journal, then press <b>Start backup</b> or <b>Load photos</b>; the app asks GenClass whether now is a good time and which quality to use. Try it with <b>Storm</b> chaos and while typing. With <b>Off</b> the app falls back to fixed defaults.',
+      'Type in the journal, then press <b>Back up now</b> or <b>Load photos</b>; the app asks GenClass whether now is a good time and which quality to use. Try it with <b>Storm</b> chaos and while typing. With <b>Off</b> the app falls back to fixed defaults.',
     stack: "Vanilla TS · ask / decide · custom plugin",
     summary:
-      "A field journal that asks GenClass typed questions about what is happening right now: is this a good moment for a heavy backup, which image quality to load, would leaving lose work, how healthy is the connection. A small plugin adds device signals and an outbox action.",
+      "A field journal that asks GenClass typed questions about what is happening right now: is this a good moment for a heavy backup, which image quality to load, would leaving lose work, how healthy is the connection. A small plugin adds device and background-job signals and a pause action.",
     wrong: [
       "Without GenClass the app uses fixed defaults: start the backup on schedule, always load full quality, and warn on leave only when its dirty flag is set (the flag clears as soon as a save starts).",
       "Those defaults are wrong exactly when it matters: while the user types, on a struggling network, or when a save fails.",

@@ -49,13 +49,19 @@ function topFact(d: Decision): string {
 }
 
 export function interventionLine(d: Decision, a: ActionRecord): string {
-  const lead = LEAD[a.action] ?? "Handled";
+  const lead = a.late ? "Reverted" : LEAD[a.action] ?? "Handled";
   return `[GenClass] ${lead} ${noun(d)}: ${topFact(d)} ${a.changed}${a.ok ? "" : ` (failed: ${a.error ?? "error"})`} (${d.diagnosis}, ${p2(d.diagnosisConfidence)}; ${a.action} ${p2(d.confidence)})`;
 }
 
 export function detectionLine(d: Decision): string {
   const why = d.ran !== d.action && d.reason ? ` Not acted on (${d.action} ${p2(d.confidence)}): ${d.reason}.` : "";
   return `[GenClass] Flagged ${noun(d)}: ${topFact(d)}${why} (${d.diagnosis}, ${p2(d.diagnosisConfidence)})`;
+}
+
+/** A decision that was neither a detection nor an intervention (for explain()). */
+export function decisionLine(d: Decision): string {
+  const ran = d.ran === d.action ? d.ran : `${d.ran} (the model chose ${d.action}${d.reason ? `; ${d.reason}` : ""})`;
+  return `[GenClass] Checked ${d.subject}: ${d.diagnosis} (${p2(d.diagnosisConfidence)}); ran ${ran}.`;
 }
 
 type Sink = "console" | "silent" | ((r: Report) => void);

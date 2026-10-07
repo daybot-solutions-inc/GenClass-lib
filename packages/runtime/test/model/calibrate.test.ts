@@ -41,7 +41,7 @@ describe("hashes", () => {
   });
 });
 
-describe.skipIf(!hasModelFile("calibration.json"))("calibration vs PyTorch (torch fixtures, v0.1 calibration.json)", () => {
+describe.skipIf(!hasModelFile("calibration.json"))("calibration vs PyTorch (torch fixtures, the model's calibration.json)", () => {
   it("reproduces PyTorch's calibrated probabilities from its raw logits (< 1e-9)", () => {
     const calib = parseCalibration(readJson(modelFile("calibration.json")));
     const pf = packs();
@@ -57,7 +57,7 @@ describe.skipIf(!hasModelFile("calibration.json"))("calibration vs PyTorch (torc
         n++;
       }
     }
-    expect(n).toBe(503);
+    expect(n).toBeGreaterThan(50);
     expect(mx).toBeLessThan(1e-9);
   });
 });

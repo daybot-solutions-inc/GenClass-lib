@@ -160,6 +160,7 @@ html {
 
 body {
   margin: 0;
+  overflow-x: clip;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
@@ -563,8 +564,9 @@ textarea {
 }
 .panel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
   min-height: 46px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);

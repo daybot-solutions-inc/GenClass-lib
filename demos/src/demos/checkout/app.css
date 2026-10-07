@@ -32,7 +32,7 @@
 }
 .co-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: 12px;
 }
 .co-card {
@@ -51,7 +51,7 @@
   transform: translateY(-1px);
 }
 .co-art {
-  height: 84px;
+  height: 68px;
   display: grid;
   place-items: center;
   background:

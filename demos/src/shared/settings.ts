@@ -54,6 +54,12 @@ export interface TrialParams {
   run: string;
 }
 
+/** Experiment knob: ?budget=<ms> sets policy.holdBudgetMs (default: the runtime's 300 ms). */
+export function holdBudget(): number | undefined {
+  const v = Number(params.get("budget"));
+  return Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
 export function trialParams(): TrialParams | null {
   if (params.get("embed") !== "trial") return null;
   const kind = params.get("kind") === "clean" ? "clean" : "chaos";

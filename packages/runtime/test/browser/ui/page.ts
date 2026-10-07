@@ -2,9 +2,10 @@
 // Bundled by test/browser/ui-devtools.spec.ts (esbuild) and driven through window.__gc.
 
 import { mountDevtools, type DevtoolsHandle, type DevtoolsOptions } from "../../../src/devtools/index.js";
-import type { Mode, ModelStatus } from "../../../src/types.js";
+import type { Mode, ModelStatus, Runtime } from "../../../src/types.js";
 import { MockRuntime } from "./mock-runtime.js";
 import { loadScenario } from "./scenario.js";
+import { runStoreSession } from "./session.js";
 
 const APP_CSS = `
 :root{--bg:#f6f6f4;--card:#fff;--line:#e6e5e1;--fg:#1d1d1b;--fg2:#6b6a66;--accent:#0f766e;color-scheme:light}
@@ -22,7 +23,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:28px;max-width:8
 h1{margin:0 0 4px;font-size:26px;letter-spacing:-.025em}
 .sub{margin:0 0 20px;color:var(--fg2);font-size:14px}
 .search{display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);margin-bottom:16px}
-.search span{color:var(--fg2)}
+.search svg{color:var(--fg2)}
 .search b{font-weight:500}
 .res{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
 .res li{display:flex;gap:14px;align-items:center;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
@@ -44,7 +45,7 @@ const APP_HTML = `
   <section>
     <h1>Desk setup</h1>
     <p class="sub">3 results for “react” · updated just now</p>
-    <div class="search"><span>⌕</span><b>react</b></div>
+    <div class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><b>react</b></div>
     <ul class="res">
       <li><div class="th" style="background:linear-gradient(135deg,#fde68a,#f59e0b)"></div><div><b>Desk lamp</b><small>Warm LED, dimmable</small></div><span class="pr">$20.99</span></li>
       <li><div class="th" style="background:linear-gradient(135deg,#a7f3d0,#10b981)"></div><div><b>Monitor arm</b><small>Single, gas spring</small></div><span class="pr">$41.99</span></li>
@@ -61,39 +62,48 @@ const APP_HTML = `
 </main>`;
 
 interface StartOptions extends DevtoolsOptions {
-  scenario?: "full" | "empty" | "loading";
+  /** live (default): the real runtime running the store session; loading: real runtime, model still downloading;
+   *  mock: the scripted mock runtime (fast, for interaction checks); empty: mock with almost no data. */
+  scenario?: "live" | "loading" | "mock" | "empty";
   mode?: Mode;
   status?: ModelStatus;
 }
 
 declare global {
   interface Window {
-    __gc: { start(o?: StartOptions): void; rt?: MockRuntime; dt?: DevtoolsHandle; undos: string[] };
+    __gc: { start(o?: StartOptions): Promise<void>; rt?: Runtime; dt?: DevtoolsHandle; undos: string[] };
   }
 }
 
 window.__gc = {
   undos: [],
-  start(o: StartOptions = {}) {
+  async start(o: StartOptions = {}) {
     window.__gc.dt?.unmount();
+    window.__gc.rt?.destroy();
     document.head.querySelector("#app-css")?.remove();
     const style = document.createElement("style");
     style.id = "app-css";
     style.textContent = APP_CSS;
     document.head.appendChild(style);
     document.body.innerHTML = APP_HTML;
-    const rt = new MockRuntime();
-    if (!o.scenario || o.scenario === "full") loadScenario(rt, { onUndo: (id) => window.__gc.undos.push(id) });
-    else {
-      rt.clock.t = 2600;
-      rt.event("nav", "load /search", { t: 640, data: { route: "/search" } });
-      rt.event("op.start", "GET /api/session", { t: 1130, op: 1, data: { kind: "fetch" } });
-      rt.event("op.end", "GET /api/session", { t: 1342, op: 1, data: { kind: "fetch", status: "ok", code: 200 } });
-      rt.event("state", "session", { t: 1344, op: 1, cause: 1, data: { paths: ["session.user", "session.flags"] } });
+    let rt: Runtime;
+    const scenario = o.scenario ?? "live";
+    if (scenario === "live") {
+      rt = (await runStoreSession()).rt;
+    } else if (scenario === "loading") {
+      rt = (await runStoreSession({ warmupOnly: true, status: { state: "loading", progress: { loaded: 9_830_000, total: 24_740_000 } } })).rt;
+    } else {
+      const m = new MockRuntime();
+      if (scenario === "mock") loadScenario(m, { onUndo: (id) => window.__gc.undos.push(id) });
+      else {
+        m.clock.t = 2600;
+        m.event("op.start", "GET /api/session", { t: 1130, op: 1, data: { kind: "fetch" } });
+        m.event("op.end", "GET /api/session", { t: 1342, op: 1, data: { status: "ok", code: 200 } });
+      }
+      if (o.status) m.setStatus(o.status);
+      rt = m;
     }
-    if (o.mode) rt.mode = o.mode;
-    if (o.scenario === "loading") rt.setStatus({ state: "loading", progress: { loaded: 9_830_000, total: 24_740_000 } });
-    if (o.status) rt.setStatus(o.status);
+    if (o.mode) rt.setMode(o.mode);
     window.__gc.rt = rt;
     window.__gc.dt = mountDevtools(rt, o);
   },

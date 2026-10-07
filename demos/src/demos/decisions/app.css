@@ -104,6 +104,9 @@
 .dj-save[data-state="error"] {
   color: var(--bad);
 }
+.dj-editor textarea:focus-visible {
+  box-shadow: none;
+}
 .dj-editor textarea {
   flex: 1;
   min-height: 230px;
@@ -317,5 +320,12 @@
 @media (max-width: 760px) {
   .dj-body {
     grid-template-columns: 1fr;
+  }
+  .dj-log li {
+    grid-template-columns: 1fr auto;
+  }
+  .dj-detail {
+    grid-column: 1 / -1;
+    text-align: left;
   }
 }

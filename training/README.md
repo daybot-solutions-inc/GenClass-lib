@@ -43,6 +43,10 @@ baselines), many surface forms (`fmt.py`: op-ref styles, 6 time formats, 4 timel
 variants, ≥ 5 paraphrases per fact with held-out phrasings for test), 62 app domains (`vocab.py`, 13 held out
 for test).
 
+- **Runtime-exact rendering** (`rt.py`): a configurable share of decision rows (`--p-runtime`; 60% in `cur2`,
+  100% in the `rt1` eval sets) is rendered exactly like `packages/runtime/src/situation/*` (subject sentence, facts
+  with CORE's computations and ordering, `#id` refs, timeline/in-flight/state/stats lines, char budget, standing
+  questions with the runtime's instructions and descriptions). The rest keeps the varied styles below.
 - **Decision rows (58%)**: a runtime-like situation (`app, trigger, facts, in_flight, timeline, state, stats`) plus
   the standing questions `action` (applicable actions with descriptions, random order, 10% renamed labels,
   15% distractor plugin actions) and `diagnosis` (9 labels, paraphrased descriptions, 20% subsets), plus 0–3
@@ -68,21 +72,30 @@ held-out domains/templates, label consistency, passive share, version semantics 
 
 ## 3. Training
 
-Stream mode of `jev_local/train/train.py` over `data/s1/{cur1/shard*.jsonl, gen/train.jsonl, cu/train.jsonl}`
-with `configs/mix_s1.json` (token shares cur1 0.90 / gen 0.04 / cu 0.06; gen is capped at 2 repeats so it ends
-up ≈ 0.7%), DDP over torchrun/gloo with `--grad-accum 4 --balance` (exact-layout cost dealing), via
-`/Users/meharkhanna/jev/scripts/launch_run.sh`:
+Stream mode of `jev_local/train/train.py` (DDP over torchrun/gloo, `--balance` = exact-layout cost dealing) via
+`/Users/meharkhanna/jev/scripts/launch_run.sh`. The curriculum must be sharded (the exact-layout cache is built per
+file in parallel). **Use 8 ranks × 10 threads per F80 node** for these small models (per-micro-batch Python
+overhead dominates; 4 × 20 left ranks idle ≈ 45% of each step).
 
+Stage 1 as run (`G=/home/azureuser/gcl-train`):
 ```
-COMMON="--stream $G/data/s1 --stream-cache $G/cache/s1 --mixture $G/training/configs/mix_s1.json --runs-dir $G/runs \
-  --max-len 1536 --batch-tokens 8192 --grad-accum 4 --balance --amp --no-grad-ckpt --device cpu --log-every 10 \
-  --ckpt-every 100 --passes 2 --seed 0"
-scripts/launch_run.sh r32-s1 10.0.0.7 4 20 "c02 c03 c04 c05 c06 c07 c08" -- $COMMON \
-  --base $G/models/r32-v16k/backbone --init-from $G/models/r32-v16k --out $G/models/r32-s1 --lr 1.5e-4 --head-lr 6e-4 --resume
-scripts/launch_run.sh r17-s1 10.0.0.14 4 20 "c09 c10 c11" -- $COMMON \
-  --base $G/models/base/ettin-17m-v16k --out $G/models/r17-s1 --lr 3e-4 --head-lr 2e-3 --resume
+# s1: 2-pass schedule over mix_s1.json (cur1 0.90 / gen 0.04 / cu 0.06), stopped at step 190 (R32) / 382 (R17)
+# s1c: continue from those weights, 1 pass of mix_s1c.json (cur2 0.55 / cur1 0.37 / gen 0.03 / cu 0.05, 520M tokens)
+COMMON="--stream $G/data/s1b $G/data/s1 --stream-cache $G/cache/s1c --mixture $G/training/configs/mix_s1c.json \
+  --runs-dir $G/runs --max-len 1536 --batch-tokens 8192 --balance --amp --no-grad-ckpt --device cpu --log-every 10 \
+  --ckpt-every 50 --passes 1 --seed 1"
+scripts/launch_run.sh r32-s1c 10.0.0.7 8 10 "c02 c03 c04 c05 c06 c07 c08" -- $COMMON --grad-accum 3 \
+  --base $G/models/r32-v16k/backbone --init-from $G/runs/r32-s1/ckpt --out $G/models/r32-s1c --lr 1.2e-4 --head-lr 5e-4 --resume
+scripts/launch_run.sh r17-s1c 10.0.0.14 8 10 "c09 c10 c11" -- $COMMON --grad-accum 2 \
+  --base $G/models/base/ettin-17m-v16k --init-from $G/runs/r17-s1/ckpt --out $G/models/r17-s1c --lr 2.5e-4 --head-lr 1.5e-3 --resume
 ```
-(`G=/home/azureuser/gcl-train`; the curriculum must be sharded — the exact-layout cache is built per file.)
+Stop a run with `pkill -TERM -f "run-name r32-s1[c] "` on its rank-0 node (bracket trick); every rank agrees to
+drop the partial step and rank 0 checkpoints.
+
+Stage 2 (SIM): `training/import_sim.sh <sim out dir on the train VM> sim1` pulls `{train,dev,test}.jsonl`, shards
+train into `data/s2/sim1/`, bundles it; then the same launcher with `--stream $G/data/s2 $G/data/s1b $G/data/s1`,
+a mixture with ≈ 80% SIM and ≈ 20% curriculum replay (`data/s2/cur3`: 300k rows, 80% runtime-exact, including
+coincidental-invariant cases), several passes, `--init-from` the stage-1 checkpoints; evaluate on SIM dev/test.
 
 ## 4. Evaluation — `eval_runtime.py`
 

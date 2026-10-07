@@ -33,7 +33,7 @@ await build({
 
 // Ship the latest measured results with the site so the landing page can show them.
 mkdirSync(`${root}dist`, { recursive: true });
-if (existsSync(`${root}results.json`)) copyFileSync(`${root}results.json`, `${root}dist/results.json`);
+if (existsSync(`${root}results-summary.json`)) copyFileSync(`${root}results-summary.json`, `${root}dist/results-summary.json`);
 writeFileSync(`${root}dist/build.json`, JSON.stringify({ buildId: BUILD_ID, at: new Date().toISOString() }));
 // GitHub Pages: do not run Jekyll over the output.
 writeFileSync(`${root}dist/.nojekyll`, "");

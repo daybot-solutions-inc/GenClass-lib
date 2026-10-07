@@ -95,10 +95,12 @@ export class Db {
     this.salt = salt;
   }
 
-  collection(name: string, prefix = name.slice(0, 3)): Collection {
+  collection(name: string, prefix?: string): Collection {
     let c = this.collections.get(name);
     if (!c) {
-      c = { name, items: new Map(), order: [], createCount: new Map(), prefix };
+      // Internal names are "<feature>:<noun>"; ids must only show the noun.
+      const noun = (name.split(":").pop() ?? name).replace(/[^a-z]/gi, "").toLowerCase() || "item";
+      c = { name, items: new Map(), order: [], createCount: new Map(), prefix: prefix ?? noun };
       this.collections.set(name, c);
     }
     return c;
@@ -125,11 +127,15 @@ export class Db {
           id = `${s.slice(0, 8)}-${s.slice(8, 12)}-4${s.slice(13, 16)}-a${s.slice(17, 20)}-${s.slice(20, 32)}`;
           break;
         }
-        case "prefixed":
-          id = `${c.prefix}_${h.toString(36).padStart(7, "0").slice(0, 7)}`;
+        case "prefixed": {
+          // Stripe-like: 3-letter prefix + 14 chars (digit first, then a letter): normalised by the runtime as an id.
+          const tail = (hashAll(h, 2).toString(36) + hashAll(h, 3).toString(36) + hashAll(h, 4).toString(36)).replace(/[^a-z0-9]/g, "");
+          id = `${c.prefix.slice(0, 3)}_${String(h % 10)}${String.fromCharCode(97 + (h % 26))}${tail.slice(0, 12).padEnd(12, "x")}`;
           break;
+        }
         default:
-          id = `${c.prefix}-${(h % 46656).toString(36)}${(hashAll(h, 1) % 1296).toString(36)}`;
+          // Short slug ("card-k2x9"): realistic for slug routes; the runtime does not treat it as an id.
+          id = `${c.prefix.slice(0, 6)}-${(h % 46656).toString(36).padStart(3, "0")}${(hashAll(h, 1) % 36).toString(36)}`;
       }
       if (!c.items.has(id)) return id;
       salt++;

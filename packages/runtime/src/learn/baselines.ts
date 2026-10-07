@@ -7,7 +7,18 @@ const START_WINDOW = 128;
 const WINDOW_MS = 10_000;
 const ERR_ALPHA = 0.1;
 const MIN_LAT_SAMPLES = 5;
+/** Outcomes kept per signature (failure counts are over these; facts show the last 5). */
+const OUTCOMES = 20;
 const MAX_SIGS = 1000;
+
+/** Outcomes of failures are stored with a "!" prefix (e.g. "!503", "!timeout"). */
+export function isFailureOutcome(o: string): boolean {
+  return o.startsWith("!");
+}
+
+export function outcomeLabel(o: string): string {
+  return o.startsWith("!") ? o.slice(1) : o;
+}
 
 export interface SigStats {
   sig: string;
@@ -67,21 +78,32 @@ export class Baselines {
     const s = this.get(sig, t);
     s.starts.push(t);
     if (s.starts.length > START_WINDOW) s.starts.shift();
-    if (identity) {
-      const i = this.ids.get(identity);
-      if (!i) {
-        this.ids.set(identity, { last: t, n: 1 });
-        if (this.ids.size > 1024) {
-          const first = this.ids.keys().next().value;
-          if (first !== undefined) this.ids.delete(first);
-        }
-      } else {
-        const gap = t - i.last;
-        i.gapEwma = i.gapEwma === undefined ? gap : i.gapEwma * 0.8 + gap * 0.2;
-        i.last = t;
-        i.n++;
+    if (identity) this.noteIdentity(identity, t);
+  }
+
+  /** A request with this identity started at t (gaps between identical requests). */
+  noteIdentity(identity: string, t: number): void {
+    const i = this.ids.get(identity);
+    if (!i) {
+      this.ids.set(identity, { last: t, n: 1 });
+      if (this.ids.size > 1024) {
+        const first = this.ids.keys().next().value;
+        if (first !== undefined) this.ids.delete(first);
       }
+    } else {
+      const gap = t - i.last;
+      i.gapEwma = i.gapEwma === undefined ? gap : i.gapEwma * 0.8 + gap * 0.2;
+      i.last = t;
+      i.n++;
     }
+  }
+
+  /** Real counts over the recent outcomes (up to the last 20): how many failed out of how many. */
+  failureCounts(sig: string): { failed: number; of: number } {
+    const s = this.sigs.get(sig);
+    if (!s) return { failed: 0, of: 0 };
+    const recent = s.outcomes;
+    return { failed: recent.filter((o) => isFailureOutcome(o)).length, of: recent.length };
   }
 
   /** outcome: "200", "503", "timeout", "network", "error", "aborted" */
@@ -89,8 +111,8 @@ export class Baselines {
     const s = this.get(sig, t);
     if (outcome === "aborted") return;
     s.count++;
-    s.outcomes.push(outcome);
-    if (s.outcomes.length > 8) s.outcomes.shift();
+    s.outcomes.push(countsAsFailure ? `!${outcome}` : outcome);
+    if (s.outcomes.length > OUTCOMES) s.outcomes.shift();
     if (countsAsFailure) {
       s.failures++;
       s.failStreak++;

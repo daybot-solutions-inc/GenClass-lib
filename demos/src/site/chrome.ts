@@ -35,6 +35,7 @@ export function renderTopbar(active: DemoId | "home"): HTMLElement {
     applyTheme();
     if (next !== system) document.documentElement.dataset.theme = next;
     paintTheme();
+    dispatchEvent(new CustomEvent("gc-theme", { detail: next }));
   });
   paintTheme();
 

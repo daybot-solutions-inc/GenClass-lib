@@ -20,6 +20,12 @@ export interface Controller {
   passive(): void;
   /** Run a built-in action. Throw (or reject) when it cannot be performed; the passive action then runs. */
   run(action: string): ActionEffect | Promise<ActionEffect>;
+  /**
+   * Late revert (held writes only): the hold budget expired and the write applied; a `discard` decided afterwards
+   * reverts exactly that write. `revertable()` returns null when it can, else the reason it cannot.
+   */
+  revertable?(): string | null;
+  revert?(): ActionEffect;
 }
 
 export interface TriggerOpts {
@@ -54,4 +60,8 @@ export interface NetHost {
   watchStall(op: OpRec, req: ReqMeta, ctl: () => Controller): () => void;
   failureStreak(sig: string): number;
   emit(name: string, data?: Record<string, unknown>, op?: OpRec): void;
+  /** A request identity that matches nothing else (bodies that cannot be read cheaply). */
+  uniqueId(): string;
+  /** Set a request's identity once known (after reading its body) and register it. */
+  setIdentity(op: OpRec, req: ReqMeta, identity: string): void;
 }

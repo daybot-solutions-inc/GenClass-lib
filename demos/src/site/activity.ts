@@ -25,6 +25,7 @@ const DIAG_TITLE: Record<string, string> = {
   inconsistent: "Inconsistent state",
   failing: "Repeated failures",
   slow: "Slow operation",
+  transient: "Transient failure",
   overload: "Overload",
   unusual: "Unusual behaviour",
 };
@@ -102,6 +103,7 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
   const flagged = h("span", { class: "badge badge-warn", title: "Detections" }, "0 flagged");
   const list = h("div", { class: "activity-list", role: "log", "aria-live": "polite" });
   const observed = h("div", { class: "trial-note num" }, "Observed nothing yet.");
+  const consulted = h("div", { class: "trial-note num", hidden: true });
 
   const emptyText =
     mode === "off"
@@ -115,6 +117,7 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
     { class: "panel", id: "activity" },
     h("div", { class: "panel-head" }, h("h2", null, "GenClass activity"), h("div", { class: "spacer" }), h("div", { class: "activity-counters" }, prevented, flagged)),
     list,
+    consulted,
     observed,
   );
 
@@ -127,13 +130,21 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
     for (const it of items) it.time.textContent = ago(now - it.at);
   }, 5000);
 
+  // Model status: one row, updated in place (the runtime may report the same status more than once).
+  let statusRow: HTMLElement | null = null;
+  let statusMsg = h("div", { class: "act-msg" });
   const add = (r: Report) => {
     if (r.kind === "status") {
-      const row = h("div", { class: "act", "data-kind": "status" });
-      row.innerHTML = `<div class="act-icon">${icon("info")}</div>`;
-      row.append(h("div", { class: "act-main" }, h("div", { class: "act-msg" }, body(r))));
-      empty.remove();
-      list.prepend(row);
+      if (statusMsg.textContent === body(r)) return;
+      statusMsg.textContent = body(r);
+      if (!statusRow) {
+        statusRow = h("div", { class: "act", "data-kind": "status" });
+        statusRow.innerHTML = `<div class="act-icon">${icon("info")}</div>`;
+        statusMsg = h("div", { class: "act-msg" }, body(r));
+        statusRow.append(h("div", { class: "act-main" }, statusMsg));
+        empty.remove();
+        list.append(statusRow);
+      }
       return;
     }
     const a: ActionRecord | undefined = r.action;
@@ -153,7 +164,10 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
     if (d) {
       meta.append(h("span", { class: "badge badge-outline" }, `${d.diagnosis} ${d.diagnosisConfidence.toFixed(2)}`));
       if (r.kind === "intervene") meta.append(h("span", { class: tier === "heal" ? "badge badge-heal" : "badge badge-accent" }, `${a?.action ?? d.action} · ${tier}`));
-      else if (d.action) meta.append(h("span", { class: "badge" }, `would ${d.action.replace(/_/g, " ")}${d.executed ? "" : " · not run"}`));
+      else if (d.action) {
+        const what = d.action.replace(/_/g, " ");
+        meta.append(h("span", { class: "badge", title: d.reason ?? "" }, d.executed ? `chose ${what}` : `chose ${what} · not run`));
+      }
       meta.append(h("span", { class: "muted", style: { fontSize: "11.5px" } }, fmtMs(d.latencyMs)));
     }
     meta.append(h("span", { class: "grow" }));
@@ -179,11 +193,13 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
       if (ev) {
         ev.remove();
         ev = null;
+        row.classList.remove("open");
         evBtn.setAttribute("aria-expanded", "false");
         return;
       }
       ev = evidence(gc, r);
       row.querySelector(".act-main")!.appendChild(ev);
+      row.classList.add("open");
       evBtn.setAttribute("aria-expanded", "true");
     });
     meta.append(evBtn);
@@ -192,6 +208,11 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
     list.prepend(row);
     setTimeout(() => row.classList.remove("fresh"), 2500);
 
+    if (r.kind === "intervene" && overlayHost) {
+      overlayHost.classList.remove("gc-flash");
+      void overlayHost.offsetWidth;
+      overlayHost.classList.add("gc-flash");
+    }
     if (r.kind === "intervene" && shieldHost) {
       const card = h("div", { class: "shield-toast", "data-tier": tier, role: "status" });
       card.innerHTML = `<div class="icon">${icon(tier === "heal" ? "heal" : "shield")}</div>`;
@@ -226,6 +247,36 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
   };
 
   gc.on("report", add);
+
+  // Every model consultation, including the ones that never became a report (passive, too late, low confidence).
+  const dec = { n: 0, acted: 0, passive: 0, late: 0, low: 0, expected: 0, mode: 0, lat: [] as number[] };
+  let decDirty = false;
+  gc.on("decide", (d) => {
+    dec.n++;
+    dec.lat.push(d.latencyMs);
+    if (d.executed && d.tier !== "passive") dec.acted++;
+    else if (d.executed) dec.passive++;
+    else if (d.reason?.includes("hold budget")) dec.late++;
+    else if (d.reason?.includes("below the")) dec.low++;
+    else if (d.reason?.includes("expected")) dec.expected++;
+    else dec.mode++;
+    decDirty = true;
+  });
+  setInterval(() => {
+    if (!decDirty) return;
+    decDirty = false;
+    const sorted = dec.lat.slice().sort((a, b) => a - b);
+    const med = sorted[Math.floor(sorted.length / 2)] ?? 0;
+    const parts = [`Model consulted ${dec.n}× (median ${Math.round(med)} ms)`];
+    if (dec.acted) parts.push(`${dec.acted} acted`);
+    if (dec.passive) parts.push(`${dec.passive} chose to let it be`);
+    if (dec.late) parts.push(`${dec.late} answered after the hold budget`);
+    if (dec.low) parts.push(`${dec.low} below the confidence threshold`);
+    if (dec.expected) parts.push(`${dec.expected} judged expected`);
+    if (dec.mode) parts.push(`${dec.mode} not allowed in this mode`);
+    consulted.hidden = false;
+    consulted.textContent = parts.join(" · ");
+  }, 500);
 
   // What the observation layer has seen (works in every mode).
   const seen = { events: 0, requests: 0, writes: 0, user: 0 };
