@@ -466,6 +466,10 @@ export interface Decision {
   facts: string[];
   /** Tier of `action`. */
   tier: Tier;
+  /** The most probable action the mode and policy permit (what GenClass would have done). */
+  candidate?: string;
+  /** Summed probability of the permitted actions (the gate compares it with the candidate's tier threshold). */
+  mass?: number;
   /** The action that actually ran. */
   ran: string;
   /** Every answer the model gave (including plugin standing questions). */

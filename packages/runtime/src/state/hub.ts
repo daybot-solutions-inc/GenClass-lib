@@ -499,7 +499,9 @@ export class StoreHub {
     s.value = next;
     s.leaves = leaves;
     if (changes.length === 0) {
-      if (next !== prevValue) this.notify(s);
+      // an app's set() always notifies subscribers, as an ordinary store would (even for a mutable-style update
+      // GenClass could not see); external changes were already announced by their store
+      if (next !== prevValue || m) this.notify(s);
       return changes;
     }
     const t = this.clock.now();

@@ -54,7 +54,7 @@ describe("situations per trigger (CONTRACT §5, §6)", () => {
     check(req);
     show("mutation", req);
     expect(s.rt.hub.get("search")!.value).toEqual({ query: "reac", results: ["reac-1", "reac-2"] });
-    expect((req.state.facts as string[])[0]).toMatch(/^search\.results was written once by other operations since this write's cause \(#\d+\) started \(v0 → v1\), last \d\.\d\ds ago by GET \/api\/search\?q=reac \(#\d+\), which started 0\.09s after #\d+, from a later user action \(#\d+\)\.$/);
+    expect((req.state.facts as string[])[0]).toMatch(/^search\.results was written once by other operations since this write's cause \(#\d+\) started \(version 0 → 1\), last \d\.\d\ds ago by GET \/api\/search\?q=reac \(#\d+\), which started 0\.09s after #\d+, from a later user action \(#\d+\)\.$/);
     expect(req.subject).toMatchObject({ kind: "mutation", store: "search", paths: ["search.results"] });
   });
 
@@ -64,7 +64,7 @@ describe("situations per trigger (CONTRACT §5, §6)", () => {
     const cart = s.rt.atom("cart", { items: [{ sku: "A1", qty: 2 }], total: 24 });
     const submit = () =>
       s.rt.user({ kind: "click", target: 'button "Place order"' }, () => {
-        void s.fetch("/api/orders", { method: "POST", body: JSON.stringify({ items: cart.get().items, card: "4242" }) });
+        void s.fetch("/api/orders", { method: "POST", body: JSON.stringify({ items: cart.get().items, cardNumber: "4242" }) });
       });
     submit();
     await s.clock.advance(120);

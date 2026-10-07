@@ -10,6 +10,8 @@ interface UserSink {
   user<T>(action: UserAction, handler?: () => T): T | undefined;
   /** Kind of the ambient op ("user", "task", "fetch", ...), or null when none. */
   ambientKind?(): string | null;
+  /** Kind of the op whose code is running synchronously right now, or null. */
+  runningKind?(): string | null;
 }
 
 const INTERACTIVE = "button,a,input,select,textarea,summary,label,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=option],[role=switch],[contenteditable=''],[contenteditable=true]";
@@ -189,6 +191,10 @@ export function installDomUser(g: Record<string, unknown>, sink: UserSink): (() 
   // ...) are not user actions. Untrusted events with no operation running (test drivers) and events dispatched
   // while handling a user action are kept.
   const programmatic = (e: Event): boolean => {
+    // a browser never dispatches a real user event while app code is running: an event that arrives during an
+    // operation's synchronous code was dispatched by that code
+    const r = sink.runningKind?.() ?? null;
+    if (r !== null && r !== "user") return true;
     if (e.isTrusted !== false) return false;
     const k = sink.ambientKind?.() ?? null;
     return k !== null && k !== "user";

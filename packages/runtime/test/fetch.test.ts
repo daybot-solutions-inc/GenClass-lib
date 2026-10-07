@@ -150,9 +150,9 @@ describe("fetch observer", () => {
     expect(decider.calls.some((c) => c.trigger === "failure")).toBe(true);
   });
 
-  it("failure gate fails open after the hold budget", async () => {
+  it("failure gate fails open after the hold budget (heal mode: retry is permitted, so the failure is held)", async () => {
     const manual = new ManualDecider();
-    const { clock, server, fetch } = setup({ decider: manual });
+    const { clock, server, fetch } = setup({ decider: manual, mode: "heal" });
     server.on("GET", "/api/e", { status: 500, latency: 10 });
     let status = 0;
     void fetch("/api/e").then((r) => (status = r.status));

@@ -42,8 +42,11 @@ scripts/vm.sh get demos demos/screenshots demos/      # then look at them
 ```
 
 `e2e/eval.ts` options: `--fast`, `--n 30` (chaos trials per mode), `--clean 15`, `--demos search,editor`,
-`--modes off,guard,heal`, `--workers 8`, `--model <url>|cdn`, `--model-dir <dir>`, `--no-shots`, `--shots-only`,
-`--seed-base 1000`.
+`--modes off,guard,heal`, `--workers 8`, `--model <url>|cdn`, `--model-dir <dir>`, `--tag <name>` (write
+`results-<name>.*` instead of replacing `results.*`), `--budget <ms>` (experiment: `policy.holdBudgetMs`),
+`--no-shots`, `--shots-only`, `--no-trials-ui`, `--seed-base 1000`. `vm-eval.sh` takes the model from
+`GENCLASS_MODEL_FROM` / `GENCLASS_MODEL_DIR` / `GENCLASS_MODEL_URL` (see the script header) and refuses to measure
+when `packages/runtime` does not build.
 
 If `packages/runtime/dist` does not exist, Vite aliases a tiny observe-only stand-in (`src/dev/runtime-shim/`, or
 force it with `GENCLASS_SHIM=1`) so the apps and harness can be developed; results say `runtime: shim` and only
@@ -192,6 +195,8 @@ e2e/eval.ts, e2e/serve.ts         headless evaluation and static server
 scripts/build.mjs                 site + Service Worker build
 scripts/fetch-model.sh            model download (runtime CLI, curl fallback)
 scripts/vm-eval.sh                full VM pipeline
-screenshots/                      captured by the eval (light, dark, full page, mobile)
-results.json, results.md          latest measurements
+screenshots/                      captured by the eval (light, dark, full page, mobile, heal mode, trial runner)
+results.json, results.md          latest measurements (raw trials in results.json)
+results-summary.json              the same without raw trials; shipped with the site for the landing page
+NEEDS.md                          what the demos need from the runtime, with evidence
 ```

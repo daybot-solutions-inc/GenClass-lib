@@ -93,9 +93,31 @@ function killSwitch(g: Record<string, unknown>): string | null {
 let current: Runtime | null = null;
 
 export const GenClass = {
-  /** Install GenClass (idempotent: a second call returns the same runtime). */
+  /** Install GenClass (idempotent: a second call returns the same runtime). Never throws. */
   init(options: InitOptions = {}): Runtime {
     if (current) return current;
+    try {
+      return initUnsafe(options);
+    } catch (e) {
+      const g = globalThis as unknown as Record<string, unknown>;
+      (g.console as Console | undefined)?.warn?.(`[GenClass] Could not start (${(e as Error)?.message ?? e}); running without it.`);
+      current = createRuntime({ observe: ALL_OFF, decider: null, report: "silent", mode: "observe" });
+      return current;
+    }
+  },
+  get runtime(): Runtime | null {
+    return current;
+  },
+  /** Uninstall observers, terminate the model worker. */
+  destroy(): void {
+    const r = current;
+    current = null;
+    r?.destroy();
+  },
+};
+
+function initUnsafe(options: InitOptions): Runtime {
+  {
     const g = globalThis as unknown as Record<string, unknown>;
     const ks = killSwitch(g);
     if (ks === "off") {
@@ -114,16 +136,7 @@ export const GenClass = {
     if (options.decider === undefined && options.model !== false) o.model = options.model ?? {};
     current = createRuntime(o);
     return current;
-  },
-  get runtime(): Runtime | null {
-    return current;
-  },
-  /** Uninstall observers, terminate the model worker. */
-  destroy(): void {
-    const r = current;
-    current = null;
-    r?.destroy();
-  },
-};
+  }
+}
 
 export default GenClass;

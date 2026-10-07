@@ -54,7 +54,11 @@ export function interventionLine(d: Decision, a: ActionRecord): string {
 }
 
 export function detectionLine(d: Decision): string {
-  const why = d.ran !== d.action && d.reason ? ` Not acted on (${d.action} ${p2(d.confidence)}): ${d.reason}.` : "";
+  let why = "";
+  if (d.reason && !d.executed) {
+    const would = d.candidate && d.candidate !== d.action && d.mass !== undefined ? `${d.candidate} ${p2(d.mass)} for permitted actions` : `${d.action} ${p2(d.confidence)}`;
+    why = ` Not acted on (would have done ${would}): ${d.reason}.`;
+  }
   return `[GenClass] Flagged ${noun(d)}: ${topFact(d)}${why} (${d.diagnosis}, ${p2(d.diagnosisConfidence)})`;
 }
 
@@ -66,8 +70,11 @@ export function decisionLine(d: Decision): string {
 
 type Sink = "console" | "silent" | ((r: Report) => void);
 
+const WINDOW_MS = 60_000;
+
 export class Reporter {
-  private seen = new Map<string, { t: number; n: number }>();
+  /** Open dedupe windows: the first report printed, repeats counted, a summary printed when the window ends. */
+  private seen = new Map<string, { n: number; first: Report; timer: unknown }>();
 
   constructor(
     private sink: Sink,
@@ -85,21 +92,31 @@ export class Reporter {
     return `${kind}|${a?.action ?? d?.action ?? ""}|${d?.diagnosis ?? ""}|${d?.trigger ?? ""}|${subj}`;
   }
 
-  /** Returns the repeat count suffix, or null when this report is suppressed. */
-  private dedupe(k: string): string | null {
-    const now = this.clock.now();
+  /** True when the report should be printed now (first of its window); repeats are counted for the summary. */
+  private dedupe(k: string, r: Report): boolean {
     const s = this.seen.get(k);
-    if (!s || now - s.t > 60_000) {
-      const suffix = s && s.n > 0 ? ` (×${s.n + 1} in the last minute)` : "";
-      this.seen.set(k, { t: now, n: 0 });
-      if (this.seen.size > 256) {
-        const first = this.seen.keys().next().value;
-        if (first !== undefined) this.seen.delete(first);
-      }
-      return suffix;
+    if (s) {
+      s.n++;
+      return false;
     }
-    s.n++;
-    return null;
+    const timer = this.clock.setTimeout(() => this.flush(k), WINDOW_MS);
+    this.seen.set(k, { n: 0, first: r, timer });
+    return true;
+  }
+
+  /** End of a dedupe window: print how many identical reports were folded. */
+  private flush(k: string): void {
+    const s = this.seen.get(k);
+    this.seen.delete(k);
+    if (!s || s.n === 0 || typeof this.sink !== "string" || this.sink !== "console") return;
+    const con = (globalThis as { console?: Console }).console;
+    const line = `${s.first.message} (×${s.n} more in the last minute)`;
+    (s.first.kind === "intervene" ? con?.warn ?? con?.log : con?.info ?? con?.log)?.call(con, line);
+  }
+
+  dispose(): void {
+    for (const s of this.seen.values()) this.clock.clearTimeout(s.timer);
+    this.seen.clear();
   }
 
   emit(r: Report): void {
@@ -118,12 +135,10 @@ export class Reporter {
       }
       return;
     }
-    const k = this.key(r.kind, r.decision, r.action);
-    const suffix = r.kind === "status" ? "" : this.dedupe(k);
-    if (suffix === null) return;
+    if (r.kind !== "status" && !this.dedupe(this.key(r.kind, r.decision, r.action), r)) return;
     const con = (globalThis as { console?: Console }).console;
     if (!con) return;
-    const line = r.message + suffix;
+    const line = r.message;
     if (r.kind === "status") {
       con.info?.(line);
       return;

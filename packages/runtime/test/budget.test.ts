@@ -39,7 +39,7 @@ describe("situation budget (latency)", () => {
     expect(sectionLimits(500)).toEqual(sectionLimits(1100));
   });
 
-  for (const budget of [1100, 2000]) {
+  for (const budget of [1000, 1100, 2000]) {
     it(`a ${budget}-char budget shapes every section and keeps the most informative facts`, async () => {
       const s = setup({ situation: { budget }, script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
       await typeahead(s);
@@ -53,9 +53,33 @@ describe("situation budget (latency)", () => {
       expect(count(req.state.state)).toBeLessThanOrEqual(L.state);
       expect(count(req.state.stats)).toBeLessThanOrEqual(L.stats);
       expect((req.state.facts as string[])[0]).toMatch(/^search\.results was written once by other operations since this write's cause \(#\d+\) started/);
-      console.log(`==== mutation at ${budget} chars (${stateChars(req.state)}) ====\n${stateText(req.state)}\n`);
+      // compact questions at ≤ 1,400 chars: bare diagnosis labels and action names, same instructions
+      const dq = req.questions.diagnosis as { criteria: Record<string, string | null>; instructions: string };
+      const aq = req.questions.action as { criteria: Record<string, string | null> };
+      if (budget <= 1400) {
+        expect(Object.values(dq.criteria).every((v) => v === null)).toBe(true);
+        expect(Object.values(aq.criteria).every((v) => v === null)).toBe(true);
+      } else {
+        expect(dq.criteria.stale).toBe("outdated data or an older operation is about to replace newer state");
+      }
+      expect(dq.instructions).toBe("What is happening here?");
+      const qs = Object.entries(req.questions)
+        .map(([k, q]) => `${k}: ${q.instructions} ${q.type === "choice" ? Object.entries(q.criteria).map(([l, d]) => (d ? `${l}: ${d}` : l)).join(" | ") : ""}`)
+        .join("\n  ");
+      console.log(`==== mutation at ${budget} chars (${stateChars(req.state)}) ====\n${stateText(req.state)}\nquestions:\n  ${qs}\n`);
     });
   }
+
+  it("compact questions keep short vocabulary overrides (≤ 24 chars) and drop long ones", async () => {
+    const s = setup({ situation: { budget: 1000 }, triage: "always", vocabulary: { diagnoses: { stale: "old data", conflict: "two operations compete for the same state" }, actions: { discard: "drop it" } } });
+    const a = s.rt.atom("a", 0);
+    void s.rt.op("w", () => a.set(1));
+    await s.clock.flush();
+    const req = s.decider.calls[0];
+    expect((req.questions.diagnosis as { criteria: object }).criteria).toEqual({ expected: null, stale: "old data", conflict: null });
+    expect((req.questions.action as { criteria: object }).criteria).toEqual({ apply: null, discard: "drop it", defer: null });
+    expect(s.rt.situation("mutation").compact).toBe(true);
+  });
 
   it("the same inputs at the same budget are byte-identical (deterministic)", async () => {
     const run = async () => {
@@ -66,12 +90,14 @@ describe("situation budget (latency)", () => {
     expect(await run()).toBe(await run());
   });
 
-  it('"auto" picks the budget from the model status: webgpu 3,200; wasm 1,100 + 300 per extra thread', () => {
+  it('"auto" picks the budget from the model status: webgpu 3,200; wasm 1,000 (1 thread) to 2,000 (4 threads)', () => {
     const s = setup();
     s.decider.status = { state: "ready", device: "webgpu" };
     expect(s.rt.situationBudget()).toBe(3200);
     s.decider.status = { state: "ready", device: "wasm", threads: 1 };
-    expect(s.rt.situationBudget()).toBe(1100);
+    expect(s.rt.situationBudget()).toBe(1000);
+    s.decider.status = { state: "ready", device: "wasm", threads: 2 };
+    expect(s.rt.situationBudget()).toBe(1333);
     s.decider.status = { state: "ready", device: "wasm", threads: 4 };
     expect(s.rt.situationBudget()).toBe(2000);
     s.decider.status = { state: "ready", device: "wasm", threads: 16 };

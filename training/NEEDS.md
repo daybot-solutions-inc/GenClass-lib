@@ -37,6 +37,15 @@ Status legend: OPEN (needed), ASK (would help), DONE.
    1,108 tokens (p95 1,523, max 1,761), so the stage-2 model is trained with `max_len` 2048 and `meta.json`
    `max_len` = 2048.
 
+## TRAIN status for the frozen data (2026-10-07 23:10)
+
+- Mirrored in the curriculum (`curriculum/rt.py`, `fmt.py`, scenarios): the `transient` diagnosis, compact questions
+  (bare labels / names at state budgets ≤ 1,400 chars), budgets 3,200 / 2,000 / 1,000 chars. Still to mirror when
+  CORE's fix batch lands: the corrected fact wording (e.g. failure/stall "started before/after" direction, write
+  counts, error-rate wording).
+- Ready to run on "frozen data ready": `import_sim.sh` → `launch_s2.sh` (R17 on 6 nodes, R32 on 4) → `eval_sim.sh` →
+  `export_runtime.py` → `ortweb/validate.mjs`.
+
 ## MODEL → TRAIN
 
 6. **DONE (TRAIN side):** the exported model directory follows MODEL's card format `genclass-runtime-model/1`

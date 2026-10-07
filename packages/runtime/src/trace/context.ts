@@ -64,13 +64,19 @@ export class Context {
     return this.cur;
   }
 
+  /** The op whose code is executing synchronously right now (inside run), not just stuck for the task. */
+  running: Ambient = null;
+
   run<T>(op: Ambient, fn: () => T): T {
     const prev = this.cur;
+    const prevRunning = this.running;
     this.cur = op;
+    this.running = op;
     try {
       return fn();
     } finally {
       this.cur = prev;
+      this.running = prevRunning;
     }
   }
 

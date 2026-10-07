@@ -22,7 +22,8 @@ describe("baselines", () => {
     for (let i = 0; i < 3; i++) b.end("GET /s", 200 + i, 10, false, "503", true);
     const st = b.stats("GET /s")!;
     expect(st.failStreak).toBe(3);
-    expect(st.outcomes).toEqual(["200", "503", "503", "503"]);
+    expect(st.outcomes).toEqual(["200", "!503", "!503", "!503"]);
+    expect(b.failureCounts("GET /s")).toEqual({ failed: 3, of: 4 });
     expect(st.lastSuccess).toBe(100);
     expect(st.errEwma).toBeCloseTo(1 - 0.9 ** 3, 5);
     b.end("GET /s", 300, 10, true, "200", false);
@@ -100,8 +101,8 @@ describe("transition profiles", () => {
     await clock.advance(1000);
     const calls = decider.calls.filter((c) => c.trigger === "transition");
     expect(calls.length).toBe(1);
-    expect((calls[0].state.facts as string[])[0]).toBe("In the previous 21 completions of GET /api/items that wrote list.items, it wrote a non-empty array (20 of 21 times); this time it wrote an empty array that shrank.");
+    expect((calls[0].state.facts as string[])[0]).toBe("In the previous 21 completions of GET /api/items that wrote list.items, it wrote a non-empty array (21 of 21 times); this time it wrote an empty array.");
     expect(list.get().items).toEqual([21, 22]);
-    expect(rt.interventions()[0].changed).toMatch(/^Restored list \(list\.items\) to the consistent state from/);
+    expect(rt.interventions()[0].changed).toMatch(/^Restored list\.items to their values before user clicked button "Refresh" \(#\d+\) \(the transition's chain wrote them\)\.$/);
   });
 });

@@ -55,7 +55,7 @@ interface InitOptions {
   observe?: Partial<Record<"fetch"|"xhr"|"user"|"errors"|"nav"|"storage"|"perf"|"websocket"|"timers", boolean>>;
   triage?: "salient" | "always";                        // default "salient"
   policy?: PolicyOptions;                               // see Policy
-  redact?: (path: string, value: unknown) => unknown;   // default redacts keys matching /pass|token|secret|card|cvv|ssn|auth/i
+  redact?: (path: string, value: unknown) => unknown;   // default redacts fields that name a secret (password, token, card number, cvv, ssn, iban, ...)
   plugins?: Plugin[];
   historySize?: number;                                 // events kept, default 500
   debug?: boolean;                                      // console.debug every decision
@@ -68,7 +68,8 @@ interface InitOptions {
 
 Performance: GenClass computes cheap facts for every write and request, and asks the model only about salient ones.
 The situation the model reads is sized to the device (`situation.budget: "auto"`): 3,200 characters on WebGPU,
-2,000 on 4-thread WASM (crossOriginIsolated pages), 1,100 on single-thread WASM. Held writes and requests wait at
+2,000 on 4-thread WASM (crossOriginIsolated pages), 1,000 on single-thread WASM; at 1,400 characters or less the
+questions are compact (bare diagnosis labels and action names). Held writes and requests wait at
 most the hold budget (`policy.holdBudgetMs: "auto"`: 1.5 × the model's recent median latency, 150 to 800 ms), then
 proceed unchanged. Serving your page with `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp` enables WASM threads (about 3× faster without WebGPU).
@@ -112,8 +113,11 @@ search.set((s) => ({ ...s, results: data }));                           // async
 How writes flow: `set` proposes a mutation. Writes made while handling a user action (in the same task) and writes
 made by GenClass itself apply immediately. Other writes are checked: if nothing about them is unusual they apply
 immediately; otherwise they are held until the model answers (at most the hold budget, then they apply:
-fail-open). If the model answers `discard` within 2 s after such a write applied, and nothing has overwritten it
-since, GenClass reverts exactly that write (a "late revert", reported as such and undoable). Writes to one store apply in the order they were proposed. A functional update runs again
+fail-open). If the model answers `discard` within 2 s after such a write applied, nothing has overwritten it and
+the same operation made no other write since, GenClass reverts exactly that write (a "late revert", reported as
+such and undoable). An updater that changes the stored value in place (`s.set(v => { v.items.push(x); return v; })`)
+never changes live state before the decision: GenClass works on a detached copy (or, when it cannot restore the
+live value exactly, applies the write at once). Every `set()` notifies subscribers. Writes to one store apply in the order they were proposed. A functional update runs again
 on the value at apply time; a held value write is re-applied as a patch of the fields it changed, so newer user
 input to other fields of the same store is kept. Reading `get()` while a write is held returns the current value.
 
@@ -222,7 +226,7 @@ every observer and restores the globals it wrapped.
 
 | action | tier | effect |
 |---|---|---|
-| `discard` | guard | drop the write (undo: apply it now); decided after the write applied: revert exactly that write if nothing overwrote it (undo: re-apply) |
+| `discard` | guard | drop the write (undo: apply it now); decided ≤ 2 s after the write applied (hold budget expired): revert exactly that write if nothing overwrote it and its operation wrote nothing else since (undo: re-apply) |
 | `defer` | guard | hold the write until related requests finish, then decide again (twice at most) |
 | `coalesce` | guard | do not send; reuse the response of the identical request in flight or just finished (`x-genclass: coalesced`) |
 | `delay` | guard | wait min(250 ms · 2^failure streak, 8 s), then send |
@@ -230,12 +234,24 @@ every observer and restores the globals it wrapped.
 | `serve_cached` | heal | answer with the last good response for this GET (`x-genclass: cached`; ≤ 256 KB, ≤ 64 entries, memory only) |
 | `retry` | heal | re-send after min(200 ms · 2^(attempt-1), 5 s) when the body can be replayed |
 | `hedge` | heal | send a second identical GET and use whichever answers first |
-| `rollback` | heal | restore the affected stores to their last consistent snapshot (undo: restore the replaced values) |
+| `rollback` | heal | inconsistency: restore the involved stores to their last consistent snapshot; error/transition: restore only the fields the operation's own chain wrote to their earlier values (undo: restore the replaced values) |
 | `resync` | heal | call the store's `resync` handler |
 
+Diagnoses the model chooses from (`vocabulary.diagnoses` replaces them; plugins add labels): `expected` (normal
+behaviour), `stale` (outdated data about to replace newer state), `conflict` (concurrent operations competing),
+`duplicate` (the same change or request again without a new intent), `inconsistent` (state contradicts itself),
+`failing` (keeps failing), `slow` (far slower than usual), `overload` (triggered far more often than usual),
+`unusual` (unlike how the same operation normally behaves), `transient` (a one-off failure likely to succeed if
+tried again).
+
 Actions are offered only when they apply (an identical request exists, a cached response exists, the body can be
-replayed, a consistent snapshot exists, a `resync` handler exists). Responses are always cloned before the app
-reads them. GenClass's own requests and writes are never gated.
+replayed, a consistent snapshot exists, a `resync` handler exists, the failing operation wrote state). Responses
+are always cloned before the app reads them. GenClass's own requests and writes are never gated; `keepalive`
+requests and synchronous XHRs are never held; nothing is held when the mode and policy permit no action for it.
+
+Two requests are "identical" when method, URL, headers (tracing ids such as `traceparent` or `x-request-id`
+excluded) and body content match. Bodies GenClass cannot read cheaply (streams, files, bodies over 64 KB) never
+match anything.
 
 ## Policy
 
@@ -251,18 +267,21 @@ interface PolicyOptions {
 }
 ```
 
-A non-passive action runs only if all of these hold, otherwise the passive action runs and the decision's
-`reason` says why: the mode allows its tier; its calibrated probability `probabilities[action]` is at least the
-tier's threshold; the model's top diagnosis is not `expected`; it is not denied (and is allowed, if `allow` is
-set); fewer than `maxActionsPerMinute` actions ran in the last minute; the decision arrived within the hold
-budget. While the model is loading, everything proceeds unchanged.
+The permitted actions are the applicable non-passive actions the mode allows (observe: none; guard: guard tier;
+heal: both), minus denied ones (only allowed ones when `allow` is set). GenClass runs the most probable permitted
+action only if all of these hold, otherwise the passive action runs and the decision's `reason` says why: the
+summed probability of the permitted actions reaches that action's tier threshold; the model's top diagnosis is not
+`expected` (unless `requireDiagnosis: false`); fewer than `maxActionsPerMinute` actions ran in the last minute; the
+decision arrived within the hold budget (a late `discard` may still revert the write, see State). While the model is
+loading, everything proceeds unchanged.
 
 ## Reports, explain and undo
 
 With `report: "console"` every detection and intervention prints one line, followed by a collapsed group with the
 evidence: the facts, the timeline, the exact situation text sent to the model, the answer probabilities, what
-changed, how to undo it and how to deny that action. Repeats within a minute are summarised as "×N in the last
-minute".
+changed, how to undo it and how to deny that action. Identical repeats within a minute are folded into one line
+printed when the minute ends ("×N more in the last minute"). A detection that did not act says what GenClass would
+have done and why not.
 
 ```
 [GenClass] Prevented a stale write: search.results was written once by other operations since this write's cause (#6) started (v0 → v1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7). Dropped the write to search.results from GET /api/search?q=rea (#6); search stays at version 2. (stale, 0.97; discard 0.96)
@@ -380,9 +399,10 @@ rt.adapter<T>(name: string, io: { get(): T; set?(v: T): void; subscribe?(fn: () 
 interface Decision {
   id: string; trigger: TriggerKind; subject: string; at: number; latencyMs: number; model: string;
   diagnosis: string; diagnosisConfidence: number; diagnosisProbabilities: Record<string, number>;
-  action: string; confidence: number /* probabilities[action] */; probabilities: Record<string, number>;
-  executed: boolean; reason?: string; facts: string[];
+  action: string /* the action that ran, else the model's choice */; confidence: number /* probabilities[action] */;
+  probabilities: Record<string, number>; executed: boolean; reason?: string; facts: string[];
   tier: "passive" | "guard" | "heal"; ran: string; answers: Record<string, Answer>; subjectRef?: SubjectRef;
+  candidate?: string /* most probable permitted action */; mass?: number /* summed probability of the permitted actions */;
 }
 type Detection = Decision;
 interface ActionRecord { id: string; decisionId: string; action: string; tier; trigger; subject: string; at: number; ok: boolean; error?: string; changed: string; undo?: () => void; late?: boolean }
@@ -391,6 +411,8 @@ interface RtEvent { seq: number; t: number; kind: "user"|"op.start"|"op.end"|"st
 interface Op { id: number; kind: "user"|"fetch"|"xhr"|"ws"|"task"|"timer"|"genclass"; name: string; detail?: string; start: number; end?: number; status?: "ok"|"error"|"aborted"|"blocked"; code?: number | string; cause?: number; root?: number; attempt: number; reads: Map<string, number>; identity?: string }
 ```
 
-Privacy: values are summarised and redacted before they reach a situation (keys matching
-`/pass|token|secret|card|cvv|ssn|auth/i`, password inputs, sensitive query parameters). Everything stays in the
-browser; the model runs locally.
+Privacy: values are summarised and redacted before they reach a situation: fields, query parameters and body keys
+whose names mean a secret (password, passcode, pin, token, secret, cvv/cvc, ssn, iban, otp, cookie, authorization,
+card number, credit card, api key, session id, ...), password inputs and inputs with `autocomplete` cc-* /
+one-time-code. Element text such as a kanban "card" is not a secret. Everything stays in the browser; the model
+runs locally.

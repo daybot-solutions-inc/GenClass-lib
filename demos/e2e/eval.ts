@@ -463,10 +463,10 @@ async function writeReports(results: TrialResult[]) {
 // -------------------------------------------------------------------------------------------- screenshots
 const SHOT_PRESET: Record<DemoId, string> = { search: "Busy", editor: "Busy", checkout: "Flaky", status: "Flaky", board: "Busy", decisions: "Busy" };
 
-async function shootDemo(ctx: BrowserContext, demo: DemoId, file: string, full: boolean, overlayOpen = true) {
+async function shootDemo(ctx: BrowserContext, demo: DemoId, file: string, full: boolean, overlayOpen = true, mode: GcMode = "guard", preset?: string) {
   const page = await ctx.newPage();
   const u = new URL(`${demo}/`, SITE);
-  u.searchParams.set("mode", "guard");
+  u.searchParams.set("mode", mode);
   if (overlayOpen) u.searchParams.set("devtools", "open");
   u.searchParams.set("model", MODEL);
   await page.goto(u.href, { waitUntil: "domcontentloaded" });
@@ -477,7 +477,7 @@ async function shootDemo(ctx: BrowserContext, demo: DemoId, file: string, full: 
       return s && s.dataset.state !== "loading";
     }, null, { timeout: 90000, polling: 250 })
     .catch(() => {});
-  await page.getByRole("button", { name: SHOT_PRESET[demo], exact: true }).click().catch(() => {});
+  await page.getByRole("button", { name: preset ?? SHOT_PRESET[demo], exact: true }).click().catch(() => {});
   await page.waitForTimeout(400);
   const steps = (await page.evaluate(() => (window as unknown as W).__demo?.scenario(1003, "chaos").steps).catch(() => null)) as Step[] | null;
   if (steps) await runSteps(page, steps.slice(0, 40), false).catch(() => {});
@@ -537,6 +537,10 @@ async function screenshots(browser: Browser) {
       } catch (e) {
         log(`screenshot ${demo}${suffix} failed: ${String(e).split("\n")[0]}`);
       }
+    }
+    if (theme === "light") {
+      // Heal mode, where the v0.1 model does act: checks the intervention UI with real runtime data.
+      await shootDemo(ctx, "decisions", `${dir}/decisions-heal.png`, false, false, "heal", "Storm").catch((e) => log(`heal screenshot failed: ${String(e).split("\n")[0]}`));
     }
     if (theme === "light" && !flag("no-trials-ui")) {
       await shootTrialsUI(ctx, "search", `${dir}/search-trials.png`).catch((e) => log(`in-page trial runner failed: ${String(e).split("\n")[0]}`));

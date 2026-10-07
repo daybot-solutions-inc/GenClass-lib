@@ -1,6 +1,7 @@
 # GenClass runtime model — model card
 
-Status: **stage 1** (synthetic curriculum only; stage 2 on SIM rows from the real runtime is pending SIM data).
+Status: **stage 1c final, stage 2 piloted on pre-freeze SIM data**; the shipping stage-2 model is trained once the
+runtime and SIM are frozen.
 Numbers below are filled from `training/EVAL.md`; see it for definitions and the full tables.
 
 ## What it is
@@ -14,8 +15,17 @@ two standing questions per salient trigger: `action` (the applicable actions, wi
 
 | variant | backbone | params | vocab | q8 (WASM) | fp16 (WebGPU) |
 |---|---|---|---|---|---|
-| `genclass-runtime-r17` | ettin-encoder-17m (d 256, 7 layers) | 8.1M + heads | 16,364 | see EVAL.md | see EVAL.md |
-| `genclass-runtime-r32` | ettin-encoder-32m (d 384, 10 layers), from GenClass 0.1 | 18.8M + heads | 16,364 | see EVAL.md | see EVAL.md |
+| `genclass-runtime-r17` | ettin-encoder-17m (d 256, 7 layers) | 8.1M + 0.7M heads | 16,364 | 9.6 MB | 13.6 MB |
+| `genclass-runtime-r32` | ettin-encoder-32m (d 384, 10 layers), from GenClass 0.1 | 18.8M + 1.6M heads | 16,364 | 22.5 MB | 34.8 MB |
+
+Latency (onnxruntime-web 1.30 WASM, 1 thread, q8; fitted over 184 requests): R17 ≈ 190 / 340 / 610 ms and R32
+≈ 500 / 880 / 1,540 ms at 500 / 780 / 1,170 sequence tokens (≈ the runtime's 1,000 / 2,000 / 3,200-char state
+budgets). WebGPU and 4-thread WASM (crossOriginIsolated pages) are much faster (MODEL's measurements).
+
+Stage-1c accuracy on the held-out runtime-format curriculum test: action 98.0% (R17) / 98.2% (R32), diagnosis
+98.3% / 98.4%, 0 false interventions in 3,355 passive-best rows in both guard and heal mode. Zero-shot on SIM traffic
+it is not yet good enough (≈ 50% action accuracy, 18–34% heal-mode false interventions on SIM's sample): the
+shipping model is the stage-2 model trained on the frozen SIM data (see `training/EVAL.md`).
 
 Files per model directory (`model.json` format `genclass-runtime-model/1`): `<name>-q8.onnx` (MatMulNBits 8-bit
 block 32 + int8 row-wise token embeddings; for onnxruntime-web WASM), `<name>-fp16.onnx` (fp16 weights + int8

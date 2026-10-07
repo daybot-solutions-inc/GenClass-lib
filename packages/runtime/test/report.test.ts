@@ -31,13 +31,14 @@ describe("reporting, explain, undo (CONTRACT §0.5, §8)", () => {
     void rt.op("w", () => a.set(2));
     await clock.flush();
     expect(reports[0].kind).toBe("detect");
-    expect(reports[0].message).toMatch(/^\[GenClass\] Flagged a stale write: .* Not acted on \(discard 0\.70\): probability 0\.70 is below the guard threshold 0\.9\. \(stale, 0\.70\)$/);
+    expect(reports[0].message).toMatch(/^\[GenClass\] Flagged a stale write: .* Not acted on \(would have done discard 0\.70\): probability 0\.85 for the permitted actions \(discard, defer\) is below the guard threshold 0\.9\. \(stale, 0\.70\)$/);
   });
 
-  it("console output: a collapsed group with the evidence; repeats are summarised", async () => {
+  it("console output: a collapsed group with the evidence; repeats are summarised when the minute ends", async () => {
     const group = vi.spyOn(console, "groupCollapsed").mockImplementation(() => undefined);
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const end = vi.spyOn(console, "groupEnd").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { rt, clock } = setup({ triage: "always", report: "console", script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
     const a = rt.atom("a", 1);
     for (let i = 0; i < 3; i++) {
@@ -51,14 +52,17 @@ describe("reporting, explain, undo (CONTRACT §0.5, §8)", () => {
     expect(logged).toMatch(/Undo: GenClass\.runtime\.interventions\(\)\.find/);
     expect(logged).toMatch(/Deny this action: GenClass\.init\(\{ policy: \{ deny: \["discard"\] \} \}\)/);
     await clock.advance(61_000);
+    // the two folded repeats are summarised when the window ends, even if nothing else happens
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toMatch(/^\[GenClass\] Prevented a stale write: .*\(×2 more in the last minute\)$/);
     void rt.op("w", () => a.set(99));
     await clock.advance(10);
     expect(group).toHaveBeenCalledTimes(2);
-    expect(String(group.mock.calls[1][0])).toMatch(/\(×3 in the last minute\)$/);
     expect(end).toHaveBeenCalledTimes(2);
     group.mockRestore();
     log.mockRestore();
     end.mockRestore();
+    warn.mockRestore();
   });
 
   it("on('decide'|'detect'|'act'|'event') listeners fire and unsubscribe", async () => {

@@ -126,3 +126,31 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
   `r32-s2` c02–c05 (32 ranks), 1.5 passes, lr 1e-4 / 4e-4, ≈ 168k tok/s (ETA ≈ 20:02);
   `r17-s2` c09–c11 + c06–c08 (48 ranks), 4 passes, lr 2e-4 / 1e-3, ≈ 449k tok/s (ETA ≈ 20:05).
   Both initialised from the stage-1c weights; first-step loss 0.76 / 0.80 (SIM's soft labels and new situations).
+
+### 19:00–20:49 Stage-1c evaluation, exports, stage-2 pilots finish; coordinator updates
+- Eval gate switched to CONTRACT §8 as revised (summed calibrated probability of the permitted non-passive actions
+  ≥ the candidate's tier threshold, candidate = argmax among permitted, top diagnosis ≠ expected), plus SIM-cost
+  regret (`meta.costs`), logit caching (`--records-dir`) and per-case/per-style breakdowns. All stage-1c reports
+  were recomputed with it.
+- Stage-1c results (details in EVAL.md): runtime-exact held-out test `rt1` R32 98.2 / 98.4 (action / diagnosis),
+  R17 98.0 / 98.3, FIR 0% in both modes, heal precision 100%, recall 86%; varied styles `cur1` R32 95.8 / 97.8 (heal
+  FIR 0.60%), R17 94.0 / 97.2 (heal FIR 1.70%, mostly stall); zero-shot on SIM's 123-row sample ≈ 50% action
+  accuracy and 18–34% heal FIR → stage 1 does not transfer to SIM's label semantics; stage 2 is required.
+- Exports (`out/export-r{17,32}-s1c`, fp16-free q8 enforced): R17 q8 9.58 MB / fp16 13.57 MB, R32 22.47 / 34.79 MB.
+  onnxruntime-web 1.30 WASM (Node, 1 thread) fitted latency at 500 / 780 / 1,170 tokens: R17 188 / 339 / 608 ms,
+  R32 499 / 879 / 1,539 ms (MODEL's Chromium measurement for R32 at 780 tokens: 837–940 ms).
+- Coordinator: r300k is pre-freeze (runtime fact fixes, sharper SIM labels, new `transient` diagnosis); treat
+  stage 2 as a pilot, evaluate, deallocate, wait for "frozen data ready". Curriculum updated accordingly:
+  `transient` diagnosis (isolated retryable failures; unhandled one-off fetch failures soft transient/failing),
+  compact questions (bare labels/names at state budgets ≤ 1,400 chars), WASM budget 1,000 chars (budget mix
+  3,200 / 2,000 / 1,000 = 35 / 30 / 35%).
+- Pilots finished: `r32-s2` 625 steps (1.5 passes, c02–c05, ≈ 1 h 50 min), `r17-s2` 1,664 steps (4 passes, 6 nodes,
+  ≈ 1 h 47 min). Both servables (`max_len` 2048) copied to c01; training logs saved; **c02–c11 deallocated 20:49**.
+
+### 20:49–23:05 Network stalls
+- The Mac lost connectivity twice; the coordinator confirmed c02–c11 deallocated and deallocated an idle c01 at
+  22:45. c01 restarted 23:05 for the pilot SIM evaluation (detached: `training/eval_sim.sh`, parallel shard
+  collection of 20k SIM test + 7.4k dev rows per model).
+
+### Cost estimate so far ≈ $215
+- c01 ≈ 10.2 node-hours (incl. ≈ 6 h idle during outages) ≈ $56; c02–c11 ≈ 29 node-hours (17:55–20:49) ≈ $158.

@@ -68,14 +68,32 @@ describe("atoms and the mutation pipeline (CONTRACT §4)", () => {
     expect(a.get()).toBe(2);
     expect(rt.decisions()[0].executed).toBe(false);
     expect(rt.decisions()[0].reason).toMatch(/^superseded: v changed again after the write applied/);
-    // too late
+    // too late: the runtime stops waiting for the answer 2 s after the hold budget (no decision is recorded)
     const b = rt.atom("b", 0);
     void rt.op("w2", () => b.set(1));
     await clock.advance(2500);
     manual.answer(discard);
     await clock.flush();
     expect(b.get()).toBe(1);
-    expect(rt.decisions()[1].reason).toMatch(/too late to revert/);
+    expect(rt.decisions()).toHaveLength(1);
+  });
+
+  it("a late discard does not revert a write when the same chain wrote again after it", async () => {
+    const manual = new ManualDecider();
+    const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdBudgetMs: 100 } });
+    const a = rt.atom("a", 0);
+    const b = rt.atom("b", 0);
+    // a subscriber derives b from a (a write made synchronously in the same chain when a applies)
+    a.subscribe((v) => b.set(v * 10));
+    void rt.op("w", () => a.set(1));
+    await clock.advance(250); // a applied (fail-open); its subscriber's write to b (same chain) applied too
+    expect(b.get()).toBe(10);
+    while (manual.pending.length) manual.answer(discard);
+    await clock.flush();
+    const d = rt.decisions().find((x) => x.subjectRef?.store === "a")!;
+    expect(d.executed).toBe(false);
+    expect(d.reason).toMatch(/the same operation chain wrote b\.?\w* after this write applied/);
+    expect(a.get()).toBe(1);
   });
 
   it("a late defer/apply is only recorded", async () => {

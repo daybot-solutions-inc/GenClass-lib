@@ -1,68 +1,120 @@
 # @genclass/runtime: status (CORE)
 
-Updated: 2026-10-07 (batch 2: model integration, latency, UI requests). Owner: CORE. SIM, DEMOS, UI and MODEL read
-this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
+Updated: 2026-10-07 (batch 3: REVIEW fixes, SIM a–f, §8 gate, compact questions). Owner: CORE. SIM, DEMOS, UI and
+MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
 
 ## State
 
-On the VM (`npm install` at the repo root, then in packages/runtime, `GENCLASS_MODEL_DIR=~/gcl/model/.cache-model`):
-`tsc --noEmit` clean, `tsup` build OK, `vitest run` excluding `test/browser/**` and REVIEW's `test/review-*.test.ts`:
-**26 files, 239 tests, all passing** (CORE 124, UI 53, MODEL 62). REVIEW's audit tests (`test/review-*.test.ts`:
-8 files, 28 of 29 failing at the time of writing) are its findings, to be handled in the next batch.
+On the VM (`npm install` at the repo root; in packages/runtime with `GENCLASS_MODEL_DIR=~/gcl/model/.cache-model`
+and `NODE_OPTIONS=--expose-gc`): `tsc --noEmit` clean, `tsup` build OK, `vitest run --exclude "test/browser/**"`:
+**37 files, 300 tests, all passing**, including every `test/review-*.test.ts` (no review test was modified), UI's
+53 and MODEL's 62. Measured on the shared VM (REVIEW's perf tests): keystroke write on a store with a 5,000-item
+array 0.14 ms; gated async write 0.19 ms; redux-style dispatch on 5,000 entities 0.68 ms (user) / 0.58 ms (async);
+settled point 0.2 ms (+1.4 ms with an unchanged 5,000-item adapter store).
 
 | area | files | notes |
 |---|---|---|
-| public facade | `src/index.ts`, `src/types.ts`, `src/errors.ts` | `GenClass`, `createRuntime`, all public types, `GenClassUnavailableError`, model host + error classes re-exported |
-| clock | `src/clock.ts` | `browserClock` (performance.now, timers captured at load, setImmediate/MessageChannel afterTask) |
-| trace | `src/trace/{events,ops,context}.ts` | ring buffer, ops registry (id-normalised signatures), ambient-op propagation (§3) incl. lazy timer ops |
-| state | `src/state/{hub,fields,invariants}.ts` | atoms, guard, adapter seam, field versions + histories, mutation pipeline, late revert, invariant miner |
-| observers | `src/observe/*.ts` | fetch, XHR, DOM user actions (`data-genclass-ignore` aware), errors, nav, storage, perf, websocket, timers, response cache |
-| learn | `src/learn/{baselines,profiles}.ts` | latency median/p95, EWMA error rate, failure streaks, frequency vs usual, identical-request gaps, transition profiles |
-| situation | `src/situation/*.ts` | facts, budget-shaped serializer, questions, triage, subject refs (shared with the sim) |
-| decide | `src/decide/*.ts` | priority queue with deadlines + cache + latency samples, policy gate (§8) + auto hold budget, executor seam, reports |
-| runtime | `src/runtime.ts` | wiring, actions (rollback/resync/revert/undo), settled points, plugins, ask/decide, explain |
+| public facade | `src/index.ts`, `src/types.ts`, `src/errors.ts` | `GenClass` (init never throws), `createRuntime`, all public types, model host + errors re-exported |
+| clock | `src/clock.ts` | `browserClock` |
+| trace | `src/trace/{events,ops,context}.ts` | ring buffer, ops registry, ambient-op propagation; lazy timer ops never chain |
+| state | `src/state/{hub,fields,invariants}.ts` | incremental flattening, mutation pipeline, in-place-update protection, late revert, write logs, invariant miner |
+| observers | `src/observe/*.ts` | fetch, XHR, DOM user actions, errors, nav, storage, perf, websocket, timers, response cache; all pass through after destroy |
+| learn | `src/learn/{baselines,profiles}.ts` | baselines with real failure counts, transition profiles (bounded) |
+| situation | `src/situation/*.ts` | facts, budget-shaped serializer, compact questions, triage, subject refs (shared with the sim) |
+| decide | `src/decide/*.ts` | queue (deadlines, runtime-side timeout, cache, latency samples), §8 gate, reports |
+| runtime | `src/runtime.ts` | wiring, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
 
-## Batch 2 (done)
+## Batch 3 (done)
 
-**Model integration**
-- `src/index.ts` exports `createModelHost`, `DEFAULT_MODEL_BASE_URL`, `ModelOptions`, the host types (`ModelHost`,
-  `ModelHostOptions`, `ModelHostStatus`, `ModelHostStats`, `ModelEvaluateRequest`) and the model error classes
-  (`GenClassModelError`, `ModelNotReadyError`, `MaxTokensExceededError`, `ModelTimeoutError`, `ModelBusyError`, ...).
-- `ModelStatus` (types.ts) has MODEL's fields as optional: `phase, version, bytes, fromCache, threads, warmupMs,
-  worker, workerError, gpu, attempts, ort`.
-- `GenClass.init`/`createRuntime({ model })` pass the runtime clock and the native fetch to the host.
-- Every provider error (`not_ready`, `max_tokens_exceeded`, `timeout`, `busy`, anything else) fails open at once:
-  passive action, no hold, no decision record. `max_tokens_exceeded` also shrinks automatic situation budgets by
-  20% (floor 50%).
-- `EvaluateRequest.timeoutMs` (new optional seam field): the time left for the answer. Held requests/failures: the
-  remaining hold budget; held writes: the remaining hold budget + 2 s (late revert); background triggers 5 s;
-  `ask` its `timeoutMs`. The runtime's own queue drops a request whose deadline passed while it waited (never
-  computed) and hands the rest to the host with `timeoutMs`.
+**REVIEW findings (all 34; tests in `test/review-*.test.ts` pass unchanged)**
+- Timers: a timer op links to the nearest op that exists (never to another lazy op) and drops its closure once
+  created: recursive `setTimeout` loops no longer build chains (no stack overflow, no retention; the gc test runs).
+- Patches: removals first, and a path is never removed when a change targets something beneath it (filling an empty
+  object survives being held, queued, deferred, late-reverted and undone).
+- Coalesce never hangs: opaque/status-0 responses are shared as clones; bodies are buffered only for 200–599
+  readable responses, at most 1 s of streaming and 256 KB; a coalesced request waits at most 8 s; when the response
+  cannot be shared the request is really sent (the ActionRecord says so).
+- XHR: synchronous XHRs are never held; `abort()` while held means never sent (the app gets abort/loadend);
+  faked values are removed on the next `open()` and respect `responseType`; listeners are added once per object.
+- A throwing app setter/reducer/subscriber never strands a store's queue or settled points: reported as an error
+  (`reportError`, source "the setter of X") and the queue continues; a synchronous `set()` still throws to its caller.
+- In-place updaters: a write that may be held never changes live state before the decision: if the updater
+  mutated the stored value, the result is detached into a copy and the live value restored exactly; when that is
+  impossible the write applies at once with a fact ("could not be held: the update changed the stored value in
+  place"). Change summaries use the recorded pre-change values ("2 → 3 items").
+- keepalive requests are never held (sent inside the `fetch()` call).
+- Init never throws: every observer installer is wrapped (read-only globals are skipped), `GenClass.init` falls back
+  to an inert runtime with one console line.
+- Request identity = method + URL + semantic headers (all except tracing ids: traceparent, tracestate, baggage,
+  sentry-trace, x-request-id, x-correlation-id, request-id, b3/x-b3-*, x-datadog-*, x-amzn-trace-id,
+  x-cloud-trace-context, newrelic, date, x-request-start, x-genclass) + body content: strings (≤ 1 MB),
+  URLSearchParams, FormData without files, ArrayBuffer/views and Blobs ≤ 64 KB, Request bodies ≤ 64 KB (read from
+  a clone before the gate, ≤ 100 ms). Anything else gets a unique identity (never "identical"). Range splits identity.
+- Error-trigger rollback is offered only when the failing op's own chain wrote state, and restores only what that
+  chain wrote (fields nobody overwrote since, to their values before the chain's first write). Transition rollback
+  works the same way. Inconsistency rollback still restores the last consistent snapshot of the involved stores.
+- Plugin `ctx.builtin()` goes through the same policy (mode tier, deny/allow, rate limit).
+- Late revert (contract §8 "late-revert rules"), all must hold: the decision is a gate-passing `discard` (guard
+  tier); the write applied ≤ 2 s ago; none of its fields changed since; no other write since in the same causal
+  chain (including writes made synchronously by subscribers of that store, which now run with the write's cause as
+  the ambient op). Otherwise the decision records the reason ("superseded: …", "the same operation chain wrote … ").
+  The runtime stops waiting for an answer 2 s after the hold budget, so later answers are never recorded.
+- Facts: "started 0.10s after/before this one" uses the real direction; failure facts report real counts
+  ("error rate 60% over 5 requests (3 failed)", over the last 20 outcomes; the EWMA stays internal); write counts
+  and versions come from a 512-entry log per field ("written 20 times … (version 0 → 20)").
+- Arrays: every element counts (element hashes are incremental by reference, with a sampled re-hash of elements
+  that kept their reference); plain objects with more than 32 keys are one field (a keyed collection).
+- Redaction: invariant facts use the configured redactor; unlabeled password inputs are never named by their value.
+- Precision: a short last page is not "unusual" (array kinds are empty / non-empty, no grew/shrank); entity keys
+  with digits (`m21`, `u3x`) are `:id` in transition profiles; profiles are capped (64 write sets, 128 fields);
+  `a != null` needs 6 supporting snapshots and is never proposed for a field ever seen null (initial value
+  included); a consistent snapshot is taken at every settled point where nothing newly broke (a lingering, already
+  reported violation no longer blocks snapshots); events dispatched by app code while an op runs (or untrusted
+  events while a non-user op is ambient) are not user actions.
+- Memory: coalescing buffers expire after 2 s and are capped (64 entries, 4 MB) next to the GET cache (64 × 256 KB);
+  the abort listener is removed when the request settles; XHR listeners once per object.
+- Never hold when the mode and policy permit no non-passive action for the trigger (e.g. failures in guard mode):
+  the subject proceeds at once and the decision is still made in the background for detection.
+- Big stores: incremental flattening (unchanged arrays/collections cost reference comparisons only), per-array
+  statistics cached for the invariant miner, snapshots reuse unchanged stores and top-level keys, size caps before
+  `JSON.parse` of bodies and WebSocket messages (16 KB).
+- Runtime-side provider timeout: a provider that never answers is abandoned at the request deadline (10 s without
+  one) so later decisions are not blocked.
+- Console reports: the first of a series is printed, identical repeats in the next minute are counted and printed
+  as one line when the minute ends ("(×N more in the last minute)"); the rate-limit warning once per minute.
+- `destroy()`: wrappers that another library may still call become pass-throughs; `ask()` after destroy rejects with
+  reason "destroyed".
 
-**Latency**
-- `situation: { budget?: number | "auto" }` (Create/InitOptions; chars). `"auto"` (default): webgpu 3,200; wasm
-  1,100 + 300 per extra thread (1 thread 1,100; 4 threads 2,000); unknown device (custom providers, before load)
-  3,200. SIM: pass a number (any budget ≥ 500 works; sample them).
-- Every section is shaped by the budget (`sectionLimits(budget)`, exported): at 1,100 chars ≤ 6 facts, 2 in-flight,
-  3 timeline lines, 3 state fields, 1 stats line; at 3,200 the contract's 12/6/16/8/4; linear in between (2,000:
-  9/4/9/5/2). If still over: timeline lines go first (oldest first), then state, then facts (least informative
-  first), then in-flight and stats. Facts are ordered non-neutral first, so the most informative survive.
-  Deterministic (tested). Reports and `explain()` keep all facts (≤ 12); the model reads the budgeted set.
-- `policy.holdBudgetMs: "auto"` (default) = clamp(1.5 × median of the last 20 provider latencies, 150, 800) ms;
-  before any latency, 1.5 × `status.warmupMs`; with neither, 300 ms. Numbers still work (`rt.holdBudgetMs()` shows
-  the current value).
-- Late revert: when a held write's budget expired (it applied, fail-open) and the model then returns a `discard`
-  that passes the policy gate (guard tier), GenClass reverts exactly that write if none of its fields changed since
-  and it applied ≤ 2 s ago; else the decision records `reason: "superseded: ..."` / `"too late to revert: ..."`.
-  `ActionRecord.late = true`, `changed`: "Reverted the write to v from task w (#2) (decided 0.30s after it
-  applied); v is back to 0.", console: "[GenClass] Reverted a stale write: ...". `undo` re-applies the write.
-  Late `defer`/`apply` are only recorded. Requests have no late path.
+**SIM requests (sim/NEEDS.md a–f)**
+- a. Redaction by field semantics, not substrings: default redactor and typed values use word-level names
+  (password, passcode, pin, token, secret, cvv/cvc/csc, ssn, iban, otp, cookie, authorization/auth, and pairs such
+  as card number, credit card, api key, private key, session id, security code). "card", "cards", "author",
+  "tokens", "pinned" are not secrets. DOM fields are also sensitive by type=password and autocomplete cc-* /
+  one-time-code / current-password / new-password. (Deviation from §2's regex, approved in this batch.)
+- b. State lines list only current leaves (no `parent = undefined`).
+- c. "x changed 2 times since … and is back to 6" instead of "6 → 6".
+- d. Item changes show the changed keys: `3 items, 1 changed: {id: 3, qty: 1 → 2}`; collections:
+  `added m21: {…}`, `changed u3x: {age: 20 → 21}`.
+- e. Short slug ids normalised in signatures, conservatively: ≥ 4 chars with letters and digits where a part starts
+  with a digit (`tasks-1cam`), letters and digits alternate twice (`x7k2p`, `ab12cd`), or from 6 chars mixed case
+  with digits (`PPBqWA9`). Not ids: `sha256`, `oauth2`, `ipv4`, `item42`, `v1beta1`, `x86_64`.
+- f. New non-neutral fact for a write over a pending local change: "board.card7 has a pending local change: user
+  clicked button "Move to done" (#1) wrote it 0.10s ago and its PATCH /api/cards/:id {…} (#2) is still in flight;
+  this write comes from task ws message (#3), which started after that user action."
 
-**UI requests (UI-NEEDS.md)**
-- DOM user observer ignores events whose target or `composedPath()[0]` is inside `[data-genclass-ignore]`
-  (walks out of shadow roots, so clicks inside the overlay's shadow DOM are ignored too).
-- `Explanation.message`: the console line for that decision/action (intervention line, detection line, or
-  "[GenClass] Checked ..." for a decision that was neither).
+**Contract changes**
+- §8 gate: A = applicable non-passive actions the mode permits, minus denied (only allowed when `allow` is set);
+  candidate = argmax of probabilities over A; it runs iff Σ_{a∈A} p(a) ≥ the candidate's tier threshold, the top
+  diagnosis is not `expected` (unless `requireDiagnosis: false`), under the rate limit, within the hold budget (else
+  late-revert rules). `Decision.action` = the action that ran, else the model's own top choice; new fields
+  `Decision.candidate` and `Decision.mass`. `reason` is given only when the model's own choice did not run.
+  Reports: "Not acted on (would have done discard 0.70): …".
+- New diagnosis label `transient` ("a one-off failure that is likely to succeed if tried again"), after `unusual`.
+- Compact questions: when the situation budget is ≤ 1,400 chars, diagnosis options are bare labels and action
+  options bare names (null descriptions), same instructions; a vocabulary override description is kept only if ≤ 24
+  chars. `Situation.compact` and `Situation.budget` are recorded.
+- Auto situation budget: webgpu 3,200; wasm 1,000 at 1 thread to 2,000 at 4 threads (1,333 at 2, 1,667 at 3);
+  unknown device 3,200.
 
 ## How to drive it headless (SIM, tests)
 
@@ -75,125 +127,98 @@ const rt = createRuntime({
   observe: { fetch: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, timers: false },
   mode: "heal", triage: "salient", report: "silent",
   policy: { thresholds: { report: 0, guard: 0, heal: 0 }, holdBudgetMs: 1e9, maxActionsPerMinute: 1e9, requireDiagnosis: false },
-  situation: { budget: 1100 },                        // sample budgets per trajectory (e.g. 1100 / 2000 / 3200)
+  situation: { budget: 1000 },                        // sample budgets (e.g. 1000 / 1333 / 2000 / 3200); ≤ 1400 = compact questions
   hooks: { opCreated(op) {}, mutationProposed(m) {} },
   vocabulary: { diagnoses: {...}, actions: {...} },   // optional wording overrides
 });
 ```
 
 - `global.fetch` is replaced at construction; `rt.destroy()` restores it (and every other wrapped global).
-- `observe` defaults: every observer on, except `timers`, on only when `global.document` exists. Pass
-  `timers: true` to get timer provenance ("timer 300ms", "interval 5.00s") and debounce causality headless.
-- `createRuntime` has no model unless you pass `decider` or `model: {...}`. `GenClass.init()` creates the model host
-  (passing the runtime clock and the native fetch captured at module load). Outside a browser (no `window` and
-  `document`) `GenClass.init()` returns an inert runtime (no observers, no model): SSR-safe.
-- With `holdBudgetMs: 1e9` held writes wait for the answer; a decider that answers asynchronously still gets
-  `timeoutMs` (ignore it).
-- User actions: `rt.user({ kind, target?, value?, key?, sensitive? }, handler?)`; `kind`: `click | type | change |
-  submit | key | nav | navigate | <any>`. Typing on the same target within 1 s is one timeline event per burst; each
-  keystroke is still its own user op. The user op stays ambient until `clock.afterTask`: every write in that task
-  (and its microtasks, and in ops started from it synchronously) is a user write and is never held.
-- `rt.op(name, fn)` records a task op (ambient in its body and when its promise settles); `rt.emit(name, data)` a
-  custom event; `rt.reportError(e)` an error trigger.
-- `app` in situations: `CreateOptions.app()` if given, else `global.document.title` and `global.location.pathname`
-  (read when the situation is built; "unknown" when neither exists). `global.location.href` is the base for URLs.
-- Settled points (invariants, transition profiles, consistent snapshots) need `settleMs` (default 60 ms) of quiet,
-  no in-flight op younger than 10 s and no held write; scheduled with `clock.setTimeout`.
-- Only the injected clock is used; ids come from per-runtime counters, so the same inputs give byte-identical
-  situations at any budget (tested).
+- `observe` defaults: every observer on, except `timers`, on only when `global.document` exists.
+- `createRuntime` has no model unless you pass `decider` or `model: {...}`. Outside a browser `GenClass.init()` returns
+  an inert runtime.
+- With `thresholds: 0` every permitted candidate runs when the model's top diagnosis is not `expected` (or with
+  `requireDiagnosis: false`). In guard mode only guard-tier actions are permitted; triggers with no permitted action
+  are not held (decided in the background).
+- User actions: `rt.user({ kind, target?, value?, key?, sensitive? }, handler?)`. Values are redacted when
+  `sensitive` or when the target names a secret (`input "Password"`, `input "Card number"`); a kanban `card "…"`
+  keeps its value. Typing on the same target within 1 s is one timeline event per burst.
+- `app`: `CreateOptions.app()` if given, else `global.document.title` and `global.location.pathname`.
+- Only the injected clock is used; same inputs → byte-identical situations at any budget (tested).
+- Request identities for `Request` bodies are computed after a microtask read of a clone (≤ 100 ms of clock time);
+  the op exists synchronously (opCreated) with `identity` filled in just before the request gate.
 
 ## SIM requests (sim/NEEDS.md): done
 
-1. DONE `EvaluateRequest.subject?: SubjectRef` = `{ kind; op?; mutation?; store?; paths?; cause?; error?; invariant? }`,
-   never serialized into `state`; also `Decision.subjectRef`. mutation: `{ mutation, store, paths, cause }`;
-   request/failure/stall: `{ op }`; transition: `{ op, store, paths }`; inconsistency: `{ store, paths, invariant }`;
-   error: `{ error (raw object), op }`; ask: `{ op | store }`.
-2. DONE `createRuntime({ hooks: { opCreated(op), mutationProposed(m) } })`. `opCreated` runs synchronously whenever
-   an op is created (inside the instrumented `fetch(...)` call before any await, inside `user()`, `op()`, timers...).
-   `mutationProposed({ id, store, paths, cause, changes })` runs synchronously inside `atom.set`/`update`, guarded
-   set and adapter `propose`, before gating.
-3. DONE `policy.requireDiagnosis` (default true; false skips the "top diagnosis != expected" gate).
-4. DONE `vocabulary: { diagnoses?, actions? }` on Create/InitOptions. `diagnoses` replaces labels and wording
-   (`expected` is always kept and listed first; plugin labels are appended). `actions` replaces descriptions of
-   built-in or custom actions by name. (The earlier `diagnoses` option was removed in favour of this.)
-5. DONE `runtime.situation(trigger?)` consumes no ids and records no events (tested); for a trigger built before it
-   returns the last situation built for it, otherwise an "ask about now" situation. Token counting: MODEL's
-   `src/model/tokenizer.ts`; the runtime keeps the state within the character budget (`stateChars`).
-6. NEW `situation: { budget }` for budget sampling (see Latency).
+1–5 (batch 1): DONE (`EvaluateRequest.subject`, `hooks`, `policy.requireDiagnosis`, `vocabulary`, side-effect-free
+`situation()`). 6 (batch 2): DONE `situation: { budget }`. a–f (batch 3): DONE (see above).
 
-Fact wording changed in batch 2 (shorter: `v0 → v1`, "which started 0.09s after #6", compact provenance), so
-rows generated before this batch should be regenerated.
+Fact and question wording changed again in batch 3 (versions "version a → b", real failure counts, compact
+questions, item-level change summaries, `transient` label, pending-local-change fact): regenerate rows.
 
 ## For UI (adapters, devtools)
 
-- Everything the devtools needs is public: `on("decide"|"detect"|"act"|"event"|"status"|"report")`, `decisions()`,
-  `interventions()`, `explain(id)` (with `message`), `situation()`, `history()`, `inflight()`, `status` (with
-  MODEL's fields), `mode`, `setMode()`, `pause()/resume()`. `on("report", r)` receives every report line even with
-  `report: "silent"`. Reading `rt.ready` starts a lazy model load (`preload: "lazy"`); prefer `rt.status` +
-  `on("status")`. `ActionRecord.late` marks late reverts.
-- `runtime.adapter(name, { get, set?, subscribe? })` returns `{ propose({ fn | value, commit }), dispose() }`.
+- Public API as before, plus `Decision.candidate`/`Decision.mass`, `Situation.compact`/`budget`, `Runtime.holdBudgetMs()`
+  / `situationBudget()`. Detection lines now read "Not acted on (would have done X p): reason." (UI's splitReport
+  regex for "Not acted on (...)" still matches.) Repeats of a report are printed as one summary line when the minute
+  ends. `test/browser/ui/mock-runtime.ts` needs `holdBudgetMs()` and `situationBudget()` (not type-checked today).
+- DOM observer ignores `[data-genclass-ignore]` subtrees (incl. shadow roots) and events dispatched by app code while
+  an op runs.
 
 ## Triggers and triage
 
 | trigger | raised when | waits? | actions offered (passive first) |
 |---|---|---|---|
-| mutation | a non-user, non-GenClass write to a holdable store | yes (hold budget; late revert ≤ 2 s after) | apply, discard, defer (if < 2 defers) |
-| request | every instrumented fetch/XHR not issued by GenClass | yes | send, coalesce*, delay, block, serve_cached* |
-| failure | network error, timeout (`TimeoutError` abort), 5xx/429/408 | fetch: yes; XHR: no | deliver, retry* (replayable, < 4 attempts), serve_cached* |
+| mutation | a non-user, non-GenClass write to a holdable store | yes, when an action is permitted (hold budget; late revert ≤ 2 s after) | apply, discard, defer (if < 2 defers) |
+| request | every instrumented fetch/XHR not issued by GenClass (keepalive and sync XHR never held) | yes, when permitted | send, coalesce*, delay, block, serve_cached* |
+| failure | network error, timeout (`TimeoutError` abort), 5xx/429/408 | fetch: when permitted (heal); XHR: no | deliver, retry* (replayable, < 4 attempts), serve_cached* |
 | stall | in flight > max(4×median, 2×p95, 500 ms), ≥ 5 latency samples | no | wait, hedge* (idempotent GET), serve_cached* |
-| inconsistency | a learned invariant breaks at a settled point (once per episode) | no | ignore, rollback*, resync* |
-| transition | a completed op's write set / value kind / status class / write count seen in < 1% of ≥ 20 completions | no | ignore, rollback* (to the snapshot before the op), resync* |
-| error | uncaught error / unhandled rejection / `reportError` | no | ignore, rollback* (if its chain wrote state) |
+| inconsistency | a learned invariant breaks at a settled point (once per episode) | no | ignore, rollback* (snapshot), resync* |
+| transition | a completed op's write set / value kind / status class / write count seen in < 1% of ≥ 20 completions | no | ignore, rollback* (its chain's writes), resync* |
+| error | uncaught error / unhandled rejection / `reportError` | no | ignore, rollback* (only if its chain wrote state) |
 
-Triage (`"salient"`): facts are computed first (cheap); the full situation is built and the model consulted only if
-a fact is non-neutral or a standing question has `always: true`. Non-neutral: a written field was written by
-another chain since the cause op started; a field of the same store moved since then; a newer op with the cause's
-signature is in flight; an identical *additive* change (numeric delta, added/removed items) in the last 10 s; an
+Triage (`"salient"`): facts first (cheap); the model is consulted only for a non-neutral fact or an `always`
+standing question. Non-neutral: a written field was written by another chain since the cause started; a field of
+the same store moved since then; a newer op with the cause's signature is in flight; a pending local change (a user
+action's write whose request is still in flight) is being overwritten; an identical additive change in 10 s; an
 identical request in flight or sent within min(2 s, half its usual gap); failure streak ≥ 2 (request); rate ≥ 3×
-usual with ≥ 5 in 10 s; cause latency > 3× median; every failure/stall/inconsistency/transition/error. Plain
-traffic makes no model call (tested). A trigger with only the passive action applicable omits the `action`
-question (diagnosis only). While the model is loading or failed, every trigger fails open at once (passive, no
-record); with `preload: "lazy"` the first salient situation starts the load. In `observe` mode nothing waits;
-decisions are still made, recorded and reported.
-
-Precision rules (beyond the policy gate): invariant candidates count only snapshots where they hold
-non-trivially and skip id-keyed collections; an op whose usual write set is empty is not "unusual" for writing
-something; an op and its descendant flagged for the same anomaly raise one transition trigger; undoing a rollback
-mutes that violation until it holds again; a late revert only touches a write nothing has overwritten.
+usual with ≥ 5 in 10 s; cause latency > 3× median; every failure/stall/inconsistency/transition/error.
 
 ## Example situations: compact budgets (from test/budget.test.ts)
 
-The same stale-write situation as the full example below, at the 1,100-char (1-thread WASM) and 2,000-char
-(4-thread WASM) budgets. The header shows the budget and the actual size.
+The same stale-write situation at 1,000 chars (1-thread WASM: compact questions) and 2,000 chars (4-thread WASM:
+full questions). Questions are shown on one line each.
 
-### mutation at 1100 chars (1059)
+### mutation at 1000 chars (998)
 
 ```
 app: /search
 trigger: A write to search.results from GET /api/search?q=rea (#6) is about to be applied.
 facts:
-  search.results was written once by other operations since this write's cause (#6) started (v0 → v1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
+  search.results was written once by other operations since this write's cause (#6) started (version 0 → 1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
   search.query changed since this write's cause (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
   This write comes from GET /api/search?q=rea (#6), started 0.90s ago, ended 0.00s ago with 200; its chain began with user typed "rea" into input "Search" (#5).
   This write would change search.results: 2 items ["reac-1", "reac-2"] → 2 items ["rea-1", "rea-2"].
 in_flight: none
 timeline:
-  -0.69s write search.results: 0 items → 2 items ["reac-1", "reac-2"] (by #8)
   -0.00s end GET /api/search?q=rea (#6): 200 in 0.90s
 state:
   search.results = 2 items ["reac-1", "reac-2"] (v1, by #8 0.69s ago)
   search.query = "reac" (v4, by #7 0.81s ago)
 stats:
-  GET /api/search: 4 done, errors 0%, 4 in last 10s
+  GET /api/search: 4 done, 0 of last 4 failed, 4 in last 10s
+questions:
+  diagnosis: What is happening here? expected | stale | conflict | duplicate | inconsistent | failing | slow | overload | unusual | transient
+  action: What should the runtime do with this write? apply | discard | defer
 ```
 
-### mutation at 2000 chars (1479)
+### mutation at 2000 chars (1494)
 
 ```
 app: /search
 trigger: A write to search.results from GET /api/search?q=rea (#6) is about to be applied.
 facts:
-  search.results was written once by other operations since this write's cause (#6) started (v0 → v1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
+  search.results was written once by other operations since this write's cause (#6) started (version 0 → 1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
   search.query changed since this write's cause (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
   This write comes from GET /api/search?q=rea (#6), started 0.90s ago, ended 0.00s ago with 200; its chain began with user typed "rea" into input "Search" (#5).
   This write would change search.results: 2 items ["reac-1", "reac-2"] → 2 items ["rea-1", "rea-2"].
@@ -212,14 +237,17 @@ state:
   search.results = 2 items ["reac-1", "reac-2"] (v1, by #8 0.69s ago)
   search.query = "reac" (v4, by #7 0.81s ago)
 stats:
-  GET /api/search: 4 done, errors 0%, 4 in last 10s
+  GET /api/search: 4 done, 0 of last 4 failed, 4 in last 10s
+questions:
+  diagnosis: What is happening here? expected: normal behaviour, nothing is wrong | stale: outdated data or an older operation is about to replace newer state | conflict: concurrent operations are competing over the same state or resource | duplicate: the same change or request is happening again without a new intent | inconsistent: the state contradicts itself or relationships it normally keeps | failing: an operation keeps failing or its failures follow a pattern | slow: an operation is far slower than usual | overload: work is being triggered far more often than usual | unusual: this differs from how the same operation normally behaves | transient: a one-off failure that is likely to succeed if tried again
+  action: What should the runtime do with this write? apply: let this write update the state now | discard: drop this write and keep the current state | defer: hold this write until the related in-flight operations finish, then decide again
 ```
 
 
 ## Example situations: full budget, one per trigger (from test/situation.test.ts)
 
-The model gets the Jev state object; shown with `stateText`. Diagnosis criteria (identical in every row, omitted):
-expected, stale, conflict, duplicate, inconsistent, failing, slow, overload, unusual with the §6 descriptions.
+The model gets the Jev state object, shown with `stateText`. Diagnosis criteria (identical in every row, omitted):
+expected, stale, conflict, duplicate, inconsistent, failing, slow, overload, unusual, transient with their descriptions.
 
 ### mutation
 
@@ -227,7 +255,7 @@ expected, stale, conflict, duplicate, inconsistent, failing, slow, overload, unu
 app: /search
 trigger: A write to search.results from GET /api/search?q=rea (#6) is about to be applied.
 facts:
-  search.results was written once by other operations since this write's cause (#6) started (v0 → v1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
+  search.results was written once by other operations since this write's cause (#6) started (version 0 → 1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
   search.query changed since this write's cause (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
   This write comes from GET /api/search?q=rea (#6), started 0.90s ago, ended 0.00s ago with 200; its chain began with user typed "rea" into input "Search" (#5).
   This write would change search.results: 2 items ["reac-1", "reac-2"] → 2 items ["rea-1", "rea-2"].
@@ -253,7 +281,7 @@ state:
   search.results = 2 items ["reac-1", "reac-2"] (v1, by #8 0.69s ago)
   search.query = "reac" (v4, by #7 0.81s ago)
 stats:
-  GET /api/search: 4 done, errors 0%, 4 in last 10s
+  GET /api/search: 4 done, 0 of last 4 failed, 4 in last 10s
 questions:
   diagnosis (choice): What is happening here?
   action (choice): What should the runtime do with this write?
@@ -266,18 +294,18 @@ questions:
 
 ```
 app: /search
-trigger: POST /api/orders {items: [1], card: [redacted]} (#4) is about to be sent.
+trigger: POST /api/orders {items: [1], cardNumber: [redacted]} (#4) is about to be sent.
 facts:
   1 identical POST /api/orders request in the last 10s: #2 in flight (started 0.12s ago); #2 started 0.12s before this one; they come from separate user actions 0.12s apart.
   This request comes from user clicked button "Place order" (#3), started 0.00s ago.
-  POST is not idempotent; its body (46 bytes) can be replayed.
+  POST is not idempotent; its body (52 bytes) can be replayed.
 in_flight:
-  POST /api/orders {items: [1], card: [redacted]} (#2) 0.12s so far, by #1
+  POST /api/orders {items: [1], cardNumber: [redacted]} (#2) 0.12s so far, by #1
 timeline:
   -0.12s user clicked button "Place order" (#1)
-  -0.12s start POST /api/orders {items: [1], card: [redacted]} (#2, by #1)
+  -0.12s start POST /api/orders {items: [1], cardNumber: [redacted]} (#2, by #1)
   -0.00s user clicked button "Place order" (#3)
-  -0.00s start POST /api/orders {items: [1], card: [redacted]} (#4, by #3)
+  -0.00s start POST /api/orders {items: [1], cardNumber: [redacted]} (#4, by #3)
 state: none
 stats: none
 questions:
@@ -297,7 +325,7 @@ trigger: GET /api/status (#12) failed (HTTP 503) and the app has not seen the fa
 facts:
   The request #12 failed: HTTP 503 after 0.06s; the app has not seen the failure yet.
   4 identical GET /api/status requests in the last 10s (latest 3: #6 answered 200 6.00s ago; #8 ended 503 4.00s ago; #10 ended 503 2.00s ago); #10 started 2.00s before this one, neither from a user action.
-  This is the 3rd GET /api/status failure in a row (recent outcomes: 200, 200, 503, 503, 503; last success 6.00s ago); error rate 27% over 6 requests.
+  This is the 3rd GET /api/status failure in a row (recent outcomes: 200, 200, 503, 503, 503; last success 6.00s ago); error rate 50% over 6 requests (3 failed).
   GET /api/status was requested 5 times in the last 10s (no usual rate learned yet).
   This request comes from task poll (#11), started 0.06s ago.
   GET is idempotent.
@@ -325,7 +353,7 @@ state:
   status.checked = 2 (v2, by #6 6.00s ago)
   status.up = true (v1, by #2 10.0s ago)
 stats:
-  GET /api/status: 6 done, errors 27%, 5 in last 10s
+  GET /api/status: 6 done, 3 of last 6 failed, 5 in last 10s
 questions:
   diagnosis (choice): What is happening here?
   action (choice): What should the runtime do with this failed request?
@@ -367,7 +395,7 @@ timeline:
   -0.96s start GET /api/report/:id (#16, by #15)
 state: none
 stats:
-  GET /api/report/:id: 7 done, median 0.24s, p95 0.27s, errors 0%, 2 in last 10s (usual 2.31)
+  GET /api/report/:id: 7 done, median 0.24s, p95 0.27s, 0 of last 7 failed, 2 in last 10s (usual 2.31)
 questions:
   diagnosis (choice): What is happening here?
   action (choice): What should the runtime do with this slow request?
@@ -384,7 +412,7 @@ trigger: The relation cart.total == sum(cart.items[*].price * cart.items[*].qty)
 facts:
   The learned relation cart.total == sum(cart.items[*].price * cart.items[*].qty) no longer holds: cart.total = 22, sum(cart.items[*].price * cart.items[*].qty) = 29. It held at 3 settled points before.
   The last consistent state is 0.45s old; 1 field write happened since.
-  cart.items was written 0.06s ago by PATCH /api/cart/:id {qty: 2} (#5): 3 items, 1 changed: {id: 3, price: 7, qty: 1} → {id: 3, price: 7, qty: 2}.
+  cart.items was written 0.06s ago by PATCH /api/cart/:id {qty: 2} (#5): 3 items, 1 changed: {id: 3, qty: 1 → 2}.
   No operations are in flight (the app is settled).
 in_flight: none
 timeline:
@@ -397,7 +425,7 @@ timeline:
   -0.21s user clicked button "+" (#4)
   -0.21s start PATCH /api/cart/:id {qty: 2} (#5, by #4)
   -0.06s end PATCH /api/cart/:id {qty: 2} (#5): 200 in 0.15s
-  -0.06s write cart.items: 3 items, 1 changed: {id: 3, price: 7, qty: 1} → {id: 3, price: 7, qty: 2} (by #5)
+  -0.06s write cart.items: 3 items, 1 changed: {id: 3, qty: 1 → 2} (by #5)
 state:
   cart.total = 22 (v3, by #3 0.51s ago)
   cart.items = 3 items [{id: 1, price: 10, qty: 1}, {id: 2, price: 5, qty: 1}, …] (v4, by #5 0.06s ago)
@@ -442,7 +470,7 @@ state:
   cart.items = 23 items [1, 2, 3, …] (v23, by #46 0.06s ago)
   cart.total = 66 (v22, by #44 0.46s ago)
 stats:
-  POST /api/cart: 23 done, median 0.08s, p95 0.08s, errors 0%, 23 in last 10s
+  POST /api/cart: 23 done, median 0.08s, p95 0.08s, 0 of last 20 failed, 23 in last 10s
 questions:
   diagnosis (choice): What is happening here?
   action (choice): What should the runtime do about this unusual state change?
@@ -458,7 +486,7 @@ trigger: An uncaught TypeError was thrown: Cannot read properties of null (readi
 facts:
   Uncaught TypeError: Cannot read properties of null (reading 'toUpperCase').
   No consistent snapshot from before #1 started exists.
-  Its chain wrote profile.name, profile.loaded before the error (last 0.00s ago).
+  Its chain wrote profile.name, profile.loaded before the error.
   It was thrown while GET /api/profile (#2) was active, 0.10s after it started; that chain began with user clicked link "Profile" (#1).
 in_flight: none
 timeline:
@@ -471,28 +499,35 @@ state:
   profile.name = null (v1, by #2 0.00s ago)
   profile.loaded = true (v1, by #2 0.00s ago)
 stats:
-  GET /api/profile: 1 done, errors 0%, 1 in last 10s
+  GET /api/profile: 1 done, 0 of last 1 failed, 1 in last 10s
 questions:
   diagnosis (choice): What is happening here?
+  action (choice): What should the runtime do about this error?
+    ignore: leave the state as it is
+    rollback: restore the affected state to its last consistent snapshot
 ```
 
 
 ## Deviations from the contract (and why)
 
 - `retry` backoff is `min(200 ms · 2^(attempt-1), 5 s)`: the first retry waits 200 ms.
-- `coalesce` is not offered for XHR, and XHR failures/stalls are detection-only (the app receives XHR events
-  directly, so they cannot be held). XHR `serve_cached` uses responses cached by fetch.
+- `coalesce` is not offered for XHR; XHR failures/stalls are detection-only (the app receives XHR events directly).
+- Transition profiles compare array kinds as empty / non-empty only (§4 also lists the length delta sign; dropped for
+  precision: a short last page or a removal is ordinary).
+- Error/transition `rollback` restores only the fields the op's own chain wrote (the contract's "last consistent
+  snapshot" would also revert other chains' writes, e.g. user input); inconsistency rollback uses the snapshot.
+- Default redaction is by word-level secret names (approved SIM request a), not the §2 regex.
 - `situation(trigger)` returns the last situation built for that trigger (an "ask about now" one otherwise).
-- Extra public surface: `Runtime.adapter()`, `Runtime.inflight()`, `on("report")`, `Situation.salient/facts`,
-  `Decision.tier/ran/answers/subjectRef`, `ActionRecord.late`, `Explanation.message`, `StandingQuestion.always`,
+- Extra public surface: `Runtime.adapter()/inflight()/holdBudgetMs()/situationBudget()`, `on("report")`,
+  `Situation.salient/facts/compact/budget`, `Decision.tier/ran/answers/subjectRef/candidate/mass`,
+  `ActionRecord.late`, `Explanation.message`, `StandingQuestion.always`,
   `InitOptions.vocabulary/settleMs/learn/situation`, `CreateOptions.app/hooks`, `ActionDef.tier`,
   `ActionContext.builtin/describe/onUndo`, `EvaluateRequest.timeoutMs/subject`.
-- Token budget: characters, not tokens, so situations can be built before the model files load. MODEL's packer still
-  rejects anything over the position limit (the runtime then fails open and shrinks its automatic budget).
 
 ## Open issues
 
-- REVIEW's findings (`test/review-*.test.ts`) are pending the next batch.
-- Lead (UI-NEEDS item 2): `react-dom` is not a devDependency of `@genclass/runtime`; UI's React tests resolve it only
-  through the workspace root install (`npm install` at the repo root).
+- In-place mutation detection is best effort: arrays by reference/length plus 8 sampled elements, collections by key
+  count, last key and 8 sampled values; a deep in-place change outside the samples can go unseen (subscribers are
+  still notified on every `set()`).
+- Lead (UI-NEEDS item 2): `react-dom` is not a devDependency of `@genclass/runtime`.
 - Any change to situation wording must be coordinated with SIM (one implementation, `src/situation/*`).

@@ -29,6 +29,8 @@ export interface Leaf {
   /** Collections: keys in order and per-key value hashes. */
   keys?: string[];
   khash?: Map<string, string>;
+  /** Collections: the live object the leaf was computed from (same reference: cheap unchanged check). */
+  src?: object;
 }
 
 function primHash(v: unknown): string {
@@ -65,10 +67,29 @@ function samplePositions(n: number): number[] {
 const isObj = (x: unknown): x is object => x !== null && typeof x === "object";
 
 /** An array leaf, reusing the previous leaf's element hashes for elements whose reference is unchanged. */
+/** True when a few elements that kept their reference still hash the same (no in-place mutation seen). */
+function sampleClean(get: (i: number) => unknown, old: (i: number) => unknown, hash: (i: number) => string | undefined, n: number): boolean {
+  for (const i of samplePositions(n)) {
+    const el = get(i);
+    if (isObj(el) && old(i) === el && valueHash(el) !== hash(i)) return false;
+  }
+  return true;
+}
+
 function arrayLeaf(arr: unknown[], prev: Leaf | undefined): Leaf {
   const n = arr.length;
   const p = prev && prev.kind === "array" && prev.elems && Array.isArray(prev.value) ? prev : undefined;
   const refs = p ? (p.value as unknown[]) : undefined;
+  // fast path: same length, every element the same reference, sampled elements unchanged -> the previous leaf
+  if (p && refs!.length === n) {
+    let same = true;
+    for (let i = 0; i < n; i++)
+      if (refs![i] !== arr[i]) {
+        same = false;
+        break;
+      }
+    if (same && sampleClean((i) => arr[i], (i) => refs![i], (i) => p.elems![i], n)) return p;
+  }
   const elems: string[] = new Array(n);
   let same = !!p && refs!.length === n;
   let byRef: Map<unknown, string> | null = null;
@@ -114,6 +135,31 @@ function objectLeaf(obj: Record<string, unknown>, prev: Leaf | undefined): Leaf 
   const keys = Object.keys(obj);
   const p = prev && prev.kind === "object" && prev.khash && isPlainObject(prev.value) ? prev : undefined;
   const old = p ? (p.value as Record<string, unknown>) : undefined;
+  // fastest path: the very same object as last time, same key count and last key, sampled values unchanged
+  if (p && old && obj === p.src && p.keys!.length === keys.length && keys[keys.length - 1] === p.keys![keys.length - 1]) {
+    const pk = p.keys!;
+    const n = keys.length;
+    let same = true;
+    for (const i of samplePositions(n)) {
+      if (keys[i] !== pk[i] || old[keys[i]] !== obj[keys[i]]) {
+        same = false;
+        break;
+      }
+    }
+    if (same && sampleClean((i) => obj[keys[i]], (i) => old[keys[i]], (i) => p.khash!.get(keys[i]), n)) return p;
+  }
+  // fast path: same keys in the same order, every value the same reference, sampled values unchanged
+  if (p && old && p.keys!.length === keys.length) {
+    let same = true;
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (p.keys![i] !== k || old[k] !== obj[k]) {
+        same = false;
+        break;
+      }
+    }
+    if (same && sampleClean((i) => obj[keys[i]], (i) => old[keys[i]], (i) => p.khash!.get(keys[i]), keys.length)) return p.src === obj ? p : { ...p, src: obj };
+  }
   const khash = new Map<string, string>();
   let same = !!p && p.keys!.length === keys.length;
   keys.forEach((k, i) => {
@@ -137,9 +183,9 @@ function objectLeaf(obj: Record<string, unknown>, prev: Leaf | undefined): Leaf 
       }
     }
   }
-  if (same && p) return p;
+  if (same && p) return { ...p, src: obj };
   const hash = fnv1a(`c${keys.length}|${keys.map((k) => `${k}=${khash.get(k)}`).join(",")}`);
-  return { value: { ...obj }, hash, kind: "object", len: keys.length, keys, khash };
+  return { value: { ...obj }, hash, kind: "object", len: keys.length, keys, khash, src: obj };
 }
 
 /** A leaf for any value (incremental when the previous leaf of the same path is given). */

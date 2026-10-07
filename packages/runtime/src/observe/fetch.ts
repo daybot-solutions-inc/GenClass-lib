@@ -388,9 +388,11 @@ export function installFetch(host: NetHost): (() => void) | null {
       signal?.addEventListener?.("abort", onAbort, { once: true } as AddEventListenerOptions);
 
       let firstInput = input;
+      const sentOps = new WeakSet<OpRec>();
       const send = (sendOp: OpRec, primary: boolean): void => {
+        if (sentOps.has(sendOp)) return; // never send the same attempt twice
+        sentOps.add(sendOp);
         if (primary) {
-          if (sent && sendOp === op) return;
           sent = true;
           unlisten(); // from here on the native fetch handles the app's signal
         }

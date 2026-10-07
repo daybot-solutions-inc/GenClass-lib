@@ -46,18 +46,18 @@ import { EventLog } from "./trace/events.js";
 import { OpRegistry, type OpRec, type StartOpts } from "./trace/ops.js";
 import { Context, LazyOp } from "./trace/context.js";
 import { StoreHub, toChanges, type MutationRec, type StoreRec, type Verdict } from "./state/hub.js";
-import { cloneValue, flatten, normalizeLeafKind, type FieldChange } from "./state/fields.js";
+import { cloneValue, flatten, normalizeLeafKind, type FieldChange, type Leaf } from "./state/fields.js";
 import { InvariantMiner } from "./state/invariants.js";
 import { Baselines } from "./learn/baselines.js";
 import { Profiles, shapeOf } from "./learn/profiles.js";
 import { buildSituation, type BuildOptions, type BuiltSituation } from "./situation/build.js";
 import { computeFacts } from "./situation/facts.js";
-import type { ErrorInfo, ReqMeta, SitEnv, SubjectSpec, Violation } from "./situation/env.js";
+import type { ChainWriteInfo, ErrorInfo, ReqMeta, SitEnv, SubjectSpec, Violation } from "./situation/env.js";
 import { opLabel } from "./situation/describe.js";
 import { BUILTIN_ACTIONS, diagnosisVocabulary, PASSIVE } from "./situation/questions.js";
-import { COMPACT_BUDGET, STATE_CHAR_BUDGET, stateText } from "./situation/serialize.js";
+import { STATE_CHAR_BUDGET, stateText } from "./situation/serialize.js";
 import { DeciderQueue } from "./decide/decider.js";
-import { gate, holdBudget, policyConfig, RateLimiter, type PolicyConfig } from "./decide/policy.js";
+import { gate, holdBudget, permittedActions, policyConfig, RateLimiter, restriction, type PolicyConfig } from "./decide/policy.js";
 import { decisionLine, detectionLine, interventionLine, Reporter } from "./decide/report.js";
 import type { ActionEffect, Controller, EndOpts, NetHost, TriggerOpts } from "./decide/exec.js";
 import { ResponseCache } from "./observe/cache.js";
@@ -114,8 +114,8 @@ export class RuntimeImpl implements Runtime {
   readonly hub: StoreHub;
   readonly base = new Baselines();
   readonly profiles = new Profiles();
-  readonly miner = new InvariantMiner();
-  readonly cache = new ResponseCache();
+  readonly miner: InvariantMiner;
+  readonly cache: ResponseCache;
 
   private readonly queue: DeciderQueue;
   private readonly reporter: Reporter;
@@ -128,6 +128,8 @@ export class RuntimeImpl implements Runtime {
   private readonly settleMs: number;
   private readonly budgetOpt: number | "auto";
   private budgetScale = 1;
+  private uniq = 0;
+  private rateWarnedAt = -Infinity;
   private readonly appFn: (() => { title?: string; route?: string }) | undefined;
   private readonly debug: boolean;
   private readonly persist: boolean;
@@ -176,6 +178,8 @@ export class RuntimeImpl implements Runtime {
     this.ctx = new Context(this.clock);
     this.redactFn = o.redact ?? defaultRedact;
     this.hub = new StoreHub(this.clock, this.ctx, this.events, () => this.redactFn);
+    this.miner = new InvariantMiner(() => this.redactFn);
+    this.cache = new ResponseCache(this.clock);
     this.policy = policyConfig(o.policy);
     this.hub.holdUserWrites = this.policy.holdUserWrites;
     this.rate = new RateLimiter(() => this.policy.maxActionsPerMinute);
@@ -199,6 +203,8 @@ export class RuntimeImpl implements Runtime {
     this.env = this.makeEnv();
     this.hub.hooks = {
       gate: (m) => this.gateMutation(m),
+      mayHold: () => this.consultable() && this._mode !== "observe",
+      appError: (e, source) => this.reportError(e, { source }),
       waitRelated: (m) => this.waitRelated(m),
       applied: (m, s, changes, writer) => this.onApplied(m, s, changes, writer),
       discarded: () => this.scheduleSettle(),
@@ -237,19 +243,42 @@ export class RuntimeImpl implements Runtime {
     const g = this.global;
     const on = (k: string, def = true) => (obs[k] === undefined ? def : !!obs[k]);
     const host = this.netHost();
+    // init must never throw: a failing installer (read-only global, exotic environment) is skipped
     const add = (f: (() => void) | null) => {
       if (f) this.uninstall.push(f);
     };
+    const tryAdd = (name: string, install: () => (() => void) | null) => {
+      try {
+        add(install());
+      } catch (e) {
+        this.log(`the ${name} observer could not be installed; skipped`, e);
+      }
+    };
     const browserLike = typeof g.document === "object" && g.document !== null;
-    if (on("timers", browserLike)) add(installTimers(this.timerHost()));
-    if (on("fetch")) add(installFetch(host));
-    if (on("xhr")) add(installXHR(host));
-    if (on("websocket")) add(installWebSocket(this.wsHost()));
-    if (on("user")) add(installDomUser(g, this));
-    if (on("errors")) add(installErrors(g, this));
-    if (on("nav")) add(installNav(g, this, (route) => this.events.push(this.clock.now(), "nav", route, { data: { route } })));
-    if (on("storage")) add(installStorage(g, (area, op, key) => this.onStorage(area, op, key)));
-    if (on("perf")) add(installPerf(g, (name, duration) => this.events.push(this.clock.now(), "perf", name, { data: { duration } })));
+    if (on("timers", browserLike)) tryAdd("timers", () => installTimers(this.timerHost()));
+    if (on("fetch")) tryAdd("fetch", () => installFetch(host));
+    if (on("xhr")) tryAdd("xhr", () => installXHR(host));
+    if (on("websocket")) tryAdd("websocket", () => installWebSocket(this.wsHost()));
+    if (on("user"))
+      tryAdd("user", () =>
+        installDomUser(g, {
+          user: (a, h) => this.user(a, h),
+          ambientKind: () => {
+            const c = this.ctx.peek();
+            if (!c) return null;
+            return c instanceof LazyOp ? "timer" : c.kind;
+          },
+          runningKind: () => {
+            const c = this.ctx.running;
+            if (!c) return null;
+            return c instanceof LazyOp ? "timer" : c.kind;
+          },
+        }),
+      );
+    if (on("errors")) tryAdd("errors", () => installErrors(g, this));
+    if (on("nav")) tryAdd("nav", () => installNav(g, this, (route) => this.events.push(this.clock.now(), "nav", route, { data: { route } })));
+    if (on("storage")) tryAdd("storage", () => installStorage(g, (area, op, key) => this.onStorage(area, op, key)));
+    if (on("perf")) tryAdd("perf", () => installPerf(g, (name, duration) => this.events.push(this.clock.now(), "perf", name, { data: { duration } })));
   }
 
   private netHost(): NetHost {
@@ -269,6 +298,13 @@ export class RuntimeImpl implements Runtime {
       trigger: (spec, ctl, opts) => this.trigger(spec, ctl, opts),
       watchStall: (op, req, ctl) => this.watchStall(op, req, ctl),
       failureStreak: (sig) => this.base.stats(sig)?.failStreak ?? 0,
+      uniqueId: () => `uniq:${++this.uniq}`,
+      setIdentity: (op, req, identity) => {
+        if (op.identity === identity) return;
+        op.identity = identity;
+        req.identity = identity;
+        this.registerIdentity(op);
+      },
       emit: (name, data, op) => this.events.push(this.clock.now(), "custom", name, { ...(op ? { op: op.id } : {}), ...(data ? { data } : {}) }),
     };
   }
@@ -313,17 +349,8 @@ export class RuntimeImpl implements Runtime {
       this.events.push(t, "op.start", name, { op: op.id, ...(op.cause !== undefined ? { cause: op.cause } : {}), data });
     }
     if ((kind === "fetch" || kind === "xhr") && !op.genclass) {
-      this.base.start(name, t, op.identity);
-      if (op.identity) {
-        const list = this.identicalMap.get(op.identity) ?? [];
-        list.push(op);
-        while (list.length > 12 || (list.length && t - list[0].start > 10_000 && list[0].end !== undefined)) list.shift();
-        this.identicalMap.set(op.identity, list);
-        if (this.identicalMap.size > 512) {
-          const first = this.identicalMap.keys().next().value;
-          if (first !== undefined) this.identicalMap.delete(first);
-        }
-      }
+      this.base.start(name, t);
+      if (op.identity) this.registerIdentity(op);
     }
     // instant ops are complete at creation: profile them at the next settled point (their chains finish by then)
     if (op.instant && PROFILED.has(kind) && !op.genclass) this.queueProfile(op);
@@ -350,6 +377,21 @@ export class RuntimeImpl implements Runtime {
     }
     if (PROFILED.has(op.kind) && !op.genclass && status !== "aborted" && !o.synthetic) this.queueProfile(op);
     this.scheduleSettle();
+  }
+
+  /** Register a request op under its identity (identical-request facts, gaps between identical requests). */
+  private registerIdentity(op: OpRec): void {
+    const id = op.identity;
+    if (!id || op.genclass || id.startsWith("uniq:")) return;
+    this.base.noteIdentity(id, op.start);
+    const list = this.identicalMap.get(id) ?? [];
+    list.push(op);
+    while (list.length > 12 || (list.length && this.clock.now() - list[0].start > 10_000 && list[0].end !== undefined)) list.shift();
+    this.identicalMap.set(id, list);
+    if (this.identicalMap.size > 512) {
+      const first = this.identicalMap.keys().next().value;
+      if (first !== undefined) this.identicalMap.delete(first);
+    }
   }
 
   private queueProfile(op: OpRec): void {
@@ -380,7 +422,7 @@ export class RuntimeImpl implements Runtime {
 
   /**
    * Situation size in characters: the configured number, or "auto" by the model's device: webgpu 3,200; wasm
-   * 1,100 + 300 per extra thread (4 threads: 2,000); unknown device (custom providers) 3,200.
+   * 1,000 at 1 thread to 2,000 at 4 threads (linear); unknown device (custom providers) 3,200.
    */
   situationBudget(): number {
     if (typeof this.budgetOpt === "number") return this.budgetOpt;
@@ -388,7 +430,7 @@ export class RuntimeImpl implements Runtime {
     let b: number = STATE_CHAR_BUDGET;
     if (st?.device === "wasm") {
       const threads = Math.min(4, Math.max(1, st.threads ?? 1));
-      b = COMPACT_BUDGET + (threads - 1) * 300;
+      b = 1000 + Math.round(((threads - 1) * 1000) / 3);
     }
     return Math.round(b * this.budgetScale);
   }
@@ -441,8 +483,11 @@ export class RuntimeImpl implements Runtime {
       void this.ready;
       return passive();
     }
-    const waits = opts.hold && this._mode !== "observe";
-    if (opts.hold && !waits) passive();
+    // Never hold when no non-passive action is permitted for this trigger in this mode (and policy): the subject
+    // proceeds at once and the decision is still made in the background, for detection.
+    const permitted = permittedActions(this.policy, this._mode, built.actions);
+    const waits = opts.hold && permitted.length > 0 && !this.paused;
+    if (!waits) passive();
     let expired = false;
     let budgetTimer: unknown = null;
     const t0 = this.clock.now();
@@ -454,12 +499,12 @@ export class RuntimeImpl implements Runtime {
       }, budget);
     }
     // deadline for the answer: held subjects need it within the hold budget (a held write may still be reverted
-    // shortly after it applied); background triggers within a few seconds
+    // shortly after it applied); background decisions within a few seconds
     const lateOk = waits && !!ctl.revert;
     const deadline = waits ? t0 + budget + (lateOk ? LATE_REVERT_MS : 0) : t0 + BACKGROUND_DEADLINE_MS;
     this.queue
       .submit(
-        { trigger: spec.trigger, state: built.situation.state, questions: built.situation.questions, priority: opts.priority, subject: built.subjectRef },
+        { trigger: spec.trigger, state: built.situation.state, questions: built.situation.questions, priority: waits ? opts.priority : Math.min(opts.priority, 1), subject: built.subjectRef },
         deadline,
       )
       .then((res) => {
@@ -487,39 +532,41 @@ export class RuntimeImpl implements Runtime {
     const act = answers.action as ChoiceAnswer | undefined;
     const dg = answers.diagnosis as ChoiceAnswer | undefined;
     const probabilities: Record<string, number> = act?.probabilities ? { ...act.probabilities } : { [passiveName]: 1 };
-    const action = act?.choice && built.actions.some((a) => a.name === act.choice) ? act.choice : passiveName;
-    const confidence = probabilities[action] ?? (act ? act.confidence : 1);
+    const top = act?.choice && built.actions.some((a) => a.name === act.choice) ? act.choice : passiveName;
     const diagnosis = dg?.choice ?? "expected";
     const diagnosisProbabilities: Record<string, number> = dg?.probabilities ? { ...dg.probabilities } : { expected: 1 };
     const diagnosisConfidence = diagnosisProbabilities[diagnosis] ?? dg?.confidence ?? 0;
+    const now = this.clock.now();
+    const offered = built.actions.map((a) => ({ name: a.name, tier: a.tier }));
+    const g = gate(this.policy, this.rate, { actions: offered, probabilities, top, diagnosis, mode: this._mode, paused: this.paused, now });
+    let reason: string | null = g.reason;
+    let run: string | null = g.run;
+    let late = false;
+    if (run) {
+      if (!st.waits && st.hold) {
+        reason = "the subject was not held";
+        run = null;
+      } else if (st.hold && (st.expired || st.passiveRan())) {
+        if (run === "discard" && ctl.revert && ctl.revertable) {
+          // late revert: the write already applied (fail-open); revert exactly that write when nothing depends on it
+          const why = ctl.revertable();
+          if (why) {
+            reason = why;
+            run = null;
+          } else late = true;
+        } else {
+          reason = "the decision arrived after the hold budget expired";
+          run = null;
+        }
+      }
+    }
+    if (reason?.startsWith("rate limit") && now - this.rateWarnedAt > 60_000) {
+      this.rateWarnedAt = now;
+      this.reporter.emit({ kind: "status", message: `[GenClass] Rate limit reached (${this.policy.maxActionsPerMinute} actions/minute): running passive actions until it clears.` });
+    }
+    const action = run ?? top;
     const opt = built.actions.find((a) => a.name === action);
     const tier: Tier = opt?.tier ?? "passive";
-    const now = this.clock.now();
-    let reason: string | null = null;
-    let late = false;
-    const gateNow = () =>
-      gate(this.policy, this.rate, {
-        action,
-        tier,
-        probability: confidence,
-        diagnosis,
-        mode: this._mode,
-        inBudget: true,
-        paused: this.paused,
-        now,
-      });
-    if (tier !== "passive") {
-      if (st.hold && !st.waits) reason = "observe mode never changes execution";
-      else if (st.hold && (st.expired || st.passiveRan())) {
-        if (action === "discard" && ctl.revert && ctl.revertable) {
-          // late revert: the write already applied (fail-open); revert exactly that write if nothing changed since
-          late = true;
-          reason = gateNow() ?? ctl.revertable();
-        } else reason = "the decision arrived after the hold budget expired";
-      } else reason = gateNow();
-      if (reason?.startsWith("rate limit")) this.reporter.emit({ kind: "status", message: `[GenClass] Rate limit reached (${this.policy.maxActionsPerMinute} actions/minute): running passive actions until it clears.` });
-    }
-    const willRun = tier !== "passive" && reason === null;
     const decision: Decision = {
       id: `d${++this.nextDecision}`,
       trigger,
@@ -531,15 +578,17 @@ export class RuntimeImpl implements Runtime {
       diagnosisConfidence,
       diagnosisProbabilities,
       action,
-      confidence,
+      confidence: probabilities[action] ?? 0,
       probabilities,
-      executed: tier === "passive" ? true : willRun,
+      executed: run !== null || tier === "passive",
       facts: built.situation.facts,
       tier,
-      ran: willRun ? action : passiveName,
+      ran: run ?? passiveName,
       answers,
       subjectRef: built.subjectRef,
+      mass: g.mass,
     };
+    if (g.candidate) decision.candidate = g.candidate;
     if (reason) decision.reason = reason;
     this.decisionsBuf.push(decision);
     if (this.decisionsBuf.length > DECISIONS_KEPT) this.decisionsBuf.shift();
@@ -565,8 +614,8 @@ export class RuntimeImpl implements Runtime {
         }
       }
     }
-    if (!willRun) {
-      if (st.hold || tier === "passive" || reason) passive();
+    if (!run) {
+      passive();
       if (detected) this.reporter.emit({ kind: "detect", message: detectionLine(decision), decision });
       return;
     }
@@ -633,12 +682,18 @@ export class RuntimeImpl implements Runtime {
       situation: built.draft,
       runtime: this,
       builtin: async (name: string) => {
-        if (!BUILTIN_ACTIONS[name] || !built.actions.some((a) => a.name === name)) return false;
+        const b = BUILTIN_ACTIONS[name];
+        if (!b || !built.actions.some((a) => a.name === name)) return false;
         if (name === PASSIVE[built.spec.trigger]) {
           ctl.passive();
           tookOver = true;
           return true;
         }
+        // the same policy as the model's own choices: mode tier, deny/allow, rate limit
+        if (this.paused || restriction(this.policy, this._mode, { name, tier: b.tier }) !== null) return false;
+        const t = this.clock.now();
+        if (this.rate.full(t)) return false;
+        this.rate.take(t);
         const eff = await ctl.run(name);
         tookOver = true;
         if (!changed) changed = eff.changed;
@@ -691,7 +746,7 @@ export class RuntimeImpl implements Runtime {
             changed: `Dropped the write to ${paths}${m.cause ? ` from ${opLabel(m.cause)}` : ""}; ${m.store} stays at version ${s?.version ?? 0}.`,
             undo: () => {
               const st = this.hub.get(m.store);
-              if (st) this.hub.commit(st, { ...m, userSync: false, genclass: true, state: "resolved" });
+              if (st) this.hub.commit(st, { ...m, userSync: false, genclass: true, state: "resolved" }, false);
             },
           };
         }
@@ -789,6 +844,7 @@ export class RuntimeImpl implements Runtime {
       }
     }
     this.miner.noteChanged(changes.map((c) => c.path));
+    this.miner.noteValues(changes.map((c) => [c.path, c.afterLeaf] as [string, Leaf | undefined]));
     void m;
     this.scheduleSettle();
   }
@@ -819,9 +875,14 @@ export class RuntimeImpl implements Runtime {
     const res = this.miner.observe(leaves, now);
     const ids = new Set(res.violations.map((v) => v.id));
     for (const id of [...this.muted]) if (!ids.has(id)) this.muted.delete(id);
-    const fresh = res.violations.filter((v) => !this.episode.has(v.id) && !this.muted.has(v.id));
+    // fresh: violated now but not at the previous settled point (a new episode)
+    const brokeNow = res.violations.filter((v) => !this.episode.has(v.id));
+    const fresh = brokeNow.filter((v) => !this.muted.has(v.id));
     this.episode = ids;
-    if (res.violations.length === 0) {
+    // A consistent snapshot is a settled state where nothing newly broke: violations that already lingered at the
+    // previous settled point (reported once, then accepted) do not block later snapshots, so a rollback never
+    // restores an ancient state because of one benign lingering violation.
+    if (brokeNow.length === 0) {
       const last = this.lastConsistentSnap;
       if (last && last.seq === this.hub.seq) last.t = now;
       else {
@@ -876,12 +937,58 @@ export class RuntimeImpl implements Runtime {
     const ctl: Controller = {
       passive: () => undefined,
       run: (action) => {
-        if (action === "rollback") return this.rollback(stores, [], this.ops.rootOf(op).startSeq);
+        if (action === "rollback") return this.revertChain(op, "transition");
         if (action === "resync") return this.resync(stores);
         throw new Error(`unsupported action ${action}`);
       },
     };
     this.trigger({ trigger: "transition", op, unusual, shape }, ctl, { hold: false, priority: 0 });
+  }
+
+  /** Fields written by an op's causal chain since its root started (see SitEnv.chainWrites). */
+  chainWrites(op: OpRec): ChainWriteInfo[] {
+    const root = this.ops.rootOf(op);
+    const rootId = root.id;
+    const since = root.startSeq;
+    const out: ChainWriteInfo[] = [];
+    for (const x of this.hub.changedSince(since)) {
+      const f = this.hub.field(x.path);
+      if (!f) continue;
+      const entries = f.log.filter((e) => e.seq > since);
+      const mine = entries.filter((e) => e.root === rootId);
+      if (!mine.length) continue;
+      const first = f.hist.find((h) => h.seq === mine[0].seq);
+      const info: ChainWriteInfo = { path: x.path, count: mine.length, lastIsChain: entries[entries.length - 1].root === rootId };
+      if (first) info.before = { value: first.before, removed: first.beforeLeaf === undefined };
+      out.push(info);
+    }
+    return out;
+  }
+
+  /**
+   * Rollback for error/transition triggers: restore exactly the fields the op's own causal chain wrote (and that
+   * nobody overwrote since) to their values before the chain's first write. Other chains' writes (user input in
+   * another field, other requests) are never touched. Undo restores the values replaced.
+   */
+  revertChain(op: OpRec, why: string): ActionEffect {
+    const targets = this.chainWrites(op).filter((w) => w.lastIsChain && w.before !== undefined && this.hub.get(w.path.split(".")[0])?.writable);
+    if (!targets.length) throw new Error("the chain wrote nothing that can be restored");
+    const values = new Map<string, { value: unknown; removed: boolean }>();
+    const current = new Map<string, { value: unknown; removed: boolean }>();
+    for (const w of targets) {
+      values.set(w.path, w.before!);
+      const leaf = this.hub.leaf(w.path);
+      current.set(w.path, { value: leaf?.value, removed: leaf === undefined });
+    }
+    const restored = this.runAsGenClass("rollback", () => this.hub.restoreFields(values, this.ctx.op()));
+    if (!restored.length) throw new Error("nothing to restore: the fields already hold their earlier values");
+    const root = this.ops.rootOf(op);
+    return {
+      changed: `Restored ${restored.slice(0, 4).join(", ")}${restored.length > 4 ? ` and ${restored.length - 4} more` : ""} to their values before ${opLabel(root)} (the ${why}'s chain wrote them).`,
+      undo: () => {
+        this.hub.restoreFields(current, this.ctx.op());
+      },
+    };
   }
 
   /** Restore stores to the last consistent snapshot (cause = a GenClass op); undo restores the values replaced. */
@@ -897,7 +1004,7 @@ export class RuntimeImpl implements Runtime {
         if (!s || !s.writable || !snap.values.has(name)) continue;
         before.set(name, cloneValue(this.hub.read(s)));
         const changes = this.hub.write(s, cloneValue(snap.values.get(name)), this.ctx.op(), null);
-        if (changes.length) restored.push(`${name} (${changes.map((c) => c.path).slice(0, 3).join(", ")})`);
+        if (changes && changes.length) restored.push(`${name} (${changes.map((c) => c.path).slice(0, 3).join(", ")})`);
       }
     });
     if (!restored.length) throw new Error("nothing to restore: the affected stores already match the snapshot");
@@ -968,11 +1075,12 @@ export class RuntimeImpl implements Runtime {
         const leaves = this.hub.allLeaves();
         const store = m.store;
         for (const k of [...leaves.keys()]) if (k === store || k.startsWith(store + ".")) leaves.delete(k);
-        for (const [k, l] of flatten(store, m.preview)) leaves.set(k, l);
+        for (const [k, l] of m.leaves ?? flatten(store, m.preview, this.hub.get(store)?.leaves)) leaves.set(k, l);
         return this.miner.preview(leaves, m.changes.map((c) => c.path));
       },
       canCoalesce: (id, self) => !!this.cache.shareable(id, self, this.clock.now()),
       resyncable: (store) => typeof this.hub.get(store)?.opts.resync === "function",
+      chainWrites: (op) => this.chainWrites(op),
       writable: (store) => !!this.hub.get(store)?.writable,
     };
   }
@@ -1022,12 +1130,16 @@ export class RuntimeImpl implements Runtime {
     if (existing && existing.kind === "atom") {
       s = existing;
       if (opts.resync || opts.describe || opts.hold !== undefined) s.opts = { ...s.opts, ...(opts as StoreOptions<unknown>) };
-    } else s = this.hub.register(name, "atom", initial, opts as StoreOptions<unknown>);
+    } else {
+      s = this.hub.register(name, "atom", initial, opts as StoreOptions<unknown>);
+      this.miner.noteValues(s.leaves);
+    }
     return this.handle<T>(s);
   }
 
   guard<T>(name: string, io: StoreIO<T>, opts: StoreOptions<T> = {}): Guarded<T> {
     const s = this.hub.register(name, "guard", io.get(), opts as StoreOptions<unknown>, io as StoreIO<unknown>);
+    this.miner.noteValues(s.leaves);
     return this.handle<T>(s);
   }
 
@@ -1041,6 +1153,7 @@ export class RuntimeImpl implements Runtime {
     };
     if (io.subscribe) sio.subscribe = (fn) => io.subscribe!(fn);
     const s = this.hub.register(name, "adapter", io.get(), opts as StoreOptions<unknown>, sio);
+    this.miner.noteValues(s.leaves);
     s.writable = typeof io.set === "function";
     const hub = this.hub;
     const rt = this;
@@ -1095,8 +1208,9 @@ export class RuntimeImpl implements Runtime {
   }
 
   async ask<Q extends Question>(q: Q, opts: AskOptions = {}): Promise<AnswerOf<Q>> {
+    if (this.destroyed) throw new GenClassUnavailableError("destroyed", "this GenClass runtime was destroyed");
     const p = this.decider;
-    if (!p || this.destroyed) throw new GenClassUnavailableError("off", "GenClass has no model (model: false)");
+    if (!p) throw new GenClassUnavailableError("off", "GenClass has no model (model: false)");
     if (p.status.state !== "ready") {
       const wait = this.ready;
       if (opts.timeoutMs !== undefined) {
@@ -1236,12 +1350,10 @@ export class RuntimeImpl implements Runtime {
     this.errorsRecent.push(rec);
     if (this.errorsRecent.length > 64) this.errorsRecent.shift();
     this.events.push(t, "error", e.name, { ...(op ? { op: op.id } : {}), data: { message: `${e.name}: ${truncate(e.message, 120)}`, ...(e.source ? { source: e.source } : {}) } });
-    const root = op ? this.ops.rootOf(op) : null;
-    const stores = root ? [...new Set(this.hub.changedSince(root.startSeq).map((x) => x.path.split(".")[0]))] : [];
     const ctl: Controller = {
       passive: () => undefined,
       run: (action) => {
-        if (action === "rollback") return this.rollback(stores, [], root ? root.startSeq : undefined);
+        if (action === "rollback" && op) return this.revertChain(op, "error");
         throw new Error(`unsupported action ${action}`);
       },
     };
@@ -1387,6 +1499,7 @@ export class RuntimeImpl implements Runtime {
     this.destroyed = true;
     this.hub.gating = false;
     this.queue.dispose();
+    this.reporter.dispose();
     if (this.settleTimer !== null) this.clock.clearTimeout(this.settleTimer);
     if (this.persistTimer !== null) this.clock.clearTimeout(this.persistTimer);
     for (const u of this.uninstall.reverse()) {
