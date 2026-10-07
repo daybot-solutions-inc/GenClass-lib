@@ -1,0 +1,58 @@
+{
+  "name": "@genclass/runtime",
+  "version": "0.1.0",
+  "description": "A client-side AI runtime for web apps: a local GenClass model watches user actions, async work, network, state and errors, and prevents stale writes, races, duplicates, inconsistent state and failure storms in real time.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "git+https://github.com/daybot-solutions-inc/GenClass-lib.git", "directory": "packages/runtime" },
+  "homepage": "https://github.com/daybot-solutions-inc/GenClass-lib#readme",
+  "keywords": ["ai", "runtime", "self-healing", "race-condition", "anomaly-detection", "webgpu", "wasm", "onnx", "local-first", "genclass"],
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./react": { "types": "./dist/adapters/react.d.ts", "import": "./dist/adapters/react.js" },
+    "./redux": { "types": "./dist/adapters/redux.d.ts", "import": "./dist/adapters/redux.js" },
+    "./zustand": { "types": "./dist/adapters/zustand.d.ts", "import": "./dist/adapters/zustand.js" },
+    "./devtools": { "types": "./dist/devtools/index.d.ts", "import": "./dist/devtools/index.js" },
+    "./worker": { "import": "./dist/worker.js" },
+    "./package.json": "./package.json"
+  },
+  "bin": { "genclass-runtime": "./bin/genclass-runtime.mjs" },
+  "files": ["dist", "bin", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:browser": "playwright test --config test/browser/playwright.config.ts"
+  },
+  "dependencies": {
+    "onnxruntime-web": "^1.30.0"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "redux": ">=4",
+    "zustand": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true },
+    "redux": { "optional": true },
+    "zustand": { "optional": true }
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/react": "^19.0.0",
+    "esbuild": "^0.27.0",
+    "happy-dom": "^20.14.5",
+    "onnxruntime-node": "1.30.0",
+    "react": "^19.3.0",
+    "redux": "^5.0.1",
+    "tsup": "^8.5.1",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.3",
+    "zustand": "^5.0.15"
+  },
+  "engines": { "node": ">=20" }
+}

@@ -1,0 +1,75 @@
+app: Tunebox — /playlists/42
+trigger: A write to playlist.tracks from GET /api/playlists/42/tracks (op 31) is about to apply.
+trigger: POST /api/orders (op 57) is about to be sent.
+trigger: GET /api/status (op 112) failed with 503 Service Unavailable before the app saw it.
+trigger: GET /api/search?q=rea (op 18) has been in flight for 2.41 s.
+trigger: A learned relation broke at a settled point: cart.total == sum(cart.items[*].price * cart.items[*].qty).
+trigger: POST /api/cart (op 77) completed with a transition unlike its usual ones.
+trigger: Uncaught TypeError: Cannot read properties of undefined (reading 'map') in OrderList.
+facts: This write comes from GET /api/search?q=rea (op 31), started 1.82 s ago by input on #search (keystroke 3 of 5).
+search.results was at version 7 when op 31 started; it is now at version 9.
+Versions 8–9 of search.results were written by GET /api/search?q=react (op 33), which started 0.61 s after op 31, from a later input on #search.
+search.query changed from "rea" to "react" since op 31 started (user input, 0.4 s ago).
+An identical POST /api/orders (same body, 412 bytes) was sent 90 ms ago from the same click on "Place order" and is still in flight.
+GET /api/status has failed 4 times in a row (503, 503, timeout, 503); last success 42 s ago.
+GET /api/items has taken 2,400 ms so far; usual median 120 ms, p95 310 ms (20.0× the median).
+Learned invariant cart.total == sum(cart.items[*].price * cart.items[*].qty) is violated: 59.97 vs 79.96 (held at 23 settled points).
+In the previous 317 completions of POST /api/cart it wrote cart.items and cart.total; this time it wrote only cart.items.
+POST /api/sync was sent 38 times in the last 10 s; usual rate is 1 per 60 s.
+A cached good response for GET /api/feed exists (from 31 s ago, 18.2 KB).
+The last consistent snapshot of cart is 4.2 s old.
+in_flight: op 35 GET /api/playlists/42/tracks?page=2 (started 0.4 s ago, cause: scroll on #track-list)
+op 36 PATCH /api/playlists/42 {"name":"Road trip"} (started 0.12 s ago, cause: blur on #playlist-name)
+timeline: -2.31s user click #tab-tracks
+-2.30s op 31 start GET /api/playlists/42/tracks (cause: click #tab-tracks)
+-1.95s user input #search "re"
+-1.94s op 32 start GET /api/search?q=re
+-1.80s op 33 start GET /api/search?q=rea (cause: input #search "rea")
+-0.62s op 32 end 200 (1.32 s)
+-0.61s state search.results v8 ← op 32 (24 items)
+-0.40s op 34 end 200 GET /api/search?q=react (0.38 s)
+-0.39s state search.results v9 ← op 34 (3 items)
+-0.01s op 33 end 200 (1.79 s)
+state: search.results: 3 items [{id: 812, title: "React hooks"}, {id: 77, title: "React Native"}, …] (v9, op 34, 0.39 s ago)
+search.query: "react" (v5, user input, 0.4 s ago)
+cart.items: 3 items [{sku: "A-17", price: 19.99, qty: 1}, {sku: "B-02", price: 29.99, qty: 2}, …]
+cart.total: 59.97 (v12)
+ui.toast: null
+stats: GET /api/search: median 140 ms, p95 380 ms, error rate 0.5% (212 calls)
+POST /api/orders: median 610 ms, p95 1.4 s, error rate 2.1% (48 calls)
+apply: let this write update the state now
+discard: drop this write and keep the current state
+defer: hold this write until the related in-flight operations finish, then decide again
+send: send the request now
+coalesce: do not send; reuse the result of the identical request that is in flight or just finished
+delay: wait before sending, backing off so the service can recover
+block: do not send; fail this request immediately
+serve_cached: answer with the last successful response for this request instead
+deliver: pass the failure to the application as it is
+retry: retry the request after a short backoff
+wait: keep waiting for the request
+hedge: send a second identical request and use whichever answers first
+ignore: leave the state as it is
+rollback: restore the affected state to its last consistent snapshot
+resync: reload the affected state from its source
+expected: normal behaviour, nothing is wrong
+stale: outdated data or an older operation is about to replace newer state
+conflict: concurrent operations are competing over the same state or resource
+duplicate: the same change or request is happening again without a new intent
+inconsistent: the state contradicts itself or relationships it normally keeps
+failing: an operation keeps failing or its failures follow a pattern
+slow: an operation is far slower than usual
+overload: work is being triggered far more often than usual
+unusual: this differs from how the same operation normally behaves
+What should the runtime do with this write?
+What should the runtime do with this request?
+What is going on here?
+editor.content was at v12 when PUT /api/notes/7 (op 40) started; it is now v15, written by user input 3 times since.
+board.cards.c12 has server version 43 (from our own move confirmed 0.2 s ago); this live update carries version 41.
+TypeError: Failed to fetch at fetchRecommendations (recs.js:88:11) — unhandled rejection
+Error: ResizeObserver loop completed with undelivered notifications.
+429 Too Many Requests, Retry-After: 30; x-ratelimit-remaining: 0
+401 Unauthorized, WWW-Authenticate: Bearer error="invalid_token", error_description="The access token expired"
+422 Unprocessable Entity {"error":"validation_failed","fields":{"email":"must be a valid address"}}
+inventory.reserved == sum(orders[*].qty where status == "open") held at 41 settled points
+selectedId (c-1043) is not among board.columns[*].cards[*].id after DELETE /api/cards/c-1043

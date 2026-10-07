@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@genclass/runtime": ["./src/dev/runtime-shim/index.ts"],
+      "@genclass/runtime/react": ["./src/dev/runtime-shim/react.ts"],
+      "@genclass/runtime/redux": ["./src/dev/runtime-shim/redux.ts"],
+      "@genclass/runtime/zustand": ["./src/dev/runtime-shim/zustand.ts"],
+      "@genclass/runtime/devtools": ["./src/dev/runtime-shim/devtools.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["src/server/sw.ts"]
+}

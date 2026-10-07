@@ -9,3 +9,12 @@ runs/
 dist/
 node_modules/
 .DS_Store
+
+# GenClass runtime
+node_modules/
+dist/
+.vite/
+test-results/
+playwright-report/
+sim/out/
+packages/runtime-model/files/

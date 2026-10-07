@@ -1,0 +1,23 @@
+{
+  "name": "genclass-lib",
+  "private": true,
+  "type": "module",
+  "description": "GenClass Runtime: a client-side AI runtime that watches your web app and fixes races, stale writes, duplicates, inconsistent state and failure patterns in real time, with a local model.",
+  "workspaces": [
+    "packages/*",
+    "sim",
+    "demos"
+  ],
+  "scripts": {
+    "build": "npm run build -w @genclass/runtime",
+    "test": "npm test -w @genclass/runtime",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0"
+}

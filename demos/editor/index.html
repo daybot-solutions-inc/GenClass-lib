@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="gc-root" content="../" />
+    <title>Notes autosave · GenClass Runtime</title>
+    <meta name="description" content="A notes editor whose autosaves overlap and echo older versions. GenClass Runtime keeps the newer text." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script>
+      try { var t = localStorage.getItem("gc-demo-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+    </script>
+    <style>
+      .boot { min-height: 100vh; display: grid; place-items: center; font: 14px system-ui, sans-serif; color: #888; }
+    </style>
+  </head>
+  <body>
+    <div class="boot">Starting the demo server…</div>
+    <noscript>This demo needs JavaScript.</noscript>
+    <script type="module" src="/src/demos/editor/main.ts"></script>
+  </body>
+</html>

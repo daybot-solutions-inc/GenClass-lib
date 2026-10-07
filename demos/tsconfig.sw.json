@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "WebWorker"],
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false,
+    "allowImportingTsExtensions": true,
+    "types": []
+  },
+  "include": ["src/server/**/*.ts", "src/shared/chaos.ts", "src/shared/rng.ts", "src/shared/protocol.ts"]
+}

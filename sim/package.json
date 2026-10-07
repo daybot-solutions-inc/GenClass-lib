@@ -1,0 +1,27 @@
+{
+  "name": "@genclass/sim",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic virtual-world generator of GenClass Runtime training data (drives the real runtime).",
+  "bin": {
+    "genclass-sim": "./dist/gen.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "gen": "node dist/gen.js",
+    "sample": "node dist/gen.js --sample",
+    "build:runtime-core": "cd ../packages/runtime && tsup src/index.ts --no-config --format esm --target es2022 --platform neutral --out-dir dist --external onnxruntime-web --external onnxruntime-web/webgpu --sourcemap"
+  },
+  "dependencies": {
+    "@genclass/runtime": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsup": "^8.5.1",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.3"
+  }
+}

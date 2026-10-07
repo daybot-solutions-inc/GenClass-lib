@@ -1,0 +1,10 @@
+{
+  "name": "genclass-train-ortweb-check",
+  "private": true,
+  "type": "module",
+  "description": "TRAIN: validates exported runtime models with onnxruntime-web (WASM, in Node) and onnxruntime-node.",
+  "dependencies": {
+    "onnxruntime-node": "1.30.0",
+    "onnxruntime-web": "1.30.0"
+  }
+}

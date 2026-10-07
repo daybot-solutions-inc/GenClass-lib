@@ -1,0 +1,214 @@
+.sx {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 30px 28px 26px;
+}
+.sx-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.sx-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  color: #fff;
+  background: linear-gradient(135deg, #f97316, #db2777);
+  box-shadow: 0 6px 16px rgba(219, 39, 119, 0.25);
+}
+.sx-title {
+  font-size: 19px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+}
+.sx-sub {
+  font-size: 13px;
+  color: var(--text-3);
+}
+.sx-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 50px;
+  padding: 0 14px 0 16px;
+  border-radius: 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
+  cursor: text;
+}
+.sx-box:focus-within {
+  border-color: var(--accent);
+  box-shadow:
+    var(--ring),
+    var(--shadow-sm);
+}
+.sx-box svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: var(--text-3);
+  stroke-width: 2;
+  stroke-linecap: round;
+  flex: none;
+}
+.sx-box input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 16.5px;
+  color: var(--text);
+}
+.sx-box input::-webkit-search-cancel-button {
+  display: none;
+}
+.sx-spin {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  opacity: 0;
+  animation: spin 0.7s linear infinite;
+  transition: opacity var(--t-fast);
+}
+.sx-box.loading .sx-spin {
+  opacity: 1;
+}
+.sx-clear {
+  display: none;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sx-box.has-text .sx-clear {
+  display: grid;
+  place-items: center;
+}
+.sx-meta {
+  min-height: 20px;
+  margin: 14px 4px 8px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.sx-meta b {
+  color: var(--text);
+  font-weight: 650;
+}
+.sx-meta q {
+  color: var(--text);
+  font-weight: 560;
+}
+.sx-error {
+  color: var(--bad);
+}
+.sx-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.sx-list li {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  animation: sx-in 220ms var(--ease) both;
+  animation-delay: calc(var(--i) * 18ms);
+}
+.sx-list li:hover {
+  background: var(--surface-hover);
+}
+@keyframes sx-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+.sx-pin {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: hsl(var(--h) 55% 38%);
+  background: hsl(var(--h) 70% 92%);
+}
+:root[data-theme="dark"] .sx-pin {
+  color: hsl(var(--h) 70% 78%);
+  background: hsl(var(--h) 35% 20%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .sx-pin {
+    color: hsl(var(--h) 70% 78%);
+    background: hsl(var(--h) 35% 20%);
+  }
+}
+.sx-name {
+  display: flex;
+  flex-direction: column;
+  font-weight: 580;
+  font-size: 14.5px;
+  line-height: 1.3;
+}
+.sx-name mark {
+  background: transparent;
+  color: var(--accent-text);
+  font-weight: 720;
+}
+.sx-name small {
+  font-weight: 450;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.sx-pop {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.sx-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.sx-empty button {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev);
+  color: var(--text-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+.sx-empty button:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}

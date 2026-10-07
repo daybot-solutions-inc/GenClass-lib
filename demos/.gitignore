@@ -1,0 +1,6 @@
+node_modules/
+dist/
+public/genclass-model/
+test-results/
+playwright-report/
+e2e/.out/

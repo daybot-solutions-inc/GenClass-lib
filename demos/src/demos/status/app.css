@@ -1,0 +1,227 @@
+.st {
+  padding: 22px 24px 18px;
+}
+.st-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.st-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.st-brand b {
+  display: block;
+  font-size: 16px;
+  letter-spacing: -0.015em;
+}
+.st-brand small {
+  display: block;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.st-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background:
+    conic-gradient(from 210deg, #22c55e, #06b6d4, #6366f1, #22c55e);
+  box-shadow: inset 0 0 0 6px var(--bg-elev);
+  border: 1px solid var(--border);
+}
+.st-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.st-updated {
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.st-refresh {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text);
+}
+.st-refresh:hover {
+  background: var(--surface-hover);
+}
+.st-overall {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  font-size: 14px;
+  font-weight: 620;
+  margin-bottom: 12px;
+  background: var(--surface);
+  color: var(--text-2);
+}
+.st-overall::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.st-overall[data-state="ok"] {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.st-overall[data-state="warn"] {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.st-overall[data-state="bad"] {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+.st-banners {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.st-banners:empty {
+  display: none;
+}
+.st-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: 12.5px;
+  font-weight: 540;
+  animation: sx-in 220ms var(--ease);
+}
+.st-banner button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+.st-banner button:hover {
+  background: color-mix(in srgb, var(--bad) 15%, transparent);
+}
+.st-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 760px) {
+  .st-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.st-card {
+  padding: 12px 13px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  transition:
+    border-color var(--t) var(--ease),
+    box-shadow var(--t) var(--ease);
+  --c: var(--text-3);
+}
+.st-card[data-state="operational"] {
+  --c: var(--ok);
+}
+.st-card[data-state="degraded"] {
+  --c: var(--warn);
+}
+.st-card[data-state="down"],
+.st-card[data-state="unreachable"] {
+  --c: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 35%, var(--border));
+  box-shadow: 0 0 0 3px var(--bad-soft);
+}
+.st-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.st-card-top b {
+  display: block;
+  font-size: 13.5px;
+}
+.st-card-top small {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.st-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 12%, transparent);
+  white-space: nowrap;
+}
+.st-pill i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.st-spark {
+  margin: 10px 0 6px;
+  height: 30px;
+}
+.st-spark svg {
+  width: 100%;
+  height: 30px;
+  overflow: visible;
+}
+.st-spark path {
+  fill: none;
+  stroke: var(--c);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.st-spark .fail {
+  fill: var(--bad);
+}
+.st-card-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.st-foot {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+@keyframes sx-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
