@@ -7,6 +7,7 @@ import type { FieldHist, MutationRec } from "../state/hub.js";
 import { changeText } from "../state/hub.js";
 import { addedElements, leafOf } from "../state/fields.js";
 import type { OpRec } from "../trace/ops.js";
+import { outcomeLabel } from "../learn/baselines.js";
 import { describe, fmtNum, ordinal, plural, ratio, secs, truncate } from "../util.js";
 import { opLabel, opPhrase, statusText } from "./describe.js";
 import type { FailureInfo, ReqMeta, SitEnv, SubjectSpec, Violation } from "./env.js";
@@ -53,6 +54,11 @@ function sameChain(env: SitEnv, a: OpRec, writer: number | null): boolean {
   return env.ops.isAncestorOrSelf(a, w) || env.ops.isAncestorOrSelf(w, a);
 }
 
+function writerOpText(env: SitEnv, ref: OpRec, w: OpRec | undefined, user: boolean): string {
+  if (!w) return user ? "a user action" : "an operation that is no longer tracked";
+  return `${opLabel(w)}, which ${startedRel(w, ref)}${userRelation(env, ref, w)}`;
+}
+
 /** ", from a later user action (#13)" | ", from the same user action (#11)" | "" */
 function userRelation(env: SitEnv, ref: OpRec, w: OpRec | undefined): string {
   if (!w) return "";
@@ -69,12 +75,6 @@ function startedRel(w: OpRec, ref: OpRec): string {
   const d = w.start - ref.start;
   if (d === 0) return `started at the same time as #${ref.id}`;
   return `started ${secs(Math.abs(d))} ${d > 0 ? "after" : "before"} #${ref.id}`;
-}
-
-function writerText(env: SitEnv, ref: OpRec, h: FieldHist): string {
-  const w = env.ops.get(h.writer);
-  if (!w) return h.user ? "a user action" : "an operation that is no longer tracked";
-  return `${opLabel(w)}, which ${startedRel(w, ref)}${userRelation(env, ref, w)}`;
 }
 
 function provenance(env: SitEnv, what: string, op: OpRec | null | undefined, now: number): Fact {
@@ -120,44 +120,50 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
       const vStart = env.hub.versionAt(path, C.startSeq);
       C.reads.set(path, vStart);
       const vNow = env.hub.field(path)?.v ?? 0;
-      const since = env.hub.writesSince(path, C.startSeq);
-      const others = since.filter((h) => !sameChain(env, C, h.writer));
+      const log = env.hub.logSince(path, C.startSeq);
+      const others = log.filter((e) => !sameChain(env, C, e.writer));
       if (others.length) {
         const last = others[others.length - 1];
         out.push(
           fact(
-            `${path} was written ${times(others.length)} by other operations since ${ref} started (v${vStart} → v${vNow}), last ${secs(now - last.t)} ago by ${writerText(env, C, last)}.`,
+            `${path} was written ${times(others.length)} by other operations since ${ref} started (version ${vStart} → ${vNow}), last ${secs(now - last.t)} ago by ${writerOpText(env, C, env.ops.get(last.writer), last.user)}.`,
             "versions",
             false,
           ),
         );
-      } else if (since.length) {
-        out.push(fact(`${path} was written ${times(since.length)} by this write's own chain since ${ref} started (v${vStart} → v${vNow}).`, "versions", true));
+      } else if (log.length) {
+        out.push(fact(`${path} was written ${times(log.length)} by this write's own chain since ${ref} started (version ${vStart} → ${vNow}).`, "versions", true));
       } else {
-        out.push(fact(`${path} has not changed since ${ref} started (v${vNow}).`, "versions", true));
+        out.push(fact(`${path} has not changed since ${ref} started (version ${vNow}).`, "versions", true));
       }
     }
     // inputs moved: other fields changed since the cause started, by other chains
     const moved = env.hub
       .changedSince(C.startSeq)
-      .filter((x) => !written.includes(x.path))
-      .map((x) => ({ ...x, hist: x.hist.filter((h) => !sameChain(env, C, h.writer)) }))
-      .filter((x) => x.hist.length > 0)
-      .map((x) => ({ ...x, same: x.path.split(".")[0] === m.store, user: x.hist.some((h) => h.user) }))
-      .sort((a, b) => Number(b.same) - Number(a.same) || Number(b.user) - Number(a.user) || b.hist[b.hist.length - 1].seq - a.hist[a.hist.length - 1].seq);
+      .filter((x) => !written.includes(x.path) && env.hub.leaf(x.path) !== undefined)
+      .map((x) => {
+        const log = env.hub.logSince(x.path, C.startSeq).filter((e) => !sameChain(env, C, e.writer));
+        return { ...x, log, hist: x.hist.filter((h) => !sameChain(env, C, h.writer)) };
+      })
+      .filter((x) => x.log.length > 0)
+      .map((x) => ({ ...x, same: x.path.split(".")[0] === m.store, user: x.log.some((e) => e.user) }))
+      .sort((a, b) => Number(b.same) - Number(a.same) || Number(b.user) - Number(a.user) || b.log[b.log.length - 1].seq - a.log[a.log.length - 1].seq);
     for (const x of moved.slice(0, 2)) {
-      const first = x.hist[0];
-      const last = x.hist[x.hist.length - 1];
+      const last = x.log[x.log.length - 1];
       const cur = env.hub.valueAt(x.path);
       const w = env.ops.get(last.writer);
       const by = w ? `${opLabel(w)} ${secs(Math.max(0, last.t - C.start))} after #${C.id} started` : "an untracked writer";
-      out.push(
-        fact(
-          `${x.path} changed since ${ref} started: ${describe(first.before, x.path, env.redact, 40)} → ${describe(cur, x.path, env.redact, 40)}, last by ${by}${x.hist.length > 1 ? ` (${x.hist.length} writes)` : ""}.`,
-          "inputs",
-          !x.same,
-        ),
-      );
+      const n = x.log.length;
+      const curText = describe(cur, x.path, env.redact, 40);
+      // the value before the first of these writes, when it is still in the rich history
+      const firstH = x.hist.length && x.hist[0].seq === x.log[0].seq ? x.hist[0] : undefined;
+      let what: string;
+      if (!firstH) what = `${x.path} changed ${times(n)} since ${ref} started (now ${curText})`;
+      else {
+        const beforeText = describe(firstH.before, x.path, env.redact, 40);
+        what = beforeText === curText ? `${x.path} changed ${times(n)} since ${ref} started and is back to ${curText}` : `${x.path} changed since ${ref} started: ${beforeText} → ${curText}${n > 1 ? ` (${n} writes)` : ""}`;
+      }
+      out.push(fact(`${what}, last by ${by}.`, "inputs", !x.same));
     }
     // concurrency: other in-flight ops with the same signature, or that usually write this store
     const chainIds = new Set([C.id, ...env.ops.ancestors(C).map((a) => a.id)]);
@@ -196,6 +202,30 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
       if (C.status === "error") out.push(fact(`${Ref} failed (${statusText(C)}) before this write.`, "outcome", true));
     }
   }
+  // a pending local change: a user action wrote this field recently and an op of that action is still in flight
+  const myRoot = C ? C.root ?? C.id : null;
+  for (const path of written.slice(0, 3)) {
+    const f = env.hub.field(path);
+    if (!f) continue;
+    for (let i = f.hist.length - 1; i >= 0; i--) {
+      const h = f.hist[i];
+      if (now - h.t > WINDOW) break;
+      if (h.root === null || h.root === myRoot) continue;
+      const rootOp = env.ops.get(h.root);
+      if (!rootOp || rootOp.kind !== "user") continue;
+      const pending = [...env.ops.inFlight].find((o) => o.root === h.root && o.kind !== "user");
+      if (!pending) continue;
+      out.push(
+        fact(
+          `${path} has a pending local change: ${opLabel(rootOp)} wrote it ${secs(now - h.t)} ago and its ${opLabel(pending)} is still in flight; this write ${C ? `comes from ${opLabel(C)}, ${C.start > rootOp.start ? "which started after that user action" : "which started before that user action"}` : "has no known cause"}.`,
+          "versions",
+          false,
+        ),
+      );
+      break;
+    }
+  }
+  if (m.unholdable) out.push(fact(`This write could not be held: ${m.unholdable}.`, "outcome", true));
   // repetition: the same change (same store, paths and delta) applied recently
   const key = written.slice().sort().join(",") + "|" + m.changes.map((c) => `${c.path}=${c.delta}`).sort().join(";");
   const reps = env.hub.recent.filter((r) => r.key === key && now - r.t <= WINDOW);
@@ -243,8 +273,18 @@ function failureText(f: FailureInfo): string {
 function outcomesText(list: string[]): string {
   return list
     .slice(-5)
-    .map((o) => (o === "timeout" ? "timeout" : o === "network" ? "network error" : o))
+    .map((o) => {
+      const l = outcomeLabel(o);
+      return l === "network" ? "network error" : l;
+    })
     .join(", ");
+}
+
+/** "error rate 60% over 5 requests (3 failed)" from real counts over the recent outcomes. */
+function errorRateText(env: SitEnv, sig: string): string {
+  const { failed, of } = env.base.failureCounts(sig);
+  if (!of) return "no completed requests yet";
+  return `error rate ${Math.round((failed / of) * 100)}% over ${plural(of, "request")} (${failed} failed)`;
 }
 
 function requestCommon(env: SitEnv, trigger: "request" | "failure" | "stall", op: OpRec, req: ReqMeta, now: number): Fact[] {
@@ -267,11 +307,11 @@ function requestCommon(env: SitEnv, trigger: "request" | "failure" | "stall", op
     const last = ident[ident.length - 1];
     const u1 = env.ops.userOf(op);
     const u2 = env.ops.userOf(last);
-    let rel = `#${last.id} started ${secs(Math.abs(op.start - last.start))} before this one`;
+    let rel = `#${last.id} started ${secs(Math.abs(op.start - last.start))} ${last.start > op.start ? "after" : "before"} this one`;
     if (u1 && u2 && u1.id === u2.id) rel += `, from the same user action (#${u1.id})`;
     else if (u1 && u2) rel += `; they come from separate user actions ${secs(Math.abs(u1.start - u2.start))} apart`;
     else if (!u1 && !u2) rel += ", neither from a user action";
-    const gap = op.start - last.start;
+    const gap = Math.abs(op.start - last.start);
     const id = env.base.identity(req.identity);
     const usualGap = id?.gapEwma;
     const close = inflight.length > 0 || gap < Math.min(2000, usualGap !== undefined && id!.n > 3 ? usualGap * 0.5 : 2000);
@@ -309,7 +349,7 @@ function requestCommon(env: SitEnv, trigger: "request" | "failure" | "stall", op
   // latency / error rate baseline
   const lat = env.base.latency(req.signature);
   if (lat && trigger !== "stall") {
-    out.push(fact(`${req.signature} usually answers in ${secs(lat.median)} (p95 ${secs(lat.p95)}, ${lat.n} samples); error rate ${Math.round((st?.errEwma ?? 0) * 100)}%.`, "baseline", true));
+    out.push(fact(`${req.signature} usually answers in ${secs(lat.median)} (p95 ${secs(lat.p95)}, ${lat.n} samples); ${errorRateText(env, req.signature)}.`, "baseline", true));
   }
   // cache
   const c = req.method === "GET" ? env.cached(req.identity) : undefined;
@@ -325,19 +365,18 @@ function failureFacts(env: SitEnv, op: OpRec, req: ReqMeta, f: FailureInfo, now:
   const streak = st?.failStreak ?? 1;
   const out: Fact[] = [fact(`The request #${op.id} failed: ${failureText(f)} after ${secs(f.durMs)}; the app has not seen the failure yet.`, "outcome", false)];
   if (st) {
-    const pct = Math.round(st.errEwma * 100);
     const ls = st.lastSuccess !== undefined ? `last success ${secs(now - st.lastSuccess)} ago` : "no success yet";
     out.push(
       fact(
-        `This is the ${ordinal(Math.max(1, streak))} ${req.signature} failure in a row (recent outcomes: ${outcomesText(st.outcomes)}; ${ls}); error rate ${pct}% over ${plural(st.count, "request")}.`,
+        `This is the ${ordinal(Math.max(1, streak))} ${req.signature} failure in a row (recent outcomes: ${outcomesText(st.outcomes)}; ${ls}); ${errorRateText(env, req.signature)}.`,
         "outcome",
         true,
       ),
     );
   }
   // writes the failing chain already made
-  const root = env.ops.rootOf(op);
-  if (root && root.chain && root.chain.size) out.push(fact(`Before this failure its chain wrote ${[...root.chain.keys()].slice(0, 4).join(", ")}.`, "outcome", true));
+  const cw = env.chainWrites(op);
+  if (cw.length) out.push(fact(`Before this failure its chain wrote ${cw.slice(0, 4).map((w) => w.path).join(", ")}.`, "outcome", true));
   return [...out, ...requestCommon(env, "failure", op, req, now)];
 }
 
@@ -357,7 +396,7 @@ function stallFacts(env: SitEnv, op: OpRec, req: ReqMeta, now: number): Fact[] {
 function lastConsistentFact(env: SitEnv, now: number, before?: OpRec): Fact {
   const lc = before ? env.consistentBefore(before.startSeq) : env.lastConsistent();
   if (!lc) return fact(before ? `No consistent snapshot from before #${before.id} started exists.` : "No consistent snapshot has been recorded yet.", "invariant", true);
-  const writes = env.hub.changedSince(lc.seq).reduce((n, x) => n + x.hist.length, 0);
+  const writes = env.hub.changedSince(lc.seq).reduce((n, x) => n + x.count, 0);
   const what = before ? `The last consistent state from before #${before.id} started` : "The last consistent state";
   return fact(`${what} is ${secs(now - lc.t)} old; ${plural(writes, "field write")} happened since.`, "invariant", true);
 }
@@ -444,10 +483,16 @@ function errorFacts(env: SitEnv, e: { name: string; message: string; source?: st
   if (op) {
     const root = env.ops.rootOf(op);
     out.push(fact(`It was thrown while ${opLabel(op)} was active, ${secs(now - op.start)} after it started${root.id !== op.id ? `; that chain began with ${opLabel(root)}` : ""}.`, "provenance", true));
-    const writes = env.hub.changedSince(op.startSeq).flatMap((x) => x.hist.filter((h) => sameChain(env, op, h.writer)).map((h) => ({ path: x.path, h })));
+    const writes = env.chainWrites(op);
     if (writes.length) {
-      const ps = [...new Set(writes.map((w) => w.path))];
-      out.push(fact(`Its chain wrote ${ps.slice(0, 4).join(", ")} before the error (last ${secs(now - Math.max(...writes.map((w) => w.h.t)))} ago).`, "versions", true));
+      const overwritten = writes.filter((w) => !w.lastIsChain).length;
+      out.push(
+        fact(
+          `Its chain wrote ${writes.slice(0, 4).map((w) => w.path).join(", ")} before the error${overwritten ? ` (${overwritten} of them overwritten since by other operations)` : ""}.`,
+          "versions",
+          true,
+        ),
+      );
     } else out.push(fact("Its chain wrote no state before the error.", "versions", true));
   } else out.push(fact("No operation was active when it was thrown.", "provenance", true));
   const same = env.recentErrors().filter((x) => x.key === e.key);

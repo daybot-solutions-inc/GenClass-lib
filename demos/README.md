@@ -108,6 +108,50 @@ user saw against the server's truth:
 | board | any card in the wrong column once everything settles, the board disagreeing with the server for > 2 s (1.5 s window), or a card stuck "syncing" | last move → board equals server |
 | decisions | any decision differs from the ground truth recomputed at the moment it was asked: backup now only if the user has not typed for 2.5 s, no save is in flight, no request failed in 8 s and the median latency is < 600 ms; quality thumbnails at ≥ 25% failures, reduced at median ≥ 450 ms, else full; "would leaving lose work" = editor text ≠ server copy or a save in flight; connection health level within ±1 of the level from recent failures and latency | time to answer a question |
 
+## Latest results (v0.1 model, 2026-10-07)
+
+810 trials on the `train` VM: 6 demos × Off/Guard/Heal × (30 chaos + 15 clean), Playwright with real input, the
+v0.1 GenClass model (q8, WASM, pages cross-origin isolated). Full tables: [`results.md`](results.md).
+
+| demo | bug rate Off | Guard | Heal | false interventions (clean) Guard / Heal | user latency p50 (clean) Off / Guard | model decision p50 |
+|---|---|---|---|---|---|---|
+| search | 13% (4/30) | 13% | 13% | 0 / 0 | 14 ms / 125 ms | 481 ms |
+| editor | 83% (25/30) | 83% | 87% | 0 / 0 | 779 ms / 775 ms | 333 ms |
+| checkout | 83% (25/30) | 90% | 90% | 0 / 0 | 205 ms / 204 ms | 363 ms |
+| status | 100% (30/30) | 93% | 100% | 0 / 0 | 1.33 s / 1.26 s | 1.20 s |
+| board | 50% (15/30) | 77% | 73% | 0 / 0 | 19 ms / 31 ms | 346 ms |
+| decisions | 83% (25/30) | 90% | 93% | 0 / 0 | – | 308 ms |
+
+What this says, plainly:
+
+- The apps' latent bugs are real and only show under chaos: with GenClass Off every demo is bug-free on clean runs
+  and fails often under chaos (lost edits, duplicate orders and wrong charges, false alarms and retry storms, a board
+  that drifts from the server, wrong default decisions).
+- With the v0.1 model (a general classifier, not trained for runtime decisions) GenClass did not prevent these bugs.
+  It took no false interventions on clean runs, but mostly because its decisions did not clear the confidence
+  thresholds (958 times) or arrived after the 300 ms hold budget (663 times); Guard executed nothing. Heal ran 92
+  actions (30 retries, 62 blocks, 60 of them of a heartbeat request) and did not lower any bug rate. The one
+  improvement (status under Guard, 100% → 93%) came without any executed action: requests held while the model
+  thinks space out the app's immediate retries, so fewer of them land inside an outage.
+- Holding writes has costs even when nothing is executed: the search list appears ~110 ms later on clean runs, and
+  on the board Guard turned 9 clean seeds into bugs (likely a held write applied after a newer user write; see
+  [`NEEDS.md`](NEEDS.md) §1). The default redaction also hides the board's `cards` from the model (§2).
+- Developer questions (`ask`/`decide`) are answered by the model in ~0.3 s; accuracy under chaos went from 0.42 (app
+  defaults) to 0.62, but on clean runs from 1.00 to 0.27: v0.1 answers as if something were always wrong.
+
+These are the numbers to beat with the runtime-specialist model. To re-run with it:
+
+```bash
+# a model release directory (downloaded with the runtime CLI, served locally):
+scripts/vm.sh run demos 'GENCLASS_MODEL_FROM=https://…/runtime-model-v0.1.0/ setsid nohup bash demos/scripts/vm-eval.sh --tag runtime-v0.1 > ~/gcl/logs/demos-eval.log 2>&1 < /dev/null &'
+# or a URL the pages fetch directly (must send CORS headers):
+scripts/vm.sh run demos 'GENCLASS_MODEL_URL=https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/ setsid nohup bash demos/scripts/vm-eval.sh > ~/gcl/logs/demos-eval.log 2>&1 < /dev/null &'
+```
+
+`--tag` writes `results-<tag>.json/.md` (not shipped with the site); without it the run replaces `results.json`,
+`results.md` and the landing page's numbers. The model card actually served (name, version, file hashes) is
+recorded in `results.json` under `model.card`. In a browser, `?model=<url>` points any page at another model.
+
 ## Reading the results
 
 `results.md` has one summary table and a section per demo; `results.json` has the same summaries plus every raw

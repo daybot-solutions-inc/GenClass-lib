@@ -1,5 +1,9 @@
-// Policy gate for non-passive actions (CONTRACT §8). Every check must pass, else the passive action runs and
-// `reason` says why. Precision first: when in doubt, do nothing and report.
+// Policy gate for non-passive actions (CONTRACT §8). Let A = the applicable non-passive actions the mode permits
+// (observe: none; guard: guard tier; heal: guard + heal), minus denied ones (only allowed ones when `allow` is
+// set). The candidate is the most probable action in A; it runs only if the summed calibrated probability of A
+// reaches the candidate's tier threshold (two good actions such as discard/defer may split the mass), the model's
+// top diagnosis is not `expected` (unless requireDiagnosis is false), it is under the rate limit and the decision
+// arrived within the hold budget. Otherwise the passive action runs and `reason` says why. Precision first.
 
 import type { Mode, PolicyOptions, Tier } from "../types.js";
 
@@ -34,6 +38,20 @@ export function modeAllows(mode: Mode, tier: Tier): boolean {
   return true;
 }
 
+/** Why an action may not run under this mode and policy (null when it is permitted). */
+export function restriction(c: PolicyConfig, mode: Mode, a: { name: string; tier: Tier }): string | null {
+  if (a.tier === "passive") return null;
+  if (!modeAllows(mode, a.tier)) return mode === "observe" ? "observe mode never changes execution" : `${mode} mode does not allow ${a.tier}-tier actions`;
+  if (c.deny.has(a.name)) return `${a.name} is denied by policy`;
+  if (c.allow && !c.allow.has(a.name)) return `${a.name} is not in policy.allow`;
+  return null;
+}
+
+/** A: the applicable non-passive actions this mode and policy permit. */
+export function permittedActions<T extends { name: string; tier: Tier }>(c: PolicyConfig, mode: Mode, actions: T[]): T[] {
+  return actions.filter((a) => a.tier !== "passive" && restriction(c, mode, a) === null);
+}
+
 export class RateLimiter {
   private ts: number[] = [];
   constructor(private readonly perMinute: () => number) {}
@@ -52,29 +70,52 @@ export class RateLimiter {
 }
 
 export interface GateInput {
-  action: string;
-  tier: Tier;
-  probability: number;
+  /** Every offered action with its tier (passive included). */
+  actions: { name: string; tier: Tier }[];
+  probabilities: Record<string, number>;
+  /** The model's choice (argmax over all offered actions). */
+  top: string;
   diagnosis: string;
   mode: Mode;
-  inBudget: boolean;
   paused: boolean;
   now: number;
 }
 
-/** null = the action may run; otherwise the reason the passive action runs instead. */
-export function gate(c: PolicyConfig, rate: RateLimiter, g: GateInput): string | null {
-  if (g.tier === "passive") return null;
-  if (g.paused) return "GenClass is paused";
-  if (!modeAllows(g.mode, g.tier)) return g.mode === "observe" ? "observe mode never changes execution" : `${g.mode} mode does not allow ${g.tier}-tier actions`;
-  if (!g.inBudget) return "the decision arrived after the hold budget expired";
-  if (c.requireDiagnosis && g.diagnosis === "expected") return "the model's diagnosis is expected";
-  const th = g.tier === "guard" ? c.thresholds.guard : c.thresholds.heal;
-  if (!(g.probability >= th)) return `probability ${g.probability.toFixed(2)} is below the ${g.tier} threshold ${th}`;
-  if (c.deny.has(g.action)) return `${g.action} is denied by policy`;
-  if (c.allow && !c.allow.has(g.action)) return `${g.action} is not in policy.allow`;
-  if (rate.full(g.now)) return `rate limit: ${c.maxActionsPerMinute} actions in the last minute`;
-  return null;
+export interface GateOutcome {
+  /** The action to run (non-passive), or null for the passive action. */
+  run: string | null;
+  /** The most probable permitted action (what GenClass would have done). */
+  candidate: string | null;
+  /** Summed probability of the permitted actions. */
+  mass: number;
+  /** Why the passive action runs when the model preferred acting (null when it chose passive or the action runs). */
+  reason: string | null;
+}
+
+export function gate(c: PolicyConfig, rate: RateLimiter, g: GateInput): GateOutcome {
+  const A = permittedActions(c, g.mode, g.actions);
+  const p = (name: string) => g.probabilities[name] ?? 0;
+  let candidate: string | null = null;
+  for (const a of A) if (candidate === null || p(a.name) > p(candidate)) candidate = a.name;
+  const mass = A.reduce((s, a) => s + p(a.name), 0);
+  const topTier = g.actions.find((a) => a.name === g.top)?.tier ?? "passive";
+  const wanted = topTier !== "passive"; // a reason is only given when the model's own choice does not run
+  const no = (reason: string | null): GateOutcome => ({ run: null, candidate, mass, reason: wanted ? reason : null });
+  if (g.paused) return no("GenClass is paused");
+  if (!candidate) {
+    const top = g.actions.find((a) => a.name === g.top);
+    return no(top ? restriction(c, g.mode, top) ?? "no action is permitted" : "no action is permitted");
+  }
+  const tier = g.actions.find((a) => a.name === candidate)!.tier;
+  const th = tier === "guard" ? c.thresholds.guard : c.thresholds.heal;
+  if (!(mass >= th)) {
+    const top = g.actions.find((a) => a.name === g.top);
+    const r = top && top.tier !== "passive" ? restriction(c, g.mode, top) : null;
+    return no(r ?? `probability ${mass.toFixed(2)} for the permitted actions (${A.map((a) => a.name).join(", ")}) is below the ${tier} threshold ${th}`);
+  }
+  if (c.requireDiagnosis && g.diagnosis === "expected") return { ...no("the model's diagnosis is expected"), reason: "the model's diagnosis is expected" };
+  if (rate.full(g.now)) return { ...no(null), reason: `rate limit: ${c.maxActionsPerMinute} actions in the last minute` };
+  return { run: candidate, candidate, mass, reason: null };
 }
 
 export const HOLD_MIN_MS = 150;

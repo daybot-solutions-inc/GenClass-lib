@@ -19,7 +19,7 @@ import { describe, fmtNum, secs, truncate } from "../util.js";
 import { eventLine, opLabel, opPhrase } from "./describe.js";
 import type { SitEnv, SubjectSpec } from "./env.js";
 import { computeFacts, MAX_FACTS, orderFacts } from "./facts.js";
-import { actionDescription, BUILTIN_ACTIONS, buildQuestions, TRIGGER_ACTIONS } from "./questions.js";
+import { actionDescription, BUILTIN_ACTIONS, buildQuestions, COMPACT_QUESTIONS_BUDGET, TRIGGER_ACTIONS } from "./questions.js";
 import { sectionLimits, STATE_CHAR_BUDGET, toJevState, type SectionLimits, type SituationParts } from "./serialize.js";
 
 export interface BuildOptions {
@@ -217,7 +217,7 @@ function stateLines(env: SitEnv, s: SubjectSpec, stores: string[], L: SectionLim
     const f = env.hub.field(path);
     const store = env.hub.get(path.split(".")[0]);
     const leaf = env.hub.leaf(path);
-    if (!f && !leaf) return;
+    if (!leaf) return; // parent paths of expanded objects, removed fields
     const v = leaf ? leaf.value : undefined;
     const val = store?.opts.describe && path === store.name ? truncate(String(store.opts.describe(v)), 90) : describe(v, path, env.redact, 90);
     const meta = f && f.v ? ` (v${f.v}${f.writer !== null ? `, by #${f.writer}` : ""} ${secs(now - f.t)} ago)` : " (v0)";
@@ -262,7 +262,8 @@ function statsLines(env: SitEnv, subj: OpRec | undefined, L: SectionLimits): str
     const r = env.base.rate(sig, now);
     const parts = [`${st.count} done`];
     if (lat) parts.push(`median ${secs(lat.median)}`, `p95 ${secs(lat.p95)}`);
-    parts.push(`errors ${Math.round(st.errEwma * 100)}%`);
+    const fc = env.base.failureCounts(sig);
+    parts.push(`${fc.failed} of last ${fc.of} failed`);
     parts.push(`${r.recent} in last 10s${r.usual !== undefined ? ` (usual ${fmtNum(r.usual)})` : ""}`);
     out.push(`${sig}: ${parts.join(", ")}`);
   }
@@ -295,21 +296,22 @@ function builtinApplicable(env: SitEnv, s: SubjectSpec, name: string): boolean {
     }
     case "transition": {
       const stores = [...new Set([...(s.op.chain?.keys() ?? [])].map((f) => f.split(".")[0]))];
-      if (name === "rollback") return stores.some((st) => env.writable(st)) && !!env.consistentBefore(env.ops.rootOf(s.op).startSeq);
+      if (name === "rollback") return revertableChain(env, s.op);
       if (name === "resync") return stores.some((st) => env.resyncable(st));
       return true;
     }
     case "error":
-      if (name === "rollback") {
-        if (!s.op) return false;
-        const root = env.ops.rootOf(s.op);
-        const lc = env.consistentBefore(root.startSeq);
-        return !!lc && env.hub.changedSince(root.startSeq).length > 0;
-      }
+      // rollback only when the failing op's own chain wrote state (and only that state is restored)
+      if (name === "rollback") return !!s.op && revertableChain(env, s.op);
       return true;
     case "ask":
       return false;
   }
+}
+
+/** The op's chain wrote fields that nobody overwrote since and whose earlier value is known. */
+function revertableChain(env: SitEnv, op: OpRec): boolean {
+  return env.chainWrites(op).some((w) => w.lastIsChain && w.before !== undefined && env.writable(w.path.split(".")[0]));
 }
 
 // ----------------------------------------------------------------------------------------------- build
@@ -384,7 +386,8 @@ export function buildSituation(env: SitEnv, s: SubjectSpec, o: BuildOptions, pre
   const standing = o.questions.filter((q) => q.on.includes(s.trigger));
   const extra: Record<string, Question> = {};
   for (const q of standing) extra[q.id] = q.question;
-  const questions = buildQuestions(s.trigger, actions, o.diagnoses, extra);
+  const compact = budget <= COMPACT_QUESTIONS_BUDGET;
+  const questions = buildQuestions(s.trigger, actions, o.diagnoses, extra, compact, o.vocab);
   // sections
   const parts: SituationParts = {
     app: appText(env),
@@ -405,6 +408,8 @@ export function buildSituation(env: SitEnv, s: SubjectSpec, o: BuildOptions, pre
     actions: actions.map((a) => a.name),
     salient,
     facts: facts.map((f) => f.text),
+    compact,
+    budget,
   };
   return { spec: s, draft, situation, actions, facts, parts, salient, standing, forced: standing.some((q) => q.always), subjectRef: subjectRef(s) };
 }

@@ -1,66 +1,61 @@
-# GenClass
+# GenClass Runtime
 
-**The version of Jev that runs in your browser. Fully open source (Apache-2.0).**
-
-![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![runs](https://img.shields.io/badge/runs-100%25%20local-brightgreen) ![model](https://img.shields.io/badge/model-32M%20params-orange) ![api](https://img.shields.io/badge/API-Jev%20wire--compatible-purple)
-
-GenClass is a small, fast typed-decision model and a Chrome extension built on it. You speak, and your browser acts, often before you finish the sentence. Everything runs locally: the model executes in the browser with WebGPU/WASM, and speech recognition uses Moonshine on-device by default.
-
-> GenClass is an independent open-source project. It is not affiliated with or endorsed by TypeSafe AI. "Jev" is TypeSafe's product name, used here only to describe what GenClass is comparable to.
-
-## What it does
-- **Insanely fast browser use.** "Open GitHub and search for whisper": the open fires mid-sentence and the typing follows as soon as you finish the phrase.
-- **Ads and content filtering.** Classify page blocks as ad, sponsored, clickbait or off-topic, then hide them.
-- **Focus modes.** Tell it what you're working on, and it closes or parks tabs that don't fit.
-- **RAM management.** Chrome eating all your memory? GenClass discards idle and irrelevant tabs before your machine starts swapping.
-- **Video and more** (planned). Any decision that is a choice, yes/no or score over text runs through the same model.
-
-## GenClass vs Jev (direct, same inputs)
-
-| Decision | Jev | GenClass |
-|---|---|---|
-| Recognise the command mid-sentence | 66.4% | **90.4%** |
-| Pick the exact words to type | 75.5% | **94.9%** |
-| Full-command action | 91.4% | 92.0% |
-| Pick the on-screen element | **86.6%** | 82.4% |
-| General held-out questions | **94.7%** | 80.5% |
-| Option-order flips | 10–13% (third-party) | **0** |
-| Cost / privacy | paid cloud API | free, on-device |
-
-Methodology, per-question tables and caveats are in [BENCHMARKS.md](BENCHMARKS.md). In short, GenClass wins at computer control and Jev wins at general questions.
-
-## How it works
-GenClass answers typed questions about a state in one forward pass:
-- `choice` over options;
-- `noul` for yes/no;
-- `score` over ordered levels.
-
-The questions use the same request format as Jev's System One API. The browser layer turns each partial transcript plus the visible page elements into one request. It acts on closed-set commands as soon as they are complete, and it asks for confirmation before anything risky.
-
-## Open source: everything is here
-- **The model.** A ModernBERT/Ettin encoder with typed decision heads, and per-option attention isolation so the order of the options can't change the answer (`jev_local/engine/encoder/`).
-- **A Jev-compatible API server.** `POST /v1/systemone`, the same request and response shapes, so existing Jev clients work by changing the base URL (`jev_local/server/`).
-- **The voice computer-use harness.** It re-decides on every partial transcript and acts mid-sentence (`jev_local/harness/`, `docs/DEMO.md`).
-- **Training and data pipelines.** Synthetic data, multi-node CPU training and decontamination (`jev_local/train/`, `jev_local/data/`).
-- **The benchmark harness.** 549 published Jev numbers, adapters for each publisher's own test code, and a pre-registration file (`jev_local/bench/`, `bench/`).
-- **Design docs and results.** `docs/`, `results/`.
+**An AI runtime for self-healing web apps. Install one library. Find and prevent runtime failures automatically.**
 
 ```bash
-git clone https://github.com/MeharPro/GenClass && cd GenClass
-python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m jev_local.server.app --ckpt <weights dir>   # Jev-compatible API on 127.0.0.1:8765
+npm install @genclass/runtime
 ```
-The model weights (Apache-2.0) and the Chrome extension zip are in the [v0.1.0 release](https://github.com/MeharPro/GenClass/releases/tag/v0.1.0). The extension source is in [`extension/`](extension/).
 
-## Install the Chrome extension (v0.1.0)
-1. Download `genclass-0.1.0.zip` from the [release](https://github.com/MeharPro/GenClass/releases/tag/v0.1.0) and unzip it.
-2. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the unzipped folder.
-3. Click the GenClass icon to open the side panel. The first run downloads the model (~57 MB) and Moonshine speech (~63 MB) once, and both are cached. It starts in dry-run mode; switch on **Live** in Settings.
+```ts
+import { GenClass } from "@genclass/runtime";
 
-A Chrome Web Store listing is under review.
+GenClass.init();
+```
 
-## Status
-Under active development. The extension, model weights (Apache-2.0) and install instructions are coming in the first release.
+GenClass Runtime runs inside your web app and keeps track of what it is doing: user actions, async operations,
+network requests, state changes, errors, timing, causality and recent history. When something looks risky, a
+small GenClass model running locally in the browser (WebGPU or WASM, cached) judges what is happening and what to
+do. It reports what it saw, or prevents the failure with a minimal, reversible action. It has no hardcoded list of
+bugs; the model infers from runtime context.
+
+```
+[GenClass] Prevented a stale write: GET /api/search?q=rea (started 1.8 s ago) would have overwritten
+           search.results written 0.4 s ago by a newer GET /api/search?q=react. Dropped it. (stale, 0.97)
+```
+
+> **Status: preview, work in progress.** The runtime, model host, devtools and adapters are built and tested. The
+> runtime-specialist model is being trained, and the demos are being evaluated with it. See
+> [OPEN_TASKS.md](OPEN_TASKS.md).
+
+## What's in this repo
+
+| path | what |
+|---|---|
+| [`packages/runtime`](packages/runtime) | `@genclass/runtime`, the library: observers, causality, stores, learned invariants and profiles, facts, triage, policy, actions, model host (Web Worker, ONNX Runtime on WebGPU/WASM), devtools overlay, React/Redux/Zustand adapters. [README](packages/runtime/README.md) · [API](docs/runtime/API.md) |
+| [`sim`](sim) | Training-data simulator: thousands of random apps run on the real runtime in a deterministic virtual world, labelled by counterfactual outcomes |
+| [`training`](training) | Curriculum, vocabulary pruning, multi-node CPU training on Azure, int8 ONNX export, evaluation |
+| [`demos`](demos) | Six demo apps (typeahead, autosave, checkout, flaky dashboard, live kanban, real-time decisions) with a Service Worker chaos backend and Playwright trials |
+| [`docs/runtime`](docs/runtime) | [Architecture](docs/runtime/ARCHITECTURE.md) · [build contract](docs/runtime/CONTRACT.md) · [API](docs/runtime/API.md) |
+| `jev_local`, `extension`, `bench`, … | The GenClass model, Jev-compatible server, voice harness, Chrome extension and benchmarks this runtime builds on ([details](docs/GENCLASS.md)) |
+
+## How it works
+
+1. **Observe.** Fetch, XHR, WebSocket, DOM events, errors, navigation and storage are instrumented, and async
+   operations are linked into causal chains. State registered through GenClass gets per-field versions.
+2. **Learn.** It learns latency, error and rate baselines per operation, invariants that keep holding (such as
+   `total == sum(price·qty)`), and which fields each operation usually writes.
+3. **Triage.** Generic facts are computed for every write and request. Only salient situations (concurrency,
+   repeats, failures, anomalies, broken relations, errors) are passed to the model.
+4. **Decide.** The local model reads the situation and answers two typed questions: what is happening, and which
+   available action is best.
+5. **Act carefully.**
+   - `observe` mode reports only.
+   - `guard` (the default) takes minimal, reversible actions (drop or defer a stale write, coalesce a duplicate,
+     back off) when the model is ≥ 90% sure.
+   - `heal` also retries, serves cached responses, and rolls back or resyncs inconsistent state.
+6. **Explain.** Every detection and intervention is logged in plain English with its evidence, can be explained
+   and undone, and `?genclass=off` turns everything off.
 
 ## License
-Apache-2.0
+
+Apache-2.0.

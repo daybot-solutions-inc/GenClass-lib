@@ -5,7 +5,8 @@
 // input (Playwright), lets the page's own oracle score it, and writes results.json, results.md and screenshots.
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { serveStatic } from "./serve.ts";
 import { summarizeDemo, type DemoSummary, type ModeSummary } from "../src/shared/aggregate.ts";
@@ -310,6 +311,21 @@ async function servedCard(): Promise<ServedCard | null> {
   }
 }
 const CARD = await servedCard();
+
+/** Fingerprint of the runtime build the site was built against (the runtime changes while we measure). */
+async function runtimeBuild(): Promise<{ version: string; dist: string } | null> {
+  try {
+    const pkgDir = `${ROOT}../packages/runtime/`;
+    const pkg = JSON.parse(await readFile(`${pkgDir}package.json`, "utf8")) as { version: string };
+    const files = (await readdir(`${pkgDir}dist`, { recursive: true })).filter((f) => String(f).endsWith(".js")).map(String).sort();
+    const h = createHash("sha256");
+    for (const f of files) h.update(f).update(await readFile(`${pkgDir}dist/${f}`));
+    return { version: pkg.version, dist: h.digest("hex").slice(0, 12) };
+  } catch {
+    return null;
+  }
+}
+const RUNTIME_BUILD = await runtimeBuild();
 const MODEL_LABEL = CARD?.name ? `${CARD.name} ${CARD.version ?? ""}`.trim() : MODEL;
 /** The v0.1 extension model (a general classifier), as opposed to a runtime-trained model. */
 const IS_V01 = CARD?.name === "genclass-model" && (CARD.version ?? "").startsWith("0.1");
@@ -400,6 +416,7 @@ async function writeReports(results: TrialResult[]) {
     generatedAt: new Date().toISOString(),
     runtime: meta.runtime,
     model: { name: meta.name, note: meta.note, status: meta.status, baseUrl: MODEL, card: CARD, tag: TAG || undefined },
+    runtimeBuild: RUNTIME_BUILD,
     driver: "playwright (real keyboard and mouse input), headless Chromium",
     policy: BUDGET ? { holdBudgetMs: Number(BUDGET), note: "experiment: hold budget raised from the default 300 ms" } : "runtime defaults",
     trials: { chaos: N, clean: CLEAN },
@@ -424,7 +441,7 @@ async function writeReports(results: TrialResult[]) {
   const md = [
     "# GenClass Runtime demos: trial results",
     "",
-    `Generated ${json.generatedAt} on the build VM. Runtime: **${meta.runtime}**. ${meta.note}${BUDGET ? ` **Experiment:** policy.holdBudgetMs = ${BUDGET} ms (default 300 ms), so slow model decisions can still act; this is not the default configuration.` : ""}`,
+    `Generated ${json.generatedAt} on the build VM. Runtime: **${meta.runtime}**${RUNTIME_BUILD ? ` (@genclass/runtime ${RUNTIME_BUILD.version}, dist ${RUNTIME_BUILD.dist})` : ""}. ${meta.note}${BUDGET ? ` **Experiment:** policy.holdBudgetMs = ${BUDGET} ms (default 300 ms), so slow model decisions can still act; this is not the default configuration.` : ""}`,
     "",
     `Driver: Playwright with real keyboard and mouse input in headless Chromium (no GPU, WASM inference). ${N} chaos trials and ${CLEAN} clean trials per mode per demo; the same seeds run in every mode. Bug rate = share of chaos trials where the demo's own oracle found a bug. False interventions = non-passive actions GenClass took on clean runs, where the app behaves correctly; every one is a false positive.`,
     "",

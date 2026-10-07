@@ -403,6 +403,10 @@ export interface Situation {
   /** Whether triage would consult the model. */
   salient: boolean;
   facts: string[];
+  /** Compact questions (budget ≤ 1,400 chars): bare diagnosis labels and action names. */
+  compact: boolean;
+  /** The situation budget in characters. */
+  budget: number;
 }
 
 export interface RequestInfo {

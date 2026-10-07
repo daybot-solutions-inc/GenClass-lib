@@ -23,7 +23,14 @@ step() { echo "=== $(date +%T) $*"; }
 step "npm install"
 npm install --no-audit --no-fund || exit 1
 step "build @genclass/runtime"
-npm run build -w @genclass/runtime || echo "RUNTIME_BUILD_FAILED (demos fall back to the stand-in only if dist is missing)"
+if ! npm run build -w @genclass/runtime; then
+  # tsup cleans dist first, so a failed build can leave JavaScript without types: never measure that.
+  echo "RUNTIME_BUILD_FAILED: packages/runtime does not build right now (CORE mid-change?)."
+  if [ "${ALLOW_BROKEN_RUNTIME:-0}" != "1" ]; then
+    echo "Refusing to run trials against a half-built runtime. ALLOW_BROKEN_RUNTIME=1 overrides (screenshots only)."
+    exit 1
+  fi
+fi
 
 EXTRA=()
 if [ -n "${GENCLASS_MODEL_URL:-}" ]; then

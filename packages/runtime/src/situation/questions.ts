@@ -73,7 +73,13 @@ export const DEFAULT_DIAGNOSES: Record<string, string> = {
   slow: "an operation is far slower than usual",
   overload: "work is being triggered far more often than usual",
   unusual: "this differs from how the same operation normally behaves",
+  transient: "a one-off failure that is likely to succeed if tried again",
 };
+
+/** Situations at or below this many characters use compact questions (bare labels and action names). */
+export const COMPACT_QUESTIONS_BUDGET = 1400;
+/** In compact questions a vocabulary override description is kept only up to this length. */
+const COMPACT_DESC_MAX = 24;
 
 export function diagnosisVocabulary(vocab: Vocabulary | undefined, pluginLabels: Record<string, string>[]): Record<string, string> {
   const base: Record<string, string> = { ...(vocab?.diagnoses ?? DEFAULT_DIAGNOSES) };
@@ -88,18 +94,28 @@ export function actionDescription(name: string, vocab: Vocabulary | undefined, c
   return vocab?.actions?.[name] ?? custom ?? BUILTIN_ACTIONS[name]?.description ?? name;
 }
 
+/**
+ * The standing questions for a trigger. `compact` (small situation budgets): diagnosis options are bare labels and
+ * action options bare names (null descriptions, rendered as the label by the packer), except vocabulary overrides
+ * of at most 24 characters. Same instructions either way.
+ */
 export function buildQuestions(
   trigger: TriggerKind,
   actions: { name: string; description: string }[],
   diagnoses: Record<string, string>,
   extra: Record<string, Question>,
+  compact = false,
+  vocab?: Vocabulary,
 ): Record<string, Question> {
   const qs: Record<string, Question> = {};
   if (trigger === "ask") return { ...extra };
-  qs.diagnosis = { type: "choice", instructions: DIAGNOSIS_INSTRUCTIONS, criteria: { ...diagnoses } };
+  const short = (override: string | undefined): string | null => (override && override.length <= COMPACT_DESC_MAX ? override : null);
+  const dcrit: Record<string, string | null> = {};
+  for (const [label, desc] of Object.entries(diagnoses)) dcrit[label] = compact ? short(vocab?.diagnoses?.[label]) : desc;
+  qs.diagnosis = { type: "choice", instructions: DIAGNOSIS_INSTRUCTIONS, criteria: dcrit };
   if (actions.length > 1) {
-    const criteria: Record<string, string> = {};
-    for (const a of actions) criteria[a.name] = a.description;
+    const criteria: Record<string, string | null> = {};
+    for (const a of actions) criteria[a.name] = compact ? short(vocab?.actions?.[a.name]) : a.description;
     qs.action = { type: "choice", instructions: ACTION_INSTRUCTIONS[trigger], criteria };
   }
   for (const [k, q] of Object.entries(extra)) if (!(k in qs)) qs[k] = q;

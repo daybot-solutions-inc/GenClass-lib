@@ -28,6 +28,8 @@ const CACHE_MAX = 64;
 const CACHE_TTL = 30_000;
 const MAX_QUEUE = 32;
 const LATENCY_SAMPLES = 20;
+/** A provider that has not answered after this long (or the request's deadline) is abandoned: the slot frees up. */
+export const PROVIDER_TIMEOUT_MS = 10_000;
 
 export class DeciderQueue {
   private q: QueueItem[] = [];
@@ -110,9 +112,16 @@ export class DeciderQueue {
   private dispatch(p: DecisionProvider, item: QueueItem, key: string, t1: number): void {
     this.busy = true;
     let settled = false;
+    // runtime-side timeout: a provider that never answers must not block every later decision
+    const limit = item.deadline !== undefined ? Math.max(1, item.deadline - t1) : PROVIDER_TIMEOUT_MS;
+    const timer = this.clock.setTimeout(() => {
+      this.onError?.(Object.assign(new Error("the decision provider did not answer in time"), { code: "timeout" }));
+      done(null);
+    }, limit);
     const done = (r: DecideResult | null) => {
       if (settled) return;
       settled = true;
+      this.clock.clearTimeout(timer);
       this.busy = false;
       item.resolve(r);
       this.pump();

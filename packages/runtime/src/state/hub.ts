@@ -44,8 +44,10 @@ export interface FieldHist {
 export interface LogEntry {
   seq: number;
   v: number;
+  t: number;
   writer: number | null;
   root: number | null;
+  user: boolean;
   mutation: number;
 }
 
@@ -522,7 +524,7 @@ export class StoreHub {
       if (c.afterLeaf) h.afterLeaf = c.afterLeaf;
       f.hist.push(h);
       if (f.hist.length > HIST) f.hist.shift();
-      f.log.push({ seq, v: f.v, writer: f.writer, root, mutation: mid });
+      f.log.push({ seq, v: f.v, t, writer: f.writer, root, user, mutation: mid });
       if (f.log.length > LOG) f.log.splice(0, f.log.length - LOG);
     }
     const paths = changes.map((c) => c.path).sort();

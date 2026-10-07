@@ -94,4 +94,16 @@ export interface SitEnv {
   resyncable(store: string): boolean;
   /** GenClass can write the store directly (rollback). */
   writable(store: string): boolean;
+  /** Fields written by an op's causal chain (its root's chain) since the root started. */
+  chainWrites(op: OpRec): ChainWriteInfo[];
+}
+
+export interface ChainWriteInfo {
+  path: string;
+  /** Writes by the chain. */
+  count: number;
+  /** The chain made the latest write to the field (nobody overwrote it since). */
+  lastIsChain: boolean;
+  /** The value before the chain's first write (unknown when that write is older than the 16-entry history). */
+  before?: { value: unknown; removed: boolean };
 }
