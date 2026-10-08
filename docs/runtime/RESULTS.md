@@ -17,7 +17,8 @@ reports are in `training/EVAL.md`, `training/LOG.md`, `sim/SEPARABILITY.md`, `re
 | **r17-v2a** (format v2, first round) | 2B tokens of v2 sim gold + v2 curriculum | 84.4% | 77.9% | **0.00%** | 0.46% | 3.1% (heal clear-case 11.3%) |
 | **r17-v2b** (+1B tokens with real-app gold) | sim 84.2% / real 83.6% | sim 77.8% / real 80.0% | 0.02% sim, 0.00% real (derived gates) | 0.23% sim, 0.00% real | heal 6.0% clear; real duplicate 8.2% (14% held-out apps) |
 | 150M teacher (t150-v2a, 1B tokens, v2 + real gold) | sim 81.8% / real 82.0% | sim 76.5% / real 78.1% | – | – | lower than r17-v2b everywhere, so distillation was skipped |
-| Round 2 continues (r17-v2c on on-policy mistakes) | 10.4M sim gold + 51M unlabeled + 616k real | in progress | | | | |
+| **r17-v2c** (+ on-policy round a, v2.2 retry labels) | sim 84.4% / real 83.7% | sim 77.8% / real 79.9% | 0.02% sim, 0.00% real | 0.22% sim, 0.00% real | guard recall on clear 2.1% (v2b 0.6%); heal gain 5.6% (v2b 3.8%); real duplicate 11.2% |
+| Next: r17-v2d (mass gate) vs r17-v2dT (gain gate), winner ships as model 0.2.0 | 10.4M sim gold + 51M unlabeled + 616k real | in progress | | | | |
 
 ### r17-v2a on held-out data (details)
 

@@ -110,12 +110,11 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 | c01, c10, c11 | REAL (TRAIN processes killed 03:35; c01 clean) | — | real-browser rows |
 | c02–c09, c12–c23 (20 nodes) | SIM (done 04:05–05:00 UTC, **all deallocated**) | was: from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
 
-| **c09** | **TRAIN workbench (v2)** | from 06:40 UTC | data prep (sim2r / on-policy), gate dev set, eval |
-| **c07 c08 c02 c03 c04 c05 c13** | **TRAIN `r17-v2c`** (v2b + on-policy round a) | 08:34 → ≈ 09:40 UTC | next student; c07 = rank 0 / eval / export |
-| **c12, c14–c23** | **TRAIN `t150-v2a`** teacher | training done 08:30; distributed eval ≈ 08:50; then labelling if the teacher clearly beats v2b, else deallocated | teacher |
-| c06 | TRAIN `r17-v2t` (T1 on v2) eval/export | until ≈ 09:00 | then deallocated |
-| c01, c10, c11 | free (REAL done) | — | — |
-| **c01, c10, c11, data** | **SIM on-policy round b** (r17-v2b, situation-v2.3; c01 shipping gate, c10/c11/data explore 0.5) | 08:49 → 10:12 UTC (done; locks released, all four **deallocated**) | → `train:/data/sim-out/v2-onpol-b/`; each node deallocated by SIM as soon as its share is collected. (SIM also ran its job on c02 from 08:49 until 09:04, then yielded c02 to TRAIN's r17-v2c, which had claimed it at 08:34; SIM will not deallocate c02.) |
+| **c09** | **TRAIN workbench (v2)** | from 06:40 UTC | data prep, gate dev sets, eval; serves tars on :8805 |
+| **c08 c02 c03 c04 c05 c13** | **TRAIN `r17-v2d`** (SIM labels, mass gate) | 10:04 → ≈ 11:30 UTC (train + distributed eval/export) | claimed (`~/.gcl-claim`) |
+| **c06 c12 c16 c17 c18 c19** | **TRAIN `r17-v2dT`** (T1 labels, gain gate) | 10:04 → ≈ 11:30 UTC | claimed (`~/.gcl-claim`) |
+| c14, c15 | REAL (v23e top-up) | REAL's claim | — |
+| c01, c07, c10, c11, c20–c23 | free (deallocated) | — | — |
 
 SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
 
