@@ -90,8 +90,11 @@ The runtime decides through a trained local model; nothing here is hardcoded per
 
 ## Needs the user
 
-- **Patch release `0.1.0-alpha.1`** (fixes a crash when app state contains `NaN`, found after alpha.0 was published):
-  publishing needs your 2FA approval; I'll prepare the tarball and the command.
+- **Release `0.1.0-alpha.1`**: the NaN crash fix, the network-boundary runtime (batches 4–5), the new README, and the
+  one-command install (`npx genclass-runtime init`, `@genclass/runtime/auto`, the CDN script tag, being built by
+  INSTALL). Publishing needs your 2FA; the tarball and command follow once install tests pass.
+- **Install on Polar Parts** (`MeharPro/Polar-Parts`) once the trained model is good (user OK'd). Start in
+  observe mode on a branch, verify the storefront is unchanged, then guard.
 - **Public demo hosting** (GitHub Pages on this repo): OK to publish?
 - **Merging `runtime` into `main`** when ready.
 
