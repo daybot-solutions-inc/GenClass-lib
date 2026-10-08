@@ -15,7 +15,8 @@ reports are in `training/EVAL.md`, `training/LOG.md`, `sim/SEPARABILITY.md`, `re
 | **Final round 1, R17** (format v1) | 448k sim rows (phase A) | **90.5%** | **81.9%** | **0.05%** | **0.24%** | **7.7%** |
 | Final round 1, R32 (format v1) | same | 89.7% | 81.8% | 0.05% | 0.22% | 5.9% |
 | **r17-v2a** (format v2, first round) | 2B tokens of v2 sim gold + v2 curriculum | 84.4% | 77.9% | **0.00%** | 0.46% | 3.1% (heal clear-case 11.3%) |
-| Round 2 continues (teacher, REAL gold, DAgger, data-derived gates) | 10.4M sim gold + 51M unlabeled + 616k real | in progress | | | | |
+| **r17-v2b** (+1B tokens with real-app gold) | sim 84.2% / real 83.6% | sim 77.8% / real 80.0% | 0.02% sim, 0.00% real (derived gates) | 0.23% sim, 0.00% real | heal 6.0% clear; real duplicate 8.2% (14% held-out apps) |
+| Round 2 continues (teacher, DAgger, detection gates) | 10.4M sim gold + 51M unlabeled + 616k real | in progress | | | | |
 
 ### r17-v2a on held-out data (details)
 
@@ -30,6 +31,22 @@ chosen before labels became expected costs and now block nearly every action. Ne
 - **Thresholds:** derive per-tier, per-trigger gate thresholds from held-out data (FIR ≤ 0.1% guard / 0.5% heal on
   clean real-app and sim traffic; fit on dev, verify on test) and ship them in the model's meta.json.
 - **Training:** finish the 150M teacher (with real-app gold), distil, and run DAgger rounds.
+
+### Data-derived gate thresholds (r17-v2a)
+
+The thresholds are fitted per tier and trigger on held-out dev data, under these constraints: FIR ≤ 0.1% (guard)
+or ≤ 0.5% (heal), and harm ≤ 0.2% or ≤ 1%. Each constraint must hold at the 95% upper confidence bound. The
+thresholds ship in the model's `meta.json` `gate`. Verified on held-out test (95% bootstrap intervals):
+
+| Policy | Fires | FIR sim | FIR real apps | Harm (sim / real) | Recall on clear cases | Gain captured |
+|---|---|---|---|---|---|---|
+| guard, derived gates (0.70–0.90) | 0.14% | 0.03% [0.00, 0.08] | 0.00% | 0.01% / 0.00% | 2.5% | 3.0% |
+| guard, fixed 0.9 | – | 0.00% | 0.00% | – | 0.2% | 0.04% |
+| heal, derived gates | 0.99% | 0.19% [0.13, 0.25] | 0.00% | 0.05% / 0.04% | 5.2% | 5.1% |
+| heal, fixed 0.8 | – | **0.66%** [0.56, 0.77] (over the limit) | – | – | 12.0% | 9.3% |
+
+The derived gates keep both tiers inside their safety limits on data never used for fitting. Recall is now
+limited by the model's discrimination, which is what the 150M teacher, distillation and DAgger rounds target.
 
 Targets: guard FIR ≤ 0.1% (met), heal FIR ≤ 0.5% (met), calibration error ≤ 0.02 (met: 0.009),
 diagnosis ≥ 95% (not yet), clear-case recall ≥ 80% (not yet).
@@ -106,7 +123,7 @@ trained v2 model once it exists.
 | Sim v1 phase A / phase B | 600k / 1.4M | done (v1, superseded) |
 | Sim v2 gold (S1+S2 labels, 46 features, 115 domains) | **10,423,855** (7.56M train / 318k dev / 2.55M test) | done, 20 nodes in ~31 min |
 | Sim v2 unlabeled (for teacher labelling) | **51,272,078** | done (~21k rows/s per node) |
-| Real-browser v2 gold (128 apps, 40+ stacks) | **616,437** (+523k unlabeled) | done; determinism 3,030/3,030, interference 0/256 |
+| Real-browser v2 gold (158 apps, 40+ stacks) | **616,437** (+523k unlabeled) | done; determinism 3,030/3,030, interference 0/256 |
 | Real-app eval set (unambiguous) | **16,600** (clean-benign 4,000, benign-salient 4,000, duplicate 4,000, genuine break 3,085, stale 1,515) | done |
 
 ## 7. Training log (summary)

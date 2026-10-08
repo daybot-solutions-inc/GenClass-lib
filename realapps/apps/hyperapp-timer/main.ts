@@ -150,13 +150,13 @@ const PickProject = (s: Sheet, ev: Event): Sheet => ({ ...s, project: (ev.target
 const Add = (s: Sheet) => (s.adding ? s : [{ ...s, adding: true, error: "" }, addFx(s.project)]);
 const Refresh = (s: Sheet) => [{ ...s, error: "" }, pullFx()];
 
-const every = (ms: number, action: unknown) => [
-  (dispatch: (a: unknown) => void, p: { ms: number; action: unknown }) => {
-    const id = setInterval(() => dispatch(p.action), p.ms);
-    return () => clearInterval(id);
-  },
-  { ms, action },
-];
+// one subscriber function for every interval (module level): Hyperapp compares subscribers by identity, so a
+// function created per render would restart the interval on every state change
+const intervalSub = (dispatch: (a: unknown) => void, p: { ms: number; action: unknown }) => {
+  const id = setInterval(() => dispatch(p.action), p.ms);
+  return () => clearInterval(id);
+};
+const every = (ms: number, action: unknown) => [intervalSub, { ms, action }];
 
 // ---------------------------------------------------------------------------------------------- view
 const view = (s: Sheet) =>

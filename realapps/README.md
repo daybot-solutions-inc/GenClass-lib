@@ -9,7 +9,7 @@ the same row format, cost terms and label rule as the sim.
 
 ```
 realapps/
-  apps/<name>/            128 apps (114 written for the corpus + 14 open-source): manifest.ts (Node side) + source;
+  apps/<name>/            158 apps (144 written for the corpus + 14 open-source): manifest.ts (Node side) + source;
                           apps/README.md = authoring guide
   apps/_shared/           genclass.ts (the app's one-line integration), atom bridges (Vue, Svelte), Conduit manifest
   corpus/                 open-source apps: oss.json (repo, commit, licence), patch_oss.py, prepare_oss.sh,
@@ -34,7 +34,7 @@ mixed with the correct guard. Every app reads feature flags (`flag(name, default
 bug. The **first option** of each flag is the correct default; clean runs use only first options. Apps are ordinary
 apps. None is written for a particular trigger rule.
 
-- **Written for the corpus** (114 apps in `apps/<name>`, four authoring waves; rules in `apps/README.md`):
+- **Written for the corpus** (144 apps in `apps/<name>`, five authoring waves; rules in `apps/README.md`):
   - **React:** hooks, useGenClassState, useReducer, React 19 actions/`useOptimistic`, React Router 7 data APIs.
   - **State:** Redux Toolkit, RTK Query, redux-saga, Zustand, Jotai, Valtio, XState, effector, MobX, nanostores.
   - **Data:** TanStack Query (React, Vue, Svelte, Solid), SWR, axios, ky, ofetch, wretch, superagent, RxJS.
@@ -215,8 +215,8 @@ Snapshots read text inside open shadow roots (web components).
 Rows are CONTRACT-D `{id, split, family, state, questions, labels, meta}`. They are exactly what the runtime handed
 the decider, so the format matches sim rows. Splits are per trajectory:
 - **test**:
-  - framework `lit`;
-  - the apps in `TEST_APPS` (SWR, Alpine and raw-XHR apps that appear nowhere in train);
+  - framework `lit`, and every app using the SWR library (`TEST_LIBS`);
+  - the apps in `TEST_APPS` (one Alpine app and one raw-XHR app; Alpine itself is a train framework);
   - apps marked `heldOut` (`oss-rtk-conduit`);
   - the held-out flag patterns in `TEST_PATTERNS`.
   Only `--test-keep` of test trajectories are kept. `manifest.json` lists all of these.

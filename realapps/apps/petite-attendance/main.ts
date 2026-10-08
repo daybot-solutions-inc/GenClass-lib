@@ -2,8 +2,8 @@
 // WebSocket). The teacher picks a period and marks each student present, late or absent from a dropdown (a PATCH per
 // change, shown at once; quick corrections of the same student are queued behind the earlier save), or marks
 // everyone still unmarked present in one go (POST /attendance/bulk, per-item results). The front office records late
-// slips as students arrive, pushed live over the attendance socket (versioned records). The header shows the
-// present/late/absent counts. Latent bugs by flag: class lists applied in arrival order (periodSeq=blind: switching
+// slips as students arrive, pushed live over the attendance socket (versioned records); a class list that fails to
+// load is retried with backoff. The header shows the present/late/absent counts. Latent bugs by flag: class lists applied in arrival order (periodSeq=blind: switching
 // periods quickly shows the previous class), marks of one student sent in parallel (mark=parallel: a quick
 // correction can land before the original and the register keeps the wrong mark), bulk results ignored
 // (bulk=assume-all: students the server could not mark show "present"), pushes applied without comparing versions or

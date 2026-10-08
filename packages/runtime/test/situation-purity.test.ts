@@ -84,7 +84,7 @@ async function scenario(withProbes: boolean): Promise<{ trace: string[]; seen: S
   server.on("POST", "/api/cart", ({ body }) => ({ status: 201, body: { id: `c${(body ?? "").length}`, ...JSON.parse(body ?? "{}") }, latency: 90 }));
   const search = rt.atom("search", { query: "", items: [] as { id: string; name: string }[] });
   const cart = rt.atom("cart", { items: [] as { id: string; qty: number }[], count: 0 });
-  const status = rt.atom("status", { ok: true, n: 0 });
+  const status = rt.atom("status", { ok: true, n: 0, label: "" });
   const ws = new (s.g.WebSocket as typeof FakeWS)("ws://app.test/live");
   ws.addEventListener("message", (e) => {
     p(); // inside a message dispatch (message op ambient)
@@ -129,7 +129,10 @@ async function scenario(withProbes: boolean): Promise<{ trace: string[]; seen: S
     void rt.op("poll", async () => {
       p(); // inside a task
       const r = await s.fetch("/api/status");
-      if (r.ok) status.set((await r.json()) as { ok: boolean; n: number });
+      if (r.ok) {
+        const d = (await r.json()) as { ok: boolean; n: number };
+        status.set((v) => ({ ...v, ...d }));
+      }
     });
     sock.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ n: 100 + i }) }));
     await clock.advance(500);
@@ -142,7 +145,7 @@ async function scenario(withProbes: boolean): Promise<{ trace: string[]; seen: S
     void s.fetch("/api/count").then(async (r) => {
       const d = (await r.json()) as { n: number };
       if (i === 22) search.set((v) => ({ ...v, query: `n${d.n}` }));
-      else status.set((v) => ({ ...v, n: d.n }));
+      else status.set((v) => ({ ...v, label: `n${d.n}` })); // a string: never a busy counter
     });
     await clock.advance(200);
   }

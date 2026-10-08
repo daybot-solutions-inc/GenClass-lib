@@ -82,13 +82,13 @@ const BulkDone = (s: S, p: { ids: number[]; results: { id: number; ok: boolean }
 };
 const BulkFailed = (s: S, p: { ids: number[]; e: unknown }) => ({ ...s, busy: s.busy.filter((x) => !p.ids.includes(x)), bulkBusy: false, error: errText(p.e, "redelivering the failed events") });
 
-const every = (ms: number, action: unknown) => [
-  (dispatch: (a: unknown) => void, p: { ms: number; action: unknown }) => {
-    const iv = setInterval(() => dispatch(p.action), p.ms);
-    return () => clearInterval(iv);
-  },
-  { ms, action },
-];
+// one subscriber function for every interval (module level): Hyperapp compares subscribers by identity, so a
+// function created per render would restart the interval on every state change
+const intervalSub = (dispatch: (a: unknown) => void, p: { ms: number; action: unknown }) => {
+  const iv = setInterval(() => dispatch(p.action), p.ms);
+  return () => clearInterval(iv);
+};
+const every = (ms: number, action: unknown) => [intervalSub, { ms, action }];
 
 // ------------------------------------------------------------------------------------------- view
 const label = (d: Delivery) => (d.status === "succeeded" ? `✓ ${d.code}` : d.status === "pending" ? "pending…" : `✗ ${d.code || "timeout"}`);

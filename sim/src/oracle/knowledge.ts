@@ -49,6 +49,8 @@ export interface SimOp {
   net?: number[];
   /** Feature-provided classifier evaluated at decision time. */
   classify?: () => string | undefined;
+  /** The request carried an idempotency key header (Idempotency-Key / X-Idempotency-Key), recorded at fetch time. */
+  idemKey?: boolean;
 }
 
 export interface SimWrite {

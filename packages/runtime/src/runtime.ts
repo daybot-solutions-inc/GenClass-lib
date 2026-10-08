@@ -87,6 +87,8 @@ const BACKGROUND_DEADLINE_MS = 5000;
 const DISCARD_MARK_MS = 10_000;
 /** A salient delivery waits at most this long for its body (a buffered clone) before deciding without it. */
 const BODY_WAIT_MS = 100;
+/** Stores the user wrote this recently are not checked for relations at a settled point (typing bursts). */
+const TYPING_BURST_SETTLE_MS = 1000;
 const STALL_MIN_MS = 500;
 const LONG_RUNNING_MS = 10_000;
 const PROFILED: ReadonlySet<OpKind> = new Set<OpKind>(["fetch", "xhr", "user", "task", "ws"]);
@@ -202,7 +204,10 @@ export class RuntimeImpl implements Runtime {
     this.ctx = new Context(this.clock);
     this.redactFn = o.redact ?? defaultRedact;
     this.hub = new StoreHub(this.clock, this.ctx, this.events, () => this.redactFn);
-    this.miner = new InvariantMiner(() => this.redactFn);
+    this.miner = new InvariantMiner(
+      () => this.redactFn,
+      (p) => this.hub.busy(p),
+    );
     this.cache = new ResponseCache(this.clock);
     this.policy = policyConfig(o.policy);
     this.hub.holdUserWrites = this.policy.holdUserWrites;
@@ -1419,10 +1424,29 @@ export class RuntimeImpl implements Runtime {
   settled(): void {
     if (this.destroyed || this.busy()) return;
     const now = this.clock.now();
+    // stores written by typing within the last second (a typing burst): relations on them are neither checked nor
+    // learned now; another settled point follows once the burst is over
+    const typing = new Set<string>();
+    let lastUserWrite = -Infinity;
+    for (const r of this.hub.recent) {
+      if (!r.user || now - r.t > TYPING_BURST_SETTLE_MS) continue;
+      const root = this.ops.get(r.root);
+      if ((root?.meta as { action?: UserAction } | undefined)?.action?.kind !== "type") continue;
+      typing.add(r.store);
+      lastUserWrite = Math.max(lastUserWrite, r.t);
+    }
+    if (typing.size) {
+      if (this.settleTimer !== null) this.clock.clearTimeout(this.settleTimer);
+      this.settleTimer = this.clock.setTimeout(() => {
+        this.settleTimer = null;
+        this.settled();
+      }, Math.max(1, lastUserWrite + TYPING_BURST_SETTLE_MS + 1 - now));
+    }
     // invariants
     const leaves = this.hub.allLeaves();
-    const res = this.miner.observe(leaves, now);
+    const res = this.miner.observe(leaves, now, typing);
     const ids = new Set(res.violations.map((v) => v.id));
+    for (const id of this.episode) if (res.skipped.has(id)) ids.add(id); // an episode lasts through a skipped check
     for (const id of [...this.muted]) if (!ids.has(id)) this.muted.delete(id);
     // fresh: violated now but not at the previous settled point (a new episode)
     const brokeNow = res.violations.filter((v) => !this.episode.has(v.id));
@@ -1447,7 +1471,7 @@ export class RuntimeImpl implements Runtime {
     for (const op of list) {
       if (op.profiled || op.end === undefined) continue;
       op.profiled = true;
-      const shape = shapeOf(op.chain, op.chainWrites ?? 0, this.statusClass(op), op.end - op.start);
+      const shape = shapeOf(this.withoutBusy(op.chain), op.chainWrites ?? 0, this.statusClass(op), op.end - op.start);
       const sig = op.kind === "user" ? `user ${op.name}` : op.name;
       const unusual = this.profiles.check(sig, shape);
       this.profiles.add(sig, shape);
@@ -1460,6 +1484,18 @@ export class RuntimeImpl implements Runtime {
       this.raiseTransition(f.op, f.unusual, f.shape);
     }
     if (this.persist && list.length) this.saveProfilesSoon();
+  }
+
+  /** A chain's write set without busy scalar counters that are not explicitly derived (sum/len relations keep theirs). */
+  private withoutBusy(chain: OpRec["chain"]): OpRec["chain"] {
+    if (!chain) return chain;
+    let out: OpRec["chain"] | undefined;
+    for (const k of chain.keys()) {
+      if (k.includes(":") || !this.miner.busyCounter(k)) continue;
+      out ??= new Map(chain);
+      out.delete(k);
+    }
+    return out ?? chain;
   }
 
   private statusClass(op: OpRec): string {

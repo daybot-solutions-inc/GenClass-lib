@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { generateTrajectory } from "../src/gen/trajectory.js";
 import { transformQuestions } from "../src/run/transform.js";
 import { Rng } from "../src/rng.js";
-import type { Row } from "../src/types.js";
+import { TRIGGER_ACTIONS, type Row } from "../src/types.js";
 import { buildScenario, splitOf } from "../src/world/scenario.js";
 import { testFactory } from "./helpers.js";
 
@@ -52,10 +52,28 @@ describe("rows", () => {
       const m = r.meta as { diagnosis?: string; passive_best?: boolean; passive?: string; adjusted?: Record<string, number> };
       if (m.diagnosis === "expected" && m.passive_best === false && m.passive && m.adjusted) expect(m.adjusted[m.passive]!, r.id).toBeLessThan(1);
     }
+    // v2.2 retry applicability: request meta and not_offered agree with what the runtime offered.
+    for (const r of rows) {
+      const m = r.meta as { trigger?: string; request?: { method: string; idempotent: boolean; idempotencyKey: boolean }; not_offered?: Record<string, string | null>; diagnosis_only?: boolean };
+      if (m.trigger !== "failure" || !m.request) continue;
+      const offered = r.questions.action ? Object.keys((r.questions.action as { criteria: object }).criteria) : ["deliver"];
+      if (!m.request.idempotent && !m.request.idempotencyKey) {
+        expect(offered, r.id).not.toContain("retry");
+        expect(m.not_offered?.retry, r.id).toMatch(/not idempotent/);
+      }
+      if (m.not_offered) for (const a of Object.keys(m.not_offered)) expect(offered, r.id).not.toContain(a);
+    }
     const dec = rows.filter((r) => r.meta.trigger !== "ask");
     const passiveBest = dec.filter((r) => r.meta.passive_best === true).length / Math.max(1, dec.length);
     console.log(`rows=${rows.length} decision=${dec.length} passive-best=${passiveBest.toFixed(2)} drops=${JSON.stringify(drops)}`);
     expect(passiveBest).toBeGreaterThan(0.2);
+  });
+
+  it("the sim's TRIGGER_ACTIONS copy matches the runtime's", async () => {
+    const { name } = await testFactory();
+    if (name !== "real") return;
+    const mod = (await import(process.env.GENCLASS_RUNTIME ?? "@genclass/runtime")) as { TRIGGER_ACTIONS?: Record<string, string[]> };
+    for (const [t, a] of Object.entries(TRIGGER_ACTIONS)) expect(mod.TRIGGER_ACTIONS?.[t], t).toEqual(a);
   });
 
   it("splits hold out domains and families; transform renormalises dropped options", () => {

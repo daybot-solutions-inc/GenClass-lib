@@ -36,7 +36,7 @@ const LIVE = flag("live", "version-check");
 const STOP = flag("stop", "pessimistic");
 const ENERGY = flag("energy", "derive");
 const RECONNECT = flag("reconnect", "resync");
-const FLEET = ["Van 08", "Van 12", "Van 17", "Van 23", "Van 31"];
+const FLEET = ["Van 08", "Van 12", "Van 17", "Van 23", "Van 31", "Van 36", "Van 39"];
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
 const state = proxy<Depot>({ fast: false, connectors: [], sessions: [], energy: 0, van: "Van 08", starting: [], claimed: [], stopping: [], loading: true, live: false, error: "", notice: "" });
@@ -100,7 +100,10 @@ async function load() {
       d.loading = false;
     });
   } catch (e) {
-    if (my === seq) commit((d) => void ((d.loading = false), (d.error = errText(e, "loading the chargers"))));
+    if (my !== seq) return;
+    commit((d) => void ((d.loading = false), (d.error = errText(e, "loading the chargers") + (loadedOnce ? "" : " Retrying…"))));
+    // nothing on screen yet: try again shortly
+    if (!loadedOnce) setTimeout(() => my === seq && void load(), 4000);
   }
 }
 

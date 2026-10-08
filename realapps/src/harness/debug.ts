@@ -14,6 +14,18 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+/** --variant k=v[,k2=v2]: force feature flags (numbers and booleans parsed). */
+function applyVariant(sc: { variant: Record<string, unknown>; patterns: string[]; app: { name: string } }): void {
+  const v = process.argv[process.argv.indexOf("--variant") + 1];
+  if (!process.argv.includes("--variant") || !v) return;
+  for (const kv of v.split(",")) {
+    const [k, raw] = kv.split("=");
+    if (!k || raw === undefined) continue;
+    const val: unknown = raw === "true" ? true : raw === "false" ? false : raw !== "" && !Number.isNaN(Number(raw)) ? Number(raw) : raw;
+    sc.variant[k] = val;
+    sc.patterns = sc.patterns.filter((p) => !p.startsWith(`${sc.app.name}/${k}:`)).concat(`${sc.app.name}/${k}:${raw}`);
+  }
+}
 const arg = (n: string, d?: string) => {
   const i = process.argv.indexOf(`--${n}`);
   return i < 0 ? d : process.argv[i + 1] && !process.argv[i + 1]!.startsWith("--") ? process.argv[i + 1] : "true";
@@ -32,9 +44,10 @@ if (arg("det")) {
   for (let sd = a0!; sd <= b0!; sd++) {
     for (const app of pool) {
       const sc = buildScenario(sd, [app]);
+      applyVariant(sc);
       const id0 = await runner.run(runConfig(sc, { runId: "d0", ideal: true }));
-      const r1 = await runner.run(runConfig(sc, { runId: "d1", record: true, explore: sc.explore, pins: id0.pins ?? {} }));
-      const r2 = await runner.run(runConfig(sc, { runId: "d2", record: true, explore: sc.explore, pins: id0.pins ?? {} }));
+      const r1 = await runner.run(runConfig(sc, { runId: "d1", record: true, explore: sc.explore, pins: id0.pins ?? {}, altPicks: id0.altPicks ?? {} }));
+      const r2 = await runner.run(runConfig(sc, { runId: "d2", record: true, explore: sc.explore, pins: id0.pins ?? {}, altPicks: id0.altPicks ?? {} }));
       n++;
       const same = r1.ok && r2.ok && hash2(r1.decisions.map((d) => d.fp)) === hash2(r2.decisions.map((d) => d.fp)) && hash2(r1.snapshots) === hash2(r2.snapshots) && hash2(r1.net) === hash2(r2.net) && hash2(r1.server) === hash2(r2.server);
       if (!same) {
@@ -72,9 +85,10 @@ if (arg("interference")) {
   for (let sd = a0!; sd <= b0!; sd++) {
     for (const app of pool) {
       const sc = buildScenario(sd, [app], arg("clean") ? { clean: true } : {});
+      applyVariant(sc);
       const id0 = await runner.run(runConfig(sc, { runId: "i0", ideal: true }));
-      const obs = await runner.run(runConfig(sc, { runId: "obs", mode: "observe", pins: id0.pins ?? {} }));
-      const heal = await runner.run(runConfig(sc, { runId: "heal", mode: "heal", pins: id0.pins ?? {} }));
+      const obs = await runner.run(runConfig(sc, { runId: "obs", mode: "observe", pins: id0.pins ?? {}, altPicks: id0.altPicks ?? {} }));
+      const heal = await runner.run(runConfig(sc, { runId: "heal", mode: "heal", pins: id0.pins ?? {}, altPicks: id0.altPicks ?? {} }));
       const r = (per[app.name] ??= { n: 0, diff: 0, dom: 0, server: 0, note: [] });
       r.n++;
       const so = states(obs);
@@ -85,6 +99,10 @@ if (arg("interference")) {
       // content comparison (timestamps ignored): holds shift createdAt/updatedAt without changing what was stored
       const srvDiff = serverDist(obs.server, heal.server) > 0;
       if (domDiff || srvDiff) {
+        const na = obs.net.map((x) => `${Math.round(x.t0)} ${x.method} ${x.url}`);
+        const nb = heal.net.map((x) => `${Math.round(x.t0)} ${x.method} ${x.url}`);
+        const ni = na.findIndex((x, j) => x.split(" ").slice(1).join(" ") !== (nb[j] ?? "").split(" ").slice(1).join(" "));
+        if (r.note.length < 2 && ni >= 0) r.note.push(`seed ${sd}: first differing request #${ni}: observe ${na[ni]} | heal ${nb[ni] ?? "-"}`);
         r.diff++;
         if (domDiff) r.dom++;
         if (srvDiff) r.server++;
@@ -104,6 +122,7 @@ if (arg("interference")) {
   process.exit(0);
 }
 const scn = buildScenario(seed, appName ? APPS.filter((a) => appName.split(",").includes(a.name)) : APPS, arg("clean") ? { clean: true } : {});
+applyVariant(scn);
 console.log(`app=${scn.app.name} split=${scn.split} chaos=${scn.chaos} variant=${JSON.stringify(scn.variant)} tEnd=${Math.round(scn.tEnd)} steps=${scn.steps.length} ext=${scn.external.length} budget=${scn.budget} explore=${scn.explore}`);
 if (arg("steps")) for (const s of scn.steps) console.log(`  step ${s.i} t=${Math.round(s.t)} ${s.kind} ${s.sel}${s.text ? ` "${s.text}"` : ""}${s.value !== undefined ? ` value=${JSON.stringify(s.value)}` : ""}${s.accidental ? " ACCIDENTAL" : ""}${s.when ? ` when=${s.when}` : ""}`);
 const hash = (x: unknown) => createHash("sha1").update(JSON.stringify(x)).digest("hex").slice(0, 12);
@@ -151,8 +170,12 @@ if (arg("traj")) {
     for (const r of ideal.net.slice(0, 30)) console.log(`  net ${Math.round(r.t0)} ${r.method} ${r.url} -> ${r.status ?? r.outcome}`);
   }
   console.log(`ideal ok=${ideal.ok} err=${ideal.error ?? ""} tasks=${ideal.tasks} realMs=${ideal.realMs} snaps=${ideal.snapshots.length} net=${ideal.net.length} steps=${ideal.stepsRun}/${ideal.stepsSkipped} ${JSON.stringify(ideal.skipWhy ?? {})} internal=${ideal.internalErrors.slice(0, 3).join(" | ")}`);
-  const base = await runner.run(runConfig(scn, { runId: "base", record: true, explore: scn.explore, pins: ideal.pins ?? {}, ...(arg("ask-check") ? {} : { askTimes: scn.askTimes }), ...(arg("mode") ? { mode: String(arg("mode")) } : {}) }));
+  const base = await runner.run(runConfig(scn, { runId: "base", record: true, explore: scn.explore, pins: ideal.pins ?? {}, altPicks: ideal.altPicks ?? {}, ...(arg("ask-check") ? {} : { askTimes: scn.askTimes }), ...(arg("mode") ? { mode: String(arg("mode")) } : {}) }));
   console.log(`base ok=${base.ok} err=${base.error ?? ""} tasks=${base.tasks} realMs=${base.realMs} snaps=${base.snapshots.length} net=${base.net.length} decisions=${base.decisions.length} steps=${base.stepsRun}/${base.stepsSkipped} ${JSON.stringify(base.skipWhy ?? {})} ws=${base.wsMessages} uncaught=${base.uncaught.length} errEp=${base.errorEpisodes.length} internal=${base.internalErrors.slice(0, 3).join(" | ")}`);
+  if (arg("steps")) {
+    console.log(`ideal steps:\n  ${(ideal.stepLog ?? []).join("\n  ")}`);
+    console.log(`base steps:\n  ${(base.stepLog ?? []).join("\n  ")}`);
+  }
   const trig: Record<string, number> = {};
   const diag: Record<string, number> = {};
   for (const d of base.decisions) {
@@ -175,7 +198,7 @@ if (arg("traj")) {
     const [k, a] = String(arg("force")).split(":");
     const d = base.decisions[Number(k)]!;
     const forced: [number, string][] = [...base.decisions.filter((x) => x.k < Number(k) && x.explored).map((x) => [x.k, x.chosen] as [number, string]), [Number(k), a!]];
-    const cf = await runner.run(runConfig(scn, { runId: "cf", forced, fpUpTo: Number(k), pins: ideal.pins ?? {}, askTimes: scn.askTimes, tStop: Math.min(scn.tEnd, d.t + 15000) }));
+    const cf = await runner.run(runConfig(scn, { runId: "cf", forced, fpUpTo: Number(k), pins: ideal.pins ?? {}, altPicks: ideal.altPicks ?? {}, askTimes: scn.askTimes, tStop: Math.min(scn.tEnd, d.t + 15000) }));
     const cst = states(cf);
     const ist = states(ideal);
     const bst = states(base);

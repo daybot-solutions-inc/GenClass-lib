@@ -40,6 +40,7 @@ export class Network {
   private occ = new Map<string, number>();
   private arrivals: { t: number; sig: string }[] = [];
   private recent = new Map<string, { t: number; out: Outcome; id: number }>();
+  private idealInflight = new Map<string, { t: number; id: number; waiters: ((o: Outcome) => void)[] }>();
   /** Time of the latest user step (ideal exactly-once rule). */
   lastStepT = -1;
   wsDownUntil = -1;
@@ -150,12 +151,22 @@ export class Network {
 
     // ------------------------------------------------------------------------------------------ ideal
     if (this.ideal) {
+      // exactly-once: an identical non-idempotent request with no user step in between shares the first one's
+      // result, whether that one already answered (within 1 s) or is still in flight
+      const inflight = !idempotent ? this.idealInflight.get(identity) : undefined;
+      if (inflight && this.lastStepT <= inflight.t) {
+        rec.dedupedOf = inflight.id;
+        inflight.waiters.push((out) => finish(out));
+        return pending;
+      }
       const prev = !idempotent ? this.recent.get(identity) : undefined;
       if (prev && t0 - prev.t <= 1000 && this.lastStepT <= prev.t) {
         rec.dedupedOf = prev.id;
         tasks.push(loop.schedule(0, () => finish(prev.out), "net"));
         return pending;
       }
+      const entry = { t: t0, id: rec.id, waiters: [] as ((o: Outcome) => void)[] };
+      if (!idempotent) this.idealInflight.set(identity, entry);
       tasks.push(
         loop.schedule(0, () => {
           rec.ta = loop.now;
@@ -163,8 +174,12 @@ export class Network {
           const res = this.server.handle(sreq, Infinity);
           rec.committed = res.wrote;
           const out = respond(res.status, res.body, res.headers);
-          if (!idempotent) this.recent.set(identity, { t: t0, out, id: rec.id });
+          if (!idempotent) {
+            this.recent.set(identity, { t: t0, out, id: rec.id });
+            if (this.idealInflight.get(identity) === entry) this.idealInflight.delete(identity);
+          }
           finish(out);
+          for (const w of entry.waiters) loop.schedule(0, () => w(out), "net");
         }, "net"),
       );
       return pending;

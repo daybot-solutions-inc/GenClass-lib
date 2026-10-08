@@ -101,6 +101,7 @@ export function runConfig(scn: Scenario, o: Partial<RunConfig> & { runId: string
     server: scn.app.server,
     net: o.ideal ? { ...scn.net, ideal: true } : scn.net,
     steps: scn.steps,
+    ...(scn.recover.length ? { recover: scn.recover } : {}),
     external: scn.external,
     vocab: scn.vocab,
     budget: scn.budget,
@@ -167,7 +168,8 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
   const idealStates = states(ideal);
   // the ideal run defines the user's intents: every other run acts on the same items (RunConfig.pins)
   const pins = ideal.pins ?? {};
-  const base = await run(runConfig(scn, { runId: `${seed}-base`, record: true, explore: scn.explore, pins, ...(o.ask === false ? {} : { askTimes: scn.askTimes }) }));
+  const altPicks = ideal.altPicks ?? {};
+  const base = await run(runConfig(scn, { runId: `${seed}-base`, record: true, explore: scn.explore, pins, altPicks, ...(o.ask === false ? {} : { askTimes: scn.askTimes }) }));
   out.decisions = base.decisions.length;
   if (!base.ok) {
     drop("base-error");
@@ -231,7 +233,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
           cfStates = baseStates;
         } else {
           const forced: [number, string][] = [...forcedPrefix, [p.k, a]];
-          cf = await run(runConfig(scn, { runId: `${seed}-cf-${p.k}-${a}-${j}`, forced, fpUpTo: p.k, pins, ...(o.ask === false ? {} : { askTimes: scn.askTimes }), tStop: Math.min(scn.tEnd, p.t + W.finalMs), snapFrom: Math.max(0, p.t - 1), ...(future ? { future } : {}) }));
+          cf = await run(runConfig(scn, { runId: `${seed}-cf-${p.k}-${a}-${j}`, forced, fpUpTo: p.k, pins, altPicks, ...(o.ask === false ? {} : { askTimes: scn.askTimes }), tStop: Math.min(scn.tEnd, p.t + W.finalMs), snapFrom: Math.max(0, p.t - 1), ...(future ? { future } : {}) }));
           if (!cf.ok) {
             dropped = "cf-error";
             break;

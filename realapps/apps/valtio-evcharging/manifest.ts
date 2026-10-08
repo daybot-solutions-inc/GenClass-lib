@@ -41,9 +41,9 @@ const manifest: AppManifest = {
   },
   affordances: [
     { id: "fast", kind: "check", sel: "input[name=fast]", weight: 1, mode: "replace", key: "fast" },
-    { id: "van", kind: "select", sel: "select[name=van]", values: ["Van 08", "Van 12", "Van 23", "Van 31", "Van 17"], weight: 0.8, mode: "replace", key: "van", requires: "select[name=van]:not([disabled])" },
-    { id: "start", kind: "click", sel: "li.connector button.start", nth: 5, intent: "nth", weight: 3, mode: "accumulate", dblclickP: 0.2, impatientP: 0.2, requires: "li.connector button.start:not([disabled])" },
-    { id: "stop", kind: "click", sel: "li.connector button.stop", nth: 3, intent: "nth", weight: 1.6, mode: "accumulate", dblclickP: 0.15, impatientP: 0.2, requires: "li.connector button.stop:not([disabled])" },
+    { id: "van", kind: "select", sel: "select[name=van]", values: ["Van 08", "Van 12", "Van 23", "Van 31", "Van 36", "Van 39", "Van 17"], weight: 0.8, mode: "replace", key: "van", requires: "select[name=van]:not([disabled])" },
+    { id: "start", kind: "click", sel: "li.connector button.start", nth: 5, intent: "nth", weight: 2.6, mode: "accumulate", dblclickP: 0.2, impatientP: 0.2, requires: "li.connector button.start:not([disabled])" },
+    { id: "stop", kind: "click", sel: "li.connector button.stop", nth: 3, intent: "nth", weight: 2, mode: "accumulate", dblclickP: 0.15, impatientP: 0.2, requires: "li.connector button.stop:not([disabled])" },
   ],
   external: [
     // other drivers plug in and unplug, the chargers meter energy, a post faults and gets reset
@@ -59,6 +59,7 @@ const manifest: AppManifest = {
     { name: "energy delivered = sum of session energy", fields: ["depot.energy", "depot.sessions"], check: (s) => !s.depot || round1(s.depot.energy) === round1(s.depot.sessions.reduce((n: number, x: { kwh: number }) => n + Number(x.kwh || 0), 0)) },
   ],
   errorSelector: "[role=alert]",
+  startMs: 1500,
   sessionMs: [25000, 60000],
 };
 export default manifest;

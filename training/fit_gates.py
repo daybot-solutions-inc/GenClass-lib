@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -80,7 +81,27 @@ def clear_best(m: dict, permitted: list[str], passive: str):
     return None
 
 
-def load(spec: str, tau: float) -> list[dict]:
+KEYED_PATTERNS = {"idem", "co-idem", "create-idem", "confirm-idem", "key-guard"}
+NOT_IDEM = re.compile(r"\b(POST|PATCH) is not idempotent")
+
+
+def retry_unoffered_v22(state, m: dict) -> bool:
+    """situation-v2.2 (runtime batch 7): `retry` is offered for non-idempotent methods only when the request carries an
+    idempotency key header. v2 rows do not record headers, so a POST/PATCH ("… is not idempotent" fact) counts as keyed
+    only when its subject feature's SIM pattern says the app sends keys (…/idem, co-idem, create-idem, confirm-idem,
+    key-guard, retry:same-key); otherwise retry is removed and the remaining probabilities renormalised."""
+    facts = " ".join(state.get("facts") or []) if isinstance(state, dict) else ""
+    if not NOT_IDEM.search(facts):
+        return False
+    feat = m.get("subject_feature") or ""
+    for p in m.get("patterns") or []:
+        f, _, v = p.partition("/")
+        if f == feat and (v in KEYED_PATTERNS or v.endswith("retry:same-key")):
+            return False
+    return True
+
+
+def load(spec: str, tau: float, v22: bool = True) -> list[dict]:
     """→ one item per decision row: per-mode gate inputs and outcome indicators."""
     kind, rest = spec.split("=", 1)
     parts = rest.split(":")
@@ -90,7 +111,10 @@ def load(spec: str, tau: float) -> list[dict]:
     with open(rows_p) as f:
         for line in f:
             r = json.loads(line)
-            rows[r["id"]] = (r.get("split"), r.get("meta") or {})
+            m = r.get("meta") or {}
+            drop = v22 and "retry" in ((r.get("questions") or {}).get("action") or {}).get("criteria", {}) \
+                and retry_unoffered_v22(r.get("state"), m)
+            rows[r["id"]] = (r.get("split"), m, drop)
     recs: dict = defaultdict(dict)
     with open(rec_p) as f:
         for line in f:
@@ -101,7 +125,7 @@ def load(spec: str, tau: float) -> list[dict]:
     for rid, q in recs.items():
         if rid not in rows or "action" not in q:
             continue
-        split, m = rows[rid]
+        split, m, drop_retry = rows[rid]
         if filt == "test" and split != "test":
             continue
         if filt == "notest" and split == "test":
@@ -112,16 +136,23 @@ def load(spec: str, tau: float) -> list[dict]:
         names = list(ra["labels"])
         if passive not in names:
             continue
-        p = softmax(ra["logits"], tau)
+        logits = list(ra["logits"])
+        target = list(ra["target"])
+        if drop_retry and "retry" in names:
+            j = names.index("retry")
+            names, logits, target = names[:j] + names[j + 1:], logits[:j] + logits[j + 1:], target[:j] + target[j + 1:]
+        p = softmax(logits, tau)
         idx = {a: i for i, a in enumerate(names)}
         top_d = None
         if "diagnosis" in q:
             rd = q["diagnosis"]
             top_d = list(rd["labels"])[int(softmax(rd["logits"], tau).argmax())]
         costs = mean_costs(m)
-        gold = names[int(np.asarray(ra["target"]).argmax())]
+        gold = names[int(np.asarray(target).argmax())]
         pb = m.get("passive_best")
         pb = bool(pb) if pb is not None else gold == passive
+        if drop_retry and m.get("best") == "retry" and costs and passive in costs:  # best among what is still offered
+            pb = all(costs[passive] <= costs[a] + PREM.get(tiers.get(a, "heal"), 0.5) for a in names if a in costs)
         case = m.get("eval_case")
         expect = set(m.get("eval_expect") or [])
         item = {"kind": kind, "trigger": m.get("trigger") or "?", "diag_ok": top_d != "expected", "modes": {}}
@@ -238,13 +269,19 @@ def wilson_upper(k: int, n: int, z: float = Z_UB) -> float:
 
 
 def ok(mt: dict, tier: str, use_real: bool) -> bool:
-    """The constraint must hold for the upper confidence bound, not just the point estimate."""
+    """The constraint must hold for the upper confidence bound (point estimate where n cannot certify the limit)."""
     L = LIMITS[tier]
     c = mt["_counts"]
     checks = [(c["fir_sim"], L["fir"]), (c["harm_sim"], L["harm"])]
     if use_real:
         checks += [(c["fir_real"], L["fir"]), (c["harm_real"], L["harm"])]
-    return all(n == 0 or wilson_upper(k, n) <= lim + 1e-12 for (k, n), lim in checks)
+    def holds(k: int, n: int, lim: float) -> bool:
+        if n == 0:
+            return True
+        if wilson_upper(0, n) > lim:  # too few rows to certify the limit even with zero events: point estimate
+            return k / n <= lim + 1e-12
+        return wilson_upper(k, n) <= lim + 1e-12
+    return all(holds(k, n, lim) for (k, n), lim in checks)
 
 
 def lowest_safe(T: Table, mode: str, tier: str, th: dict, sel: np.ndarray, trig: str | None, use_real: bool) -> float:

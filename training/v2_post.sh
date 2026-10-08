@@ -28,3 +28,4 @@ IP=$(hostname -I | awk '{print $1}')
 ss -ltn | grep -q ':8801 ' || (setsid nohup python3 -m http.server 8801 --bind "$IP" --directory /home/azureuser/xfer \
   > /tmp/xfer8801.log 2>&1 < /dev/null &)
 touch out/.post-done-$M
+bash training/gates_post.sh "$M" > logs/gates-post-$M.log 2>&1

@@ -37,7 +37,9 @@ const cues = rt.guard<CueWindow>("cues", {
       if (e.type === "updated" && e.query.queryKey[0] === "cues" && e.action.type === "success") fn();
     }),
 });
-const editor = rt.atom("editor", { from: 0, editing: null as number | null, label: "", saving: 0, status: "", error: "" });
+const editor = rt.atom("editor", { from: 0, editing: null as number | null, label: "", status: "", error: "" });
+/** Autosaves on their way (shown as "Saving…"). */
+const saving = ref(0);
 /** Unsaved text per cue id (what is in the editor). */
 const drafts = rt.atom("drafts", {} as Record<string, string>);
 const draftOf = (id: number) => drafts.get()[String(id)] ?? "";
@@ -66,7 +68,8 @@ async function fetchWindow(from: number, signal?: AbortSignal): Promise<CueWindo
 async function sendText(id: number, text: string) {
   const cur = cueById(id);
   if (!cur) return;
-  editor.update((e) => ({ ...e, saving: e.saving + 1, error: "" }));
+  saving.value++;
+  if (editor.get().error) editor.update((e) => ({ ...e, error: "" }));
   try {
     let saved: Cue;
     try {
@@ -88,7 +91,7 @@ async function sendText(id: number, text: string) {
   } catch (err) {
     editor.update((e) => ({ ...e, status: "", error: conflictOf(err) ? `Someone else changed cue ${cur.n} — your text isn't saved yet.` : errMsg(err, `saving cue ${cur.n}`) }));
   } finally {
-    editor.update((e) => ({ ...e, saving: e.saving - 1 }));
+    saving.value--;
   }
 }
 
@@ -172,6 +175,7 @@ const App = defineComponent({
     return {
       u,
       list,
+      saving,
       draft: computed(() => (u.value.editing === null ? "" : (d.value[String(u.value.editing)] ?? ""))),
       pending,
       fetching: q.isFetching,
@@ -212,7 +216,7 @@ const App = defineComponent({
         <h2>{{ u.label }}</h2>
         <form class="cue-editor" @submit.prevent>
           <textarea name="text" aria-label="Cue text" :value="draft" @input="typed($event.target.value)"></textarea>
-          <p class="save-state">{{ u.saving > 0 ? "Saving…" : u.status }}</p>
+          <p class="save-state">{{ saving > 0 ? "Saving…" : u.status }}</p>
           <button type="button" class="done" @click="done">Done</button>
         </form>
       </section>

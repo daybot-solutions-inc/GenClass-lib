@@ -33,8 +33,15 @@ export interface Affordance {
   waitMs?: number;
   /** Follow-up affordance ids performed right after this one (e.g. type then click Save). */
   then?: string[];
-  /** As a follow-up: act on the same row (same nth / text) as the chain's first step. */
+  /** As a follow-up: act on the same row (same nth) as the chain's first step; its `text` too unless it has its own. */
   sameNth?: boolean;
+  /** As a follow-up: use the chain head's `text` filter even when this affordance has its own. */
+  sameText?: boolean;
+  /** Use this affordance at most once per session. */
+  once?: boolean;
+  /** Recovery affordance (e.g. sign in again after a forced sign-out): never scheduled; whenever its `requires`
+   * precondition holds before a step, the user performs it (and its `then` chain) first. */
+  recover?: boolean;
   /** Never chosen on its own (only as a follow-up). */
   followOnly?: boolean;
   /** Using this affordance makes these ones unavailable again for `after` (e.g. sign out resets sign in). */

@@ -89,7 +89,7 @@ function onPush(m: { type: string; id: number; item: Bus | null }) {
   set("buses", (x) => x.id === b.id, b);
 }
 
-async function loadMine() {
+async function loadMine(attempt = 0): Promise<void> {
   try {
     const [stops, alerts, absences] = await Promise.all([
       api(`/api/stops?limit=20`),
@@ -98,6 +98,7 @@ async function loadMine() {
     ]);
     set({ stops: itemsOf<Stop>(stops), alerts: itemsOf<Alert>(alerts).map((a) => ({ id: a.id, stopId: a.stopId })), absent: itemsOf<{ child: string }>(absences).map((a) => a.child) });
   } catch (e) {
+    if (attempt < 3) return void setTimeout(() => void loadMine(attempt + 1), 2000 * (attempt + 1)); // try again shortly
     set("error", errText(e, "loading your stops"));
   }
 }
@@ -158,7 +159,7 @@ function App() {
       <label>Route <select name="route" value=${() => s.route} onChange=${(e: Event) => changeRoute((e.currentTarget as HTMLSelectElement).value)}>
         ${ROUTES.map(([k, l]) => html`<option value=${k}>${l}</option>`)}
       </select></label>
-      <button class="refresh" type="button" onClick=${() => void loadBuses()}>Refresh</button>
+      <button class="refresh" type="button" onClick=${() => { void loadBuses(); if (!s.stops.length) void loadMine(); }}>Refresh</button>
     </nav>
     <ul class="buses">
       <${For} each=${() => s.buses}>${(b: Bus) => html`<li class="bus">

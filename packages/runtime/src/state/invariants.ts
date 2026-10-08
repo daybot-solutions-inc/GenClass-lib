@@ -9,11 +9,25 @@
 // supporting snapshots (closing a selection is not an inconsistency). Per-array statistics (column sums, products,
 // value sets, group counts) are computed once per array version, so settled points stay cheap with large stores.
 //
-// Relation quality (situation v2, SIM's F8): `a == b` between fields whose names share no word is learned only after
-// it held over 3 distinct values (coincidences of small numbers and flags rarely get there), and never between
-// version counters / offsets; `a ∈ B[*].k` with numbers needs an id column (`selectedId ∈ items[*].id`), never
+// Relation quality (situation v2, SIM's F8): `a == b` only between fields whose names share a meaningful word, never
+// between version counters / offsets (batch 8; batch 5 allowed unrelated names after 3 distinct values); `a ∈ B[*].k` with numbers needs an id column (`selectedId ∈ items[*].id`), never
 // `tally.approved ∈ items[*].days`. New template: count by group, `a == count(B[*].k == v)` (a badge or a per-lane
 // counter), proposed when the names relate or learned over 3 distinct counts.
+//
+// Precision (batch 8, REAL's 158 apps):
+//   - selections: `a ∈ B[*].k`, and `a == b` where a field is an id/selection, are vacuous while the selection is a
+//     sentinel (0, -1 or any negative number, "", null): nothing is selected;
+//   - `B[*].k unique` only for the row's own id column (id, _id, uuid, key, slug) with ≥ 3 rows, or columns whose
+//     values are all id-shaped (uuids, long hex, slugs) with ≥ 5 rows; never foreign keys (`partId`);
+//   - envelope metadata (page, offset, limit, cursor, next/prev, hasMore, ...; and total/count next to them) never
+//     enters a relation; `a == b` needs related names (a shared meaningful word); aggregates (`a == len(B)`,
+//     sums) need an aggregate-like name for `a` (count, total, sum, size, amount, ...) or a word shared with B/f;
+//     membership `a ∈ B[*].k` only for a selection field (selected/active/current/...) into the list's own id column
+//     (id, _id, uuid, key, slug); sums never over id or version columns; count by group only for a counter named
+//     after the group (`counts.done`, `doneCount`);
+//   - busy scalar counters (numbers that change on nearly every write of their store) only enter derived relations
+//     (len, sum, sum of products, count by group), never equality or membership;
+//   - the runtime skips stores the user wrote within the last second (typing bursts): neither checked nor learned.
 
 import type { Violation } from "../situation/env.js";
 import { describe, fmtNum, isIdSegment, isPlainObject, type Redactor } from "../util.js";
@@ -51,6 +65,9 @@ interface Cand {
   minDistinct?: number;
 }
 
+const TOTAL_WORDS = new Set(["total", "count"]);
+const SENTINEL = (v: unknown): boolean => v === null || v === undefined || v === "" || (typeof v === "number" && v <= 0);
+
 const GENERIC_WORDS = new Set(["value", "values", "data", "n", "num", "number", "state", "current", "item", "items", "list", "the", "of", "is", "has"]);
 const VERSION_WORDS = /^(version|versions|revision|rev|seq|sequence|offset|page|cursor|index|idx|tick|epoch|generation|nonce|timestamp|ts|time|updated|created|at|ms)$/;
 const ID_COLUMN = /^(id|_id|uuid|key|slug|code)$|(Id|_id|ID)$/;
@@ -72,6 +89,81 @@ function relatedNames(a: string, b: string): boolean {
 
 function versionLike(path: string): boolean {
   return nameWords(path).some((w) => VERSION_WORDS.test(w));
+}
+
+const AGGREGATE_WORDS = new Set(["count", "total", "sum", "length", "len", "size", "num", "number", "amount", "balance", "subtotal", "quantity", "qty", "tally"]);
+
+/**
+ * Whether `a` can name an aggregate of list B (column f): an aggregate word (count, total, sum, size, amount, ...),
+ * or a word shared with the list or the column (`cartItems` / `items`). `ill.active == len(ill.hits)` is a coincidence.
+ */
+function aggregateName(a: string, B: string, f?: string): boolean {
+  const ws = rawWords(a).map((w) => w.replace(/(ies)$/, "y").replace(/s$/, ""));
+  if (ws.some((w) => AGGREGATE_WORDS.has(w)) || /^n[A-Z]/.test(a.split(".").pop() ?? "")) return true;
+  return relatedNames(a, B) || (f !== undefined && relatedNames(a, f));
+}
+
+const SELECTION_WORDS = new Set(["selected", "selection", "active", "current", "focused", "focus", "chosen", "picked", "highlighted", "editing", "open", "opened"]);
+const PRIMARY_ID = /^(id|_id|uuid|key|slug)$/;
+
+/** A selection: the field (or its parent) is named selected / active / current / focused / ... (`ui.selectedId`, `crm.current`). */
+function selectionName(path: string): boolean {
+  const segs = path.split(".");
+  const ws = [...rawWords(segs[segs.length - 1] ?? ""), ...(segs.length > 2 ? rawWords(segs[segs.length - 2]) : [])];
+  return ws.some((w) => SELECTION_WORDS.has(w));
+}
+
+/** `counts.done == count(status == "done")`: the field's own words (minus count/total/...) are the group value's words. */
+function groupName(a: string, value: string): boolean {
+  const own = rawWords(a).filter((w) => !AGGREGATE_WORDS.has(w) && !GENERIC_WORDS.has(w));
+  const want = rawWords(value);
+  return own.length > 0 && own.length === want.length && own.every((w, i) => w === want[i]);
+}
+
+/** The field names a selection or an id (`selectedId`, `activeKey`, `current.id`). */
+function idLike(path: string): boolean {
+  const last = path.split(".").pop() ?? path;
+  return ID_COLUMN.test(last) || nameWords(path).some((w) => w === "selected" || w === "active" || w === "current");
+}
+
+function rawWords(path: string): string[] {
+  const last = path.split(".").pop() ?? path;
+  return last
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase());
+}
+
+/** Pagination metadata by name: page, offset, limit, cursor, pageSize, perPage, hasMore, next, ... */
+function paginationName(path: string): boolean {
+  const ws = rawWords(path);
+  if (ws.some((w) => w === "page" || w === "pages" || w === "offset" || w === "limit" || w === "cursor" || w === "pager" || w === "pagination" || w === "skip" || w === "take")) return true;
+  const joined = ws.join(" ");
+  return /^(has more|has next|next|prev|previous|per page)$/.test(joined) || /\b(has more|next cursor|per page|page size)\b/.test(joined);
+}
+
+/** A total/count field next to pagination metadata (a response envelope's total, not this page's size). */
+function envelopeField(path: string, L: Map<string, Leaf>, cache: Map<string, boolean>): boolean {
+  const hit = cache.get(path);
+  if (hit !== undefined) return hit;
+  let r = paginationName(path);
+  if (!r && rawWords(path).some((w) => TOTAL_WORDS.has(w) || /count$|total$/.test(w))) {
+    const parent = path.slice(0, path.lastIndexOf("."));
+    for (const p of L.keys()) {
+      if (p !== path && p.startsWith(parent + ".") && p.indexOf(".", parent.length + 1) < 0 && paginationName(p)) {
+        r = true;
+        break;
+      }
+    }
+  }
+  cache.set(path, r);
+  return r;
+}
+
+/** Id-shaped string values (uuids, long hex, slug ids): evidence that a column identifies rows. */
+function idShaped(v: unknown): boolean {
+  return typeof v === "string" && isIdSegment(v);
 }
 
 interface Expectation {
@@ -118,7 +210,29 @@ export class InvariantMiner {
   /** Settled points observed. */
   points = 0;
 
-  constructor(private readonly redact: () => Redactor = () => (_p, v) => v) {}
+  /** Envelope-metadata cache for the leaves being proposed on (reset per settled point). */
+  private envCache = new Map<string, boolean>();
+
+  constructor(
+    private readonly redact: () => Redactor = () => (_p, v) => v,
+    /** Busy scalar counters (numbers that change on nearly every write of their store). */
+    private readonly busy: (path: string) => boolean = () => false,
+  ) {}
+
+  private envelope(p: string, L: Map<string, Leaf>): boolean {
+    return envelopeField(p, L, this.envCache);
+  }
+
+  /** A field explicitly derived from a list: the left side of a learned len / sum / sum-of-products / count relation. */
+  derived(path: string): boolean {
+    for (const c of this.cands.values()) if (c.learned && c.a === path && (c.tpl === "len" || c.tpl === "sum" || c.tpl === "sumprod" || c.tpl === "count")) return true;
+    return false;
+  }
+
+  /** A busy scalar counter that is not explicitly derived: kept out of equality, membership and transition shapes. */
+  busyCounter(path: string): boolean {
+    return this.busy(path) && !this.derived(path);
+  }
 
   noteChanged(paths: string[]): void {
     for (const p of paths) this.changed.add(p);
@@ -249,6 +363,8 @@ export class InvariantMiner {
         const a = val(c.a);
         const b = val(c.b);
         if (!a || !b) return null;
+        // a selection/id field holding a sentinel: nothing is selected, the relation says nothing
+        if ((idLike(c.a!) || idLike(c.b!)) && (SENTINEL(a.value) || SENTINEL(b.value))) return null;
         if (typeof a.value === "number" && typeof b.value === "number") return numEq(a.value, b.value);
         return a.value === b.value;
       }
@@ -273,13 +389,14 @@ export class InvariantMiner {
         const a = val(c.a);
         if (!a) return null;
         if (a.value === null || a.value === undefined) return null;
+        if (idLike(c.a!) && SENTINEL(a.value)) return null; // -1: nothing selected
         return typeof a.value === "number" && a.value >= 0;
       }
       case "in": {
         const a = val(c.a);
         const B = val(c.B);
         if (!a || !B || B.kind !== "array") return null;
-        if (a.value === null || a.value === undefined || a.value === "") return null;
+        if (SENTINEL(a.value)) return null; // nothing selected (0, -1, "", null)
         const st = this.stats(B);
         if (!st || !st.objs) return false;
         return this.colSet(B, st, c.f!).has(a.value);
@@ -303,6 +420,7 @@ export class InvariantMiner {
         const a = val(c.a);
         if (!a) return null;
         if (a.kind === "null" || a.kind === "undefined") return null;
+        if (idLike(c.a!) && SENTINEL(a.value)) return null; // a cleared selection ("" for a numeric id)
         return a.kind === c.typeKind;
       }
       case "nonnull": {
@@ -327,8 +445,9 @@ export class InvariantMiner {
       case "sumprod":
         return n > 0 && !!a && a.value !== 0;
       case "in":
-      case "unique":
         return n >= 2;
+      case "unique":
+        return this.uniqueEvidence(c.f!, B);
       case "count":
         return n >= 2 && !!a && typeof a.value === "number" && a.value > 0;
       case "nonneg":
@@ -336,6 +455,19 @@ export class InvariantMiner {
       default:
         return true;
     }
+  }
+
+  /**
+   * Enough evidence that a column identifies rows: the row's own id column (id, _id, uuid, key, slug) with ≥ 3 rows,
+   * or id-shaped values with ≥ 5 rows. Foreign keys (`partId`, `user_id`) repeat across rows: never.
+   */
+  private uniqueEvidence(k: string, B: Leaf | undefined): boolean {
+    if (!B || B.kind !== "array" || !Array.isArray(B.value)) return false;
+    const n = B.len;
+    if (PRIMARY_ID.test(k)) return n >= 3;
+    if (ID_COLUMN.test(k) || n < 5) return false;
+    for (const o of B.value as unknown[]) if (!isPlainObject(o) || !idShaped(o[k])) return false;
+    return true;
   }
 
   private valuesText(c: Cand, L: Map<string, Leaf>): string {
@@ -419,17 +551,21 @@ export class InvariantMiner {
     const numeric: [string, number][] = [];
     const scalar: [string, Leaf][] = [];
     const arrays: [string, Leaf][] = [];
+    this.envCache = new Map();
     for (const [p, l] of L) {
       if (dynamicPath(p)) continue;
-      if (l.kind === "number" && Number.isFinite(l.value as number)) {
+      const env = (l.kind === "number" || l.kind === "string") && this.envelope(p, L);
+      // envelope metadata never enters a relation; busy counters only enter derived ones (len, sum, count by group)
+      if (l.kind === "number" && Number.isFinite(l.value as number) && !env) {
         if (numeric.length < MAX_NUMERIC) numeric.push([p, l.value as number]);
       }
-      if ((l.kind === "number" || l.kind === "string") && scalar.length < MAX_SCALAR) scalar.push([p, l]);
+      if ((l.kind === "number" || l.kind === "string") && !env && !this.busyCounter(p) && scalar.length < MAX_SCALAR) scalar.push([p, l]);
       if (l.kind === "array" && arrays.length < MAX_ARRAYS) arrays.push([p, l]);
       // per-field templates
       if (l.kind !== "null" && l.kind !== "undefined") {
         this.add({ id: `type:${p}`, tpl: "type", text: `typeof ${p} stable`, a: p, watch: [p], typeKind: l.kind });
-        if (!this.nullSeen.has(p)) this.add({ id: `nonnull:${p}`, tpl: "nonnull", text: `${p} != null`, a: p, watch: [p] });
+        // selections are cleared to null when nothing is selected: never `!= null`
+        if (!this.nullSeen.has(p) && !idLike(p)) this.add({ id: `nonnull:${p}`, tpl: "nonnull", text: `${p} != null`, a: p, watch: [p] });
       }
       if (l.kind === "number" && (l.value as number) > 0) this.add({ id: `nonneg:${p}`, tpl: "nonneg", text: `${p} >= 0`, a: p, watch: [p] });
     }
@@ -441,9 +577,10 @@ export class InvariantMiner {
         if (la.kind !== lb.kind || la.value === 0 || la.value === "") continue;
         const same = la.kind === "number" ? numEq(la.value as number, lb.value as number) : la.value === lb.value;
         if (!same) continue;
-        const related = relatedNames(pa, pb);
-        if (!related && (versionLike(pa) || versionLike(pb))) continue;
-        this.add({ id: `eq:${pa}:${pb}`, tpl: "eq", text: `${pa} == ${pb}`, a: pa, b: pb, watch: [pa, pb], ...(related ? {} : { minDistinct: 3 }) });
+        // equality needs semantically compatible names (a shared meaningful word), never version counters
+        if (!relatedNames(pa, pb) || versionLike(pa) || versionLike(pb)) continue;
+        if ((idLike(pa) || idLike(pb)) && SENTINEL(la.value)) continue;
+        this.add({ id: `eq:${pa}:${pb}`, tpl: "eq", text: `${pa} == ${pb}`, a: pa, b: pb, watch: [pa, pb] });
       }
     for (const [B, leaf] of arrays) {
       if (!leaf.len) continue;
@@ -451,24 +588,28 @@ export class InvariantMiner {
       if (!st) continue;
       for (const [a, av] of numeric) {
         if (av === 0) continue;
-        if (av === leaf.len) this.add({ id: `len:${a}:${B}`, tpl: "len", text: `${a} == len(${B})`, a, B, watch: [a, B] });
+        // aggregates need a compatible name: a count/total/sum-like word, or a word shared with the list or column
+        if (av === leaf.len && aggregateName(a, B)) this.add({ id: `len:${a}:${B}`, tpl: "len", text: `${a} == len(${B})`, a, B, watch: [a, B] });
         if (!st.objs) continue;
         for (const f of st.numCols) {
-          if (numEq(av, st.sums.get(f)!)) this.add({ id: `sum:${a}:${B}:${f}`, tpl: "sum", text: `${a} == sum(${B}[*].${f})`, a, B, f, watch: [a, B] });
+          if (ID_COLUMN.test(f) || versionLike(f)) continue; // ids and versions are never summed
+          if (numEq(av, st.sums.get(f)!) && aggregateName(a, B, f)) this.add({ id: `sum:${a}:${B}:${f}`, tpl: "sum", text: `${a} == sum(${B}[*].${f})`, a, B, f, watch: [a, B] });
           for (const g of st.numCols) {
-            if (g <= f) continue;
-            if (numEq(av, this.prod(leaf, st, f, g))) this.add({ id: `sumprod:${a}:${B}:${f}:${g}`, tpl: "sumprod", text: `${a} == sum(${B}[*].${f} * ${B}[*].${g})`, a, B, f, g, watch: [a, B] });
+            if (g <= f || ID_COLUMN.test(g) || versionLike(g)) continue;
+            if (numEq(av, this.prod(leaf, st, f, g)) && aggregateName(a, B)) this.add({ id: `sumprod:${a}:${B}:${f}:${g}`, tpl: "sumprod", text: `${a} == sum(${B}[*].${f} * ${B}[*].${g})`, a, B, f, g, watch: [a, B] });
           }
         }
       }
       if (!st.objs) continue;
       for (const k of st.scalarCols) {
-        if (leaf.len >= 2 && this.colUnique(leaf, st, k)) this.add({ id: `unique:${B}:${k}`, tpl: "unique", text: `${B}[*].${k} unique`, B, f: k, watch: [B] });
+        if (this.uniqueEvidence(k, leaf) && this.colUnique(leaf, st, k)) this.add({ id: `unique:${B}:${k}`, tpl: "unique", text: `${B}[*].${k} unique`, B, f: k, watch: [B] });
         const set = this.colSet(leaf, st, k);
         for (const [a, l] of scalar) {
-          if (a.startsWith(B + ".") || l.value === "" || l.value === 0) continue;
-          // numbers: only membership in an id column (or a related column), never in counters or versions
-          if (l.kind === "number" && (!(ID_COLUMN.test(k) || relatedNames(a, k)) || versionLike(k) || versionLike(a))) continue;
+          if (a.startsWith(B + ".") || SENTINEL(l.value)) continue;
+          // membership: a selection must name an existing row, so only a selection field (selected/active/current/...)
+          // in the list's own id column. A value matching another column (a filter equal to a kind, a title in a list
+          // of titles, an id from another entity or a foreign key) is a coincidence.
+          if (!PRIMARY_ID.test(k) || !selectionName(a) || versionLike(a)) continue;
           if (set.has(l.value)) this.add({ id: `in:${a}:${B}:${k}`, tpl: "in", text: `${a} ∈ ${B}[*].${k}`, a, B, f: k, watch: [a, B] });
         }
       }
@@ -480,8 +621,9 @@ export class InvariantMiner {
           if (n < 1 || groups.size < 2) continue;
           for (const [a, av] of numeric) {
             if (av !== n || a.startsWith(B + ".") || versionLike(a)) continue;
-            const related = relatedNames(a, String(gv)) || relatedNames(a, k);
-            this.add({ id: `count:${a}:${B}:${k}:${String(gv)}`, tpl: "count", text: `${a} == count(${B}[*].${k} == ${JSON.stringify(gv)})`, a, B, f: k, v: gv as string | boolean, watch: [a, B], ...(related ? {} : { minDistinct: 3 }) });
+            // the counter is named after the group (`counts.done`, `doneCount`, `perPerson.Lena`)
+            if (typeof gv !== "string" || !groupName(a, gv)) continue;
+            this.add({ id: `count:${a}:${B}:${k}:${String(gv)}`, tpl: "count", text: `${a} == count(${B}[*].${k} == ${JSON.stringify(gv)})`, a, B, f: k, v: gv, watch: [a, B] });
           }
         }
       }
@@ -489,12 +631,30 @@ export class InvariantMiner {
   }
 
   /** A settled point. Returns the learned invariants (and developer expectations) violated now. */
-  observe(L: Map<string, Leaf>, _now: number): { violations: Violation[] } {
+  /**
+   * A settled point. Returns the learned invariants (and developer expectations) violated now. Candidates touching a
+   * store in `skip` (the user wrote it within the last second: mid-typing) are neither checked nor learned this time
+   * (their ids are in `skipped`); those stores' fields propose nothing new.
+   */
+  observe(L: Map<string, Leaf>, _now: number, skip?: Set<string>): { violations: Violation[]; skipped: Set<string> } {
     this.points++;
     const changed = this.changed;
+    const skipped = new Set<string>();
+    const touches = (c: Cand) => !!skip?.size && fieldsOf(c).some((f) => skip.has(f.split(".")[0]));
+    // changes to skipped stores stay pending until those stores are checked
     this.changed = new Set();
+    if (skip?.size) for (const p of changed) if (skip.has(p.split(".")[0])) this.changed.add(p);
     const violations: Violation[] = [];
     for (const c of [...this.cands.values()]) {
+      if (touches(c)) {
+        skipped.add(c.id);
+        continue;
+      }
+      // equality and membership never hold on busy counters (only derived relations do)
+      if ((c.tpl === "eq" || c.tpl === "in") && ((c.a && this.busyCounter(c.a)) || (c.b && this.busyCounter(c.b)))) {
+        this.drop(c.id);
+        continue;
+      }
       const h = this.holds(c, L);
       if (h === null) continue;
       const involved = this.involved(c.watch, changed);
@@ -511,8 +671,13 @@ export class InvariantMiner {
       }
     }
     this.changedNow = changed;
-    this.leavesNow = L;
-    this.propose(L);
+    let PL = L;
+    if (skip?.size) {
+      PL = new Map();
+      for (const [p, l] of L) if (!skip.has(p.split(".")[0])) PL.set(p, l);
+    }
+    this.leavesNow = PL;
+    this.propose(PL);
     this.changedNow = new Set();
     this.leavesNow = new Map();
     for (const e of this.expects.values()) {
@@ -525,7 +690,7 @@ export class InvariantMiner {
       if (!ok) violations.push({ id: `expect:${e.name}`, text: e.name, fields: [], values: "the predicate returned false", held: 0, developer: true });
     }
     this.violated = violations;
-    return { violations };
+    return { violations, skipped };
   }
 
   /** Learned invariants touching `paths` that would be violated on hypothetical leaves. */

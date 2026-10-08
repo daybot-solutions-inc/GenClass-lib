@@ -209,3 +209,8 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     - v2 pilot (audit): `train:/data/real-out/v2-pilot4/` (400 trajectories, 92 apps, 2,631 gold).
     Each batch: `{train,dev,test}.jsonl`, `unlabeled-*.jsonl`, `stats.json`, `manifest.json`. Eval set: built from
     `v2c*` into `train:/data/real-out/v2-eval/` when they land.
+17. **REAL corpus and next batch (2026-10-08).** Corpus 158 apps (144 written in 5 waves + 14 open-source); all pass
+    determinism (790/790), interference (0/316) and trajectory sweeps on situation-v2. Held out (test only): framework
+    Lit, every SWR app (`TEST_LIBS`), apps `swr-status`, `alpine-tasks`, `xhr-autocomplete`, `oss-rtk-conduit`, and
+    `TEST_PATTERNS`. Next: a top-up for waves 4–5 (62 apps) on `situation-v2.3` once tagged
+    (`realapps/scripts/topup.sh`), landing in `train:/data/real-out/v23e<n>/`. REAL holds no nodes now.

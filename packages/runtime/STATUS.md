@@ -1,6 +1,6 @@
 # @genclass/runtime: status (CORE)
 
-Updated: 2026-10-08 (batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
+Updated: 2026-10-08 (batch 8: relation learner precision; batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
 MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
 
 ## State
@@ -38,6 +38,52 @@ observe mode on the same scenario (`debug.js --interference`):
 | situation | `src/situation/*.ts` | facts, version conflicts (`conflicts.ts`), response content vs store (`content.ts`), evidence facts (`evidence.ts`), budget-shaped serializer, compact questions, triage, subject refs |
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
+
+## Batch 8 (done): relation learner precision (situation-v2.3)
+
+From REAL's wave-5 authors (158 real apps): false `inconsistency` triggers on correct apps. All generic; the text of
+existing facts is unchanged, only when inconsistency (and transition) triggers fire.
+1. **Sentinel selections.** `a ∈ B[*].k` is vacuous while `a` is 0, a negative number (-1), "", null or undefined
+   ("nothing selected"); so are `a == b`, `a >= 0` and `typeof a stable` when a field is an id/selection (`*Id`, `id`,
+   `key`, `slug`, `selected*`, `active*`, `current*`); selection fields never get `!= null`; no candidate is proposed
+   from a sentinel value.
+2. **`unique` needs evidence:** the row's own id column (`id`, `_id`, `uuid`, `key`, `slug`) with ≥ 3 rows, or a
+   column whose values are all id-shaped (uuids, long hex, slug ids) with ≥ 5 rows. Ordinary columns (`name`,
+   `title`, `text`, `status`, `qty`) and foreign keys (`partId`, `user_id`) never.
+3. **Envelope / pagination metadata** never enters a relation: fields named page, pages, offset, limit, cursor, pager,
+   pagination, skip, take, next, prev/previous, has more, per page, page size; and total/count fields (`total`,
+   `articlesCount`) next to such a field (a response envelope's total is not this page's size). Name compatibility,
+   generically: `a == b` needs a shared meaningful word (`cart.count == badge.itemCount`; batch 5 allowed unrelated
+   names after 3 distinct values, no longer); `a == len(B)` and sums need an aggregate-like name for `a` (count, total,
+   sum, size, amount, balance, qty, nX, ...) or a word shared with the list or column (`ill.active == len(ill.hits)`
+   is a coincidence); sums never run over id or version columns (`sum(options[*].pollId * votes)`,
+   `sum(loans[*].version)`); count-by-group only for a counter named after the group (`counts.done`, `doneCount`; not
+   `counts.waitingParts` for status "waiting"); membership `a ∈ B[*].k` only for a selection field (named selected /
+   active / current / focused / editing / ..., or under such a parent) into the list's own id column (`id`, `_id`,
+   `uuid`, `key`, `slug`): a filter equal to an item's kind, a title found in a list of titles, a draft's id, a foreign
+   key or an id from another entity are coincidences.
+4. **Typing bursts.** At a settled point, stores written by a `type` user action within the last 1 s are neither
+   checked nor learned on (candidates touching them are skipped, their pending changes kept, a lingering episode is not
+   restarted); another settled point is scheduled 1 s after the last keystroke, so a real divergence is still reported
+   once typing stops. Clicks are unaffected.
+5. **Busy counters.** A number field that changed in ≥ 80 % of its store's writes (over ≥ 10 writes since it first
+   changed) is busy (`hub.busy`). Unless it is explicitly derived (the left side of a learned len / sum / sum of
+   products / count-by-group relation; `miner.derived`), it is kept out of equality and membership relations (existing
+   candidates are dropped) and out of transition write-set shapes (`miner.busyCounter`).
+- **Measured on REAL's apps** (`realapps`, 148 of the 158 apps built in my slot (10 Vite/OSS builds were not), seeds
+  1–3, clean scenarios: no chaos, correct apps, so every inconsistency is a false alarm unless an app variant has a
+  deliberate bug), batch-7 runtime vs this one: **inconsistency decisions 745 → 45 (−94 %)**, runs with any 229 → 21
+  of 444, apps with any 105 → 15; transition decisions 58 → 54; all decisions 2,927 → 2,086. Rules 1–5 alone gave
+  745 → 305; the rest came from name compatibility for aggregates, selection-only membership, no sums over id/version
+  columns, group-named counters and no unique foreign keys. Remaining top relations: `gym.count == len(gym.classes)`,
+  `cart.total == sum(price * qty)` (4; possibly variant bugs), `log.rows[*].call unique` (id-shaped values),
+  per-person / per-station counters named after their group (`lunch.perPerson.Lena == count(person == "Lena")`).
+- Tests: `test/relations.test.ts` (one synthetic store per case, each with a control showing the old false positive
+  where applicable, plus checks that real defects still fire: a dangling selection, a divergence after typing stops).
+  Updated: `test/invariants.test.ts` (badge → badgeCount for name compatibility; ≥ 3 rows for id uniqueness),
+  `test/situation.test.ts` transition example (the total is now a learned sum of the items, so it stays in the shape),
+  `test/review-redaction.test.ts` (REVIEW's: advances 1.2 s after the keystroke instead of 0.2 s, since relations on a
+  store being typed into are checked after the burst).
 
 ## Batch 7 (done): retry by HTTP semantics (situation-v2.2)
 

@@ -126,6 +126,9 @@ export interface Step {
   after?: string[];
   /** Affordances made unavailable again once this step ran (manifest `resets`). */
   resets?: string[];
+  /** Alternatives the ideal run's user takes, in order, when this step cannot be taken (precondition, missing
+   * element, `after`); every other run reuses the ideal run's pick (RunConfig.altPicks). */
+  alts?: Omit<Step, "i" | "t" | "alts">[];
 }
 
 export interface ExternalEvent {
@@ -184,6 +187,10 @@ export interface RunConfig {
   /** Intent pins from the ideal run: step index -> identity tokens of the item the ideal user acted on. Other runs
    * act on the visible element whose item matches best (the same intent), not on the same list position. */
   pins?: Record<number, string[]>;
+  /** Recovery chains (manifest `recover` affordances). */
+  recover?: Step[][];
+  /** Ideal run's alternative picks: step index -> alt index (-1 = the step itself). */
+  altPicks?: Record<number, number>;
   /** Base run: probe runtime.situation("ask") at these times (developer-question rows). */
   askTimes?: number[];
 }
@@ -293,6 +300,8 @@ export interface RunResult {
   asks?: { t: number; state: Record<string, unknown>; facts: AskFacts }[];
   /** Ideal run: identity tokens of the item each step acted on (see RunConfig.pins). */
   pins?: Record<number, string[]>;
+  /** Ideal run: alternative picks (see RunConfig.altPicks). */
+  altPicks?: Record<number, number>;
 }
 
 export interface ServerSnap {

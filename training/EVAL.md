@@ -5,7 +5,7 @@ Candidates: **R17** (ettin-encoder-17m, d 256 × 7 layers, fresh heads) and **R3
 (`c01`), with `training/eval_runtime.py` and `training/report.py`.
 
 Status (2026-10-08): stage 1c final; stage-2 pilot on pre-freeze SIM data (`r300k`); **final round 1** on the frozen
-runtime (`situation-v1`) with SIM phase A — see the last section. The shipping candidates are the final-round models.
+runtime (`situation-v1`) with SIM phase A (v1 baseline); **situation-v2**: `r17-v2a` (SIM v2 gold) with data-derived gates in its `meta.json` — see the last section, which is the current shipping candidate.
 
 ## Metrics
 
@@ -165,3 +165,71 @@ sequence tokens (SIM rows: ≈ 380 / 780 / 1,100 tokens at the 1,000 / 2,000 / 3
 size); the gate is precise and well calibrated but intervenes rarely. CORE's situation-v2 redesign (a `delivery`
 trigger at the network boundary, non-blocking mutations) supersedes this format; these numbers are the baseline for
 the v2 rounds.
+
+## situation-v2: `r17-v2a` (first v2 R17; 2026-10-08 06:10 UTC)
+
+Recipe: R17 from `r17-final1`, 2B tokens: SIM v2 gold `sim2` 86% (7.56M train rows), v2 curriculum replay `cur5` 11%,
+`cur1` 2%, `gen` 1%; 8 F80 nodes, 56 min. No REAL gold (see `r17-v2b`). Export `genclass-runtime-r17` 2.0.0-rc1:
+q8 9.58 MB (fp16-free) / fp16 13.57 MB, q8 = PyTorch argmax 223/223, gates 191/191; onnxruntime-web 1.30 WASM 1 thread
+≈ 176 / 321 / 586 ms at 500 / 780 / 1,170 tokens. Delivered: train VM `~/gcl/train-out/v2a/r17/`,
+`packages/runtime-model/files/r17/` (replaces the v1 files; v1 stays in `~/gcl/train-out/final1/`).
+
+Test sets (never trained on): `sim2e` = 20k random rows of SIM's held-out test split (held-out domains / families /
+patterns / features), 8k dev rows for temperatures; `sim2f` = 18,690 test rows whose family contains a held-out
+**feature** (swcache, presence, cascade, saga, prefetch, permissions); `real2e` = 20k random REAL v2c test rows (+8k dev);
+`realev` = REAL's unambiguous-case eval set (16,600 rows; its rows are removed from every REAL training bucket).
+
+Fixed gates 0.9 / 0.8 (pre-v2.2 action applicability, `eval_runtime.py`):
+
+| set | decision rows | action acc | diagnosis acc | guard FIR | heal FIR | heal precision | heal recall | clear (heal) | ECE action raw → cal |
+|---|---|---|---|---|---|---|---|---|---|
+| sim2e | 12,696 | 77.9 | 84.4 | 0.00% (0/9,464) | 0.46% | 75.2 | 6.8 | 11.3 | 0.026 → 0.011 |
+| sim2f (held-out features) | 11,756 | 77.4 | 81.0 | 0.00% (0/8,703) | 0.75% | 71.0 | 6.8 | 11.1 | 0.028 |
+| real2e | 13,032 | 78.7 | 77.8 | 0.01% | 0.22% | 64.1 | 3.2 | 3.7 | 0.059 |
+
+Per trigger (sim2e, action / diagnosis / heal FIR): delivery 84.7 / 77.8 / 0.00%, error 95.0 / 96.7 / 0.00%, failure
+78.7 / 88.1 / 1.43%, inconsistency 81.0 / 88.5 / 0.11%, mutation 86.7 / 85.9 / 0.00%, request 71.7 / 80.5 / 0.07%,
+stall 67.3 / 92.2 / 0.00%, transition 88.5 / 80.1 / 0.00%. Budgets 1,000 / 2,000 / full: action 77.0 / 78.0 / 78.5.
+
+Expected gain (sim2e, `eval_gain.py`, heal mode, oracle 1.11 gain/row): gate@0.8 captures 9.3% of the oracle gain
+(v1 baseline 6.7%), recall on clear 12.3%, harmful 0.13%, label-FIR 0.49%; gate@0.5 33% / 45% / 1.8% / 8.1%.
+
+REAL eval set (`eval_real.py`, SIM-fitted calibration = what ships), fixed gates guard@0.9 / heal@0.8:
+clean-benign and benign-salient fired 0.00% / 0.00% (gate 0.5: 0.05–0.35%); recall duplicate-submit 0.0% / 0.6%,
+genuine-break 0.0% / 0.1%, stale-overwrite 0.2% / 1.0% (gate 0.5, heal: 35% / 10% / 9%; duplicate on held-out-app
+test-split rows 64%). Argmax accuracy: duplicate 25%, genuine-break 8%, stale 11%.
+
+### Data-derived gates (shipped in `meta.json` → `gate`; `fit_gates.py`, coordinator rule of 07:00)
+
+Rule: per tier × trigger, the lowest summed-mass threshold (diagnosis ≠ expected kept) such that on **dev** data the
+model never trained on — SIM dev sample `sim2g` (104k rows), REAL eval-set rows outside REAL's test split, REAL dev —
+FIR (SIM passive-best rows; REAL clean-benign + benign-salient) ≤ 0.1% guard / 0.5% heal and harm (fired action costs
+≥ 1 more than passive; SIM and REAL separately) ≤ 0.2% / 1%, each for the one-sided 95% Wilson **upper bound** (point
+estimate where n cannot certify the limit), at that threshold and every grid value above it; triggers with < 1,500
+SIM passive-best dev rows use the tier default; guard fitted in guard mode, heal in heal mode with guard candidates at
+their guard thresholds. Without the upper bound the dev-fitted thresholds did not transfer to the held-out test sets
+(guard FIR 0.11%, delivery 0.28%, heal failure 0.85% on test). **v2.2 applicability:** `retry` removed (probabilities
+renormalised) for POST/PATCH rows without an idempotency key — v2 rows carry no headers, so "keyed" = the subject
+feature's SIM pattern says the app sends keys (`…/idem`, `co-idem`, `create-idem`, `confirm-idem`, `key-guard`,
+`retry:same-key`); this removes retry from 1,321 of 4,071 retry-offering sim2e rows (1,124 of 3,838 in sim2f).
+
+`r17-v2a` gates: guard default 0.75 (delivery 0.70, mutation 0.90, request 0.75); heal default 0.85 (failure 0.90,
+inconsistency 0.80, request 1.0 = never, transition 0.60; error/stall default).
+
+Verification on **test** (sim2e + sim2f + REAL test-split eval rows + real2e test; 95% bootstrap intervals):
+
+| mode / gates | SIM rows | fired | FIR SIM | FIR REAL | harm SIM / REAL | recall clear | gain captured |
+|---|---|---|---|---|---|---|---|
+| guard, data-derived | 12,111 | 0.14% | 0.03% [0.00, 0.08] | 0.00% | 0.01% / 0.00% | 2.5% [1.1, 4.2] | 3.0% [1.1, 5.6] |
+| guard, fixed 0.9 | 12,111 | 0.02% | 0.00% | 0.00% | 0.00% / 0.00% | 0.2% | 0.04% |
+| heal, data-derived | 22,322 | 0.99% | 0.19% [0.13, 0.25] | 0.00% | 0.05% / 0.04% | 5.2% [4.1, 6.3] | 5.1% [3.7, 6.5] |
+| heal, fixed 0.8 | 22,322 | 2.67% | **0.66%** [0.56, 0.77] | 0.00% | 0.09% / 0.10% | 12.0% | 9.3% |
+
+Per trigger on test (heal mode): failure fired 2.8%, FIR 0.55% [0.33, 0.83] (slightly above the limit on held-out
+data), recall clear 10.0%, gain 6.3%; request FIR 0.07%, gain 6.6%; delivery FIR 0.14% [0.00, 0.42], gain 2.9%;
+inconsistency FIR 0.17%, gain 1.4%; transition FIR 0.15%; mutation / stall / error ≈ 0. The fixed 0.8 heal gate
+breaks the heal FIR limit on held-out data (0.66%); the derived gates hold it pooled and trade recall for it.
+Full per-trigger tables: `out/gates/r17-v2a.json` on c09.
+
+Targets: guard FIR ≤ 0.1% met; heal FIR ≤ 0.5% met pooled (failure trigger 0.55% on held-out test); diagnosis ≥ 95%
+not met (84 / 81); clear stale/duplicate recall ≥ 80% far from met; ECE ≤ 0.02 met after calibration on SIM (REAL 0.059).

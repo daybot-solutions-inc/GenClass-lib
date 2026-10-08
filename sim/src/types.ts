@@ -68,6 +68,18 @@ export const PASSIVE: Record<string, string> = {
   error: "ignore",
 };
 
+/** Built-in actions per trigger, passive first (the runtime's TRIGGER_ACTIONS; test/rows.test.ts checks they match). */
+export const TRIGGER_ACTIONS: Record<string, string[]> = {
+  mutation: ["apply", "discard", "defer"],
+  request: ["send", "coalesce", "delay", "block", "serve_cached"],
+  delivery: ["deliver", "discard", "defer"],
+  failure: ["deliver", "retry", "serve_cached"],
+  stall: ["wait", "hedge", "serve_cached"],
+  inconsistency: ["ignore", "rollback", "resync"],
+  transition: ["ignore", "rollback", "resync"],
+  error: ["ignore", "rollback"],
+};
+
 export const DIAGNOSES = [
   "expected", "stale", "conflict", "duplicate", "inconsistent", "failing", "slow", "overload", "unusual", "transient",
 ] as const;

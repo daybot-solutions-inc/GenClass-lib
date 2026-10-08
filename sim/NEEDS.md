@@ -134,3 +134,14 @@ would fix it for good (lead-owned file).
   (1) paths a newer same-signature request in flight is predicted to write, and (2) pending-local-change paths.
   Then defer would not be the only remedy. Sim labels follow whatever the runtime does, so this only changes how
   often acting can help.
+
+## Situation-v2.2: notOffered in the evaluate request (ASK, 2026-10-08 07:20 UTC; TRAIN's request)
+
+TRAIN wants the exact v2.2 action applicability per row. SIM now writes:
+- `meta.request = {method, idempotent, idempotencyKey}` from the sim's own request knowledge;
+- `meta.not_offered`: the trigger's built-in actions the runtime did not offer, name → reason. The names are exact
+  (`TRIGGER_ACTIONS` minus offered; a test checks the copy against the runtime export). The reasons follow
+  `builtinUnavailable`'s rules.
+
+**Ask:** pass `Situation.notOffered` through `EvaluateRequest` (e.g. `req.notOffered`). The sim decider already
+copies it verbatim into `meta.not_offered` when present, which would make the reasons exact too.
