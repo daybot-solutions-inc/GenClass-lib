@@ -21,6 +21,8 @@ export interface ReqMeta {
   replayable: boolean;
   bodyBytes?: number;
   transport: "fetch" | "xhr";
+  /** Request header names, lower-cased (idempotency keys for `retry`). */
+  headers?: string[];
 }
 
 export interface FailureInfo {
@@ -155,6 +157,8 @@ export interface SitEnv {
   outcomes(): OutcomeRec[];
   /** navigator.onLine, when the global has it. */
   online(): boolean | undefined;
+  /** policy.idempotencyHeaders, lower-cased. */
+  idempotencyHeaders(): Set<string>;
 }
 
 export interface ChainWriteInfo {

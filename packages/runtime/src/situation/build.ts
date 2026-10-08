@@ -17,7 +17,7 @@ import { toChanges } from "../state/hub.js";
 import type { OpRec } from "../trace/ops.js";
 import { describe, fmtNum, secs, truncate } from "../util.js";
 import { eventLine, opLabel, opPhrase } from "./describe.js";
-import type { SitEnv, SubjectSpec } from "./env.js";
+import type { ReqMeta, SitEnv, SubjectSpec } from "./env.js";
 import { computeFacts, MAX_FACTS, orderFacts, predictedText } from "./facts.js";
 import { actionDescription, BUILTIN_ACTIONS, buildQuestions, COMPACT_QUESTIONS_BUDGET, TRIGGER_ACTIONS } from "./questions.js";
 import { sectionLimits, STATE_CHAR_BUDGET, toJevState, type SectionLimits, type SituationParts } from "./serialize.js";
@@ -284,26 +284,80 @@ function statsLines(env: SitEnv, subj: OpRec | undefined, L: SectionLimits): str
 
 // --------------------------------------------------------------------------------------------- actions
 
-function builtinApplicable(env: SitEnv, s: SubjectSpec, name: string): boolean {
+/**
+ * Whether repeating a request is safe by HTTP semantics: idempotent methods (GET, HEAD, OPTIONS, PUT, DELETE, TRACE)
+ * always; any other method (POST, PATCH, ...) only with an idempotency key header (`policy.idempotencyHeaders`).
+ * Null when safe, else why not.
+ */
+export function repeatUnsafe(env: SitEnv, req: ReqMeta): string | null {
+  if (req.idempotent) return null;
+  const keys = env.idempotencyHeaders();
+  if (req.headers?.some((h) => keys.has(h))) return null;
+  return `${req.method} is not idempotent and the request has no idempotency key header (${[...keys].join(", ") || "none configured"})`;
+}
+
+/** Why a built-in action is not offered for this subject (null when it is). */
+export function builtinUnavailable(env: SitEnv, s: SubjectSpec, name: string): string | null {
+  const why = (ok: boolean, reason: string): string | null => (ok ? null : reason);
   switch (s.trigger) {
     case "mutation":
-      return name === "defer" ? s.m.defers < 2 : true;
+      return why(name !== "defer" || s.m.defers < 2, "the write was already deferred twice");
     case "delivery":
-      // defer only helps when related work is in flight; a delivery is deferred twice at most
-      if (name === "defer") return s.defers < 2 && relatedInFlight(env, s.op, s.matched).length > 0;
-      return true;
+      if (name === "defer") {
+        if (s.defers >= 2) return "the delivery was already deferred twice";
+        return why(relatedInFlight(env, s.op, s.matched).length > 0, "no related operation is in flight");
+      }
+      return null;
     case "request":
-      if (name === "coalesce") return s.req.transport === "fetch" && env.canCoalesce(s.req.identity, s.op.id);
-      if (name === "serve_cached") return s.req.method === "GET" && !!env.cached(s.req.identity);
-      return true;
+      if (name === "coalesce") {
+        if (s.req.transport !== "fetch") return "coalescing is only available for fetch";
+        return why(env.canCoalesce(s.req.identity, s.op.id), "no identical request is in flight or just finished with a shareable response");
+      }
+      if (name === "serve_cached") {
+        if (s.req.method !== "GET") return `${s.req.method} responses are never served from cache`;
+        return why(!!env.cached(s.req.identity), "no cached response exists for this request");
+      }
+      return null;
     case "failure":
-      if (name === "retry") return s.req.replayable && s.op.attempt < 4 && s.req.transport === "fetch";
-      if (name === "serve_cached") return s.req.method === "GET" && !!env.cached(s.req.identity) && s.req.transport === "fetch";
-      return true;
+      if (name === "retry") {
+        if (s.req.transport !== "fetch") return "XMLHttpRequest failures reach the app directly (detection only)";
+        if (!s.req.replayable) return "the request body cannot be replayed";
+        if (s.op.attempt >= 4) return "the request was already attempted 4 times";
+        return repeatUnsafe(env, s.req);
+      }
+      if (name === "serve_cached") {
+        if (s.req.transport !== "fetch") return "XMLHttpRequest failures reach the app directly (detection only)";
+        if (s.req.method !== "GET") return `${s.req.method} responses are never served from cache`;
+        return why(!!env.cached(s.req.identity), "no cached response exists for this request");
+      }
+      return null;
     case "stall":
-      if (name === "hedge") return s.req.idempotent && s.req.method === "GET" && s.req.replayable && s.req.transport === "fetch";
-      if (name === "serve_cached") return s.req.method === "GET" && !!env.cached(s.req.identity) && s.req.transport === "fetch";
-      return true;
+      if (name === "hedge") {
+        if (s.req.transport !== "fetch") return "hedging is only available for fetch";
+        if (s.req.method !== "GET") return `only GET requests are hedged (${s.req.method})`;
+        if (!s.req.replayable) return "the request cannot be replayed";
+        return repeatUnsafe(env, s.req);
+      }
+      if (name === "serve_cached") {
+        if (s.req.transport !== "fetch") return "serving from cache is only available for fetch";
+        if (s.req.method !== "GET") return `${s.req.method} responses are never served from cache`;
+        return why(!!env.cached(s.req.identity), "no cached response exists for this request");
+      }
+      return null;
+    default:
+      return builtinApplicable(env, s, name) ? null : notApplicableReason(s, name);
+  }
+}
+
+function notApplicableReason(s: SubjectSpec, name: string): string {
+  if (name === "resync") return "no involved store has a resync handler";
+  if (name === "rollback") return s.trigger === "inconsistency" ? "no consistent snapshot of a writable involved store exists" : "the operation's own chain wrote no state that can be restored";
+  return "not applicable here";
+}
+
+/** Applicability of the state actions (inconsistency, transition, error triggers). */
+function builtinApplicable(env: SitEnv, s: SubjectSpec, name: string): boolean {
+  switch (s.trigger) {
     case "inconsistency": {
       const stores = [...new Set(s.violations.flatMap((v) => v.fields.map((f) => f.split(".")[0])))];
       if (name === "rollback") return !!env.lastConsistent() && stores.some((st) => env.writable(st));
@@ -322,6 +376,8 @@ function builtinApplicable(env: SitEnv, s: SubjectSpec, name: string): boolean {
       return true;
     case "ask":
       return false;
+    default:
+      return true;
   }
 }
 
@@ -376,6 +432,7 @@ export function buildSituation(env: SitEnv, s: SubjectSpec, o: BuildOptions, pre
       identity: req.identity,
       idempotent: req.idempotent,
       replayable: req.replayable,
+      ...(!req.idempotent && repeatUnsafe(env, req) === null ? { idempotencyKey: true } : {}),
       identicalInFlight: env.identical(req.identity).filter((x) => x.end === undefined && x.id !== s.op.id).map((x) => x.id),
       cached: !!env.cached(req.identity),
     };
@@ -396,8 +453,13 @@ export function buildSituation(env: SitEnv, s: SubjectSpec, o: BuildOptions, pre
   draft.facts = facts;
   // actions
   const actions: ActionOption[] = [];
+  const notOffered: Record<string, string> = {};
   for (const name of TRIGGER_ACTIONS[s.trigger]) {
-    if (!builtinApplicable(env, s, name)) continue;
+    const no = builtinUnavailable(env, s, name);
+    if (no) {
+      notOffered[name] = no;
+      continue;
+    }
     const b = BUILTIN_ACTIONS[name];
     actions.push({ name, tier: b.tier, description: actionDescription(name, o.vocab, undefined, s.trigger) });
   }
@@ -435,6 +497,7 @@ export function buildSituation(env: SitEnv, s: SubjectSpec, o: BuildOptions, pre
     state,
     questions,
     actions: actions.map((a) => a.name),
+    ...(Object.keys(notOffered).length ? { notOffered } : {}),
     salient,
     facts: facts.map((f) => f.text),
     compact,

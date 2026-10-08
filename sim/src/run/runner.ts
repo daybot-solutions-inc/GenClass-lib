@@ -96,7 +96,7 @@ export interface RunOptions {
   /** Record the server state over time (ideal run: costs compare the server at decision + horizon). */
   serverTimeline?: boolean;
   /** On-policy: answers come from this model through the runtime's production gate (heal mode, default thresholds). */
-  onPolicy?: { model: DecisionProvider; gate?: "shipping" | "explore" };
+  onPolicy?: { model: DecisionProvider; gate?: "shipping" | "explore"; maxCalls?: number };
   /**
    * Re-seeded future: from decision `k` on (ideal runs: k = -1, i.e. from time `t`), network draws, push latencies,
    * model latencies and the times of other users' events after `t` use `salt`. The prefix stays byte-identical.
@@ -457,7 +457,8 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       if (o.future && idx === o.future.k) network.future = o.future.salt;
       const fut = o.future && idx > o.future.k ? o.future.salt : undefined;
       const ms = new Rng(fut === undefined ? hashAll("model-latency", scn.seed, idx) : hashAll("model-latency", scn.seed, idx, fut)).lognormal(scn.modelMs, 0.35);
-      if (o.onPolicy) {
+      // On-policy: decisions past the model-call cap are answered passive without the model (never labelled).
+      if (o.onPolicy && idx < (o.onPolicy.maxCalls ?? Infinity)) {
         const rec = decisions[decisions.length - 1];
         const subj = req.subject && typeof req.subject === "object" ? { ...(req.subject as Record<string, unknown>) } : {};
         delete subj.error;

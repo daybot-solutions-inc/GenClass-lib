@@ -32,13 +32,13 @@ const manifest: AppManifest = {
     remaining: ["derive", "incremental"],
   },
   affordances: [
-    { id: "drive", kind: "select", sel: "select[name=drive]", values: ["41", "42", "43"], weight: 1.6, mode: "replace" },
-    { id: "answer", kind: "check", sel: "section.eligibility li.answer input:not(:checked)", nth: 1, weight: 1, mode: "accumulate", requires: "section.eligibility li.answer input:not(:checked)", then: ["answer2", "answer3", "next"] },
+    { id: "drive", kind: "select", sel: "select[name=drive]", values: ["41", "42", "43"], weight: 2, mode: "replace" },
+    { id: "answer", kind: "check", sel: "section.eligibility li.answer input:not(:checked)", nth: 1, weight: 0.6, mode: "accumulate", requires: "section.eligibility li.answer input:not(:checked)", then: ["answer2", "answer3", "next"] },
     { id: "answer2", kind: "check", sel: "section.eligibility li.answer input:not(:checked)", nth: 1, weight: 0, mode: "accumulate", followOnly: true, requires: "section.eligibility li.answer input:not(:checked)" },
     { id: "answer3", kind: "check", sel: "section.eligibility li.answer input:not(:checked)", nth: 1, weight: 0, mode: "accumulate", followOnly: true, requires: "section.eligibility li.answer input:not(:checked)" },
-    { id: "next", kind: "click", sel: "section.eligibility button.next", weight: 0.6, mode: "replace", after: ["answer"], requires: "section.eligibility button.next:not([disabled])" },
+    { id: "next", kind: "click", sel: "section.eligibility button.next", weight: 0.4, mode: "replace", after: ["answer"], requires: "section.eligibility button.next:not([disabled])" },
     { id: "book", kind: "click", sel: "li.slot button.book", nth: 6, weight: 3.5, mode: "accumulate", intent: "nth", dblclickP: 0.15, impatientP: 0.25, after: ["answer", "next"], requires: "li.slot button.book:not([disabled])" },
-    { id: "cancel", kind: "click", sel: "li.appt button.cancel", nth: 2, weight: 1, mode: "accumulate", intent: "nth", dblclickP: 0.1, after: ["book"], requires: "li.appt button.cancel:not([disabled])" },
+    { id: "cancel", kind: "click", sel: "li.appt button.cancel", nth: 2, weight: 1.4, mode: "accumulate", intent: "nth", dblclickP: 0.1, after: ["book"], requires: "li.appt button.cancel:not([disabled])" },
   ],
   external: [
     { kind: "action", target: "slots", perMin: 8, verb: "book", where: { booked: { $lt: CAP } } },

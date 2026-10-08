@@ -1639,6 +1639,7 @@ export class RuntimeImpl implements Runtime {
         const n = this.global.navigator as { onLine?: unknown } | undefined;
         return typeof n?.onLine === "boolean" ? n.onLine : undefined;
       },
+      idempotencyHeaders: () => this.policy.idempotencyHeaders,
     };
   }
 

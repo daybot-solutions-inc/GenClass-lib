@@ -58,15 +58,19 @@ rt.guard(
 );
 
 let xhr: any = null;
+let writes = 0;
 function load(background: boolean) {
   if (xhr && background) return;
   if (xhr && FETCH === "abort-previous") xhr.abort();
   const q = ui.get("q");
+  const epoch = writes;
   const data = { page: ui.get("page"), limit: PER, sort: "name", ...(q ? { q } : {}) };
   if (!background) ui.set({ loading: true, error: "" });
   const mine = (xhr = $.ajax({ url: "/api/households", data, dataType: "json" }));
   mine
     .done((r: any) => {
+      // a poll that read the page before one of our saves landed would bring the old status back
+      if (background && epoch !== writes) return;
       // households with a save in flight keep what the desk just did
       const items = (r.items ?? []).map((h: any) => (ui.get("pending").includes(h.id) ? (households.get(h.id)?.attributes ?? h) : h));
       if (background) households.set(items);
@@ -80,13 +84,18 @@ function load(background: boolean) {
       if (xhr === mine) xhr = null;
     });
 }
-const loadStock = () => $.ajax({ url: "/api/parcels", dataType: "json" }).done((r: any) => parcels.set(r.items ?? []));
+let handouts = 0;
+function loadStock() {
+  const epoch = handouts;
+  $.ajax({ url: "/api/parcels", dataType: "json" }).done((r: any) => epoch === handouts && parcels.set(r.items ?? []));
+}
 
 function handOut(h: any, id: number) {
   const p = parcels.get(h.get("parcel"));
   const kind = p?.get("kind") ?? "parcel";
   $.ajax({ url: `/api/parcels/${h.get("parcel")}/handout`, method: "POST", contentType: "application/json", data: "{}", dataType: "json" })
     .done((saved: any) => {
+      handouts++;
       if (STOCK === "server") p?.set(saved);
       ui.set({ notice: `${h.get("name")} collected a ${kind}.` });
     })
@@ -107,13 +116,14 @@ function collect(id: number) {
     pend(id, false);
   };
   save(h.get("version"))
+    .always(() => writes++)
     .done(() => handOut(h, id))
     .fail((x: any) => {
       const cur = x.status === 409 ? x.responseJSON?.current : null;
       if (!cur) return failed(x);
       h.set(cur);
       // a caseworker changed the household meanwhile: still waiting, so collect on top of their version
-      if (cur.status === "waiting") return void save(cur.version).done(() => handOut(h, id)).fail(failed);
+      if (cur.status === "waiting") return void save(cur.version).always(() => writes++).done(() => handOut(h, id)).fail(failed);
       ui.set({ error: `${h.get("name")} was already marked ${cur.status} at another desk.` });
       pend(id, false);
     });
@@ -125,6 +135,7 @@ function markNoShows() {
   ui.set({ bulkBusy: true, error: "", notice: "" });
   $.ajax({ url: "/api/households/bulk", method: "POST", contentType: "application/json", data: JSON.stringify({ ids, op: "patch", patch: { status: "no-show" } }), dataType: "json" })
     .done((r: any) => {
+      writes++;
       const results: { id: number; ok: boolean }[] = r.results ?? [];
       const ok = BULK === "per-item" ? results.filter((x) => x.ok).map((x) => Number(x.id)) : ids;
       ok.forEach((id: number) => households.get(id)?.set({ status: "no-show" }));

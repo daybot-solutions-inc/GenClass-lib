@@ -258,7 +258,7 @@ every observer and restores the globals it wrapped.
 | `delay` | guard | wait min(250 ms · 2^failure streak, 8 s), then send |
 | `block` | heal | do not send; answer 503 (`x-genclass: blocked`) |
 | `serve_cached` | heal | answer with the last good response for this GET (`x-genclass: cached`; ≤ 256 KB, ≤ 64 entries, memory only) |
-| `retry` | heal | re-send after min(200 ms · 2^(attempt-1), 5 s) when the body can be replayed |
+| `retry` | heal | re-send after min(200 ms · 2^(attempt-1), 5 s) when the body can be replayed and repeating is safe by HTTP semantics: GET, HEAD, OPTIONS, PUT, DELETE, or another method (POST, PATCH, ...) only when the request carries an idempotency key header (`policy.idempotencyHeaders`; request ids and tracing headers are not keys) |
 | `hedge` | heal | send a second identical GET and use whichever answers first |
 | `rollback` | heal | inconsistency: restore the involved stores to their last consistent snapshot; error/transition: restore only the fields the operation's own chain wrote to their earlier values (undo: restore the replaced values) |
 | `resync` | heal | call the store's `resync` handler |
@@ -270,7 +270,8 @@ behaviour), `stale` (outdated data about to replace newer state), `conflict` (co
 `unusual` (unlike how the same operation normally behaves), `transient` (a one-off failure likely to succeed if
 tried again).
 
-Actions are offered only when they apply (an identical request exists, a cached response exists, the body can be
+Actions are offered only when they apply (`situation().notOffered` lists the built-in actions left out and why;
+an identical request exists, a cached response exists, the body can be
 replayed, a consistent snapshot exists, a `resync` handler exists, the failing operation wrote state). Responses
 are always cloned before the app reads them. GenClass's own requests and writes are never gated; `keepalive`
 requests and synchronous XHRs are never held; nothing is held when the mode and policy permit no action for it or
@@ -292,6 +293,7 @@ interface PolicyOptions {
   deny?: string[];                  // these never run
   holdBudgetMs?: number | "auto";   // default "auto": clamp(1.5 × median recent model latency, 150, 800) ms
   holdUserWrites?: boolean;         // default false
+  idempotencyHeaders?: string[];    // default ["Idempotency-Key", "X-Idempotency-Key"]: a POST/PATCH carrying one may be retried
   holdWrites?: boolean;             // default false: state writes apply at once (decided at the network boundary)
   maxActionsPerMinute?: number;     // default 60
   requireDiagnosis?: boolean;       // default true

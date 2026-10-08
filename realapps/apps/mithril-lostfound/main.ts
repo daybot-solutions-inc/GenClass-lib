@@ -68,13 +68,16 @@ async function older() {
 }
 
 /** New items logged at other stations (and items handed over there) show up on the first page. */
+let writes = 0;
 async function pollHead() {
   const d0 = desk.get();
   if (d0.loading || d0.older) return;
   const my = seq;
+  const epoch = writes;
   try {
     const head = (await list(d0.q, ""))?.data ?? [];
-    if (my !== seq || desk.get().q !== d0.q) return;
+    // a handover or a new item saved while the poll was out is newer than what the poll read
+    if (my !== seq || desk.get().q !== d0.q || epoch !== writes) return;
     desk.update((d) => {
       const fresh = head.filter((h) => !d.rows.some((r) => r.id === h.id));
       const rows = d.rows.map((r) => (d.pending.includes(r.id) ? r : (head.find((h) => h.id === r.id) ?? r)));
@@ -97,10 +100,12 @@ async function handOver(it: Item) {
     } catch (e: any) {
       const cur = code(e) === 409 ? (e?.response?.current as Item | undefined) : undefined;
       if (!cur) throw e;
+      writes++;
       place(cur);
       desk.update((d) => ({ ...d, error: `LF-${it.id} (${it.description}) was already handed over at another station.` }));
       return;
     }
+    writes++;
     place(saved);
     const key = HANDOVER_RETRY === "idempotency-key" ? `handover-${it.id}-${++keyN}` : "";
     const post = () => m.request({ method: "POST", url: "/api/handovers", body: { itemId: it.id, desk: "Central", category: it.category }, headers: key ? { "Idempotency-Key": key } : {}, background: true });
@@ -121,6 +126,7 @@ async function logItem(ev: Event) {
   desk.update((d) => ({ ...d, error: "", notice: "" }));
   try {
     const saved = await m.request<Item>({ method: "POST", url: "/api/items", body: { category: f.category, description: f.description.trim(), station: f.station, status: "unclaimed" }, background: true });
+    writes++;
     log.update((x) => ({ ...x, description: "", saving: false }));
     desk.update((d) => ({ ...d, rows: matches(saved, d.q) ? [saved, ...d.rows.filter((r) => r.id !== saved.id)] : d.rows, notice: `Logged LF-${saved.id}: ${saved.description}.` }));
   } catch (e: any) {

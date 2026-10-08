@@ -18,7 +18,7 @@ const manifest: AppManifest = {
     base: "/api",
     collections: [
       { name: "dates", seed: dates, filters: ["week"], envelope: "items", pageSize: 20, actions: { take: { inc: "left", by: -1 }, giveback: { inc: "left", by: 1 } } },
-      { name: "bookings", seed: [{ id: 4401, resident: "you", dateId: 911, day: "Tuesday 21", items: ["Mattress"] }], required: ["resident", "dateId"], filters: ["resident"], envelope: "items" },
+      { name: "bookings", seed: [{ id: 4401, resident: "you", dateId: 911, day: "Tuesday 21", items: ["Mattress"], status: "scheduled" }], required: ["resident", "dateId"], filters: ["resident"], envelope: "items" },
     ],
   },
   variants: {
@@ -29,16 +29,18 @@ const manifest: AppManifest = {
     capacity: ["server", "local"],
   },
   affordances: [
-    { id: "item", kind: "check", sel: "section.items li.item input", nth: 7, weight: 2, mode: "accumulate", intent: "nth", requires: "section.items li.item input" },
-    { id: "primary", kind: "click", sel: "footer button.primary", weight: 3, mode: "accumulate", dblclickP: 0.15, impatientP: 0.25, requires: "footer button.primary:not([disabled])" },
+    { id: "item", kind: "check", sel: "section.items li.item input", nth: 7, weight: 3, mode: "accumulate", intent: "nth", then: ["item2"] },
+    { id: "item2", kind: "check", sel: "section.items li.item input", nth: 7, weight: 0, mode: "accumulate", intent: "nth", followOnly: true },
     { id: "week", kind: "click", sel: "nav.weeks button", text: ["This week", "Next week"], weight: 1, mode: "replace", key: "week", requires: "nav.weeks button" },
-    { id: "date", kind: "click", sel: "li.date button.choose", nth: 5, weight: 2.5, mode: "replace", key: "date", requires: "li.date button.choose" },
-    { id: "back", kind: "click", sel: "footer button.back", weight: 0.4, mode: "replace", requires: "footer button.back" },
+    { id: "date", kind: "click", sel: "li.date button.choose", nth: 5, weight: 2.5, mode: "replace", key: "date", requires: "li.date button.choose", then: ["confirm"] },
+    { id: "confirm", kind: "click", sel: "section.confirm button.confirm", weight: 0, mode: "accumulate", followOnly: true, dblclickP: 0.15, impatientP: 0.25, requires: "section.confirm button.confirm:not([disabled])" },
+    { id: "confirmAgain", kind: "click", sel: "section.confirm button.confirm", weight: 0.8, mode: "accumulate", dblclickP: 0.15, impatientP: 0.25, requires: "section.confirm button.confirm:not([disabled])" },
     { id: "cancel", kind: "click", sel: "li.booking button.cancel", nth: 3, weight: 0.9, mode: "accumulate", intent: "nth", dblclickP: 0.1, requires: "li.booking button.cancel:not([disabled])" },
   ],
   external: [
     { kind: "action", target: "dates", perMin: 6, verb: "take", where: { left: { $gt: 0 } } },
     { kind: "action", target: "dates", perMin: 1.5, verb: "giveback", where: { left: { $lt: 5 } } },
+    { kind: "update", target: "bookings", perMin: 2, where: { status: "scheduled" }, data: [{ status: "crew assigned" }] },
   ],
   weights: { "pickup.error": 0, "pickup.notice": 0, "pickup.datesLoading": 0.1, "pickup.confirming": 0.1, "pickup.cancelling": 0.1, "pickup.key": 0, "pickup.items": 0.3 },
   relations: [

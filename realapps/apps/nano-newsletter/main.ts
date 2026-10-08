@@ -1,15 +1,16 @@
 // Newsletter admin console (nanostores map + computed with a hand-written DOM layer; fetch + AbortController). The
-// editor signs in (short-lived bearer tokens, rotating refresh tokens), pages through subscribers with a cursor ("Load
-// more"), narrows them by status and by a search box, adds a subscriber (one per email: a duplicate answers 409) and
-// unsubscribes the ticked rows in one bulk PATCH with per-item results. A stats strip polls three status counts in
-// parallel, so an expired token yields several 401s at once. The maps are registered with rt.guard: UI events write
-// the nanostores directly (traced), network results go through the guarded handles. Latent bugs by flag: every 401
-// refreshes on its own (refresh=concurrent: the losers present an already-rotated refresh token and the editor is
-// signed out), a filter or search change keeps the old cursor and selection (cursor=keep: "Load more" pages through the
-// previous list and appends rows of the wrong status; "Unsubscribe" hits rows no longer shown), searches that don't
-// abort the previous one (searchAbort=none: results for "an" replace those for "ana"), an Add button live while
-// posting (addGuard=none: the second POST answers 409 "already subscribed") and bulk results ignored
-// (bulk=assume-all: rows the server kept active show as unsubscribed).
+// editor signs in (short-lived bearer tokens, rotating refresh tokens), pages through subscribers with a cursor
+// ("Load more"), narrows them by status and by a search box, adds a subscriber (one per email: a duplicate answers
+// 409) and unsubscribes the ticked rows in one bulk PATCH with per-item results. The token is renewed a few seconds
+// before it expires; when that renewal fails or is slow, the stats strip (three status counts polled in parallel)
+// gets several 401s at once. The maps are registered with rt.guard: UI events write the nanostores directly (traced),
+// network results go through the guarded handles. Latent bugs by flag: every 401 refreshes on its own
+// (refresh=concurrent: the losers present an already-rotated refresh token and the editor is signed out), a filter or
+// search change keeps the old cursor and selection (cursor=keep: "Load more" pages through the previous list and
+// appends rows of the wrong status; "Unsubscribe" hits rows no longer shown), searches that don't abort the previous
+// one (searchAbort=none: results for "an" replace those for "ana"), an Add button live while posting (addGuard=none:
+// the second POST answers 409 "already subscribed") and bulk results ignored (bulk=assume-all: rows the server kept
+// active show as unsubscribed).
 import { computed, map } from "nanostores";
 import { rt, flag } from "../_shared/genclass";
 import { api, itemsOf, errText, HttpError, isAbort } from "../_shared/w3-http";
@@ -40,9 +41,18 @@ let access = "";
 let renewal = "";
 let epoch = 0; // bumps on sign-in / sign-out: answers for an older session are dropped
 let refreshing: Promise<void> | null = null;
+let renewTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Renew a few seconds before the access token expires (401s then only happen when a renewal fails or is slow). */
+function scheduleRenewal(expiresIn: number) {
+  clearTimeout(renewTimer);
+  const mine = epoch;
+  renewTimer = setTimeout(() => void (mine === epoch && renewal && renew().catch(() => undefined)), Math.max(2, expiresIn - 4) * 1000);
+}
 
 function signOut(reason: string) {
   epoch++;
+  clearTimeout(renewTimer);
   access = renewal = "";
   session.set({ signedIn: false, user: "", busy: false, error: reason });
   audience.set(fresh());
@@ -52,8 +62,10 @@ function signOut(reason: string) {
 async function renewOnce(): Promise<void> {
   const used = renewal;
   try {
-    const r = await api<{ token: string; refreshToken: string }>("/api/auth/refresh", "POST", { refreshToken: used });
-    if (renewal === used) [access, renewal] = [r.token, r.refreshToken];
+    const r = await api<{ token: string; refreshToken: string; expiresIn: number }>("/api/auth/refresh", "POST", { refreshToken: used });
+    if (renewal !== used) return;
+    [access, renewal] = [r.token, r.refreshToken];
+    scheduleRenewal(Number(r.expiresIn));
   } catch (e) {
     if (e instanceof HttpError && e.status === 401 && $session.get().signedIn) signOut("Your session expired — sign in again.");
     throw e;
@@ -83,9 +95,10 @@ async function signIn(username: string, password: string) {
   if ($session.get().busy) return;
   $session.set({ ...$session.get(), busy: true, error: "" });
   try {
-    const r = await api<{ token: string; refreshToken: string; user: { username: string } }>("/api/auth/login", "POST", { username, password });
+    const r = await api<{ token: string; refreshToken: string; expiresIn: number; user: { username: string } }>("/api/auth/login", "POST", { username, password });
     epoch++;
     [access, renewal] = [r.token, r.refreshToken];
+    scheduleRenewal(Number(r.expiresIn));
     session.set({ signedIn: true, user: r.user.username, busy: false, error: "" });
     void loadFirst();
     void loadCounts();
@@ -136,11 +149,13 @@ async function loadMore() {
   }
 }
 
+let countSeq = 0;
 async function loadCounts() {
   const mine = epoch;
+  const my = ++countSeq;
   const statuses: Status[] = ["active", "bounced", "unsubscribed"];
   const got = await Promise.all(statuses.map((s) => call<{ total: number }>(`/api/subscribers?status=${s}&limit=1`).then((b) => Number(b.total ?? 0), () => null)));
-  if (mine !== epoch) return;
+  if (mine !== epoch || my !== countSeq) return;
   audience.update((a) => ({ ...a, counts: Object.fromEntries(statuses.map((s, i) => [s, got[i] ?? a.counts[s]])) as Record<Status, number> }));
 }
 

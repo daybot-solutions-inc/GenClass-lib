@@ -91,6 +91,12 @@ function explorePolicy(scale: number, rngT: Rng): ExplorePolicy | undefined {
   };
 }
 
+/** On-policy: the model decides the first this-many decisions of a base run (bounds long sessions' cost). */
+export const ONPOLICY_MAX_CALLS = 80;
+
+/** Runtime build the rows come from (meta.runtime_tag; SIM_RUNTIME_TAG overrides). */
+export const RUNTIME_TAG = (typeof process !== "undefined" && process.env.SIM_RUNTIME_TAG) || "situation-v2.1";
+
 /** On-policy: favour points where the model acted (false-intervention candidates) or stayed passive on a problem. */
 function pickOnPolicy(decs: DecisionRec[], max: number, rng: Rng): DecisionRec[] {
   const cands = decs.filter((d) => d.actions.length >= 2);
@@ -161,7 +167,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
   const onp = o.mode === "onpolicy" && o.model;
   const explore = onp ? undefined : explorePolicy(o.exploreScale, R.fork("explore"));
   const base = onp
-    ? await runScenario(scn, { ideal: false, factory: o.factory, record: true, probeAsk: false, onPolicy: { model: o.model!, gate: o.gate ?? "shipping" } })
+    ? await runScenario(scn, { ideal: false, factory: o.factory, record: true, probeAsk: false, onPolicy: { model: o.model!, gate: o.gate ?? "shipping", maxCalls: ONPOLICY_MAX_CALLS } })
     : await runScenario(scn, { ideal: false, factory: o.factory, record: true, probeAsk: o.askRows, ...(explore ? { explore } : {}) });
   out.runs++;
   out.decisions = base.decisions.length;
@@ -172,7 +178,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
   }
   const meta0 = metaOf(scn, o);
   // -------------------------------------------------------------------------------------- decision rows
-  const points = onp ? pickOnPolicy(base.decisions, o.maxPoints, R.fork("points")) : pickPoints(base.decisions, o.maxPoints, R.fork("points"));
+  const points = onp ? pickOnPolicy(base.decisions.filter((d) => d.k < ONPOLICY_MAX_CALLS), o.maxPoints, R.fork("points")) : pickPoints(base.decisions, o.maxPoints, R.fork("points"));
   for (const p of points) {
     const passive = PASSIVE[p.trigger] ?? p.actions[0]!;
     const forcedPrefix = new Map<number, string>();
@@ -446,6 +452,7 @@ export function metaOf(scn: Scenario, o: GenOptions): Record<string, unknown> {
     persona: scn.persona.kind,
     budget: scn.budget,
     runtime: o.runtimeName,
+    runtime_tag: RUNTIME_TAG,
     features: scn.features.map((f) => f.kind),
     patterns: scn.patterns,
   };

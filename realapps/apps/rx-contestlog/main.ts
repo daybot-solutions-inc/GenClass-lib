@@ -71,7 +71,7 @@ const check = (p: Probe) =>
 probe$
   .pipe(
     DEBOUNCE > 0 ? debounceTime(DEBOUNCE) : identity,
-    tap((p) => set((s) => ({ ...s, check: { ...p, state: p.call.length >= 3 ? "checking" : "idle", worked: [] } }))),
+    tap((p) => set((s) => ({ ...s, check: p.call.length >= 3 ? { ...p, state: "checking", worked: [] } : { call: "", band: "", mode: "", state: "idle", worked: [] } }))),
     DUPE === "switchMap" ? switchMap((p: Probe) => (p.call.length >= 3 ? check(p) : EMPTY)) : mergeMap((p: Probe) => (p.call.length >= 3 ? check(p) : EMPTY)),
   )
   .subscribe((c) => set((s) => ({ ...s, check: c })));

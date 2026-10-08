@@ -52,19 +52,25 @@ $stock.on(partPicked, (s, { jobId, partId }) => ({ ...s, picked: { ...s.picked, 
 
 // ------------------------------------------------------------------------------------------ board
 let seq = 0;
+// saves finished while a board load was out: that load's copy of those jobs (and of the part lines) is older
+let tick = 0;
+const savedAt = new Map<number, number>();
+let linesAt = 0;
 const filterOf = (show: Show) => (show === "open" ? "&status__in=waiting,in-progress,waiting-parts" : show === "ready" ? "&status=ready" : "");
 const loadBoardFx = createEffect(async ({ show, background }: { show: Show; background: boolean }) => {
   const my = background ? seq : ++seq;
+  const t0 = tick;
   const [jb, lb] = await Promise.all([api(`/api/jobs?limit=50${filterOf(show)}`), api(`/api/jobparts?limit=100`)]);
-  return { my, show, background, jobs: itemsOf<Job>(jb), lines: itemsOf<Line>(lb) };
+  return { my, t0, show, background, jobs: itemsOf<Job>(jb), lines: itemsOf<Line>(lb) };
 });
-loadBoardFx.doneData.watch(({ my, show, background, jobs, lines }) =>
+loadBoardFx.doneData.watch(({ my, t0, show, background, jobs, lines }) =>
   writeBoard((b) => {
     if ((background || BOARD_SEQ === "latest") && (my !== seq || b.show !== show)) return b;
     const local = new Map(b.jobs.map((j) => [j.id, j]));
     const adding = $stock.getState().adding;
+    const mine = (j: Job) => b.pending.includes(j.id) || (savedAt.get(j.id) ?? 0) > t0;
     const kept = b.lines.filter((l) => adding.includes(l.jobId) && !lines.some((x) => x.id === l.id));
-    return { ...withJobs(b, jobs.map((j) => (b.pending.includes(j.id) ? (local.get(j.id) ?? j) : j))), lines: [...lines, ...kept], loading: false };
+    return { ...withJobs(b, jobs.map((j) => (mine(j) ? (local.get(j.id) ?? j) : j))), lines: linesAt > t0 ? b.lines : [...lines, ...kept], loading: false };
   }),
 );
 loadBoardFx.fail.watch(({ params, error }) => !params.background && writeBoard((b) => (b.show !== params.show ? b : { ...b, loading: false, error: errText(error, "loading the board") })));
@@ -82,7 +88,10 @@ for (const fx of [statusFx, techFx] as const) {
     const cur = error instanceof HttpError && error.status === 409 ? (error.body?.current as Job | undefined) : undefined;
     writeBoard((b) => ({ ...withJobs(b, swap(b.jobs, cur ?? params.job)), error: cur ? `${params.job.ro} was just changed by someone else (${LABEL[cur.status]}${cur.tech ? `, ${cur.tech}` : ""}).` : errText(error, `saving ${params.job.ro}`) }));
   });
-  (fx.finally as typeof statusFx.finally).watch(({ params }) => writeBoard((b) => ({ ...b, pending: b.pending.filter((x) => x !== params.job.id) })));
+  (fx.finally as typeof statusFx.finally).watch(({ params }) => {
+    savedAt.set(params.job.id, ++tick);
+    writeBoard((b) => ({ ...b, pending: b.pending.filter((x) => x !== params.job.id) }));
+  });
 }
 
 // ------------------------------------------------------------------------------------------ parts
@@ -134,7 +143,10 @@ addPartFx.fail.watch(({ params, error }) => {
   const what = `${params.part.name} for ${params.job.ro}`;
   writeBoard((b) => ({ ...b, error: e.step === "line" ? errText(e.cause, `adding ${what}`) : PART_STEPS === "rollback" ? `${params.part.name} couldn't be reserved — removed from ${params.job.ro}.` : errText(e.cause, `reserving ${what}`) }));
 });
-addPartFx.finally.watch(({ params }) => writeStock((s) => ({ ...s, adding: s.adding.filter((x) => x !== params.job.id) })));
+addPartFx.finally.watch(({ params }) => {
+  linesAt = ++tick;
+  writeStock((s) => ({ ...s, adding: s.adding.filter((x) => x !== params.job.id) }));
+});
 
 // ------------------------------------------------------------------------------------------ DOM
 const root = document.getElementById("app")!;

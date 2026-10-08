@@ -145,13 +145,9 @@ type Ev =
   | { type: "LOADED"; auths: Auth[] };
 let keyN = 0;
 const newKey = () => (REQUEST_RETRY === "idempotency-key" ? `auth-${++keyN}` : "");
-const rows = (): Row[] => (permit ? permit.get().auths : []);
+const rows = (): Row[] => permit.get().auths;
 const flyingOther = (id: number) => rows().some((a) => a.id !== id && ["starting", "flying", "landing"].includes(a.phase));
 const requested = (c: Ctx) => rows().some((a) => OPEN.includes(a.phase) && a.zoneId === c.zoneId && a.altitude === c.altitude && a.window === c.window);
-const spawnAuths = (auths: Auth[]) =>
-  enqueueActions(({ enqueue }) => {
-    for (const a of auths) enqueue.spawnChild(authMachine, { id: `auth-${a.id}`, input: a });
-  });
 
 const machine = setup({
   types: { context: {} as Ctx, events: {} as Ev },
@@ -177,7 +173,14 @@ const machine = setup({
   initial: "planning",
   context: { altitude: 200, window: WINDOWS[1]!, zones: [], zoneId: 0, check: null, ids: [], reqKey: newKey(), error: "", notice: "" },
   on: {
-    LOADED: { actions: [({ event }) => event, assign(({ context, event }) => ({ ids: [...context.ids, ...event.auths.map((a) => a.id).filter((id) => !context.ids.includes(id))] }))] },
+    LOADED: {
+      actions: [
+        enqueueActions(({ enqueue, event }) => {
+          for (const a of event.auths) enqueue.spawnChild(authMachine, { id: `auth-${a.id}`, input: a });
+        }),
+        assign(({ context, event }) => ({ ids: [...context.ids, ...event.auths.map((a) => a.id)] })),
+      ],
+    },
   },
   states: {
     planning: {

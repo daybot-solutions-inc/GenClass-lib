@@ -183,6 +183,14 @@ export function headersKey(input: unknown, init: Record<string, unknown> | undef
   return parts.length ? fnv1a(parts.map(([k, v]) => `${k}:${v}`).join("\n")) : "";
 }
 
+/** Lower-cased names of the request's headers (Request object and init.headers). */
+export function headerNames(input: unknown, init: Record<string, unknown> | undefined): string[] {
+  const m = new Map<string, string>();
+  if (isRequestLike(input)) headerPairs(input.headers, m);
+  if (init && "headers" in init) headerPairs(init.headers, m);
+  return [...m.keys()];
+}
+
 export interface ParsedRequest {
   meta: ReqMeta;
   detail: string;
@@ -358,6 +366,8 @@ export function installFetch(host: NetHost): (() => void) | null {
         }
       }
       parsed = parseRequest(host, method, rawUrl, b, headersKey(input, init));
+      const names = headerNames(input, init);
+      if (names.length) parsed.meta.headers = names;
     } catch {
       return nativeFetch(input, init);
     }

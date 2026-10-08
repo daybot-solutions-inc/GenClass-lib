@@ -1,14 +1,15 @@
 // Courier handheld at a parcel-locker bank (nanostores map/computed with a hand-written DOM layer; fetch + WebSocket;
 // the stores are not registered with GenClass: observe-only). The courier filters the doors by size, picks the next
 // parcel from the van, reserves a free door for it (POST /reservations, one per door+parcel, then POST
-// /compartments/:id/occupy), opens the door (POST .../open, a relative counter) and can release a door again (the parcel
-// goes back to the van). Other couriers and recipients use the bank at the same time; door states stream in live.
-// Latent bugs by flag: Reserve buttons live while the two-step reservation runs (reserveGuard=none: a double tap
-// posts the reservation twice and the second answers 409 over a successful drop), pushes applied in arrival order
-// (live=blind: an older "free" overwrites "occupied"), reconnects without a reload (reconnect=naive: doors that
-// changed while offline keep their old state), a reservation left behind when occupying the door fails
-// (steps=dangling: the handheld shows the parcel in a door the server still has free) and size tabs applied in
-// arrival order (sizeSeq=blind: the Small tab lists the large doors).
+// /compartments/:id/occupy), opens the door (POST .../open, a relative counter) and can release a door again (the
+// parcel goes back to the van). Other couriers and recipients use the bank at the same time; door states stream in
+// live and the courier's reservations are re-read every 8 s. Latent bugs by flag: Reserve buttons live while the
+// two-step reservation runs (reserveGuard=none: a double tap posts the reservation twice and the second answers 409
+// over a successful drop), door states (pushes and answers) applied in arrival order (live=blind: an older "free"
+// overwrites "occupied"), reconnects without a reload (reconnect=naive: doors that changed while offline keep their
+// old state), a reservation left behind when occupying the door fails (steps=dangling: the handheld shows the parcel
+// in a door the server still has free) and size tabs applied in arrival order (sizeSeq=blind: the Small tab lists the
+// large doors).
 import { computed, map } from "nanostores";
 import { flag } from "../_shared/genclass";
 import { api, itemsOf, errText, HttpError, liveTopic } from "../_shared/w3-http";
@@ -36,7 +37,9 @@ const set = (patch: Partial<Bank>) => $bank.set({ ...$bank.get(), ...patch });
 const parcelOf = (code: string) => VAN.find((p) => p.code === code);
 const nextParcel = (placed: string[], cur: string) => (placed.includes(cur) ? (VAN.find((p) => !placed.includes(p.code))?.code ?? "") : cur);
 const busyOff = (id: number) => set({ busy: $bank.get().busy.filter((x) => x !== id) });
-const withDoor = (d: Door) => set({ doors: $bank.get().doors.map((x) => (x.id === d.id ? d : x)) });
+/** newer-wins: a door state older than the one shown (by updatedAt) is dropped, whether it came by push or answer. */
+const stale = (cur: Door | undefined, d: Door) => LIVE === "newer-wins" && !!cur?.updatedAt && (!d.updatedAt || d.updatedAt < cur.updatedAt);
+const withDoor = (d: Door) => set({ doors: $bank.get().doors.map((x) => (x.id === d.id && !stale(x, d) ? d : x)) });
 
 // ------------------------------------------------------------------------------------------- loads
 let seq = 0;
@@ -51,9 +54,12 @@ async function loadDoors(size = $bank.get().size) {
     if (my === seq) set({ loading: false, error: errText(e, "loading the locker bank") });
   }
 }
+let writes = 0; // reservations changed by this handheld (a poll that overlaps one is dropped)
 async function loadHeld() {
+  const w0 = writes;
   try {
     const rs = itemsOf<{ id: number; compartmentId: number; parcel: string }>(await api(`/api/reservations?courier=me&limit=50`));
+    if (w0 !== writes || $bank.get().busy.length) return;
     const held: Record<number, Held> = Object.fromEntries(rs.map((r) => [r.compartmentId, { resId: r.id, parcel: r.parcel }]));
     const placed = rs.map((r) => r.parcel);
     set({ held, placed, parcel: nextParcel(placed, $bank.get().parcel) });
@@ -68,6 +74,7 @@ async function reserve(door: Door) {
   const code = b.parcel;
   if (!code || (RESERVE_GUARD && b.busy.includes(door.id))) return;
   set({ busy: [...b.busy, door.id], error: "", notice: "" });
+  writes++;
   let resId = 0;
   try {
     const res = await api<{ id: number }>(`/api/reservations`, "POST", { key: `${door.id}|${code}`, compartmentId: door.id, parcel: code, courier: "me" });
@@ -113,6 +120,7 @@ async function release(door: Door) {
   const h = b.held[door.id];
   if (!h || b.busy.includes(door.id)) return;
   set({ busy: [...b.busy, door.id], error: "", notice: "" });
+  writes++;
   try {
     const d = await api<Door>(`/api/compartments/${door.id}/release`, "POST");
     withDoor(d);
@@ -138,10 +146,7 @@ liveTopic(
   (m) => {
     if (m.type !== "updated" || !m.item) return;
     const d = m.item as Door;
-    const cur = $bank.get().doors.find((x) => x.id === d.id);
-    if (!cur) return;
-    if (LIVE === "newer-wins" && cur.updatedAt && (!d.updatedAt || d.updatedAt < cur.updatedAt)) return;
-    withDoor(d);
+    if ($bank.get().doors.some((x) => x.id === d.id)) withDoor(d);
   },
   (up) => {
     set({ live: up });
@@ -202,3 +207,5 @@ root.addEventListener("change", (e) => {
 });
 void loadDoors("all");
 void loadHeld();
+// the handheld re-reads its reservations now and then (another device of the same courier may have released one)
+setInterval(() => void loadHeld(), 8000);

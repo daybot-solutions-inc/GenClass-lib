@@ -2,9 +2,10 @@
 // organiser (Priya) runs today's order from one restaurant: the order doc (restaurant, cutoff, open/locked, versioned)
 // and the order lines are shared and live — colleagues add dishes and change their quantities from their own screens.
 // Priya adds dishes for herself (POST /lines, or +1 on her existing line), fixes anyone's quantity with − / +
-// (POST /lines/:id/inc|dec, relative), removes lines and finally locks the order (versioned PATCH of the doc). The
-// lunch atom is registered with rt.guard (server results and pushes are written through it; clicks write the Jotai
-// store directly). Item count and total are maintained next to the lines. Latent bugs by flag: quantities written as
+// (POST /lines/:id/inc|dec, relative; still allowed once locked), removes lines and locks the order against new dishes
+// (versioned PATCH of the doc; reopen the same way). The lunch atom is registered with rt.guard (server results and
+// pushes are written through it; clicks write the Jotai store directly). Item count and total are maintained next to
+// the lines. Latent bugs by flag: quantities written as
 // absolute values computed from the row that was clicked (qty=absolute-put: a colleague's change — or the previous
 // click of a quick double +1 — is overwritten), the POST answer appended without looking for its WS echo
 // (add=append: the new line shows twice), count/total adjusted by deltas in every handler (total=incremental: the
@@ -102,7 +103,7 @@ async function addDish(d: Dish) {
 }
 
 async function bump(line: Line, by: 1 | -1) {
-  if (lunch.get().doc?.status !== "open") return;
+  if (!lunch.get().doc) return;
   if (by < 0 && line.qty <= 1) return remove(line);
   store.set(lunchAtom, (x) => ({ ...x, error: "", notice: "" }));
   try {
@@ -118,7 +119,7 @@ async function bump(line: Line, by: 1 | -1) {
 }
 
 async function remove(line: Line) {
-  if (lunch.get().doc?.status !== "open") return;
+  if (!lunch.get().doc) return;
   store.set(lunchAtom, (x) => ({ ...x, error: "", notice: "" }));
   try {
     await api(`/api/lines/${line.id}`, "DELETE");
@@ -182,7 +183,7 @@ function App() {
         <h1>Team lunch{l.doc ? ` · ${l.doc.restaurant}` : ""}</h1>
         {l.doc && (
           <p className="meta">
-            Order by {l.doc.cutoff} · {open ? "open for orders" : "locked"} · organised by {l.doc.organiser}
+            Order by {l.doc.cutoff} · {open ? "open for orders" : "locked: no new dishes, the organiser can still fix quantities"} · organised by {l.doc.organiser}
           </p>
         )}
         {l.doc?.note ? <p className="note">Note: {l.doc.note}</p> : null}
@@ -219,13 +220,13 @@ function App() {
                 <td className="qty">×{x.qty}</td>
                 <td className="price">{money(x.qty * x.price)}</td>
                 <td>
-                  <button type="button" className="dec" aria-label="One less" disabled={!open} onClick={() => void bump(x, -1)}>
+                  <button type="button" className="dec" aria-label="One less" disabled={!l.doc} onClick={() => void bump(x, -1)}>
                     −
                   </button>
-                  <button type="button" className="inc" aria-label="One more" disabled={!open} onClick={() => void bump(x, 1)}>
+                  <button type="button" className="inc" aria-label="One more" disabled={!l.doc} onClick={() => void bump(x, 1)}>
                     +
                   </button>
-                  <button type="button" className="remove" disabled={!open} onClick={() => void remove(x)}>
+                  <button type="button" className="remove" disabled={!l.doc} onClick={() => void remove(x)}>
                     Remove
                   </button>
                 </td>
