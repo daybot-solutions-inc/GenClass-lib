@@ -133,7 +133,14 @@ function Board() {
         {queue.map((a) => (
           <li key={a.id} class={`admission${picked?.id === a.id ? " picked" : ""}`}>
             {a.name} · {a.ward} · acuity {a.acuity}{" "}
-            <button type="button" class="pick" onClick={() => setPicked(a)}>
+            <button
+              type="button"
+              class="pick"
+              onClick={() => {
+                setPicked(a);
+                setWard("All");
+              }}
+            >
               {picked?.id === a.id ? "Selected" : "Find bed"}
             </button>
           </li>

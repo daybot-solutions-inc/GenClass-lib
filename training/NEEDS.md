@@ -140,10 +140,10 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
   sim/SEPARABILITY.md; 46 features, 115 domains; held-out lists unchanged: TEST_DOMAINS, family hash,
   TEST_PATTERNS, TEST_FEATURES):**
   - **gold** `train:/data/sim-out/v2-gold/` — 10,423,855 rows (train 7,560,367 / dev 317,732 / test 2,545,756), 23 gz
-    shards + `manifest.json`, 44 GB; seeds 11e9 + NN·1e8 (NN = node). Raw per-future costs in `meta.cost_futures`;
+    shards + `manifest.json`, 5.0 GB gz; seeds 11e9 + NN·1e8 (NN = node). Raw per-future costs in `meta.cost_futures`;
     S1 rule in `meta.diagnosis_s1`.
   - **unlabeled** `train:/data/sim-out/v2-unl/` — 51,272,078 rows (train 37,243,384 / dev 1,533,254 / test
-    12,495,440), 104 gz shards + `manifest.json`; seeds 16e9 + NN·1e8.
+    12,495,440), 104 gz shards + `manifest.json`, 16 GB gz; seeds 16e9 + NN·1e8.
   - Throughput: gold ≈ 278 rows/s per F80 (20 nodes ≈ 5.5k rows/s, 31 min); unlabeled ≈ 21k rows/s per F80
     (2 min). Global dedupe test-first dropped < 0.001 %.
   - On-policy: waits for TRAIN's first v2 export (`--on-policy <dir>`).

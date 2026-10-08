@@ -5,7 +5,7 @@ const items: [string, string, number][] = [
   ["Insulated bottle", "BTL-012", 35], ["Fleece hoodie", "FLC-118", 79], ["Headlamp", "LMP-007", 45], ["Hiking poles", "POL-090", 110],
 ];
 const customers = ["J. Ortiz", "M. Chen", "A. Kowalski", "S. Patel", "R. Haddad", "L. Svensson"];
-const statuses = ["awaiting", "awaiting", "received", "awaiting", "inspected", "received", "awaiting", "received", "refunded", "awaiting", "received", "awaiting", "inspected", "awaiting", "received", "awaiting"];
+const statuses = ["awaiting", "received", "inspected", "awaiting", "received", "inspected", "awaiting", "received", "refunded", "awaiting", "received", "inspected", "inspected", "awaiting", "received", "awaiting"];
 const rmas = statuses.map((status, i) => {
   const [item, sku, price] = items[i % items.length]!;
   return { id: 2600 + i, rma: `RMA-${1040 + i}`, customer: customers[i % 6], item, sku, price, reason: ["too small", "defective", "changed mind", "wrong item"][i % 4], status, condition: status === "inspected" || status === "refunded" ? ["new", "opened"][i % 2] : "" };

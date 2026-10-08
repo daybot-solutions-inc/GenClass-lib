@@ -100,6 +100,10 @@ The runtime decides through a trained local model; nothing here is hardcoded per
 
 ## Known risks
 
+- **Stall detection for requests with no latency history** (realapps wave 4): a hung non-GET request with no
+  baseline produced zero decisions, because `stall` needs at least 5 latency samples. Consider a generic
+  no-baseline fallback (e.g. a long absolute timeout) as an additional trigger condition. This is not a format change.
+
 - **Single-thread WASM speed**: hold budgets adapt and late revert covers slow decisions, but slow devices see
   more fail-open decisions.
 - **Training-label noise**: costs come from a few sampled futures; benign request rows are the softest
