@@ -8,12 +8,13 @@
     "genclass-sim": "./dist/gen.js"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && npm run build:model-host",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "gen": "node dist/gen.js",
     "sample": "node dist/gen.js --sample",
-    "build:runtime-core": "cd ../packages/runtime && tsup src/index.ts --no-config --format esm --target es2022 --platform neutral --out-dir dist --external onnxruntime-web --external onnxruntime-web/webgpu --sourcemap"
+    "build:runtime-core": "cd ../packages/runtime && tsup src/index.ts --no-config --format esm --target es2022 --platform neutral --out-dir dist --external onnxruntime-web --external onnxruntime-web/webgpu --sourcemap",
+    "build:model-host": "cd ../packages/runtime && tsup src/model/host.ts --no-config --format esm --target es2022 --platform neutral --out-dir ../../sim/dist/model-host --external onnxruntime-web --external onnxruntime-web/wasm --external onnxruntime-web/webgpu"
   },
   "dependencies": {
     "@genclass/runtime": "*"

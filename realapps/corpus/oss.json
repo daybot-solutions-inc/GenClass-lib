@@ -1,0 +1,6 @@
+[
+  {"name": "oss-react-redux-conduit", "repo": "gothinkster/react-redux-realworld-example-app", "commit": "ee72eba4056392c95a27bc48d385d3f54ba38a18", "license": "MIT", "stack": "React 16, Redux 3, react-router-redux, superagent (XHR)", "build": "esbuild", "deps": "prod"},
+  {"name": "oss-rtk-conduit", "repo": "khaledosman/react-redux-realworld-example-app", "commit": "53b0b4c0b8c371053a8d082ff9a42bfae68f3755", "license": "MIT", "stack": "React 18, Redux Toolkit 1.9, react-router 6, fetch", "build": "esbuild", "deps": "prod"},
+  {"name": "oss-vue3-conduit", "repo": "mutoe/vue3-realworld-example-app", "commit": "741c215ef0f674f90fcb03c5493a1b3a3a7f1b03", "license": "MIT", "stack": "Vue 3.5 SFC, Pinia 3, vue-router, generated fetch client", "build": "vite-vue", "deps": "prod+vite"},
+  {"name": "oss-solid-conduit", "repo": "solidjs/solid-realworld", "commit": "f6e77ecd652bf32f0dc9238f291313fd1af7e98b", "license": "MIT", "stack": "SolidJS 1.x (JSX via babel-preset-solid), solid-js/store, fetch", "build": "vite-solid", "deps": "prod+vite"}
+]

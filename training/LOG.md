@@ -186,3 +186,24 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
   `meta.json` says `final: true` (SIM eval with dev-fitted temperatures → export with them → serve the tar on :8801);
   on the train VM `pull_on_train.sh` pulls each export into `~/gcl/train-out/final1/{r32,r17}/`, checks sha256 and runs
   the onnxruntime-web/node check. c01 deallocated 00:12.
+
+### 00:20–00:30 Scaled-program mandate; PLAN-v1.md; probes
+- New mandate (user via lead): scale data massively (SIM ≥ 10M gold + ≥ 50M unlabeled + on-policy; REAL corpus),
+  teacher → students distillation, DAgger. Plan written: `training/PLAN-v1.md`; node claims/data asks in NEEDS 10–12.
+- c01 restarted 00:24 as workbench: pruned `ettin-encoder-68m` and `-150m` MIT bases to the 16k vocabulary
+  (`models/base/ettin-{68m,150m}-v16k`); `label_teacher.py` written and tested (R17 labels 64 SIM rows, 11.5k tok/s
+  on 16 threads).
+- T150 throughput probe (c01, 8 ranks × 10 threads, 2048-token rows): ≈ 9.4k tok/s per node (2× my estimate),
+  16.5 GB RSS per rank.
+
+### 00:40–01:13 Backstop disabled, quota 2,048; cluster expanded to 23 c-nodes; teacher started
+- Lead: the 03:00 auto-shutdown schedules are Disabled (user OK); quota raised to 2,048 vCPU; TRAIN owns expansion.
+- Created (`training/cluster_expand.sh`, one az call at a time, PPG ok, DevTestLab schedule **Disabled**):
+  c12–c15 F80ams_v7 (629 GB RAM), c16–c19 F80amds_v7, c20–c23 F80ads_v7. Initialised in ≈ 1 min each from a node kit
+  served by c10 (`node_init.sh`: cloned venv torch 2.14.1 / transformers 5.18, ettin bases, TRAIN data) + `node.sh sync`.
+- Probes: R68 (ettin-68m) ≈ 19k tok/s per node; T150 ≈ 9.4k tok/s per node.
+- **Teacher `t150-g1`** launched 01:09 on c12–c23 (12 nodes × 8 ranks × 10 threads): ettin-150m MIT base, pruned
+  vocab, fresh heads, SIM phase A + 10% `cur4`, 2 passes (≈ 940M tokens), lr 2e-4 / heads 1e-3: ≈ 106k tok/s,
+  ETA ≈ 03:40.
+- Cost so far ≈ $330 (c01 ≈ $65; c02–c11 ≈ 41 node-hours ≈ $225; c12–c23 ≈ 3 node-hours ≈ $20 incl. setup). Running
+  burn now: 22 nodes ≈ $135/h.

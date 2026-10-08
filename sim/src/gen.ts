@@ -28,10 +28,13 @@ interface Args {
   chunk: number;
   /** Only merge existing parts into train/dev/test.jsonl. */
   mergeOnly: boolean;
+  /** Row type: gold (counterfactual labels) or unlabeled (base runs only). */
+  mode: "gold" | "unlabeled" | "onpolicy";
+  modelDir: string;
 }
 
 function parse(argv: string[]): Args {
-  const a: Args = { rows: 1000, out: "sim/out/run", seed: 1, workers: 4, maxPoints: 6, testKeep: 0.33, explore: 1, ask: true, fake: false, sample: false, parts: false, chunk: 100, mergeOnly: false };
+  const a: Args = { rows: 1000, out: "sim/out/run", seed: 1, workers: 4, maxPoints: 6, testKeep: 0.33, explore: 1, ask: true, fake: false, sample: false, parts: false, chunk: 100, mergeOnly: false, mode: "gold", modelDir: "" };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     const v = argv[i + 1];
@@ -49,6 +52,8 @@ function parse(argv: string[]): Args {
       case "--parts": a.parts = true; break;
       case "--chunk": a.chunk = Number(v); i++; break;
       case "--merge-only": a.parts = true; a.mergeOnly = true; break;
+      case "--unlabeled": a.mode = "unlabeled"; break;
+      case "--on-policy": a.mode = "onpolicy"; a.modelDir = String(v); i++; break;
       default: throw new Error(`unknown argument ${k}`);
     }
   }
@@ -151,7 +156,7 @@ async function main(): Promise<void> {
     };
     for (let i = 0; i < a.workers; i++) {
       const w = new Worker(join(here, "worker.js"), {
-        workerData: { id: i, out, fake: a.fake, maxPoints: a.maxPoints, askRows: a.ask, testKeep: a.sample ? 1 : a.testKeep, exploreScale: a.explore },
+        workerData: { id: i, out, fake: a.fake, maxPoints: a.maxPoints, askRows: a.ask, testKeep: a.sample ? 1 : a.testKeep, exploreScale: a.explore, mode: a.mode, modelDir: a.modelDir },
       });
       live++;
       workers.push(w);

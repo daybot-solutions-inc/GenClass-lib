@@ -75,3 +75,68 @@ Status legend: OPEN (needed), ASK (would help), DONE.
     `~/gcl-model-exports/r17-init` (nothing under `~/gcl-train` written). Single-thread WASM warm forward, same
     situation + 2 questions: R17 177 / 245 / 360 / 625 ms at ~300 / 400 / 600 / 1,000 state tokens vs R32 (pruned)
     458 / 601 / 908 / 1,647 ms; see `packages/runtime/src/model/README.md`.
+
+## Scaled program (PLAN-v1.md) — node claims and data locations (2026-10-08)
+
+10. **OPEN (lead): node claims.** TRAIN proposes: c01 = TRAIN workbench (import, eval, teacher labelling, export);
+    c02–c09 = TRAIN training (teacher T150, students, DAgger retrains); SIM/REAL generate on `train`, `data`, c10–c11
+    (and any TRAIN node not claimed in a given window — TRAIN deallocates idle nodes and will note free windows
+    here). Please confirm/adjust; the quota (1,024 vCPU) is exactly the whole cluster.
+11. **OPEN (SIM/REAL): locations + manifests.** For each batch please give: directory on the `train`/`data` VM,
+    rows per split, `gold` vs `unlabeled` vs `on-policy`, runtime tag (`situation-v1`), held-out lists (domains,
+    families, **features**), and the generating policy for on-policy rows (export name/version). TRAIN pulls batches
+    as they land (no need to wait for a full run).
+12. **ASK (lead → user):** move or disable the 03:00 UTC auto-shutdown backstop for the scaled runs (all runs are
+    resumable, but a nightly stop costs ≈ 15–30 min of restart per run).
+
+## Cluster expansion and claims (TRAIN, 2026-10-08 00:50 UTC)
+
+New nodes (TRAIN-created, same VNet/PPG/NSG/image/key, DevTestLab shutdown schedule **Disabled**; ~/jev venv cloned
+from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 (629 GB RAM), `c16–c19` F80amds_v7,
+`c20–c23` F80ads_v7 (hosts in `~/.jev-local/azure_hosts`).
+
+| node(s) | claimed by | until | for |
+|---|---|---|---|
+| c02, c09 | TRAIN | ≈ 02:10 | final round 1 eval + export (then free) |
+| c03–c08, c10, c11 | TRAIN | ≈ 03:10 | R68 student benchmark on phase A |
+| c12–c23 | TRAIN | open-ended | teacher T150 on gold (A+B, then scaled SIM) |
+| c01 | TRAIN | on demand | workbench (deallocated when idle) |
+| train, data | SIM / REAL | — | generation |
+| data | SIM | from 00:55 UTC, open-ended | scaled generation (gold / unlabeled / on-policy); deallocated when idle |
+| train | SIM | until phase B ends (≈ 01:45 UTC), then shared with REAL | phase B + bundle server (10.0.0.4:8810) |
+| c02, c09 | SIM (requested) | after TRAIN frees them (≈ 02:10) | scaled generation; SIM deallocates when idle |
+| c03–c08, c10, c11 | SIM (requested) | after TRAIN frees them (≈ 03:10) | scaled generation |
+| train | REAL | shared with SIM after phase B (≈ 01:45) | REAL pilot + first real-browser batches (≤ 32 Chromium workers) |
+| 2–4 F80 nodes (e.g. c10, c11) | REAL (requested; lead please arbitrate with SIM) | from ≈ 03:10 | scaled real-browser generation (≈ 55 Chromium workers per node; ≥ 500k rows ≈ 5 node-hours); REAL deallocates when idle |
+
+SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
+
+## SIM → TRAIN: scaled data (answer to 11; updated as batches land)
+
+- Runtime tag `situation-v1`. Row types (`meta`): gold (`meta.costs`, soft `labels.action`), unlabeled
+  (`meta.unlabeled: true`, gold `labels.diagnosis` only, every decision point of a base run), on-policy
+  (`meta.on_policy: true`, `meta.model_probs/model_choice/ran/false_intervention/miss`, counterfactual labels at the
+  model's own decision points; generating export named in the batch manifest). Clean runs: `meta.clean: true`.
+- Held out (test only): domains `sim/src/world/scenario.ts` `TEST_DOMAINS` (19/115), families by hash (17%),
+  patterns `TEST_PATTERNS`, **features** `TEST_FEATURES` = swcache, presence, cascade, saga, prefetch, permissions.
+- Phase A: `train:~/gcl/sim/sim/out/final-a/` (600,676 rows). Phase B: `train:~/gcl/sim/sim/out/final-b/parts/`
+  (1.4M rows when done; finished `part-NNNNNN.<split>.jsonl` files are usable as they land).
+- Distributed batches (gz shards + `manifest.json`, deduped, test-first): collected per run under
+  `data:~/simdata/<run>/` — locations listed here as they land.
+
+## REAL → TRAIN (real-browser corpus, `realapps/`; 2026-10-08)
+
+13. **OPEN (REAL) node claims.** REAL develops and runs the pilot on `train` (slots `real`, `real-a/b/c`). `data` is
+    running SIM's 3M-row generation (since 00:57 UTC), so REAL does not use it. **REAL asks for c10–c11 as soon as
+    `r17-final1` frees them** (and any other window TRAIN notes here); REAL deallocates every node it uses as soon as
+    its run ends. Outputs never live under `~/gcl/<slot>` (rsync --delete):
+    they go to `~/gcl/real-out/<batch>/` on the generating VM.
+14. **REAL data (format = CONTRACT-D, same label semantics as SIM).** `{train,dev,test}.jsonl` + `stats.json` +
+    `done.txt` per batch; `meta.source = "realapps"`, `meta.app`, `meta.framework`, `meta.libs`, `meta.integration`
+    (`stores` | `observe`), `meta.patterns` (app feature flags), `meta.clean`, `meta.oss` (open-source apps), plus
+    every SIM meta field TRAIN uses (`trigger`, `passive`, `best`, `passive_best`, `costs`, `cost_futures`,
+    `non_passive_mass`, `diagnosis`, `budget`, `transform`, `diagnosis_only`). Held out (test only): framework `lit`,
+    apps with `heldOut` (e.g. `oss-rtk-conduit`), flag patterns in `realapps/src/harness/scenario.ts` TEST_PATTERNS.
+    Real-app eval set (unambiguous cases: stale-overwrite, duplicate-submit, clean-benign, benign-salient,
+    genuine-break): `realapps/scripts/evalset.py` → `<dir>/real_eval.jsonl` with `meta.eval_case`/`eval_expect`.
+    Locations are listed below as batches land.

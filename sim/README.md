@@ -204,6 +204,60 @@ cost = 1.0 · ∫ D(t) dt                                  t ∈ [t_k, t_k+10 s]
   50% of rows unchanged; otherwise action options are shuffled (p 0.5), and with p 0.12 one non-passive,
   non-best action is dropped (as with `policy.deny`) and the soft label renormalised.
 
+## Row types, scale and the cluster (round 2)
+
+| type | CLI | what | cost | `meta` |
+|---|---|---|---|---|
+| gold | `gen.js` (default) | Counterfactual action labels (K = 3 futures), gold diagnosis, ask rows | ~4.4 rows/s per worker | `costs`, `cost_futures`, `se`, `non_passive_mass`, `passive`, ... |
+| unlabeled | `--unlabeled` | Base run only: every decision point (≤ 40 per trajectory) with state/questions and the gold diagnosis, no action label; ask rows | ~150 rows/s per worker (~13k rows/s per F80) | `unlabeled: true`, `ran`, `actions` |
+| on-policy | `--on-policy <model dir>` | The model decides through the runtime's production gate (heal mode, default thresholds, diagnosis gate); points where it acted or stayed passive on a problem are counterfactual-labelled (DAgger) | ~0.1 rows/s per worker (WASM inference) | `on_policy: true`, `model_probs`, `model_choice`, `model_diagnosis`, `ran`, `false_intervention`, `miss` |
+
+On-policy mode loads the runtime's own model host (MODEL's `src/model/host.ts`, built unmodified into
+`sim/dist/model-host` by `npm run build:model-host`) inline in Node on onnxruntime-web WASM. A custom `fetch` serves
+the export directory and the ORT wasm from disk. Real inference time is held out of virtual time (`loop.hold`). The
+answer arrives after the scenario's virtual model latency, so runs stay deterministic. Replays force what the gate
+actually ran at every earlier decision. Past decisions do not render in situations, so prefixes are byte-identical
+(checked).
+
+Every row also has `meta.program_family`, `meta.passive`, `meta.clean` (5% clean runs: calm network, no failures,
+no accidental clicks, correct guards; any non-passive answer there is a false positive), `meta.persona` and
+`meta.chaos`.
+
+**Cluster** (`sim/scripts/cluster/`):
+1. `DIST=sim/dist bash sim/scripts/cluster/bundle.sh` on the train VM builds `~/xfer-sim/simbundle.tgz` (≈ 100 MB:
+   Node 22, runtime dist, sim dist + model host, needed node_modules) and serves it on `10.0.0.4:8810`.
+2. On the Mac: `orchestrate.sh start data c02 …` (one `az vm start` at a time, with timeouts), then
+   `orchestrate.sh run RUN gold|unlabeled|onpolicy:<dir> ROWS_PER_NODE data c02 …`. Each node downloads the bundle,
+   runs resumable parts with a disjoint seed range (node cNN: base + NN·10⁸; gold 10⁹, unlabeled 3·10⁹, on-policy
+   5·10⁹; `data` = 12) and serves `~/simgen/out` on `<private ip>:8811`. `orchestrate.sh status RUN …` shows
+   progress; `orchestrate.sh run …` again resumes after an interruption.
+3. On the collector (`data`: 406 GB disk): `python3 collect.py RUN ~/simdata/RUN <node private IPs…>` pulls finished
+   parts (re-runnable while nodes generate), dedupes globally over sha1(state + questions) with test first (no
+   leakage), and writes `{train,dev,test}-NNNNN.jsonl.gz` (500k rows each) plus `manifest.json`. It processes about
+   19k rows/s; gz is about 290 bytes per row.
+4. `orchestrate.sh stop …` deallocates nodes one at a time. With no shutdown backstop, every node is deallocated as
+   soon as it is idle.
+
+**Program space, round 2.**
+- 115 domains (`vocab.ts` + `vocab2.ts`).
+- 46 feature combinators: the 15 above plus 31 new ones. These cover cursor pagination, upload queues, offline
+  queues, websocket reconnect, undo toasts, drag-reorder, query caches, GraphQL batching, sagas, wizards,
+  ETag/If-Match, presence, badges, facets, master–detail, rate limits with Retry-After, CDN and service-worker
+  caches, countdowns with clock skew, money fields, permission changes, feature flags, schema drift, clock skew,
+  long tasks, cascading selects, export jobs, payments, inventory, prefetch and multi-tab sync.
+- Personas: casual, power, mobile (fat fingers, slow radio), keyboard (Enter/Space activation), novice. Tab
+  switches fire blur/visibilitychange/focus events.
+- Chaos regimes: calm, normal, flaky, degraded, storm, mobile (offline windows, socket drops, high variance), peak
+  (capacity and rate limits), deploy (502 burst, schema bugs, replica lag).
+- Platform: a global EventTarget (online/offline/focus/visibility/storage), `navigator.onLine`, `localStorage`
+  (storage observer on) with other-tab writes, BroadcastChannel, socket drops, long tasks (`loop.advance`) and
+  client clock skew.
+
+**Held-out plan (generalisation to unseen app patterns).** Any program using one of `TEST_FEATURES` (swcache,
+presence, cascade, saga, prefetch, permissions: 6/31 new features) is test only. So are 19/115 domains, 17% of
+families by hash, and the `TEST_PATTERNS` variants. Report train-vs-test per feature (`meta.features`).
+`SIM_FEATURE_HOLDOUT=off` turns the feature hold-out off for a final train-on-everything model.
+
 ## Splits
 
 Splits are per trajectory, so all of a scenario's rows share one split (`src/world/scenario.ts`).

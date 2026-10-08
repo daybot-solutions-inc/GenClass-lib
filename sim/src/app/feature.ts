@@ -35,6 +35,8 @@ export interface WorldCtx {
   server: VirtualServer;
   publish(topic: string, msg: unknown): void;
   now(): number;
+  /** Another tab of the same app: writes shared localStorage (this tab gets a `storage` event) or broadcasts. */
+  otherTab: { setItem(key: string, value: string): void; removeItem(key: string): void; broadcast(channel: string, msg: unknown): void };
 }
 
 export interface ExternalEvent {
@@ -66,6 +68,8 @@ export const rel = {
 };
 
 export interface FeatureCtx {
+  /** Clean run: pick correct guards only (no injected defects). */
+  clean?: boolean;
   rng: Rng;
   domain: Domain;
   entity: Entity;
@@ -94,11 +98,22 @@ export interface FeatureDef<S> {
   /** External events (other users, data drift). `steps` is the user's session, for correlated (conflicting) edits. */
   external?(spec: S, rng: Rng, win: { t0: number; t1: number }, steps: UserStep[]): ExternalEvent[];
   relations?(spec: S): Relation[];
+  /**
+   * Environment conditions this feature brings (merged into the scenario): device offline windows, server socket
+   * drops, client clock skew. Times are virtual ms within the session window.
+   */
+  env?(spec: S, rng: Rng, win: { t0: number; t1: number }): { offline?: { start: number; end: number }[]; socketDrops?: { start: number; end: number }[]; skewMs?: number };
 }
 
 // ------------------------------------------------------------------------------------------------ user model
 
 export interface Persona {
+  /** casual | power | mobile | keyboard | novice */
+  kind: string;
+  /** Keyboard user: activates controls with Enter/Space instead of clicks. */
+  keyboard: boolean;
+  /** Tab switches per minute (blur/focus pairs). */
+  tabSwitchPerMin: number;
   /** Median ms between keystrokes. */
   keyMs: number;
   keySigma: number;
@@ -114,7 +129,11 @@ export interface Persona {
 }
 
 export function randomPersona(rng: Rng): Persona {
-  return {
+  const kind = rng.weighted([["casual", 5], ["power", 2], ["mobile", 2], ["keyboard", 1], ["novice", 1]] as const);
+  const base: Persona = {
+    kind,
+    keyboard: kind === "keyboard",
+    tabSwitchPerMin: rng.float(0, 1.5),
     keyMs: rng.float(70, 210),
     keySigma: rng.float(0.25, 0.6),
     thinkMs: rng.float(500, 2600),
@@ -123,6 +142,18 @@ export function randomPersona(rng: Rng): Persona {
     impatienceMs: rng.float(900, 3500),
     typoP: rng.float(0, 0.25),
   };
+  switch (kind) {
+    case "power":
+      return { ...base, keyMs: rng.float(45, 95), keySigma: rng.float(0.2, 0.4), thinkMs: rng.float(200, 700), doubleClickP: rng.float(0, 0.05), impatientP: rng.float(0.2, 0.6), impatienceMs: rng.float(500, 1500), tabSwitchPerMin: rng.float(0.5, 3) };
+    case "mobile":
+      return { ...base, keyMs: rng.float(150, 320), keySigma: rng.float(0.4, 0.8), thinkMs: rng.float(900, 3500), doubleClickP: rng.float(0.08, 0.35), impatientP: rng.float(0.3, 0.9), typoP: rng.float(0.1, 0.4), tabSwitchPerMin: rng.float(0.5, 2.5) };
+    case "keyboard":
+      return { ...base, keyMs: rng.float(55, 130), doubleClickP: rng.float(0, 0.04), tabSwitchPerMin: rng.float(0, 1) };
+    case "novice":
+      return { ...base, keyMs: rng.float(200, 450), thinkMs: rng.float(2000, 6000), doubleClickP: rng.float(0.15, 0.5), impatientP: rng.float(0.5, 0.95), impatienceMs: rng.float(700, 2000), typoP: rng.float(0.2, 0.5) };
+    default:
+      return base;
+  }
 }
 
 export class UserModel {
@@ -176,17 +207,19 @@ export class UserModel {
     opts: { args?: Record<string, unknown>; pendingCond?: string; kind?: UiKind; value?: string; doubleP?: number } = {},
   ): { steps: UserStep[]; t: number } {
     const mode = intent.mode ?? "accumulate";
+    const kbd = this.p.keyboard && (opts.kind ?? "click") === "click";
     const base: UserStep = {
       t,
       feature: this.feature,
       action,
-      ui: { kind: opts.kind ?? "click", target },
+      ui: kbd ? { kind: "key", target, value: this.rng.bool(0.8) ? "Enter" : "Space" } : { kind: opts.kind ?? "click", target },
       intent: { kind: intent.kind, key: intent.key, mode, accidental: false },
     };
     if (opts.value !== undefined) base.ui.value = opts.value;
     if (opts.args) base.args = opts.args;
     const steps: UserStep[] = [base];
-    const dp = opts.doubleP ?? this.p.doubleClickP;
+    // A persona without accidental clicks (clean runs) never double-clicks, whatever the feature asks for.
+    const dp = this.p.doubleClickP === 0 ? 0 : opts.doubleP ?? this.p.doubleClickP;
     if (this.rng.next() < dp) {
       const d: UserStep = { ...base, t: t + this.rng.float(45, 190), intent: { ...base.intent, accidental: true }, repeatOf: -1 };
       steps.push(d);

@@ -30,6 +30,8 @@ export interface OpInit {
   attempt?: number;
   retryOf?: number;
   dupOf?: number;
+  /** Sim knowledge: this op's effect is anomalous ("storm", "partial", "shape", ...). */
+  anomaly?: string;
   classify?: () => string | undefined;
 }
 
@@ -63,6 +65,7 @@ export class Kit {
     if (p.attempt !== undefined) o.attempt = p.attempt;
     if (p.retryOf !== undefined) o.retryOf = p.retryOf;
     if (p.dupOf !== undefined) o.dupOf = p.dupOf;
+    if (p.anomaly !== undefined) o.anomaly = p.anomaly;
     if (p.classify) o.classify = p.classify;
     return this.env.know.beginOp(o);
   }

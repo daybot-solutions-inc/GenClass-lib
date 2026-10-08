@@ -44,7 +44,9 @@ scripts/vm.sh get demos demos/screenshots demos/      # then look at them
 `e2e/eval.ts` options: `--fast`, `--n 30` (chaos trials per mode), `--clean 15`, `--demos search,editor`,
 `--modes off,guard,heal`, `--workers 8`, `--model <url>|cdn`, `--model-dir <dir>`, `--tag <name>` (write
 `results-<name>.*` instead of replacing `results.*`), `--budget <ms>` (experiment: `policy.holdBudgetMs`),
-`--no-shots`, `--shots-only`, `--no-trials-ui`, `--seed-base 1000`. `vm-eval.sh` takes the model from
+`--kinds chaos,clean`, `--trace` (record every proposed/applied write and decision per trial into
+`e2e/.out/traces*.json`; `node --experimental-strip-types e2e/trace-report.ts <traces.json> [offB.json]` prints the
+analysis), `--no-shots`, `--shots-only`, `--no-trials-ui`, `--seed-base 1000`. `vm-eval.sh` takes the model from
 `GENCLASS_MODEL_FROM` / `GENCLASS_MODEL_DIR` / `GENCLASS_MODEL_URL` (see the script header) and refuses to measure
 when `packages/runtime` does not build.
 
@@ -111,36 +113,39 @@ user saw against the server's truth:
 | board | any card in the wrong column once everything settles, the board disagreeing with the server for > 2 s (1.5 s window), or a card stuck "syncing" | last move → board equals server |
 | decisions | any decision differs from the ground truth recomputed at the moment it was asked: backup now only if the user has not typed for 2.5 s, no save is in flight, no request failed in 8 s and the median latency is < 600 ms; quality thumbnails at ≥ 25% failures, reduced at median ≥ 450 ms, else full; "would leaving lose work" = editor text ≠ server copy or a save in flight; connection health level within ±1 of the level from recent failures and latency | time to answer a question |
 
-## Latest results (v0.1 model, 2026-10-07)
+## Latest results (frozen runtime batch 3, v0.1 model, 2026-10-08)
 
 810 trials on the `train` VM: 6 demos × Off/Guard/Heal × (30 chaos + 15 clean), Playwright with real input, the
-v0.1 GenClass model (q8, WASM, pages cross-origin isolated). Full tables: [`results.md`](results.md).
+v0.1 GenClass model (q8, WASM, pages cross-origin isolated), common random numbers in the mock server. Full tables:
+[`results.md`](results.md).
 
-| demo | bug rate Off | Guard | Heal | false interventions (clean) Guard / Heal | user latency p50 (clean) Off / Guard | model decision p50 |
+| demo | bug rate Off | Guard | Heal | false interventions (clean) Guard / Heal | user latency p50 (clean) Off / Guard / Heal | model decision p50 |
 |---|---|---|---|---|---|---|
-| search | 13% (4/30) | 13% | 13% | 0 / 0 | 14 ms / 125 ms | 481 ms |
-| editor | 83% (25/30) | 83% | 87% | 0 / 0 | 779 ms / 775 ms | 333 ms |
-| checkout | 83% (25/30) | 90% | 90% | 0 / 0 | 205 ms / 204 ms | 363 ms |
-| status | 100% (30/30) | 93% | 100% | 0 / 0 | 1.33 s / 1.26 s | 1.20 s |
-| board | 50% (15/30) | 77% | 73% | 0 / 0 | 19 ms / 31 ms | 346 ms |
-| decisions | 83% (25/30) | 90% | 93% | 0 / 0 | – | 308 ms |
+| search | 23% (7/30) | 23% | 27% | 0 / 0 | 10 ms / 234 ms / 335 ms | 805 ms |
+| editor | 83% (25/30) | 90% | 87% | 0 / 0 | 784 / 783 / 783 ms | 505 ms |
+| checkout | 70% (21/30) | 77% | 83% | 0 / 0 | 207 / 211 / 215 ms | 581 ms |
+| status | 100% (30/30) | 100% | 100% | 0 / 0 | 1.32 s / 1.66 s / 1.54 s | 1.75 s |
+| board | 57% (17/30) | 63% | 77% | 0 / 0 | 10 / 27 / 26 ms | 1.10 s |
+| decisions | 83% (25/30) | 97% | 97% | 0 / 0 | – | 413 ms |
 
 What this says, plainly:
 
-- The apps' latent bugs are real and only show under chaos: with GenClass Off every demo is bug-free on clean runs
-  and fails often under chaos (lost edits, duplicate orders and wrong charges, false alarms and retry storms, a board
-  that drifts from the server, wrong default decisions).
+- The apps' latent bugs are real and only show under chaos: with GenClass Off every demo is bug-free on clean runs.
 - With the v0.1 model (a general classifier, not trained for runtime decisions) GenClass did not prevent these bugs.
-  It took no false interventions on clean runs, but mostly because its decisions did not clear the confidence
-  thresholds (958 times) or arrived after the 300 ms hold budget (663 times); Guard executed nothing. Heal ran 92
-  actions (30 retries, 62 blocks, 60 of them of a heartbeat request) and did not lower any bug rate. The one
-  improvement (status under Guard, 100% → 93%) came without any executed action: requests held while the model
-  thinks space out the app's immediate retries, so fewer of them land inside an outage.
-- Holding writes has costs even when nothing is executed: the search list appears ~110 ms later on clean runs, and
-  on the board Guard turned 9 clean seeds into bugs (likely a held write applied after a newer user write; see
-  [`NEEDS.md`](NEEDS.md) §1). The default redaction also hides the board's `cards` from the model (§2).
-- Developer questions (`ask`/`decide`) are answered by the model in ~0.3 s; accuracy under chaos went from 0.42 (app
-  defaults) to 0.62, but on clean runs from 1.00 to 0.27: v0.1 answers as if something were always wrong.
+  Guard executed no action at all (the model's non-passive mass never reached 0.9); Heal executed 156 actions in
+  chaos runs (mostly `block`) and lowered no bug rate. No demo had a false intervention on a clean run.
+- Holding writes makes correct behaviour worse even with zero actions: a held write can land after the user's newer
+  write and overwrite it. Traced: board cards snap back (jump-backs 3.1 → 4.8 per session), editor echoes overwrite
+  newer keystrokes (37 times in 30 sessions), checkout confirmations set quantities back (24). See
+  [`NEEDS.md`](NEEDS.md) §1 for the mechanism, traces and a suggested fix.
+- Holds also cost latency while the model is slow: the "auto" hold budget reaches 800 ms, so on clean runs the search
+  list appears 10 → 234 ms later, and the status dashboard reacts 0.3 s later (§2).
+- Developer questions (`ask`/`decide`) are answered in ~0.4 s; accuracy under chaos went from 0.37 (app defaults) to
+  0.61, but on clean runs from 1.00 to 0.27.
+
+How these were checked: traced runs (`eval.ts --trace`) record every write GenClass saw proposed, when it really
+applied and the decision about it (`e2e/trace-report.ts` turns them into per-card timelines); an Off-vs-Off run of the
+same seeds bounds the noise of the paired comparison (1 flip in 30 board seeds).
 
 These are the numbers to beat with the runtime-specialist model. To re-run with it:
 
@@ -192,6 +197,8 @@ src/server/                       Service Worker mock server: core (sessions, ch
 src/demos/<demo>/                 app, scenario, oracle, styles, entry
 src/dev/runtime-shim/             development stand-in for @genclass/runtime
 e2e/eval.ts, e2e/serve.ts         headless evaluation and static server
+e2e/trace-report.ts               analysis of traced runs (holds, write order, paired timelines)
+src/shared/trace.ts, native.ts    trace hooks (investigations only); native timers so test code stays invisible to GenClass
 scripts/build.mjs                 site + Service Worker build
 scripts/fetch-model.sh            model download (runtime CLI, curl fallback)
 scripts/vm-eval.sh                full VM pipeline

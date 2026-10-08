@@ -14,6 +14,7 @@ families = collections.defaultdict(set)
 per_split_trigger = collections.defaultdict(collections.Counter)
 diag_only = collections.Counter()
 expl = collections.Counter()
+per_feat = collections.defaultdict(lambda: {"rows": 0, "passive": 0, "diag": collections.Counter(), "best": collections.Counter(), "split": collections.Counter()})
 sharp = collections.defaultdict(lambda: collections.Counter())
 fut = collections.Counter()
 budget_rows = collections.Counter()
@@ -47,10 +48,19 @@ for split in ("train", "dev", "test"):
             for k in m.get("kinds", []):
                 kinds[k] += 1
             continue
+        if m.get("unlabeled"):
+            diag_only[(t, "unlabeled:" + str(m.get("diagnosis")))] += 1
+            continue
         if m.get("diagnosis_only"):
             diag_only[(t, m.get("diagnosis"))] += 1
             continue
         joint[t][(m.get("diagnosis"), m["best"])] += 1
+        pf = per_feat[m.get("subject_feature") or "?"]
+        pf["rows"] += 1
+        pf["passive"] += 1 if m["passive_best"] else 0
+        pf["diag"][m.get("diagnosis")] += 1
+        pf["best"][m["best"]] += 1
+        pf["split"][split] += 1
         budget_pb[(b, t)][0] += 1
         budget_pb[(b, t)][1] += 1 if m["passive_best"] else 0
         dist = r["labels"]["action"]["dist"]
@@ -104,3 +114,8 @@ print("futures per labelled point", dict(fut))
 for b, c in sharp.items():
     n = c["rows"]
     print(f"label sharpness [{b}] rows={n} " + " ".join(f"{k}={v/n:.1%}" for k, v in c.items() if k != "rows"))
+print()
+print("per subject feature (gold decision rows): rows, passive-best, top diagnoses, top best actions, splits")
+for f, v in sorted(per_feat.items(), key=lambda x: -x[1]["rows"]):
+    n = v["rows"]
+    print(f"  {f:14s} {n:7d}  passive {v['passive']/n:5.1%}  diag {dict(v['diag'].most_common(4))}  best {dict(v['best'].most_common(3))}  {dict(v['split'])}")

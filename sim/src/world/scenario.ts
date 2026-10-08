@@ -5,7 +5,11 @@
 import { FEATURES, FEATURE_WEIGHTS } from "../app/features/index.js";
 import { randomPersona, UserModel, type ExternalEvent, type FeatureCtx, type Persona, type UserStep } from "../app/feature.js";
 import { Naming, cased } from "../app/naming.js";
-import { DOMAINS, type Domain } from "../app/vocab.js";
+import { DOMAINS as DOMAINS1, type Domain } from "../app/vocab.js";
+import { DOMAINS2 } from "../app/vocab2.js";
+
+/** 115 domains: the original 55 and 60 added in round 2. */
+export const DOMAINS: Domain[] = [...DOMAINS1, ...DOMAINS2];
 import type { Lat, NetProfile, Outage, OutageMode, ServerBug, SlowPeriod } from "../net/network.js";
 import { API_STYLES, type IdStyle } from "../net/server.js";
 import { hashAll, Rng } from "../rng.js";
@@ -20,7 +24,7 @@ export interface FeatureInst {
   pattern: string[];
 }
 
-export type Chaos = "calm" | "normal" | "flaky" | "degraded" | "storm";
+export type Chaos = "calm" | "normal" | "flaky" | "degraded" | "storm" | "mobile" | "peak" | "deploy";
 
 export interface Scenario {
   seed: number;
@@ -48,20 +52,36 @@ export interface Scenario {
   modelMs: number;
   /** Situation size in characters (runtime `situation.budget`): 3,200 WebGPU, 2,000 WASM ≥4 threads, 1,000 WASM 1 thread. */
   budget: number;
+  /** Client clock skew in ms (device clock wrong). */
+  skewMs?: number;
+  /** Tab switches: the page is hidden (blur) and shown again (focus). */
+  windowEvents?: { t: number; type: "blur" | "focus" }[];
+  /** Clean run: calm network, no failures, no accidental clicks (non-passive answers there are false positives). */
+  clean?: boolean;
 }
 
 // ------------------------------------------------------------------------------------------------- splits
 
-/** Held-out domains (test only): 10 of 55 = 18%. */
-export const TEST_DOMAINS = new Set(["weather", "legal", "pets", "auction", "farm", "permits", "music", "hotel", "payroll", "survey"]);
+/** Held-out domains (test only): 19 of 115 = 16.5% (10 original + 9 added in round 2). */
+export const TEST_DOMAINS = new Set([
+  "weather", "legal", "pets", "auction", "farm", "permits", "music", "hotel", "payroll", "survey",
+  "dental", "mining", "railways", "water", "elections", "admissions", "marina", "mlops", "genealogy",
+]);
 /** Held-out combinator patterns (test only). */
 export const TEST_PATTERNS = new Set(["search/guard:check", "settings/serialize", "toggle/pending-guard", "list/guard:abort", "cart/recompute:items-only-qty", "editor/echo:version-only", "poll/fail:throw"]);
 /** Family hold-out: families whose hash falls in the first 17% go to test. */
 export function familyHeldOut(family: string): boolean {
   return hashAll("family-split-v1", family) % 100 < 17;
 }
+/**
+ * Held-out feature kinds (test only), from the 31 combinators added in round 2: measures generalisation to app
+ * patterns never seen in training. `SIM_FEATURE_HOLDOUT=off` disables this (final train-on-everything runs).
+ */
+export const TEST_FEATURES = new Set(["swcache", "presence", "cascade", "saga", "prefetch", "permissions"]);
+const featureHoldout = () => (typeof process !== "undefined" ? process.env.SIM_FEATURE_HOLDOUT !== "off" : true);
 export function splitOf(s: { domain: string; family: string; patterns: string[] }): "train" | "dev" | "test" {
   if (TEST_DOMAINS.has(s.domain) || familyHeldOut(s.family) || s.patterns.some((p) => TEST_PATTERNS.has(p))) return "test";
+  if (featureHoldout() && s.family.split("+").some((k) => TEST_FEATURES.has(k))) return "test";
   return hashAll("dev-split-v1", s.family) % 100 < 3 ? "dev" : "train";
 }
 
@@ -117,7 +137,9 @@ function lat(rng: Rng, lo: number, hi: number, s0: number, s1: number): Lat {
   return { median: rng.float(lo, hi), sigma: rng.float(s0, s1) };
 }
 
-function makeNet(rng: Rng, chaos: Chaos, sigs: { sig: string; kind: string }[], warmup: number, tUser: number): NetProfile {
+function makeNet(rng: Rng, chaosIn: Chaos, sigs: { sig: string; kind: string }[], warmup: number, tUser: number): NetProfile {
+  // New regimes map onto the base ones plus their own conditions (added after the base profile below).
+  const chaos: Chaos = chaosIn === "mobile" ? "flaky" : chaosIn === "peak" ? "degraded" : chaosIn === "deploy" ? "normal" : chaosIn;
   const m = chaos === "calm" ? 0.5 : chaos === "normal" ? 1 : chaos === "flaky" ? 1.5 : 2;
   const P: NetProfile = {
     ideal: false,
@@ -149,7 +171,7 @@ function makeNet(rng: Rng, chaos: Chaos, sigs: { sig: string; kind: string }[], 
     const start = warmup + rng.float(0, Math.max(1, span - len * 0.5));
     return { start, end: start + len };
   };
-  const pickEps = (): string[] | "*" => (rng.bool(0.4) ? "*" : rng.sample(sigs.map((s) => s.sig), rng.int(1, Math.max(1, Math.min(3, sigs.length)))));
+  const pickEps = (): string[] | "*" => (rng.bool(0.4) || !sigs.length ? "*" : rng.sample(sigs.map((s) => s.sig), rng.int(1, Math.max(1, Math.min(3, sigs.length)))));
   if (chaos === "degraded" || chaos === "storm" || (chaos === "flaky" && rng.bool(0.4))) {
     const n = rng.int(1, 2);
     for (let i = 0; i < n; i++) {
@@ -165,11 +187,37 @@ function makeNet(rng: Rng, chaos: Chaos, sigs: { sig: string; kind: string }[], 
   if (chaos === "storm" || (chaos === "degraded" && rng.bool(0.4))) {
     P.capacity = { perSec: rng.int(4, 14), mode: rng.weighted([["503", 2], ["429", 2], ["latency", 1]] as const) };
   }
-  if (chaos !== "calm" && rng.bool(0.25)) {
+  if (chaos !== "calm" && sigs.length && rng.bool(0.25)) {
     const ep = rng.pick(sigs);
     P.rateLimits[ep.sig] = { perSec: rng.int(2, 6), retryAfter: rng.bool(0.6) };
   }
   if (chaos !== "calm" && rng.bool(0.15)) P.replicaLag = { ms: rng.int(300, 2500), p: rng.float(0.1, 0.5) };
+  const span2 = Math.max(1000, tUser - warmup);
+  const win2 = (minLen: number, maxLen: number) => {
+    const len = rng.float(minLen, maxLen);
+    const start = warmup + rng.float(0, Math.max(1, span2 - len * 0.5));
+    return { start, end: start + len };
+  };
+  if (chaosIn === "mobile") {
+    // Mobile: slow, high-variance radio, dead zones (offline), dropped sockets.
+    for (const k of Object.keys(P.byKind) as (keyof NetProfile["byKind"])[]) P.byKind[k] = { median: P.byKind[k].median * rng.float(1.5, 3), sigma: rng.float(0.6, 1.0) };
+    P.netErrP = Math.max(P.netErrP, rng.float(0.01, 0.05));
+    P.offline = [win2(1500, 8000), ...(rng.bool(0.4) ? [win2(1000, 4000)] : [])];
+    P.socketDrops = [win2(800, 5000)];
+  }
+  if (chaosIn === "peak") {
+    // Peak traffic: capacity limits, rate limits and slow periods everywhere.
+    P.capacity = { perSec: rng.int(3, 9), mode: rng.weighted([["503", 2], ["429", 2], ["latency", 2]] as const) };
+    for (const { sig } of rng.sample(sigs, Math.min(3, sigs.length))) P.rateLimits[sig] = { perSec: rng.int(1, 4), retryAfter: rng.bool(0.7) };
+    P.slow.push({ ...win2(3000, 15000), endpoints: "*", mul: rng.float(2, 8) });
+  }
+  if (chaosIn === "deploy") {
+    // A deploy goes out: brief 502s, schema/server bugs and stale replicas.
+    P.outages.push({ ...win2(800, 3000), endpoints: "*", mode: "502" });
+    const reads = sigs.filter((s) => s.kind === "read");
+    for (let i = 0; i < 2 && reads.length; i++) P.bugs.push({ ...win2(2000, 10000), endpoint: rng.pick(reads).sig, kind: rng.weighted([["drop-field", 2], ["null-field", 2], ["empty-list", 2], ["html", 1], ["stale-replica", 1]] as const), field: rng.pick(["total", "count", "name", "title", "price", "status", "items", "data", "amount"]) });
+    P.replicaLag = { ms: rng.int(500, 3000), p: rng.float(0.2, 0.6) };
+  }
   if (rng.bool(chaos === "calm" ? 0.05 : 0.18)) {
     const reads = sigs.filter((s) => s.kind === "read");
     if (reads.length) {
@@ -186,6 +234,8 @@ function makeNet(rng: Rng, chaos: Chaos, sigs: { sig: string; kind: string }[], 
 export interface BuildOptions {
   /** Force feature kinds (tests). */
   kinds?: string[];
+  /** Force a clean run (calm network, no failures, no accidental clicks, correct guards). */
+  clean?: boolean;
   chaos?: Chaos;
   duration?: number;
   domain?: string;
@@ -213,6 +263,7 @@ export function buildScenario(seed: number, opts: BuildOptions = {}): Scenario {
     }
     if (rk.bool(0.3)) kinds.push("benign");
   }
+  const clean = opts.clean ?? R.fork("clean").bool(0.05);
   const features: FeatureInst[] = [];
   kinds.forEach((kind, i) => {
     const def = FEATURES[kind];
@@ -222,7 +273,7 @@ export function buildScenario(seed: number, opts: BuildOptions = {}): Scenario {
     const id = `f${i}`;
     const route = `/${cased(rf.pick([entity.p, kind === "editor" ? "editor" : entity.p, rf.pick(["app", "home", "workspace"])]), "kebab")}`;
     naming.owner = id;
-    const ctx: FeatureCtx = { rng: rf.fork("make"), domain, entity, naming, api, id, route };
+    const ctx: FeatureCtx = { rng: rf.fork("make"), domain, entity, naming, api, id, route, clean };
     const spec = def.make(ctx);
     features.push({ kind, id, route, spec, pattern: def.pattern(spec).map((p) => `${kind}/${p}`) });
   });
@@ -235,12 +286,33 @@ export function buildScenario(seed: number, opts: BuildOptions = {}): Scenario {
   const warmup = tUser * rT.float(0.3, 0.6);
   const tEnd = tUser + rT.float(2500, 5000);
   // Chaos.
-  const chaos: Chaos = opts.chaos ?? R.fork("chaos").weighted([["calm", 2], ["normal", 3], ["flaky", 3], ["degraded", 3], ["storm", 1]] as const);
+  const persona0 = randomPersona(R.fork("persona"));
+  const chaos: Chaos = clean
+    ? "calm"
+    : opts.chaos ??
+      (persona0.kind === "mobile" && R.fork("mobile-net").bool(0.7)
+        ? "mobile"
+        : R.fork("chaos").weighted([["calm", 2], ["normal", 3], ["flaky", 3], ["degraded", 3], ["storm", 1], ["mobile", 1], ["peak", 1], ["deploy", 1]] as const));
   // Collect endpoint signatures by registering routes on a scratch server.
   const sigs = scratchSignatures(features, idStyle);
   const net = makeNet(R.fork("net"), chaos, sigs, warmup, tUser);
+  if (clean) {
+    Object.assign(net, { spikeP: 0, transientP: 0, netErrP: 0, outages: [], slow: [], bugs: [], rateLimits: {} });
+    delete net.capacity;
+    delete net.replicaLag;
+  }
+  // Feature-specific environment conditions (offline windows, socket drops, clock skew).
+  let skewMs = 0;
+  features.forEach((f, i) => {
+    const def = FEATURES[f.kind]!;
+    if (!def.env || clean) return; // clean runs: no offline windows, socket drops or clock skew
+    const e = def.env(f.spec, R.fork("feature-env", i), { t0: warmup, t1: tUser });
+    if (e.offline?.length) net.offline = [...(net.offline ?? []), ...e.offline];
+    if (e.socketDrops?.length) net.socketDrops = [...(net.socketDrops ?? []), ...e.socketDrops];
+    if (e.skewMs) skewMs = e.skewMs;
+  });
   // User session.
-  const persona = randomPersona(R.fork("persona"));
+  const persona = clean ? { ...persona0, doubleClickP: 0, impatientP: 0 } : persona0;
   const steps: UserStep[] = [];
   const external: ExternalEvent[] = [];
   features.forEach((f, i) => {
@@ -256,6 +328,15 @@ export function buildScenario(seed: number, opts: BuildOptions = {}): Scenario {
   });
   steps.sort((a, b) => a.t - b.t);
   external.sort((a, b) => a.t - b.t);
+  // Tab switches (blur, then focus 0.5-20 s later).
+  const rW = R.fork("window");
+  const windowEvents: { t: number; type: "blur" | "focus" }[] = [];
+  const nSwitch = Math.round((persona.tabSwitchPerMin * tUser) / 60000 * rW.float(0.5, 1.5));
+  for (let i = 0; i < nSwitch; i++) {
+    const t = rW.float(warmup * 0.5, tUser - 1000);
+    windowEvents.push({ t, type: "blur" }, { t: t + rW.float(500, 20000), type: "focus" });
+  }
+  windowEvents.sort((a, b) => a.t - b.t);
   const rA = R.fork("ask");
   const askTimes: number[] = [];
   const nAsk = rA.int(1, 3);
@@ -283,6 +364,9 @@ export function buildScenario(seed: number, opts: BuildOptions = {}): Scenario {
     actionWords: actionVocab(R.fork("action-vocab")),
     modelMs: R.fork("model").float(6, 25),
     budget: R.fork("budget").weighted([[3200, 40], [2000, 30], [1000, 30]] as const),
+    skewMs,
+    windowEvents,
+    clean,
   };
 }
 

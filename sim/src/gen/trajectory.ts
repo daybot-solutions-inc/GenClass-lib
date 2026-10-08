@@ -26,6 +26,16 @@ export interface GenOptions {
   futures?: number;
   /** Only run the extra futures when some non-passive action beats passive by > 0.05 in the first. Default true. */
   adaptive?: boolean;
+  /**
+   * "gold": counterfactual action labels (default). "unlabeled": base run only; every decision point becomes a row
+   * with its state/questions and the gold diagnosis (sim knowledge) but no action label (~10x cheaper), for teacher
+   * labelling and distillation.
+   */
+  mode?: "gold" | "unlabeled" | "onpolicy";
+  /** On-policy mode: the model (runtime model host) that decides in the base run. */
+  model?: import("../types.js").DecisionProvider;
+  /** Unlabeled mode: max decision rows per trajectory (default 40). */
+  maxUnlabeled?: number;
 }
 
 export interface PointStat {
@@ -75,6 +85,32 @@ function explorePolicy(scale: number, rngT: Rng): ExplorePolicy | undefined {
   };
 }
 
+/** On-policy: favour points where the model acted (false-intervention candidates) or stayed passive on a problem. */
+function pickOnPolicy(decs: DecisionRec[], max: number, rng: Rng): DecisionRec[] {
+  const cands = decs.filter((d) => d.actions.length >= 2);
+  const w = (d: DecisionRec) => {
+    const passive = PASSIVE[d.trigger] ?? d.actions[0];
+    if (d.ran && d.ran !== passive) return 4;
+    if (d.modelChoice && d.modelChoice !== passive) return 3;
+    if (d.diagnosis && d.diagnosis !== "expected") return 2;
+    return 1;
+  };
+  const chosen: DecisionRec[] = [];
+  const pool = cands.slice();
+  while (chosen.length < max && pool.length) {
+    const ws = pool.map(w);
+    let r = rng.next() * ws.reduce((a, b) => a + b, 0);
+    let i = 0;
+    for (; i < pool.length - 1; i++) {
+      r -= ws[i]!;
+      if (r < 0) break;
+    }
+    chosen.push(pool[i]!);
+    pool.splice(i, 1);
+  }
+  return chosen.sort((a, b) => a.k - b.k);
+}
+
 function pickPoints(decs: DecisionRec[], max: number, rng: Rng): DecisionRec[] {
   const cands = decs.filter((d) => d.actions.length >= 2);
   if (cands.length <= max) return cands;
@@ -105,6 +141,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
     out.skipped = "test-subsample";
     return out;
   }
+  if (o.mode === "unlabeled") return unlabeledTrajectory(scn, split, out, R, o, t0);
   const ideal = await runScenario(scn, { ideal: true, serverTimeline: true });
   out.runs++;
   if (ideal.internalErrors.length) {
@@ -112,8 +149,11 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
     out.skipped = "ideal-error";
     return out;
   }
-  const explore = explorePolicy(o.exploreScale, R.fork("explore"));
-  const base = await runScenario(scn, { ideal: false, factory: o.factory, record: true, probeAsk: o.askRows, ...(explore ? { explore } : {}) });
+  const onp = o.mode === "onpolicy" && o.model;
+  const explore = onp ? undefined : explorePolicy(o.exploreScale, R.fork("explore"));
+  const base = onp
+    ? await runScenario(scn, { ideal: false, factory: o.factory, record: true, probeAsk: false, onPolicy: { model: o.model! } })
+    : await runScenario(scn, { ideal: false, factory: o.factory, record: true, probeAsk: o.askRows, ...(explore ? { explore } : {}) });
   out.runs++;
   out.decisions = base.decisions.length;
   if (base.internalErrors.length) {
@@ -121,9 +161,9 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
     out.skipped = `base-error: ${String((base.internalErrors[0] as Error)?.stack ?? base.internalErrors[0]).slice(0, 300)}`;
     return out;
   }
-  const meta0 = { seed, domain: scn.domain, family: scn.family, chaos: scn.chaos, budget: scn.budget, runtime: o.runtimeName, features: scn.features.map((f) => f.kind), patterns: scn.patterns };
+  const meta0 = metaOf(scn, o);
   // -------------------------------------------------------------------------------------- decision rows
-  const points = pickPoints(base.decisions, o.maxPoints, R.fork("points"));
+  const points = onp ? pickOnPolicy(base.decisions, o.maxPoints, R.fork("points")) : pickPoints(base.decisions, o.maxPoints, R.fork("points"));
   for (const p of points) {
     const passive = PASSIVE[p.trigger] ?? p.actions[0]!;
     const forcedPrefix = new Map<number, string>();
@@ -148,7 +188,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
     else if (diag && dq && dq.type === "choice" && !(diag in dq.criteria)) drop("diagnosis-not-in-vocab");
     else if (!diag || p.subject.kind === "unknown") drop("diagnosis-uncorrelated");
     const row: Row = {
-      id: `sim-${seed}-d${p.k}`,
+      id: `${onp ? "p" : "sim"}-${seed}-d${p.k}`,
       split,
       family: `${scn.family}/${p.trigger}`,
       state: p.state,
@@ -157,6 +197,8 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
       meta: {
         ...meta0,
         trigger: p.trigger,
+        passive,
+        subject_feature: p.feature ?? null,
         decision: p.k,
         t: Math.round(p.t),
         explored_before: [...forcedPrefix.keys()].length,
@@ -174,6 +216,17 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
         subject: p.subject,
         transform: tr.variant,
         ...(p.fakeDiagnosis ? { fake_diagnosis: true } : {}),
+        ...(onp
+          ? {
+              on_policy: true,
+              model_probs: p.modelProbs ?? null,
+              model_choice: p.modelChoice ?? null,
+              model_diagnosis: p.modelDiagnosis ?? null,
+              ran: p.ran ?? passive,
+              false_intervention: (p.ran ?? passive) !== passive && lab.passiveBest,
+              miss: (p.ran ?? passive) === passive && !lab.passiveBest && lab.nonPassiveMass >= 0.9,
+            }
+          : {}),
       },
     };
     out.rows.push(row);
@@ -193,11 +246,11 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
       state: d.state,
       questions: d.questions,
       labels: { diagnosis: { type: "choice", label: d.diagnosis! } },
-      meta: { ...meta0, trigger: d.trigger, decision: d.k, t: Math.round(d.t), diagnosis: d.diagnosis, diagnosis_only: true, subject: d.subject },
+      meta: { ...meta0, trigger: d.trigger, passive: PASSIVE[d.trigger] ?? d.actions[0] ?? null, subject_feature: d.feature ?? null, decision: d.k, t: Math.round(d.t), diagnosis: d.diagnosis, diagnosis_only: true, subject: d.subject },
     });
   }
   // ------------------------------------------------------------------------------------------- ask rows
-  if (o.askRows) {
+  if (o.askRows && !onp) {
     base.asks.forEach((a, i) => {
       const qs = askQuestions(a, R.fork("ask", i));
       if (!qs.length) return;
@@ -282,4 +335,65 @@ export async function pointCosts(
     }
   }
   return { costs, parts, runs, results };
+}
+
+/** Meta shared by every row of a trajectory (TRAIN reads domain, program_family, clean, chaos, budget). */
+export function metaOf(scn: Scenario, o: GenOptions): Record<string, unknown> {
+  return {
+    seed: scn.seed,
+    domain: scn.domain,
+    family: scn.family,
+    program_family: scn.family,
+    chaos: scn.chaos,
+    clean: scn.clean === true,
+    persona: scn.persona.kind,
+    budget: scn.budget,
+    runtime: o.runtimeName,
+    features: scn.features.map((f) => f.kind),
+    patterns: scn.patterns,
+  };
+}
+
+/** Unlabeled mode: one base run; every decision point is a row (gold diagnosis, no action label); ask rows too. */
+async function unlabeledTrajectory(scn: Scenario, split: string, out: TrajectoryOut, R: Rng, o: GenOptions, t0: number): Promise<TrajectoryOut> {
+  const explore = explorePolicy(o.exploreScale * 1.5, R.fork("explore"));
+  const base = await runScenario(scn, { ideal: false, factory: o.factory, record: true, probeAsk: true, ...(explore ? { explore } : {}) });
+  out.runs++;
+  out.decisions = base.decisions.length;
+  if (base.internalErrors.length) {
+    out.drops["base-internal-error"] = (out.drops["base-internal-error"] ?? 0) + 1;
+    out.skipped = `base-error: ${String((base.internalErrors[0] as Error)?.stack ?? base.internalErrors[0]).slice(0, 300)}`;
+    return out;
+  }
+  const meta0 = { ...metaOf(scn, o), unlabeled: true };
+  const decs = base.decisions.length > (o.maxUnlabeled ?? 40) ? R.fork("unl").sample(base.decisions, o.maxUnlabeled ?? 40).sort((a, b) => a.k - b.k) : base.decisions;
+  for (const d of decs) {
+    const passive = PASSIVE[d.trigger] ?? d.actions[0] ?? "";
+    const tr = transformQuestions(d.questions, undefined, passive, passive, R.fork("transform", d.k));
+    const labels: Record<string, Label> = {};
+    const dq = tr.questions.diagnosis;
+    if (d.diagnosis && dq && dq.type === "choice" && d.diagnosis in dq.criteria && d.subject.kind !== "unknown") labels.diagnosis = { type: "choice", label: d.diagnosis };
+    out.rows.push({
+      id: `u-${scn.seed}-d${d.k}`,
+      split: split as Row["split"],
+      family: `${scn.family}/${d.trigger}`,
+      state: d.state,
+      questions: tr.questions,
+      labels,
+      meta: { ...meta0, trigger: d.trigger, passive, subject_feature: d.feature ?? null, decision: d.k, t: Math.round(d.t), diagnosis: d.diagnosis ?? null, actions: d.actions, ran: d.chosen, explored: d.explored, subject: d.subject, transform: tr.variant },
+    });
+  }
+  base.asks.forEach((a, i) => {
+    const qs = askQuestions(a, R.fork("ask", i));
+    if (!qs.length) return;
+    const questions: Row["questions"] = {};
+    const labels: Record<string, Label> = {};
+    for (const q of qs) {
+      questions[q.qid] = q.question;
+      labels[q.qid] = q.label;
+    }
+    out.rows.push({ id: `u-${scn.seed}-a${i}`, split: split as Row["split"], family: `${scn.family}/ask`, state: a.state, questions, labels, meta: { ...meta0, trigger: "ask", t: Math.round(a.t), kinds: qs.map((q) => q.kind) } });
+  });
+  out.ms = performance.now() - t0;
+  return out;
 }

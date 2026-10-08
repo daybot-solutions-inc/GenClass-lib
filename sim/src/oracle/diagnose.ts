@@ -59,7 +59,7 @@ export function diagnoseFailure(op: SimOp | undefined, e: NetEntry | undefined, 
   const sig = e?.signature ?? (op ? sigOf(op) : "?");
   const streak = (op ? know.streak.get(sigOf(op)) ?? 0 : 0) + 1;
   const cause = e?.cause ?? "transient";
-  if (cause === "outage") return "failing";
+  if (cause === "outage" || cause === "offline") return "failing";
   if (op?.outcome === "timeout" || cause === "gateway-timeout" || e?.abortReason === "TimeoutError") {
     if (e?.slowCause === "slow-period" || e?.slowCause === "overload") return "slow";
     return streak >= 2 ? "slow" : "transient";

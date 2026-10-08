@@ -41,10 +41,23 @@ another held event to Review. More examples from the same run: seed 1001 c2 (eve
 user's move), seed 1002 c6 (server confirmation held 608 ms reverses a move to Done for 302 ms), seed 1007 c8 (held
 confirmation reverses a move to Doing for 523 ms).
 
-The same ordering problem can defeat app-level guards (expected from the mechanism; traced editor run pending):
-the editor decides "is the user typing?" when a save response arrives (`applyBody`), then GenClass may hold that
-write for up to 800 ms; keystrokes typed during the hold would be overwritten when it applies. The board's whole-board rollback also captures snapshots that miss writes GenClass is
-holding, so restoring them erases more (cards stuck "syncing": 6 → 9/10).
+The same mechanism shows up in every demo with user writes (traced runs, 30 chaos seeds each, counting only held
+writes that applied after a newer user write and then changed that same field; Off: 0 in every demo):
+
+| demo | Guard | what the held write did |
+|---|---|---|
+| board | 50 held writes after a newer move of the same card, 11 visibly put it back | live events and confirmations moved cards back (jump-backs 3.07 → 4.80 per session) |
+| editor | 37 | save echoes rewrote `notes.n1.body` after newer keystrokes (typed text overwritten; visible text reverts 1.10 → 1.57 per session in the full run) |
+| checkout | 24 | cart confirmations set a line's quantity back after the user's newer +/− click (e.g. "Dad cap qty 2 → 1"); the app keeps its total incrementally, so the total and the lines drift apart |
+
+In the editor this also defeats the app's own guard: the app decides "is the user typing?" (`applyBody`) when the
+save response arrives; GenClass then holds that write up to 800 ms, and keystrokes typed meanwhile are overwritten
+when it applies. The board's whole-board rollback captures snapshots that miss writes GenClass is still holding, so
+restoring them erases more (cards stuck "syncing": 6 → 9/10).
+
+Full evaluation (810 trials, no traces): Guard introduced more bugs than it fixed in editor (3/1), checkout (3/1)
+and board (5/3), with zero actions executed in Guard (decisions 5/1 comes from v0.1's answers to `ask`, not holds). On clean runs Guard took no actions, but holds
+still produced one search bug (older results on screen ≥ 400 ms after the right answer arrived).
 
 Suggestions: fail-open must never change the order the app would have seen. When a user-sync write arrives for a
 store with pending (held or queued) writes, apply the pending ones first in proposal order (or treat the overlapping
@@ -77,14 +90,16 @@ redaction fixed it; the board's situations now show columns and versions.
   ops ("interval 0.05s") and could attribute app writes to them. Test code now uses timers captured before
   `GenClass.init`.
 
-## 5. `retry` is offered for non-idempotent requests (CORE / policy)
+## 5. Heal acts on non-idempotent writes (CORE / policy)
 
-Heal retried non-idempotent requests after failures: `POST /api/orders` (1), `POST /api/cart/lines` (2),
-`POST /api/cards/:id/move` (6), plus idempotent `PUT`/`GET` retries (21). A 502/504 can come after the server
-committed (the demos' "lost responses" chaos), so retrying a non-idempotent POST can create a duplicate order or add
-an item twice. Consider offering `retry` only for idempotent methods, or for non-idempotent ones only when the
-failure happened before the request reached the server (network error) or carried an idempotency key; and say so in
-the action description the model reads.
+Final run, Heal (all actions executed in chaos runs; none on clean runs): `block` ×124, `retry` ×29,
+`serve_cached` ×3. Blocks hit writes the user is waiting on: `POST /api/orders` ×5 (the order fails at once with
+503), `POST /api/cart/lines` ×8, autosave `PUT /api/notes/:id` ×5 and `PUT /api/journal` ×4 (the save fails and
+the text stays unsaved), board moves ×2; plus 88 blocks of the decisions demo's heartbeat `GET /api/ping`. One
+non-idempotent `POST /api/cards/:id/move` was retried. A 502/504 can arrive after the server committed (the demos'
+"lost responses" chaos), so retrying a POST can duplicate it. Suggestion: never offer `block` for a write the user
+initiated in the last few seconds without the diagnosis being `overload`/`failing`; offer `retry` for non-idempotent
+methods only for failures before the request reached the server (network errors) or with an idempotency key.
 
 ## 6. Observe EventSource (and BroadcastChannel) messages as ops (CORE)
 
@@ -99,11 +114,9 @@ The in-page "Run trials" button drives the apps with synthetic DOM events; the D
 
 ## 8. Notes on the v0.1 model (no action for CORE)
 
-- Diagnosis: `unusual` for 6,328 of 6,386 decisions (`inconsistent` 58, never `expected`), so the "diagnosis is not
-  expected" gate never blocks anything; Guard was stopped by the 0.9 threshold (730×) and the budget (663×).
-- Heal's actions were `retry` on failures (30×), `block` of the decisions demo's heartbeat `GET /api/ping` (60×) and
-  `block` of two editor autosaves (`PUT /api/notes/:id`).
-- False interventions on clean runs: 0 in every demo and mode, but only because v0.1 rarely clears the thresholds
-  in time, not because it recognised clean situations.
-- `ask`/`decide` in the decisions demo: decision accuracy under chaos 0.42 (app defaults) → 0.62 (Guard), on clean
-  runs 1.00 (defaults) → 0.27: v0.1 answers as if something were always wrong.
+Final run (810 trials): the model's diagnosis was almost always `unusual` at 0.4–0.7. Guard's gate never passed
+(non-passive mass below 0.9: 854 times for discard/defer), so Guard executed nothing; Heal executed 156 actions, all
+in chaos runs. False interventions on clean runs: 0 in every demo and mode, because v0.1 rarely clears the
+thresholds, not because it recognises clean situations. `ask`/`decide` accuracy in the decisions demo: 0.37 (app
+defaults) → 0.61 under chaos, 1.00 → 0.27 on clean runs (it answers as if something were always wrong). Decision
+latency p50: 0.4–0.8 s (status dashboard 1.7 s, many concurrent polls).

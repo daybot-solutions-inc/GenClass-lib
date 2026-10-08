@@ -36,6 +36,20 @@ The runtime decides through a trained local model; nothing here is hardcoded per
 
 ## Next
 
+3. **Runtime batch 4: move decisions to the network boundary** (CORE). The demos showed that holding
+   *store writes* makes correct apps worse even when GenClass takes no action:
+   - board: held writes landed after a newer user move and moved cards back (11 visible jump-backs over 30
+     sessions);
+   - editor: 37 delayed save echoes rewrote newer keystrokes;
+   - checkout: 24 delayed confirmations reset quantities;
+   - search: clean-run latency rose from about 6 ms to 230–390 ms.
+
+   The redesign holds only the delivery of a response or message (equivalent to network latency) when newer
+   data already sits in the fields it will write, and drops its stale writes synchronously. It also adds
+   EventSource observation and an `untrustedEvents` option. Produces the situation format `situation-v2`.
+4. **Then regenerate all data on v2** (sim gold, unlabeled and on-policy rows; the real-app corpus) and run the
+   scaled training (teacher, then distillation into R17/R32, then retraining on the model's own mistakes).
+
 3. **Final training round 1** (tonight, on phase A): R17 and R32 from their stage-1 weights, then eval,
    calibration and export by about 02:40 UTC. **Round 2** (after the shutdown) uses phase A + B with longer
    schedules.

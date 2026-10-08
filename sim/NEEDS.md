@@ -19,6 +19,16 @@ heal: 0 }, holdBudgetMs: 1e9, maxActionsPerMinute: 1e9, requireDiagnosis: false 
 5. DONE `situation()` has no side effects. Verified: ask probes in the base run never break the byte-identical
    replay of counterfactual prefixes (0 prefix mismatches in 20k+ rows).
 
+## OPEN (crash, found 2026-10-08 01:10 UTC by SIM feature smoke tests)
+
+g. **`describe()` recurses forever on NaN** (`packages/runtime/src/util.ts:245`): `const r = redact(path, v); if (r !== v)
+   return ... describe(r, "", () => r, max)`. For `v = NaN` the default redactor returns NaN, `NaN !== NaN` is true, and
+   it recurses with the same NaN until `RangeError: Maximum call stack size exceeded`. Any app whose state holds a NaN
+   (`parseFloat("")`, `0/0`, a renamed server field in a sum: common in real apps) crashes situation building, in
+   production as well. Fix: `if (!Object.is(r, v))` (identical output for every non-NaN value, so `situation-v1` text
+   is unchanged). Until it lands, sim trajectories that put NaN in state are dropped as internal errors (counted in
+   `stats.json` drops).
+
 ## Observations from ~30k recorded situations (ASK; non-blocking, parity is unaffected)
 
 a. **Values redacted because of the element description.** `user changed card "Incident spike" to "[redacted]"`.

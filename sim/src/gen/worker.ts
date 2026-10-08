@@ -16,6 +16,8 @@ interface Init {
   askRows: boolean;
   testKeep: number;
   exploreScale: number;
+  mode?: "gold" | "unlabeled" | "onpolicy";
+  modelDir?: string;
 }
 
 const init = workerData as Init;
@@ -27,7 +29,11 @@ async function main(): Promise<void> {
     factory = createFakeRuntime;
     runtimeName = "fake";
   } else factory = await realRuntimeFactory();
-  const opts: GenOptions = { factory, runtimeName, maxPoints: init.maxPoints, askRows: init.askRows, testKeep: init.testKeep, exploreScale: init.exploreScale };
+  const opts: GenOptions = { factory, runtimeName, maxPoints: init.maxPoints, askRows: init.askRows, testKeep: init.testKeep, exploreScale: init.exploreScale, mode: init.mode ?? "gold" };
+  if (init.mode === "onpolicy") {
+    const { loadModelDecider } = await import("../run/onpolicy.js");
+    opts.model = await loadModelDecider(init.modelDir!);
+  }
   const dir = join(init.out, "shards");
   mkdirSync(dir, { recursive: true });
   const partsDir = join(init.out, "parts");

@@ -131,6 +131,17 @@ export class VirtualLoop {
     this.stopped = true;
   }
 
+  private holds: Promise<unknown>[] = [];
+  /** Real asynchronous work (e.g. model inference) that must finish before virtual time moves on. */
+  hold(p: Promise<unknown>): void {
+    this.holds.push(p);
+  }
+
+  /** A long task: the current macrotask keeps the thread busy for `ms` (virtual time moves on; queued work runs late). */
+  advance(ms: number): void {
+    if (ms > 0) this.t += ms;
+  }
+
   /** Let microtasks queued outside any macrotask (setup code) settle, then run afterTask hooks. */
   async settle(): Promise<void> {
     await turn();
@@ -174,6 +185,12 @@ export class VirtualLoop {
         }
       }
       await turn();
+      while (this.holds.length > 0) {
+        const hs = this.holds;
+        this.holds = [];
+        await Promise.allSettled(hs);
+        await turn();
+      }
       if (this.after.length > 0) await this.flushAfter();
       if (this.onSettled) this.onSettled();
     }

@@ -34,7 +34,7 @@ export interface Domain {
   people: string[];
 }
 
-function E(
+export function E(
   s: string,
   p: string,
   name: string,
@@ -62,7 +62,7 @@ function E(
   };
 }
 
-function D(
+export function D(
   name: string,
   titles: string,
   entities: Entity[],
@@ -207,7 +207,7 @@ export const DOMAINS: Domain[] = [
     E("goal", "goals", "name", "weekly runs daily steps protein sleep", "target=1-20000 progress=0-20000", "active met", "pinned", "set"),
   ], "training plan:title plan;journal:title entry", "active_sessions avg_hr steps_today", "workouts heart_rate goals", "units restTimer shareWorkouts", "delete repeat share", "athlete coach"),
   D("weather", "Skycast,Nimbus,Forecastly,StormDesk", [
-    E("station", "stations", "name", "north pier airport hilltop downtown harbor", "temp=-20-40-1 wind=0-90", "reporting offline", "favorite", "add"),
+    E("station", "stations", "name", "north pier airport hilltop downtown harbor", "temp=0-40-1 wind=0-90", "reporting offline", "favorite", "add"),
     E("alert", "alerts", "kind", "frost wind heat flood storm", "severity=1-5", "watch warning expired", "muted", "create"),
   ], "forecast note:title body;alert text:title body", "stations_online alert_count update_lag", "observations alerts radar", "units alertRadius darkMap", "mute share remove", "forecaster"),
   D("rides", "Ridely,GoCab,Hopin,Shuttle", [
@@ -251,7 +251,7 @@ export const DOMAINS: Domain[] = [
     E("refill", "refills", "reference", "RF-210 RF-388 RF-402 RF-777", "daysSupply=7-90", "requested approved denied", "autoRefill", "request"),
   ], "counsel note:title notes;label text:title body", "queue_length fill_time interactions", "prescriptions refills stock", "pickupReminders genericOk largePrint", "approve hold transfer", "pharmacist patient"),
   D("devops", "Deployr,OpsBoard,Pipeline,Statusly", [
-    E("deploy", "deploys", "version", "v1.4.2 v1.5.0 v2.0.0-rc1 v2.0.1", "duration=20-900 errors=0-40", "queued running succeeded failed", "pinned", "trigger"),
+    E("deploy", "deploys", "release", "v1.4.2 v1.5.0 v2.0.0-rc1 v2.0.1", "duration=20-900 errors=0-40", "queued running succeeded failed", "pinned", "trigger"),
     E("incident", "incidents", "title", "api 5xx spike db failover cert expiry disk full", "severity=1-4", "open mitigated resolved", "paging", "declare"),
   ], "runbook:title steps;postmortem:title summary", "error_rate p95_latency cpu", "deploys incidents alerts", "autoRollback pagerHours canary", "rollback ack resolve", "oncall engineer"),
   D("code", "Codehub,Repoly,MergeBox,DiffDesk", [

@@ -36,6 +36,14 @@ export interface DecisionRec {
   fakeDiagnosis?: boolean;
   /** JSON of state+questions for prefix-equality checks. */
   fp: string;
+  /** On-policy runs: the model's answers, its own action choice, and what the runtime's gate actually ran. */
+  modelProbs?: Record<string, number>;
+  modelDiagnosis?: string;
+  modelChoice?: string;
+  ran?: string;
+  subjKey?: string;
+  /** Feature kind the subject belongs to (sim knowledge), for per-feature stats. */
+  feature?: string;
 }
 
 export interface AskRec {
@@ -80,6 +88,8 @@ export interface RunOptions {
   tStop?: number;
   /** Record the server state over time (ideal run: costs compare the server at decision + horizon). */
   serverTimeline?: boolean;
+  /** On-policy: answers come from this model through the runtime's production gate (heal mode, default thresholds). */
+  onPolicy?: { model: DecisionProvider };
   /**
    * Re-seeded future: from decision `k` on (ideal runs: k = -1, i.e. from time `t`), network draws, push latencies,
    * model latencies and the times of other users' events after `t` use `salt`. The prefix stays byte-identical.
@@ -134,10 +144,36 @@ function makeWebSocketClass(loop: VirtualLoop, net: Network, ideal: boolean): un
     constructor(url: string | URL) {
       super();
       this.url = String(url);
-      const topic = decodeURIComponent(new URL(this.url).pathname.replace(/^\/ws\//, ""));
+      const topic = new URL(this.url).pathname.replace(/^\/ws\//, "").split("/").map(decodeURIComponent).join("/");
       const connectMs = ideal ? 0 : 40 + (topic.length % 7) * 10;
+      const drops = ideal ? [] : net.profile.socketDrops ?? [];
       loop.schedule(connectMs, () => {
         if (this.readyState !== 0) return;
+        const now = loop.now();
+        if (drops.some((w) => now >= w.start && now < w.end)) {
+          // the server refuses connections during a drop window
+          this.readyState = 3;
+          const err = new Event("error");
+          this.dispatchEvent(err);
+          this.onerror?.(err);
+          const ev = Object.assign(new Event("close"), { code: 1006 });
+          this.dispatchEvent(ev);
+          this.onclose?.(ev);
+          return;
+        }
+        for (const w of drops) {
+          if (w.start > now) {
+            loop.at(w.start, () => {
+              if (this.readyState !== 1) return;
+              this.readyState = 3;
+              this.unsub?.();
+              const ev = Object.assign(new Event("close"), { code: 1006 });
+              this.dispatchEvent(ev);
+              this.onclose?.(ev);
+            }, "net");
+            break;
+          }
+        }
         this.readyState = 1;
         this.unsub = net.subscribe(topic, (msg) => {
           if (this.readyState !== 1) return;
@@ -165,10 +201,81 @@ function makeWebSocketClass(loop: VirtualLoop, net: Network, ideal: boolean): un
   return VirtualWebSocket;
 }
 
+class MemStorage {
+  private m = new Map<string, string>();
+  onWrite: ((key: string | null, oldValue: string | null, newValue: string | null) => void) | null = null;
+  get length(): number {
+    return this.m.size;
+  }
+  key(i: number): string | null {
+    return [...this.m.keys()][i] ?? null;
+  }
+  getItem(k: string): string | null {
+    return this.m.has(k) ? this.m.get(k)! : null;
+  }
+  setItem(k: string, v: string): void {
+    this.m.set(k, String(v));
+  }
+  removeItem(k: string): void {
+    this.m.delete(k);
+  }
+  clear(): void {
+    this.m.clear();
+  }
+  /** A write by another tab: update the shared value without this tab's own observer seeing a local write. */
+  external(k: string, v: string | null): { oldValue: string | null } {
+    const oldValue = this.getItem(k);
+    if (v === null) this.m.delete(k);
+    else this.m.set(k, v);
+    return { oldValue };
+  }
+}
+
+/** BroadcastChannel hub: channels by name; messages from other tabs are delivered in a later task. */
+function makeBroadcast(loop: VirtualLoop): { cls: unknown; post(name: string, msg: unknown): void } {
+  const subs = new Map<string, Set<{ onmessage: ((e: MessageEvent) => void) | null; listeners: Set<(e: MessageEvent) => void> }>>();
+  class VirtualBroadcastChannel {
+    onmessage: ((e: MessageEvent) => void) | null = null;
+    listeners = new Set<(e: MessageEvent) => void>();
+    constructor(readonly name: string) {
+      if (!subs.has(name)) subs.set(name, new Set());
+      subs.get(name)!.add(this);
+    }
+    postMessage(_m: unknown): void {
+      /* other tabs are simulated; this tab's own posts reach no one in the sim */
+    }
+    addEventListener(_t: string, fn: (e: MessageEvent) => void): void {
+      this.listeners.add(fn);
+    }
+    close(): void {
+      subs.get(this.name)?.delete(this);
+    }
+  }
+  return {
+    cls: VirtualBroadcastChannel,
+    post(name, msg) {
+      const text = JSON.stringify(msg);
+      loop.schedule(1, () => {
+        for (const c of subs.get(name) ?? []) {
+          const ev = new MessageEvent("message", { data: JSON.parse(text) });
+          c.onmessage?.(ev);
+          for (const fn of c.listeners) fn(ev);
+        }
+      }, "app");
+    },
+  };
+}
+
 function makeGlobal(loop: VirtualLoop, net: Network, title: string, ideal: boolean): SimGlobal {
   const intervals = new Set<{ cancelled: boolean; task: unknown }>();
   const url = new URL(BASE_URL);
+  const target = new EventTarget();
   const G: SimGlobal = {
+    addEventListener: (type: string, fn: (e: Event) => void) => target.addEventListener(type, fn),
+    removeEventListener: (type: string, fn: (e: Event) => void) => target.removeEventListener(type, fn),
+    dispatchEvent: (e: Event) => target.dispatchEvent(e),
+    navigator: { onLine: true, userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36" },
+    localStorage: new MemStorage() as unknown as Storage,
     fetch: net.fetch,
     setTimeout: (fn: () => void, ms?: number) => loop.schedule(ms ?? 0, fn, "app"),
     clearTimeout: (h: unknown) => loop.cancel(h),
@@ -191,7 +298,7 @@ function makeGlobal(loop: VirtualLoop, net: Network, title: string, ideal: boole
       loop.cancel(x.task);
     },
     location: { href: `${url.origin}/`, pathname: "/", search: "", origin: url.origin, host: url.host },
-    document: { title },
+    document: { title, visibilityState: "visible", hidden: false },
     WebSocket: makeWebSocketClass(loop, net, ideal),
   };
   return G;
@@ -223,6 +330,9 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
   }
   const network = new Network(loop, server, o.ideal ? IDEAL_PROFILE : scn.net, hashAll("net", scn.seed));
   const G = makeGlobal(loop, network, scn.appTitle, o.ideal);
+  const hub = makeBroadcast(loop);
+  G.BroadcastChannel = hub.cls;
+  const storage = G.localStorage as unknown as MemStorage;
   const know = new Knowledge();
   know.now = () => loop.now();
   network.onSend = (e) => {
@@ -240,6 +350,8 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
 
   // ------------------------------------------------------------------------------------- decider (real)
   let k = 0;
+  /** On-policy: decisions awaiting the runtime's `decide` event (what the gate actually ran). */
+  const pendingRan: DecisionRec[] = [];
   const exploreRng = new Rng(hashAll("explore", scn.seed));
   const decider: DecisionProvider = {
     status: { state: "ready", model: "genclass-sim" },
@@ -260,7 +372,9 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       const passive = PASSIVE[req.trigger] ?? actions[0] ?? "";
       let chosen = o.forced?.get(idx);
       let explored = false;
-      const base = { k: idx, t, trigger: req.trigger, state: req.state, questions, actions, subject: { kind: subject.s.kind, how: subject.how, ...(subject.ref !== undefined ? { ref: subject.ref } : {}) }, ...(diag !== undefined ? { diagnosis: diag } : {}) };
+      const fid = subject.s.write?.feature ?? subject.s.op?.feature ?? subject.s.chain?.[0]?.feature ?? (subject.s.error && typeof subject.s.error === "object" ? know.errors.get(subject.s.error as object)?.feature : undefined);
+      const featureKind = scn.features.find((f) => f.id === fid)?.kind;
+      const base = { k: idx, t, trigger: req.trigger, state: req.state, questions, actions, subject: { kind: subject.s.kind, how: subject.how, ...(subject.ref !== undefined ? { ref: subject.ref } : {}) }, ...(diag !== undefined ? { diagnosis: diag } : {}), ...(featureKind ? { feature: featureKind } : {}) };
       if (chosen === undefined && o.explore) {
         const c = o.explore.choose(base, exploreRng.fork(idx));
         if (c && actions.includes(c) && c !== passive) {
@@ -298,6 +412,30 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       if (o.future && idx === o.future.k) network.future = o.future.salt;
       const fut = o.future && idx > o.future.k ? o.future.salt : undefined;
       const ms = new Rng(fut === undefined ? hashAll("model-latency", scn.seed, idx) : hashAll("model-latency", scn.seed, idx, fut)).lognormal(scn.modelMs, 0.35);
+      if (o.onPolicy) {
+        const rec = decisions[decisions.length - 1];
+        const subj = req.subject && typeof req.subject === "object" ? { ...(req.subject as Record<string, unknown>) } : {};
+        delete subj.error;
+        const key = `${req.trigger}|${JSON.stringify(subj)}`;
+        if (rec && rec.k === idx) {
+          rec.subjKey = key;
+          pendingRan.push(rec);
+        }
+        const p = o.onPolicy.model.evaluate({ trigger: req.trigger, state: req.state, questions: req.questions, ...(req.subject !== undefined ? { subject: req.subject } : {}) });
+        loop.hold(p);
+        return p.then((ans) => {
+          if (rec && rec.k === idx) {
+            const a = ans.action;
+            if (a && a.type === "choice") {
+              rec.modelProbs = a.probabilities;
+              rec.modelChoice = a.choice;
+            }
+            const dg = ans.diagnosis;
+            if (dg && dg.type === "choice") rec.modelDiagnosis = dg.choice;
+          }
+          return new Promise<Record<string, Answer>>((resolve) => loop.schedule(ms, () => resolve(ans), "runtime"));
+        });
+      }
       return new Promise((resolve) => loop.schedule(ms, () => resolve(answers), "runtime"));
     },
   };
@@ -379,6 +517,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       ...(scn.diagnoses ? { diagnoses: scn.diagnoses } : {}),
       ...(scn.actionWords ? { actions: scn.actionWords } : {}),
       budget: scn.budget,
+      ...(o.onPolicy ? { production: true } : {}),
       // Exact correlation: the runtime creates the fetch op synchronously inside the app's fetch call and the
       // mutation synchronously inside atom.set, while the sim's ambient tag (callingOp / writing) is set.
       hooks: {
@@ -406,6 +545,23 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
     });
     const rt = runtime;
     backend = { atom: (name, initial, opts) => rt.atom(name, initial, opts) };
+    if (o.onPolicy) {
+      rt.on("decide", (v: unknown) => {
+        const d = v as { trigger: string; subjectRef?: Record<string, unknown>; ran?: string; executed?: boolean; action?: string };
+        const subj = d.subjectRef ? { ...d.subjectRef } : {};
+        delete subj.error;
+        const key = `${d.trigger}|${JSON.stringify(subj)}`;
+        const i = pendingRan.findIndex((r) => r.subjKey === key);
+        if (i < 0) return;
+        const rec = pendingRan.splice(i, 1)[0]!;
+        const passive = PASSIVE[rec.trigger] ?? rec.actions[0] ?? "";
+        const ran = d.ran ?? (d.executed && d.action ? d.action : passive);
+        rec.ran = ran;
+        // Replays force what actually ran, exactly like explored actions in base runs.
+        rec.chosen = ran;
+        rec.explored = ran !== passive;
+      });
+    }
   }
   env = new AppEnv(o.ideal, G, backend, know, appRng, (topic, fn) => network.subscribe(topic, fn), () => loop.now());
   const storeFeature = new Map<string, string>();
@@ -426,7 +582,48 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
     clients.set(f.id, def.client(f.spec, env, kit));
   }
   for (const s of env.stores) storeFeature.set(s.name, s.feature);
-  const world: WorldCtx = { db, server, publish: (t, m) => network.publish(t, m), now: () => loop.now() };
+  env.skewMs = o.ideal ? 0 : scn.skewMs ?? 0;
+  env.blocker = (ms) => loop.advance(ms);
+  const world: WorldCtx = {
+    db,
+    server,
+    publish: (t, m) => network.publish(t, m),
+    now: () => loop.now(),
+    otherTab: {
+      setItem: (key, value) => {
+        const { oldValue } = storage.external(key, value);
+        G.dispatchEvent(Object.assign(new Event("storage"), { key, newValue: value, oldValue, url: G.location.href }));
+      },
+      removeItem: (key) => {
+        const { oldValue } = storage.external(key, null);
+        G.dispatchEvent(Object.assign(new Event("storage"), { key, newValue: null, oldValue, url: G.location.href }));
+      },
+      broadcast: (channel, msg) => hub.post(channel, msg),
+    },
+  };
+  // Connectivity: offline windows flip navigator.onLine and fire offline/online events.
+  if (!o.ideal) {
+    for (const w of scn.net.offline ?? []) {
+      loop.at(w.start, () => {
+        G.navigator.onLine = false;
+        G.dispatchEvent(new Event("offline"));
+      }, "sim");
+      loop.at(w.end, () => {
+        G.navigator.onLine = true;
+        G.dispatchEvent(new Event("online"));
+      }, "sim");
+    }
+  }
+  // Tab visibility / focus changes (the user switching tabs).
+  for (const ev of scn.windowEvents ?? []) {
+    loop.at(ev.t, () => {
+      const hidden = ev.type === "blur";
+      G.document.visibilityState = hidden ? "hidden" : "visible";
+      G.document.hidden = hidden;
+      G.dispatchEvent(new Event("visibilitychange"));
+      G.dispatchEvent(new Event(hidden ? "blur" : "focus"));
+    }, "sim");
+  }
 
   // Snapshots of the client-visible state after every settled macrotask that changed it.
   const snapshots: Snapshot[] = [];

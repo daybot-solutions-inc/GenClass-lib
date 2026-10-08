@@ -54,6 +54,10 @@ export interface NetProfile {
   /** Server-wide capacity: arrivals per second beyond which requests degrade. */
   capacity?: { perSec: number; mode: "503" | "429" | "latency" };
   rateLimits: Record<string, { perSec: number; retryAfter: boolean }>;
+  /** Windows where the device is offline: every request fails at once with a network error (navigator.onLine false). */
+  offline?: Win[];
+  /** Windows where the server drops every live socket and refuses new ones. */
+  socketDrops?: Win[];
   /** Tests: exact latency for a request (method, path+search, occurrence); undefined = use the model. */
   latencyFn?: (method: string, pathAndSearch: string, occurrence: number) => number | undefined;
   replicaLag?: { ms: number; p: number };
@@ -85,6 +89,7 @@ export const IDEAL_PROFILE: NetProfile = {
 
 /** Why a request ended the way it did (sim knowledge, used for diagnosis labels). */
 export type NetCause =
+  | "offline"
   | "ok"
   | "transient"
   | "outage"
@@ -303,6 +308,18 @@ export class Network {
     this.log.push(e);
     this.inflight++;
     if (this.onSend) this.onSend(e);
+    if (!P.ideal && P.offline?.some((w) => inWin(w, t0))) {
+      e.cause = "offline";
+      return new Promise<Response>((_resolve, reject) => {
+        this.loop.schedule(r.float(2, 12), () => {
+          this.inflight--;
+          e.outcome = "neterr";
+          e.td = this.loop.now();
+          this.lastDelivered = e;
+          reject(new TypeError("Failed to fetch"));
+        }, "net");
+      });
+    }
 
     return new Promise<Response>((resolve, reject) => {
       let settled = false;

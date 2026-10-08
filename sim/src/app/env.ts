@@ -41,13 +41,18 @@ export interface StoreBackend {
 
 /** The `global` object handed to the runtime (fetch/timers are instrumented in place by the runtime). */
 export interface SimGlobal {
+  addEventListener: (type: string, fn: (e: Event) => void) => void;
+  removeEventListener: (type: string, fn: (e: Event) => void) => void;
+  dispatchEvent: (e: Event) => boolean;
+  navigator: { onLine: boolean; userAgent: string };
+  localStorage: Storage;
   fetch: (input: unknown, init?: RequestInit) => Promise<Response>;
   setTimeout: (fn: () => void, ms?: number) => unknown;
   clearTimeout: (h: unknown) => void;
   setInterval: (fn: () => void, ms?: number) => unknown;
   clearInterval: (h: unknown) => void;
   location: { href: string; pathname: string; search: string; origin: string; host: string };
-  document: { title: string };
+  document: { title: string; visibilityState?: string; hidden?: boolean };
   [k: string]: unknown;
 }
 
@@ -175,6 +180,34 @@ export class AppEnv {
         }
       },
     };
+  }
+
+  /** Fixed wall-clock epoch for timestamps (deterministic). */
+  static readonly EPOCH = Date.UTC(2026, 9, 7, 14, 0, 0);
+  /** Client clock skew (ms): the device clock is off by this much. */
+  skewMs = 0;
+  /** Wall-clock time as the client's (possibly skewed) clock reads it. */
+  clientNow(): number {
+    return AppEnv.EPOCH + this.nowFn() + this.skewMs;
+  }
+  /** A long task: block the main thread for `ms`. */
+  busy(ms: number): void {
+    this.blocker?.(ms);
+  }
+  blocker: ((ms: number) => void) | null = null;
+  on(type: string, fn: (e: Event) => void): void {
+    this.G.addEventListener(type, fn);
+  }
+  get online(): boolean {
+    return this.G.navigator.onLine;
+  }
+  /** Open a BroadcastChannel (multi-tab sync) if the platform has one. */
+  channel(name: string, fn: (msg: unknown) => void): { post(msg: unknown): void } {
+    const BC = this.G.BroadcastChannel as (new (n: string) => { postMessage(m: unknown): void; onmessage: ((e: MessageEvent) => void) | null }) | undefined;
+    if (!BC) return { post: () => undefined };
+    const bc = new BC(name);
+    bc.onmessage = (e) => fn(e.data);
+    return { post: (m) => bc.postMessage(m) };
   }
 
   /** Client-side navigation (history.pushState): updates location for the runtime's `app` section. */

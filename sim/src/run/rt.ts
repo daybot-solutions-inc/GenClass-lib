@@ -48,6 +48,8 @@ export interface RuntimeOptions {
   hooks?: RuntimeHooksLike;
   /** Situation size in characters (`situation.budget`). */
   budget?: number;
+  /** On-policy runs: the production gate (default thresholds, diagnosis gate) instead of forced execution. */
+  production?: boolean;
   app: () => { title?: string; route?: string };
 }
 
@@ -62,7 +64,7 @@ export function createOptions(o: RuntimeOptions): Record<string, unknown> {
     model: false,
     mode: "heal",
     report: "silent",
-    observe: { fetch: true, timers: true, websocket: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false },
+    observe: { fetch: true, timers: true, websocket: true, storage: true, xhr: false, user: false, errors: false, nav: false, perf: false },
     triage: "salient",
     // Summed-mass gate (CONTRACT §8): the sim answers with probability 1 on the forced action, so the permitted
     // non-passive mass is 1 when a non-passive action is forced and 0 when passive is. A threshold of 0.5 runs exactly
@@ -77,6 +79,7 @@ export function createOptions(o: RuntimeOptions): Record<string, unknown> {
   if (Object.keys(vocabulary).length) opts.vocabulary = vocabulary;
   if (o.hooks) opts.hooks = o.hooks;
   if (o.budget) opts.situation = { budget: o.budget };
+  if (o.production) opts.policy = { holdBudgetMs: 1e9, maxActionsPerMinute: 1e9 };
   return opts;
 }
 
