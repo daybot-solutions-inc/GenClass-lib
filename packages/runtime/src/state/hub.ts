@@ -63,7 +63,13 @@ export interface FieldState {
   log: LogEntry[];
   /** The current value is known to be suspicious (situation v2, F9); cleared by the next write. */
   mark?: StaleMark;
+  /** Store version before this field's first change (churn: changes / store writes since). */
+  born?: number;
 }
+
+/** A numeric field that changed in at least this share of its store's writes (over ≥ BUSY_MIN_WRITES) is busy. */
+export const BUSY_RATIO = 0.8;
+export const BUSY_MIN_WRITES = 10;
 
 /** Why a field's current value may be stale: written over newer data, by a very slow response, after an ambiguous failure, ... */
 export interface StaleMark {
@@ -204,7 +210,7 @@ export class StoreHub {
       writable: kind !== "adapter" || typeof io?.set === "function",
     };
     if (io) s.io = io;
-    for (const path of s.leaves.keys()) s.fields.set(path, { path, v: 0, writer: null, t: this.clock.now(), seq: this.seq, hist: [], log: [] });
+    for (const path of s.leaves.keys()) s.fields.set(path, { path, v: 0, writer: null, t: this.clock.now(), seq: this.seq, hist: [], log: [], born: 0 });
     this.stores.set(name, s);
     if (io?.subscribe) {
       s.unsubscribeIO = io.subscribe(() => {
@@ -613,9 +619,9 @@ export class StoreHub {
     for (const c of changes) {
       let f = s.fields.get(c.path);
       if (!f) {
-        f = { path: c.path, v: 0, writer: null, t, seq: 0, hist: [], log: [] };
+        f = { path: c.path, v: 0, writer: null, t, seq: 0, hist: [], log: [], born: s.version - 1 };
         s.fields.set(c.path, f);
-      }
+      } else if (f.born === undefined) f.born = s.version - 1;
       f.v++;
       f.writer = writer ? writer.id : null;
       f.t = t;
@@ -724,6 +730,20 @@ export class StoreHub {
   }
 
   // ------------------------------------------------------------------------------------------- queries
+
+  /**
+   * A busy scalar counter: a number field that changes on nearly every write of its store (≥ 80 % of ≥ 10 writes
+   * since it first changed): ticks, request counters, timestamps. Relations and transition shapes ignore it.
+   */
+  busy(path: string): boolean {
+    const store = this.stores.get(path.split(".")[0]);
+    const f = store?.fields.get(path);
+    if (!store || !f || f.born === undefined) return false;
+    const leaf = store.leaves.get(path);
+    if (!leaf || leaf.kind !== "number") return false;
+    const writes = store.version - f.born;
+    return writes >= BUSY_MIN_WRITES && f.v >= BUSY_RATIO * writes;
+  }
 
   /** Mark a field's current value as suspicious (until its next write). */
   markField(path: string, mark: StaleMark): void {

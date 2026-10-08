@@ -37,6 +37,7 @@ def main() -> None:
     ap.add_argument("--max-len", type=int, default=2048)
     ap.add_argument("--overwrite", action="store_true", help="replace gold labels too")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--amp", action="store_true", help="bf16 autocast for the forward (CPU)")
     args = ap.parse_args()
 
     import torch
@@ -86,7 +87,8 @@ def main() -> None:
                 packs = [r.pack for r in rows]
                 b = collate_tree(packs, packer.pad_id, enc.window, "cpu")
                 plan = build_plan(packs, b.row_offsets, "cpu")
-                o = heads(enc(b), plan)
+                with torch.autocast("cpu", dtype=torch.bfloat16, enabled=args.amp):
+                    o = heads(enc(b), plan)
                 n_tok += b.n_tokens
                 host = {k: (getattr(o, k).float().numpy() if getattr(o, k) is not None else None)
                         for k in ("choice", "score", "noul")}

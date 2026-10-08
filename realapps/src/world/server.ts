@@ -436,10 +436,33 @@ export class MockServer {
         // cursor pagination: ?cursor=<id of the last item seen> (or ?after=); the response carries nextCursor
         const cursor = req.query.get("cursor") ?? req.query.get("after");
         if (cursor !== null && !isCart) {
-          const i0 = cursor === "" ? 0 : items.findIndex((it) => String(it.id) === cursor) + 1;
-          const pageItems = i0 <= 0 && cursor !== "" ? [] : items.slice(i0, i0 + size);
+          // keyset: the items that come after the cursor item in this ordering, even if that item has since been
+          // filtered out or deleted (it is located in the whole collection, deleted rows included)
+          const seqOf = (id: string) => coll.rows.get(id)?.seq ?? -1;
+          const sortKey = req.query.get("sort");
+          const desc = !!sortKey && sortKey.startsWith("-");
+          const k = sortKey ? (desc ? sortKey.slice(1) : sortKey) : null;
+          let start = 0;
+          if (cursor !== "") {
+            const row = coll.rows.get(cursor);
+            if (!row) start = items.length;
+            else {
+              const cv = row.hist.length ? [...row.hist].reverse().find((h) => h.v)?.v ?? null : null;
+              const after = (it: Item): boolean => {
+                if (k && cv) {
+                  const x = it[k] as never;
+                  const y = cv[k] as never;
+                  if (x !== y) return desc ? x < y : x > y;
+                }
+                return seqOf(String(it.id)) > row.seq;
+              };
+              start = items.findIndex(after);
+              if (start < 0) start = items.length;
+            }
+          }
+          const pageItems = items.slice(start, start + size);
           const last = pageItems[pageItems.length - 1];
-          const nextCursor = i0 + size < items.length && last ? String(last.id) : null;
+          const nextCursor = start + size < items.length && last ? String(last.id) : null;
           const body = this.envelope(c, pageItems, total, 0);
           const withCursor = Array.isArray(body) ? body : { ...(body as Record<string, unknown>), nextCursor };
           return { status: 200, body: withCursor, wrote: false, list: true, ...(Array.isArray(body) && nextCursor ? { headers: { "x-next-cursor": nextCursor } } : {}) };

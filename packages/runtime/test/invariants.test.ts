@@ -18,24 +18,24 @@ describe("invariant miner (CONTRACT §4)", () => {
       items,
       count: items.length,
       total: items.reduce((s, i) => s + i.price * i.qty, 0) + extra,
-      badge: items.length,
+      badgeCount: items.length,
     });
     const states = [
       cart([{ id: 1, price: 2, qty: 1 }]),
       cart([{ id: 1, price: 2, qty: 2 }]),
-      cart([{ id: 1, price: 2, qty: 2 }, { id: 2, price: 5, qty: 1 }]),
-      cart([{ id: 2, price: 5, qty: 3 }]),
-      cart([{ id: 2, price: 5, qty: 3 }, { id: 3, price: 1, qty: 1 }]),
+      cart([{ id: 1, price: 2, qty: 2 }, { id: 2, price: 5, qty: 1 }, { id: 5, price: 3, qty: 1 }]),
+      cart([{ id: 2, price: 5, qty: 3 }, { id: 5, price: 3, qty: 1 }, { id: 6, price: 1, qty: 4 }]),
+      cart([{ id: 2, price: 5, qty: 3 }, { id: 3, price: 1, qty: 1 }, { id: 6, price: 1, qty: 4 }]),
       cart([{ id: 2, price: 5, qty: 3 }, { id: 3, price: 1, qty: 1 }, { id: 4, price: 2, qty: 2 }]),
     ];
     for (const s of states) {
-      m.noteChanged(["cart.items", "cart.count", "cart.total", "cart.badge"]);
+      m.noteChanged(["cart.items", "cart.count", "cart.total", "cart.badgeCount"]);
       expect(m.observe(leaves({ cart: s }), 0).violations).toEqual([]);
     }
     const learned = m.learned().map((x) => x.text);
     expect(learned).toContain("cart.count == len(cart.items)");
     expect(learned).toContain("cart.total == sum(cart.items[*].price * cart.items[*].qty)");
-    expect(learned).toContain("cart.count == cart.badge");
+    expect(learned).toContain("cart.count == cart.badgeCount");
     expect(learned).toContain("cart.items[*].id unique");
     // a violation
     m.noteChanged(["cart.total"]);

@@ -61,7 +61,12 @@ export function pinOf(el: Element): string[] {
   const words = (s: string) => s.toLowerCase().replace(/[0-9]+/g, " ").split(/[^a-z\u00c0-\u024f]+/).filter((w) => w.length >= 3);
   const own = new Set(words(textOf(el)));
   const t = textOf(host);
-  return t.length <= 400 ? [...new Set(words(t).filter((w) => !own.has(w)))].slice(0, 24) : [];
+  if (t.length > 400) return [];
+  // look-alike controls in one row ("2" favourites and "2" page link): the control's own label and its index among
+  // the row's controls of the same tag tell them apart
+  const label = textOf(el).toLowerCase().slice(0, 30);
+  const same = Array.from(host.querySelectorAll(el.tagName)).filter((x) => x !== host);
+  return [...[...new Set(words(t).filter((w) => !own.has(w)))].slice(0, 24), `#label:${label}`, `#idx:${same.indexOf(el)}`];
 }
 
 function pinScore(pin: string[], el: Element): number {
@@ -86,16 +91,63 @@ export class UserDriver {
     private hooks: DriverHooks,
   ) {}
 
+  /** Recovery chains (manifest `recover`) and the ideal run's alternative picks (reused by every other run). */
+  recover: Step[][] = [];
+  altPicks: Record<number, number> | undefined;
+  /** Ideal run: the alternative each step ended up as (-1 = the step itself). */
+  picked: Record<number, number> = {};
+  private injected: Step[] = [];
+  private recoveries = 0;
+  private altTried = new Map<number, number>();
+
   start(): void {
     this.next();
   }
 
   private next(): void {
+    if (this.injected.length) {
+      const st = this.injected.shift()!;
+      this.loop.at(Math.max(this.busyUntil, this.loop.now), () => this.run(st, 0), "user", USER_PHASE);
+      return;
+    }
     while (this.i < this.steps.length && this.ideal && this.steps[this.i]!.accidental) this.i++;
     if (this.i >= this.steps.length) return;
-    const st = this.steps[this.i++]!;
+    let st = this.steps[this.i++]!;
+    // every run takes the alternative the ideal run's user took
+    const pick = !this.ideal ? this.altPicks?.[st.i] : undefined;
+    if (pick !== undefined && pick >= 0 && st.alts?.[pick]) st = { ...st.alts[pick]!, i: st.i, t: st.t };
     const at = Math.max(st.t, this.busyUntil, this.loop.now);
     this.loop.at(at, () => this.run(st, 0), "user", USER_PHASE);
+  }
+
+  /** A recovery chain whose precondition holds now (e.g. the app signed the user out), if any. */
+  private recoveryNow(): Step[] | null {
+    if (this.recoveries >= 6) return null;
+    for (const chain of this.recover) {
+      const h = chain[0];
+      if (!h?.requires) continue;
+      try {
+        if (deepQueryAll(this.w.document, h.requires).some((e) => visible(e) && (!h.requiresText || textOf(e).toLowerCase().includes(h.requiresText.toLowerCase())))) return chain;
+      } catch {
+        /* bad selector */
+      }
+    }
+    return null;
+  }
+
+  /** Ideal run: replace a step that cannot be taken by its next alternative (the user does something else). */
+  private tryAlt(st: Step): boolean {
+    if (!this.ideal || !st.alts?.length || st.i >= 100000) return false;
+    const orig = this.steps.find((x) => x.i === st.i);
+    if (!orig?.alts?.length) return false;
+    const j = (this.altTried.get(st.i) ?? -1) + 1;
+    if (j >= orig.alts.length) return false;
+    this.altTried.set(st.i, j);
+    const alt: Step = { ...orig.alts[j]!, i: st.i, t: st.t };
+    this.picked[st.i] = j;
+    this.hooks.skipped(st, "alt");
+    this.loop.schedule(0, () => this.run(alt, 0), "user", USER_PHASE);
+    return true;
   }
 
   private find(st: Step): Element | null {
@@ -133,6 +185,7 @@ export class UserDriver {
   private reqOk = new Set<number>();
 
   private skip(st: Step, why: string): void {
+    if ((why === "precondition" || why === "missing" || why === "after") && this.tryAlt(st)) return;
     this.skippedSteps.add(st.i);
     this.hooks.skipped(st, why);
     this.busyUntil = this.loop.now;
@@ -147,7 +200,19 @@ export class UserDriver {
   static REQUIRES_GRACE = 300;
 
   private run(st: Step, waited: number): void {
+    // a recovery the user must make first (only before a scheduled step, never inside a recovery chain)
+    if (waited === 0 && st.i < 100000 && this.recover.length && !this.injected.length) {
+      const chain = this.recoveryNow();
+      if (chain) {
+        this.recoveries++;
+        this.injected = [...chain.slice(1), st];
+        this.loop.schedule(0, () => this.run(chain[0]!, 0), "user", USER_PHASE);
+        return;
+      }
+    }
     if (waited === 0 && st.head !== undefined && st.head !== st.i && this.skippedSteps.has(st.head)) return this.skip(st, "chain");
+    // an accidental repeat of a step the user could not take does not happen either
+    if (waited === 0 && st.repeatOf !== undefined && this.skippedSteps.has(st.repeatOf)) return this.skip(st, "repeat-of-skipped");
     // `after`: one of these affordances must have actually run (not just been scheduled)
     if (waited === 0 && st.after?.length && !st.after.some((a) => this.ranAff.has(a))) return this.skip(st, "after");
     if (st.requires && !this.reqOk.has(st.i)) {
@@ -170,7 +235,17 @@ export class UserDriver {
       this.next();
       return;
     }
-    const el = this.find(st);
+    let el = this.find(st);
+    if (el && st.requires && this.reqOk.has(st.i)) {
+      // the precondition must still hold when the user acts (e.g. a text that appears while waiting)
+      let ok = false;
+      try {
+        ok = deepQueryAll(this.w.document, st.requires).some((e) => visible(e) && (!st.requiresText || textOf(e).toLowerCase().includes(st.requiresText.toLowerCase())));
+      } catch {
+        ok = false;
+      }
+      if (!ok) el = null;
+    }
     if (!el) {
       const limit = st.waitMs ?? 2000;
       if (waited >= limit) return this.skip(st, "missing");

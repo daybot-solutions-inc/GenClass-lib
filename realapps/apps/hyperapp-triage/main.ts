@@ -76,13 +76,13 @@ const Pick = (s: S, id: number) => ({ ...s, selected: s.selected.includes(id) ? 
 const Apply = (s: S, label: string) => (s.selected.length === 0 || s.busy.length ? s : [{ ...s, busy: [...s.selected], error: "", notice: "" }, bulkFx(s.selected, label)]);
 const Assign = (s: S, id: number) => (ASSIGN_GUARD && s.busy.includes(id) ? s : [{ ...s, busy: [...s.busy, id], error: "" }, assignFx(id)]);
 
-const every = (ms: number, action: unknown) => [
-  (dispatch: (a: unknown) => void, p: { ms: number; action: unknown }) => {
-    const iv = setInterval(() => dispatch(p.action), p.ms);
-    return () => clearInterval(iv);
-  },
-  { ms, action },
-];
+// one subscriber function for every interval (module level): Hyperapp compares subscribers by identity, so a
+// function created per render would restart the interval on every state change
+const intervalSub = (dispatch: (a: unknown) => void, p: { ms: number; action: unknown }) => {
+  const iv = setInterval(() => dispatch(p.action), p.ms);
+  return () => clearInterval(iv);
+};
+const every = (ms: number, action: unknown) => [intervalSub, { ms, action }];
 
 const view = (s: S) =>
   h("main", { class: "triage" }, [

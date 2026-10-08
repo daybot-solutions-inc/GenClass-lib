@@ -17,7 +17,7 @@ describe("review: a custom redact option", () => {
       await clock.advance(200);
     }
     rt.user({ kind: "type", target: 'input "Email"', value: "x" }, () => form.set({ email: "secret.person@corp.io" }));
-    await clock.advance(200);
+    await clock.advance(1200); // batch 8: relations on a store being typed into are checked after the typing burst (1 s)
     const inc = decider.calls.filter((c) => c.trigger === "inconsistency");
     expect(inc).toHaveLength(1);
     const text = JSON.stringify(inc[0].state);

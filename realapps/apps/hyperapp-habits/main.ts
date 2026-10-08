@@ -132,13 +132,13 @@ const AddHabit = (s: S, ev: Event) => {
   return [{ ...s, adding: true, error: "" }, addHabitFx(name)];
 };
 
-const every = (ms: number, action: unknown) => [
-  (dispatch: (a: unknown) => void, p: { ms: number; action: unknown }) => {
-    const iv = setInterval(() => dispatch(p.action), p.ms);
-    return () => clearInterval(iv);
-  },
-  { ms, action },
-];
+// one subscriber function for every interval (module level): Hyperapp compares subscribers by identity, so a
+// function created per render would restart the interval on every state change
+const intervalSub = (dispatch: (a: unknown) => void, p: { ms: number; action: unknown }) => {
+  const iv = setInterval(() => dispatch(p.action), p.ms);
+  return () => clearInterval(iv);
+};
+const every = (ms: number, action: unknown) => [intervalSub, { ms, action }];
 
 // ------------------------------------------------------------------------------------------- view
 const view = (s: S) =>

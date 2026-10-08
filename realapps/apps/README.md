@@ -95,6 +95,32 @@ Harness additions (wave 4 feedback):
   (> 75% of base steps skipped while the ideal run is healthy).
 - The page never scrolls (scroll events are real-time): apps must not load data on scroll.
 
+Wave-5 additions:
+- **Alternatives:** when the ideal run's user cannot take a scheduled single step (precondition, missing element,
+  `after`), they take one of up to two alternatives drawn by weight from ordinary affordances (never session-ending
+  ones with `resets`). Every other run reuses the ideal run's pick, so intents stay aligned.
+- **`once: true`:** the affordance is used at most once per session.
+- **`recover: true`:** never scheduled. Whenever its `requires` holds before a scheduled step, the user performs it
+  (and its `then` chain) first, e.g. signing in again after the app signed them out (at most 6 times per session).
+- **Accidental repeats** of a step that was skipped are skipped immediately ("repeat-of-skipped").
+- **`sameNth` / `sameText`:** a `sameNth` follow-up copies the head's `text` only if it has none; `sameText` always
+  copies it.
+- **`requires`** (including `requiresText`) must still hold when the element is found during the 2 s wait.
+- **Look-alike controls in one row** (a "2" favourite button next to a "2" page link) are told apart by the
+  control's label and its index among the row's controls of the same tag.
+- **Mock server cursor paging is keyset:** `?cursor=<id>` returns the items after that item in the current
+  ordering, even if it has since been filtered out or deleted.
+- **Ideal-run exactly-once** also covers identical non-idempotent requests that are still in flight (two parallel
+  token refreshes share one result).
+- **`debug.js`:**
+  - `--variant k=v[,k=v]` forces flags;
+  - `--steps` prints the ideal and base step logs (what each step acted on, or why it was skipped);
+  - `--interference` names the first differing request.
+- **Heal mode shifts timing by tens of milliseconds:** the decider answers after a simulated model latency
+  (6–25 ms), so responses and messages reach the app slightly later than in observe mode. Interference sweeps compare
+  outcomes, not timings; an app whose outcome depends on a few ms (a `requires` check racing a response) needs the
+  grace above or an explicit wait.
+
 ## Determinism rules (the harness virtualises time and network; avoid what it cannot)
 OK: setTimeout/setInterval/rAF/requestIdleCallback/MessageChannel/queueMicrotask, fetch, XMLHttpRequest (axios,
 $.ajax, superagent), WebSocket, AbortController, AbortSignal.timeout, Date, Math.random, crypto.randomUUID.

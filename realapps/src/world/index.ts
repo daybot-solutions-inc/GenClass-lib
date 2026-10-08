@@ -178,6 +178,7 @@ declare global {
       driver = new UserDriver(w, loop, cfg.steps, cfg.ideal, {
         begin: (st, sub) => {
           probe.current = { step: st, sub };
+          probe.actualSteps.set(st.i, st);
           probe.subTimes.set(`${st.i}:${sub}`, loop.now);
           net.lastStepT = loop.now;
         },
@@ -185,17 +186,20 @@ declare global {
           probe.current = null;
         },
         inflight: () => net.inflight(),
-        skipped: (_st, why) => {
+        skipped: (st, why) => {
           probe.stepsSkipped++;
+          if (stepLog.length < 400) stepLog.push(`${st.i}@${Math.round(loop.now)} SKIP ${why} ${st.intent.affordance}`);
           skipWhy[why] = (skipWhy[why] ?? 0) + 1;
           if (why === "missing") probe.skippedAt.push(loop.now);
         },
         ran: (st, el) => {
           probe.stepsRan.push({ i: st.i, t: loop.now });
-          if (el && stepLog.length < 400) stepLog.push(`${st.i}@${Math.round(loop.now)} ${el.tagName.toLowerCase()}${el.className && typeof el.className === "string" ? "." + el.className.trim().split(/\s+/).join(".") : ""} "${((el as HTMLElement).innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 30)}"`);
+          if (el && stepLog.length < 400) stepLog.push(`${st.i}@${Math.round(loop.now)} ${st.intent.affordance} ${el.tagName.toLowerCase()}${el.className && typeof el.className === "string" ? "." + el.className.trim().split(/\s+/).join(".") : ""} "${((el as HTMLElement).innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 30)}"`);
         },
       });
       driver.pins = cfg.pins;
+      driver.recover = cfg.recover ?? [];
+      driver.altPicks = cfg.altPicks;
       driver.start();
       probe.markAllDirty();
       let error: string | undefined;
@@ -234,7 +238,7 @@ declare global {
         internalErrors: [...loop.internalErrors, ...(navAttempts ? [`nav-prevented:${navAttempts}`] : []), ...errLog],
         wsMessages: probe.wsMessages,
         ...(asks.length ? { asks } : {}),
-        ...(cfg.ideal ? { pins: driver.recorded } : {}),
+        ...(cfg.ideal ? { pins: driver.recorded, altPicks: driver.picked } : {}),
       };
       return JSON.stringify(res);
     },

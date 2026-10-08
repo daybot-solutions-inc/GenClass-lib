@@ -246,8 +246,10 @@ export class Probe {
     return out;
   }
 
+  /** Steps as actually performed (an alternative or a recovery step replaces the scheduled one). */
+  actualSteps = new Map<number, Step>();
   stepOf(i: number): Step | undefined {
-    return this.cfg.steps[i];
+    return this.actualSteps.get(i) ?? this.cfg.steps[i];
   }
 
   hooks() {

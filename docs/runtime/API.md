@@ -141,9 +141,13 @@ it changed. Reads that bypass GenClass (a Redux middleware's `store.getState()`)
 `holdWrites` off for such stores or pass `hold: false`.
 
 GenClass also learns, at *settled* points (no requests in flight, `settleMs` of quiet), generic relations between
-your fields (`a == b`, `a == len(B)`, `a == sum(B[*].f)`, `a == sum(B[*].f * B[*].g)`, `a >= 0`, `a ∈ B[*].k`,
-`B[*].k unique`, stable types, non-null) and each operation's usual effects on state. When a learned relation
-breaks, or an operation changes state unlike it normally does, the model is consulted.
+your fields (`a == b` for fields with related names, `a == len(B)`, `a == sum(B[*].f)`, `a == sum(B[*].f * B[*].g)`,
+`a == count(B[*].k == v)`, `a >= 0`, `a ∈ B[*].k`, `B[*].id unique`, stable types, non-null) and each operation's usual
+effects on state. When a learned relation breaks, or an operation changes state unlike it normally does, the model is
+consulted. To avoid false alarms on correct apps: a selection holding 0, -1, "" or null means nothing is selected;
+uniqueness is only learned for id columns; pagination metadata (page, offset, limit, cursor, and a total next to them)
+never enters a relation; stores you are typing into are checked once typing pauses for a second; counters that change
+on nearly every write are left out unless they are a learned sum or count of a list.
 
 ## Operations and user actions
 

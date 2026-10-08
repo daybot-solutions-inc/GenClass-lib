@@ -174,16 +174,18 @@ describe("situations per trigger (CONTRACT §5, §6)", () => {
 
   it("transition: an op whose write set differs from its learned profile", async () => {
     const s = setup();
-    const cart = s.rt.atom("cart", { items: [] as number[], total: 0 });
+    // the total is derived from the items (a learned sum), so it stays part of the write-set profile although it
+    // changes on every write (batch 8: busy counters that are not derived are left out of transition shapes)
+    const cart = s.rt.atom("cart", { items: [] as { id: number; price: number }[], total: 0 });
     let broken = false;
-    s.server.on("POST", "/api/cart", ({ n }) => ({ status: 200, body: { item: n, price: 3 }, latency: 80 }));
+    s.server.on("POST", "/api/cart", ({ n }) => ({ status: 200, body: { item: n, price: 3 + (n % 4) }, latency: 80 }));
     const add = () =>
       s.rt.user({ kind: "click", target: 'button "Add"' }, () => {
         void (async () => {
           const r = await s.fetch("/api/cart", { method: "POST", body: "{}" });
           const { item, price } = (await r.json()) as { item: number; price: number };
-          if (broken) cart.set((c) => ({ ...c, items: [...c.items, item] }));
-          else cart.set((c) => ({ items: [...c.items, item], total: c.total + price }));
+          if (broken) cart.set((c) => ({ ...c, items: [...c.items, { id: item, price }] }));
+          else cart.set((c) => ({ items: [...c.items, { id: item, price }], total: c.total + price }));
         })();
       });
     for (let i = 0; i < 22; i++) {

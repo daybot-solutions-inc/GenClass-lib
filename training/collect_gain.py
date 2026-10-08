@@ -27,6 +27,7 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--threads", type=int, default=16)
     ap.add_argument("--max-len", type=int, default=2048)
+    ap.add_argument("--amp", action="store_true", help="bf16 autocast for the forward (CPU)")
     a = ap.parse_args()
     import torch
 
@@ -54,7 +55,8 @@ def main() -> None:
             packs = [r.pack for r in rows]
             b = collate_tree(packs, packer.pad_id, enc.window, "cpu")
             plan = build_plan(packs, b.row_offsets, "cpu")
-            o = heads(enc(b), plan)
+            with torch.autocast("cpu", dtype=torch.bfloat16, enabled=a.amp):
+                o = heads(enc(b), plan)
             ch = o.choice.float().numpy()
             gn = o.gain.float().numpy() if o.gain is not None else None
             for ref in plan.refs:

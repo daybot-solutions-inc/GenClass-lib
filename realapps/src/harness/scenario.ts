@@ -21,6 +21,7 @@ export interface Scenario {
   clean: boolean;
   net: NetProfile;
   steps: Step[];
+  recover: Step[][];
   external: ExternalEvent[];
   warmup: number;
   tUser: number;
@@ -37,14 +38,16 @@ export interface Scenario {
 // --------------------------------------------------------------------------------------------- splits
 /** Frameworks held out entirely (test only). */
 export const TEST_FRAMEWORKS = new Set(["lit"]);
-/** Apps held out entirely (test only), besides manifests with `heldOut`: a library (SWR), a framework (Alpine) and a
- * raw-XHR app that appear nowhere in train/dev. */
+/** Apps held out entirely (test only), besides manifests with `heldOut` and the held-out frameworks/libraries. Alpine
+ * is a TRAIN framework (other Alpine apps train); only this one Alpine app and one raw-XHR app are held out. */
 export const TEST_APPS = new Set(["swr-status", "alpine-tasks", "xhr-autocomplete"]);
+/** Libraries held out entirely (test only): every app that uses one of them. */
+export const TEST_LIBS = new Set(["swr"]);
 /** Flag patterns held out (test only), app/flag:value. */
 export const TEST_PATTERNS = new Set<string>(["react-search/guard:reqid", "vue-editor/save:serialize", "zustand-board/push:version-check"]);
 
 export function splitOf(app: AppManifest, patterns: string[]): "train" | "dev" | "test" {
-  if (app.heldOut || TEST_APPS.has(app.name) || TEST_FRAMEWORKS.has(app.framework) || patterns.some((p) => TEST_PATTERNS.has(p))) return "test";
+  if (app.heldOut || TEST_APPS.has(app.name) || TEST_FRAMEWORKS.has(app.framework) || app.libs.some((l) => TEST_LIBS.has(l.toLowerCase().split(/[@ (]/)[0]!)) || patterns.some((p) => TEST_PATTERNS.has(p))) return "test";
   return hashAll("realapps-dev-v1", app.name, ...patterns) % 100 < 4 ? "dev" : "train";
 }
 
@@ -166,13 +169,15 @@ function persona(rng: Rng): Persona {
   return { thinkMs: rng.float(500, 2200), typeMs: rng.float(55, 210), typoP: rng.float(0, 0.06), dbl: rng.weighted([[0, 3], [1, 4], [2.5, 2]] as const), impatient: rng.weighted([[0, 3], [1, 4], [2.5, 2]] as const), idleP: rng.float(0, 0.12) };
 }
 
-export function buildSession(app: AppManifest, rng: Rng, p: Persona, t0: number, tUser: number): Step[] {
-  const steps: Step[] = [];
+export function buildSession(app: AppManifest, rng: Rng, p: Persona, t0: number, tUser: number): { steps: Step[]; recover: Step[][] } {
+  let steps: Step[] = [];
+  const main = steps;
+  let indexBase = 0;
   const used = new Set<string>();
   const byId = new Map(app.affordances.map((a) => [a.id, a]));
   let t = t0;
   const push = (s: Omit<Step, "i">): Step => {
-    const st = { ...s, i: steps.length } as Step;
+    const st = { ...s, i: indexBase + steps.length } as Step;
     steps.push(st);
     return st;
   };
@@ -182,9 +187,10 @@ export function buildSession(app: AppManifest, rng: Rng, p: Persona, t0: number,
     if (!a) return 0;
     used.add(a.id);
     for (const x of a.resets ?? []) used.delete(x);
-    const head = a.sameNth && chainHead !== undefined ? steps[chainHead] : undefined;
-    const text = head?.text ?? (a.text?.length ? r.pick(a.text) : undefined);
-    const nth = head?.nth ?? (a.nth ? r.int(0, a.nth - 1) : undefined);
+    const head = (a.sameNth || a.sameText) && chainHead !== undefined ? steps[chainHead - indexBase] : undefined;
+    const own = a.text?.length ? r.pick(a.text) : undefined;
+    const text = a.sameText ? head?.text ?? own : own ?? (a.sameNth ? head?.text : undefined);
+    const nth = a.sameNth && head?.nth !== undefined ? head.nth : a.nth ? r.int(0, a.nth - 1) : undefined;
     const value = a.values?.length ? r.pick(a.values) : undefined;
     const key = `${a.key ?? a.id}${a.intent === "text" && text ? `:${text}` : a.intent === "nth" && nth !== undefined ? `:${nth}` : a.intent === "value" && value ? `:${value}` : ""}`;
     const intent = { key, mode: a.mode, affordance: a.id };
@@ -224,15 +230,54 @@ export function buildSession(app: AppManifest, rng: Rng, p: Persona, t0: number,
     }
     return dur;
   };
+  // alternatives for a step the ideal user cannot take: other simple affordances (no chains), drawn up front
+  const altFor = (r: Rng, not: string): Omit<Step, "i" | "t" | "alts">[] => {
+    // ordinary actions only (not session-ending ones such as sign-out), drawn by the affordances' weights
+    let pool = app.affordances.filter((a) => !a.followOnly && !a.recover && !a.then?.length && !a.resets?.length && a.id !== not && a.kind !== "type" && a.weight > 0);
+    const picks: typeof pool = [];
+    while (picks.length < 2 && pool.length) {
+      const a = r.weighted(pool.map((x) => [x, x.weight] as const));
+      picks.push(a);
+      pool = pool.filter((x) => x !== a);
+    }
+    const out: Omit<Step, "i" | "t" | "alts">[] = [];
+    const saveSteps = steps;
+    const saveBase = indexBase;
+    for (const a of picks) {
+      steps = [];
+      indexBase = -1000000;
+      one(a.id, r.fork("alt", a.id));
+      const st = steps[0];
+      if (st) {
+        const { i: _i, t: _t, ...rest } = st;
+        void _i;
+        void _t;
+        out.push(rest);
+      }
+    }
+    steps = saveSteps;
+    indexBase = saveBase;
+    return out;
+  };
   let guard = 0;
   while (t < tUser && guard++ < 2000) {
-    const cands = app.affordances.filter((a) => !a.followOnly && (!a.after || a.after.some((x) => used.has(x))));
+    const cands = app.affordances.filter((a) => !a.followOnly && !a.recover && !(a.once && used.has(a.id)) && (!a.after || a.after.some((x) => used.has(x))));
     if (!cands.length) break;
     const a = rng.weighted(cands.map((c) => [c, c.weight] as const));
     const r = rng.fork("step", steps.length);
     chainHead = undefined;
     const headIndex = steps.length;
+    const usedBefore = new Set(used);
     t += one(a.id, r);
+    // a single-step pick gets alternatives (the "used" bookkeeping is the main pick's)
+    if (!a.then?.length && steps[headIndex] && !steps[headIndex]!.accidental) {
+      const alts = altFor(r.fork("alts"), a.id);
+      used.clear();
+      for (const x of usedBefore) used.add(x);
+      used.add(a.id);
+      for (const x of a.resets ?? []) used.delete(x);
+      if (alts.length) steps[headIndex]!.alts = alts;
+    }
     chainHead = a.then?.length ? headIndex : undefined;
     for (const f of a.then ?? []) {
       t += r.lognormal(Math.min(900, p.thinkMs * 0.5), 0.5);
@@ -242,7 +287,24 @@ export function buildSession(app: AppManifest, rng: Rng, p: Persona, t0: number,
     t += rng.lognormal(p.thinkMs, 0.6);
     if (rng.bool(p.idleP)) t += rng.float(3000, 10000);
   }
-  return steps.filter((s) => s.t < tUser);
+  // recovery chains (performed at run time whenever their precondition holds)
+  const recover: Step[][] = [];
+  app.affordances
+    .filter((a) => a.recover)
+    .forEach((a, j) => {
+      steps = [];
+      indexBase = 100000 + j * 100;
+      const r = rng.fork("recover", a.id);
+      chainHead = undefined;
+      one(a.id, r);
+      chainHead = a.then?.length ? indexBase : undefined;
+      for (const f of a.then ?? []) one(f, r.fork(f));
+      chainHead = undefined;
+      recover.push(steps.map((x) => ({ ...x, t: 0 })));
+    });
+  steps = main;
+  indexBase = 0;
+  return { steps: steps.filter((s) => s.t < tUser), recover };
 }
 
 function external(app: AppManifest, rng: Rng, tUser: number): ExternalEvent[] {
@@ -301,7 +363,7 @@ export function buildScenario(seed: number, apps: AppManifest[], opts: { app?: s
     P.dbl = 0;
     P.impatient = 0;
   }
-  const steps = buildSession(app, R.fork("session"), P, app.startMs ?? rT.float(600, 1800), tUser);
+  const { steps, recover } = buildSession(app, R.fork("session"), P, app.startMs ?? rT.float(600, 1800), tUser);
   const ext = external(app, R.fork("external"), tUser);
   const vd = diagVocab(R.fork("vocab"));
   const va = actionVocab(R.fork("action-vocab"));
@@ -316,6 +378,7 @@ export function buildScenario(seed: number, apps: AppManifest[], opts: { app?: s
     clean,
     net,
     steps,
+    recover,
     external: ext,
     warmup,
     tUser,
