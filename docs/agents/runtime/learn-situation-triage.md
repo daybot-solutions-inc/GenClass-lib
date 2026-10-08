@@ -15,14 +15,24 @@
 > descriptions, diagnosis labels), the triage rule (what is salient), the delivery gate, the situation budget or
 > section limits, redaction, the latency/error/rate/cadence baselines, or transition profiles; or when you need to know
 > why a trigger did or did not reach the model.
-> **Source of truth:** the code. Verified against branch `mvp-v2` at b435acb (origin/runtime 74f17c0 = situation-v2, plus default mode observe and CI), 2026-10-08. If this doc and the code disagree, the code wins.
+> **Source of truth:** the code. Verified against branch `mvp-v2-merge` (mvp-v2 + origin/runtime eff18cb + observe/redaction fixes), 2026-10-08. If this doc and the code disagree, the code wins.
 
 ## TL;DR
 
 - **Every byte here is model input, and the format is frozen.** The current training format is git tag
-  `situation-v2` (commit 6e5e86e, "Runtime batch 5 … freeze situation-v2"). `git diff situation-v2 b435acb --
-  packages/runtime/src` touches only `runtime.ts` (default mode), `types.ts` and `devtools/index.ts`; nothing in
-  `src/situation/`, `src/learn/`, `util.ts` or `state/fields.ts` changed after the freeze. Producers of training rows
+  `situation-v2` (commit 6e5e86e, "Runtime batch 5 … freeze situation-v2"). `git diff situation-v2 HEAD --
+  packages/runtime/src` touches `runtime.ts` (default mode f3636b2; background deliveries 054da38, §4-§5; the
+  purity fix to `recentErrors` 29b7f28), `types.ts` and `devtools/index.ts` (default-mode comments and labels),
+  `trace/ops.ts` (`OpRegistry.peekNextId`, for tests), `observe/messages.ts` (`bodyNow`) and `observe/xhr.ts`
+  (`body.now`), the install entries (`auto.ts`, `cdn/*`) and the redaction fix (commit f107013, §12):
+  `situation/content.ts` (F2), `state/fields.ts` (`redactedStringDiff`) and `util.ts` (`isSensitivePath`). The
+  redaction fix is the only change to what a given state renders to, and only for values the redactor hides;
+  everything else renders byte-for-byte as at the freeze. 054da38 changes when a delivery that cannot be held
+  (observe mode, no permitted action, model not ready or too slow) is released, analysed and decided, not the text;
+  the sim and realapps' recorded (non-`ideal`) runs default to `mode: "heal"` with `holdBudgetMs: 1e9` and a ready
+  decider, so their deliveries stay holdable (`sim/src/run/rt.ts` -> `createOptions`,
+  `realapps/src/world/index.ts` -> `__GENCLASS_INIT__`). Nothing in `src/learn/`
+  changed. Producers of training rows
   run this exact code: the sim (`sim/src/run/rt.ts` -> `realRuntimeFactory`), the real-browser corpus
   ([realapps](../realapps.md)) and the hand-written Python port `training/curriculum/rt.py` (its docstring says
   "FROZEN at git tag `situation-v2`"). No situation-v2 model exists yet ([HANDOFF.md](../../../HANDOFF.md), `training/NEEDS.md`); the old
@@ -58,7 +68,9 @@
   `MIN_BUDGET = 500`. "auto": WebGPU or unknown device 2400; WASM 1000/1333/1667/2000 for 1..4+ threads; x0.8 per
   `max_tokens_exceeded`, floor 0.5 (2400 -> 1920 -> 1536 -> 1229 -> 1200).
 - **Deterministic and almost side-effect free**: only the injected clock is read; the only write inside fact code is
-  `X.reads.set(path, vStart)` (the gate itself sets `op.delivery`, marks and buffers; see Invariants).
+  `X.reads.set(path, vStart)` (the gate itself sets `op.delivery`, marks and buffers; see Invariants). Building a
+  situation consumes no op ids, events, decisions or timers (`test/situation-purity.test.ts`); `SitEnv.recentErrors`
+  only filters, pruning happens when an error is recorded.
 
 ## Files
 
@@ -76,9 +88,9 @@
 | `packages/runtime/src/situation/build.ts` | subject sentence, sections, applicable actions, questions, salience | `buildSituation`, `subjectOf`, `subjectRef`, `relatedInFlight` (new), `isTrigger` (unused), `BuildOptions`, `BuiltSituation`, `ActionOption`; internal `subjectOp`, `involvedStores`, `involvedFields`, `builtinApplicable`, `revertableChain`, section builders |
 | `packages/runtime/src/situation/questions.ts` | action catalogue, per-trigger actions and descriptions, diagnosis vocabulary | `BUILTIN_ACTIONS`, `TRIGGER_ACTIONS`, `PASSIVE`, `ACTION_INSTRUCTIONS`, `TRIGGER_DESCRIPTIONS` (new), `DIAGNOSIS_INSTRUCTIONS`, `DEFAULT_DIAGNOSES`, `COMPACT_QUESTIONS_BUDGET`, `diagnosisVocabulary`, `actionDescription`, `buildQuestions` |
 | `packages/runtime/src/situation/serialize.ts` | budget-shaped Jev state | `toJevState`, `sectionLimits`, `stateChars`, `stateText`, `STATE_CHAR_BUDGET`, `COMPACT_BUDGET`, `MIN_BUDGET`, `LIMITS` |
-| `packages/runtime/src/runtime.ts` (parts) | owns `Baselines`/`Profiles`/`Cadence`, feeds them, implements `SitEnv`, runs the delivery gate and triage, sets stale marks | `RuntimeImpl.trigger`, `runDelivery`, `observeWrite`, `gateMutation`, `mutationController`, `covered`, `expectedLatency`, `noteResponse`, `onChannel`, `markWrites`, `dropFilter`, `writtenOver`, `onDropped`, `waitOps`, `settled`, `situationBudget`, `buildOpts`, `makeEnv`, `startOp`/`endOp`/`onApplied`/`watchStall` |
+| `packages/runtime/src/runtime.ts` (parts) | owns `Baselines`/`Profiles`/`Cadence`, feeds them, implements `SitEnv`, runs the delivery gate and triage, sets stale marks | `RuntimeImpl.trigger`, `runDelivery`, `deliveryHoldable`, `writesCanAct`, `finalizeDeliveries`, `observeWrite`, `gateMutation`, `mutationController`, `covered`, `expectedLatency`, `noteResponse`, `onChannel`, `markWrites`, `dropFilter`, `writtenOver`, `onDropped`, `waitOps`, `settled`, `situationBudget`, `buildOpts`, `makeEnv`, `startOp`/`endOp`/`onApplied`/`watchStall` |
 | `packages/runtime/src/util.ts` (parts) | formatters and redaction | `secs`, `rel`, `fmtNum`, `ratio`, `plural`, `ordinal`, `truncate`, `describe`, `defaultRedact`, `isSensitivePath` (new), `isSensitiveName`, `words`, `REDACTED`, `Redactor`, `kindOf`, `normalizeFieldPath`, `requestSignature`, `normalizePath`, `isIdSegment`, `parseUrl` |
-| `packages/runtime/src/state/fields.ts` (parts) | change sentences ([state-and-adapters](state-and-adapters.md) owns it) | `changeText`, `stringDiff` (new), `elementDiff`, `addedElements`, `normalizeLeafKind` |
+| `packages/runtime/src/state/fields.ts` (parts) | change sentences ([state-and-adapters](state-and-adapters.md) owns it) | `changeText`, `stringDiff` (new), `redactedStringDiff` (redaction fix), `elementDiff`, `addedElements`, `normalizeLeafKind` |
 | `packages/runtime/src/state/hub.ts` (parts) | stale marks on fields | `FieldState.mark`, `StaleMark`, `StoreHub.markField` (cleared by the next write) |
 | `packages/runtime/src/index.ts` | public re-exports from this area | `stateText`, `stateChars`, `sectionLimits`, `STATE_CHAR_BUDGET`, `COMPACT_BUDGET`, `BUILTIN_ACTIONS`, `TRIGGER_ACTIONS`, `PASSIVE`, `DEFAULT_DIAGNOSES` |
 
@@ -107,7 +119,7 @@ Public types in `packages/runtime/src/types.ts`: `TriggerKind` (now with `delive
 | pending local change | `Conflict { kind: "pending" }` from `pendingConflict(env, X, path, now)`: in the last 10 s (`PENDING_WINDOW_MS`) a chain rooted at a user op (not X's root) wrote the field, and a non-user op of that root with a name different from X's is in flight (`x` null: any name). |
 | delivery spec | `DeliverySpec { op, channel, req?, status?, message?, predicted, matched, conflicts, defers, queuedAhead, body?, content? }` (`env.ts`). |
 | `op.delivery` | set by `runDelivery` on the op: `{ patterns, known, salient, decided, overNewer? }`; read by `covered` (skip `mutation` triggers for covered writes) and `markWrites` (F9 "delivered over newer data"). |
-| covered write | `RuntimeImpl.covered(m)`: walking up to 16 causes from `m.cause`, the first op with `op.delivery`: covered iff P was known, every changed path is in P (raw or normalised), and the delivery was not salient or was decided in time. Never covered with `triage: "always"`. |
+| covered write | `RuntimeImpl.covered(m)`: walking up to 16 causes from `m.cause`, the first op with `op.delivery`: covered iff P was known, every changed path is in P (raw or normalised), and the delivery was not salient, was decided in time, or has a background decision pending (`deliveryPending`, observe or no permitted action; since 054da38). Never covered with `triage: "always"`. |
 | content comparison | `Cmp` (`content.ts` -> `compareField`): incoming vs current value by value hash, the value when X started (if the 16-entry history covers it), other chains' writes since X, `revertOf` (newest such write whose replaced value equals the incoming one), typed-text writes (`user`), and `items` (`ItemCmp`, list joined on `id`/`_id`/`uuid`/`slug`/`key`). |
 | stale mark | `StaleMark { t, op, why }` on `FieldState.mark`, set by `RuntimeImpl.markWrites` / `onChannel`, cleared on the next write; stated by F9 (`markFacts`). |
 | cadence | `CadenceInfo`: `periodic { period, intervals, last, next }` or `debounced { delay, matching, of }` (`Cadence.get`). |
@@ -247,21 +259,26 @@ The profile is now model input twice: transition facts (T1) and the delivery pre
    any) x (1 + decisions waiting) + the one computing (at least its elapsed time); `Infinity` while `queue.stuck`.
    If not waiting, passive runs now and the decision is made in the background (deadline 5 s). In the default
    `observe` mode (commit f3636b2, `o.mode ?? "observe"`) no action is permitted, so nothing is ever held; salient
-   situations are still built and decided in the background for detection, except `delivery`: its candidates still
-   wait up to `BODY_WAIT_MS` (100 ms) for the body (`runDelivery` ignores the mode), then `passive()` sets
-   `released`, and `DeciderQueue` drops the background decision as stale (`ctl.stale = () => released`), so in
-   observe mode delivery situations never reach the model and produce no detections (same in guard whenever a
-   delivery does not wait).
+   situations are still built and decided in the background for detection. A `delivery` that does not wait (commit
+   054da38): if its chain's writes can still act on their own (`writesCanAct`: discard permitted, not paused, i.e.
+   guard/heal with a model too slow to hold for), it is passive and not decided unless forced or `triage: "always"`;
+   otherwise (observe, no permitted action) its op goes into `deliveryPending` before `passive()` and the
+   background decision covers its chain's predicted writes (`covered`) until it returns.
 7. Submit to the decider queue with `ctl.stale` (queued decisions whose subject was superseded are dropped before
-   the model sees them). Gate/apply: [decide-policy-actions](decide-policy-actions.md).
+   the model sees them), except for a `delivery` that does not wait: its controller is stale as soon as it is
+   released, so it gets no stale check and is still decided (detection, reports, standing questions); `onDecision`
+   only records it (a released delivery can only take the passive action). Gate/apply:
+   [decide-policy-actions](decide-policy-actions.md).
 
 `ask` bypasses `trigger()`. `rt.situation(trigger?)` returns `lastBuilt[trigger]` or an "ask about now" situation
 relabelled with the trigger.
 
 ### 5. The delivery gate (`RuntimeImpl.runDelivery`)
 
-Called with `{ op, channel, req?, status?, message?, queuedAhead?, body? }` and a `release` callback (lets the
-response/message through). Holding is only latency; the response object is unchanged.
+Called with `{ op, channel, req?, status?, message?, queuedAhead?, body?, bodyNow? }` and a `release` callback
+(lets the response/message through). Holding is only latency; the response object is unchanged. `bodyNow` is the
+body read synchronously when it is already in memory (WebSocket/EventSource `MessageGate`, XHR `body.now`; fetch
+has none).
 1. Not consultable, paused, destroyed or a GenClass op -> release.
 2. `predicted = predictedWrites(env, op)`, `matched = matchFields(env, predicted.patterns)`, `conflicts =
    conflictsOn(env, op, matched, now)` (per field: newer conflict, else pending conflict; newer first).
@@ -269,6 +286,14 @@ response/message through). Holding is only latency; the response object is uncha
 4. `typed` = matched string fields that a user write (outside the op's chain) changed since the op started.
    `always` = `triage: "always"` or an `always` standing question on `delivery`.
 5. No conflict, nothing typed, not `always` -> release (no body read, no latency).
+5b. Background delivery (commit 054da38): when `deliveryHoldable(op, matched, defers)` is false (observe mode,
+   paused, decider not `ready`, no permitted non-passive delivery action or permitted custom action, or
+   `expectedLatency() > holdBudgetMs()`), the delivery is released now, before any body read. Steps 6-8 still
+   run, but settling marks `overNewer` and, if salient or `always`, calls `trigger(spec, ctl, { hold: false,
+   priority: 2 })` (decided for detection only). A `bodyNow` body is analysed synchronously; otherwise the body
+   wait is cut short when the delivery's chain is about to write (`finalizeDeliveries` from the hub's `proposed`
+   hook): with a newer conflict or `always` it is decided without the body, else it is marked salient and left
+   undecided, so its writes get their own `mutation` decisions.
 6. No body reader -> salient iff a newer conflict exists.
 7. Else read the body (`o.body()`: fetch's buffered clone or XHR text/response; messages' data), wait at most
    `BODY_WAIT_MS = 100` (clock time; on timeout decide as in 6). With a body: `spec.content = analyzeBody(env, op,
@@ -278,8 +303,8 @@ response/message through). Holding is only latency; the response object is uncha
    - a typed field the body would change (F2).
    All conflicts equal to the body -> custom event `delivery.unchanged` (shows in the timeline as `event
    delivery.unchanged`). Analysis throw -> logged, decide as in 6.
-8. Not salient and not `always` -> release. Else `trigger(spec, ctl, { hold: true, priority: 2 })` (which runs the
-   cheap pass again on `computeFacts`).
+8. Holdable delivery: not salient and not `always` -> release. Else `trigger(spec, ctl, { hold: true, priority: 2 })`
+   (which runs the cheap pass again on `computeFacts`).
 
 Controller: `passive` releases; if released over salient conflicts it records `op.delivery.overNewer` (used by F9).
 `discard`: releases now and sets `op.discardMark = { protect: conflicting paths, until: now + 10 s }`; while the mark
@@ -336,7 +361,8 @@ events `event ws.message <summary> (#id)` / `event sse.message …`, `event deli
 `action` lines from delivery `discard`/`defer` and drops.
 
 `changeText(c, redact)` (`state/fields.ts`) gained one branch before the generic `<describe 36> → <describe 36>`:
-two strings whose redaction leaves them unchanged and at least one longer than 30 chars use `stringDiff`: both sides
+two strings whose redaction leaves them unchanged (`redactedStringDiff`, shared with F2 since commit f107013) and
+at least one longer than 30 chars use `stringDiff`: both sides
 previewed from 14 chars before the first difference, 30 chars wide, plus `(removes "…")`, `(inserts "…")` or
 `(replaces "…" with "…")` (each <= 28 chars). Example asserted in `test/content.test.ts`: `"…e sword shield market
 lib" → "…e sword shield" (removes " market lib")`. This changes timeline write summaries, M15 deltas and I2 too.
@@ -435,7 +461,7 @@ equal.
 | F1 item cell | versions | yes | `<S> would put back <key> = <v> for item <id> of <path>[ and N more cells]: the store has <cur>, changed since #X started; delivering (applying) it would undo that change.` |
 | item newer-same | versions | no | `The newer writes to <path> changed only N item(s) (<ids>); this response's copy of it/them equals the store.` |
 | item join delta | delta | no | `Joined by <idKey> with <path>, <s> would change N cell(s) in M item(s), add …, remove ….` |
-| F2 | versions | yes | `<S> would replace text the user typed into <path> after #X started (N user write(s), the last <secs> ago): <stringDiff text or a → b>.` |
+| F2 | versions | yes | `<S> would replace text the user typed into <path> after #X started (N user write(s), the last <secs> ago): <stringDiff text or a → b>.` The diff comes from `redactedStringDiff` (only when both values pass the redactor unchanged), else both sides go through `describe()` (`[redacted] → [redacted]`, or a custom redactor's replacement); before commit f107013 it diffed the raw strings and leaked characters of a redacted field. |
 | F1 field | versions | yes | `<S> has <path> = <v>, the value that <writer> replaced with <v'> <secs> ago[ (it started after/before #X)]; delivering (applying) it would put the older value back.` |
 | third value | versions | no | `<S> has <path> = <v>: neither the current value <cur>[, nor the value when #X started].` |
 | F3 | delta | no | `<S> matches the current values of everything it is predicted to write (<list>): delivering it changes nothing.` or `<S> has the current value of <list>.` |
@@ -560,22 +586,35 @@ line limits are computed from the formula. A budget above 2400 keeps full sectio
 
 ### 12. Redaction
 
-`defaultRedact` now uses `isSensitivePath(path, value)` (`util.ts`), batch 5:
+`defaultRedact` now uses `isSensitivePath(path, value)` (`util.ts`), batch 5, plus the post-0.1.0-alpha.1 fix
+(commit f107013, `packages/runtime/STATUS.md` "Fix after 0.1.0-alpha.1: two redaction leaks"):
 - Never secret: `null`, `undefined`, booleans; plain objects (judged key by key, never redacted whole).
 - Not a dotted path (free text such as `input "Card number"`, header lines) -> `isSensitiveName` on its words.
 - Array-index segments are skipped (`users.3.password`). The **leaf** segment decides (`isSensitiveName`), or a
   secret pair across the last two segments (`payment.card.number`).
-- A non-leaf container that names a secret: strings under it are secret if the container is not "broad"; under a
-  broad container (`auth`, `authorization`, `cookie`, `session`) only opaque credential-looking strings (`OPAQUE`:
+- A non-leaf container that names a secret: strings, numbers, bigints and arrays under it are secret if the
+  container is not "broad" (`payment.cvv.value = 123`, `login.otp.code`, `lock.pin.value`,
+  `account.password.history = [...]`; before the fix only strings); under a broad container (`auth`,
+  `authorization`, `cookie`, `session`) only opaque credential-looking strings (`OPAQUE`:
   >= 20 chars of letters, digits and `_-.+/=:`, containing both a letter and a digit) are secret.
 - A store holding a primitive is judged by its name (its name is the leaf). The container rule above also covers the
   store segment: a broad store name never redacts its fields (`auth.loading`, `auth.user.name` visible), but a
-  store or container named by a non-broad secret word (`token`, `secret`, `password`, ...) redacts every string leaf
-  under it (`credentials.password.value`). Numbers are only redacted by the leaf or pair rule. The code comment
+  store or container named by a non-broad secret word (`token`, `secret`, `password`, ...) redacts every string,
+  number, bigint and array leaf under it (`credentials.password.value`). Side effect: numbers under a container
+  that is a secret word in another sense are hidden too (`map.pin.lat`, `boarding.pass.seat`). The code comment
   ("never by the store's or a container's name alone") describes the broad case only.
+- Known gaps (unchanged, they would change other model-visible text): a container named by a secret pair
+  (`cardNumber`, `apiKey`, `creditCard`) counts as broad, so `payment.cardNumber.value` is shown; the "is back to V"
+  fact (`situation/facts.ts`) compares rendered text, so two different redacted values read as "back to
+  [redacted]".
 `isSensitiveName` (word lists `SECRET_WORDS`, `SECRET_PAIRS`) is unchanged but now memoised (`nameCache`, cleared
 above 4096 entries). `describe` and `redactSearch` compare with `Object.is`. A custom `redact` option replaces the
-default everywhere; `opts.describe` output bypasses it.
+default everywhere; `opts.describe` output bypasses it. Every diff-centred string preview (`changeText`, F2) goes
+through `state/fields.ts` -> `redactedStringDiff`, so a redacted value is never diffed.
+Training parity: sim and realapps rows are rendered by the runtime and follow automatically; the Python port
+`training/curriculum/rt.py` has no redactor at all and was not changed (secret-looking curriculum names such as
+`iban`, `pin`, `pass` print in the curriculum but render as `[redacted]` in the runtime; a curriculum follow-up,
+see `packages/runtime/STATUS.md`).
 
 ### 13. Device-sized situations (`RuntimeImpl.situationBudget`)
 
@@ -742,9 +781,9 @@ stall, inconsistency, transition and error.
   runtime's buffered clone).
 - **No store holds by default.** `mutation` is non-blocking (priority 1, background, 5 s deadline); discard is a late
   revert (<= 2 s, fields unchanged since). Writes covered by a delivery decision raise no `mutation` at all, except
-  with `triage: "always"`. M13 and `defer` only mean something with `holdWrites: true`. Caveat: delivery candidates
-  still wait up to 100 ms for the body, and in observe mode their background decision is dropped as stale before
-  reaching the model (see §4 step 6).
+  with `triage: "always"`. M13 and `defer` only mean something with `holdWrites: true`. Since commit 054da38 a
+  delivery that cannot be held (observe mode included) is released synchronously before any body read, and its
+  background decision reaches the model and is recorded (§4 steps 6-7, §5 step 5b; `test/observe-delivery.test.ts`).
 - **Newer same-signature request in flight neutralises newer-data conflicts** (`newerSameSignature`, fetch/XHR
   only): in-order typeahead and autosave make zero model calls; the in-flight request is still stated (M6, neutral).
 - **A plain user write is not a conflict.** Only a user-rooted write whose request of another signature is in flight
@@ -756,7 +795,10 @@ stall, inconsistency, transition and error.
   content facts uninformative but not false. Ambiguous bodies produce no content facts.
 - **Side effects of the gate (outside fact code).** `runDelivery` sets `op.delivery` and, through the controller,
   `op.discardMark`; `markWrites` and `onChannel` set field marks; `noteResponse` parses create bodies in the
-  background. Fact code itself still writes only `X.reads`. `rt.situation()` stays side-effect free (tested).
+  background. Fact code itself still writes only `X.reads`. `rt.situation()` stays side-effect free (`test/situation-purity.test.ts`: probes for every trigger kind
+  from handlers, timers, fetch continuations, message dispatch and tasks, and devtools-style polling, change no op
+  id, event, decision, timer or provider call). Keep `SitEnv` callbacks read-only (`recentErrors` used to prune
+  `errorsRecent` while building; since 29b7f28 that happens in `RuntimeImpl.reportError`).
 - **Determinism.** Read time only from `env.now()`; body reads and create parsing are promise-based but timed by the
   injected clock (`BODY_WAIT_MS` uses `clock.setTimeout`). Tests assert byte-identical situations
   (`situation.test.ts`, `budget.test.ts`).
@@ -780,7 +822,9 @@ stall, inconsistency, transition and error.
   `SitEnv.writtenByChain`, `isTrigger`, `SigCadence.userStarts`.
 - **Past bugs fixed (keep fixed):** batch 3 items (direction of "started after/before", real failure counts,
   512-entry version log, "is back to", no `= undefined`, empty/non-empty array kinds, digit keys -> `:id`, word-level
-  redaction); NaN store values no longer recurse forever (commit ad24804, `test/nan.test.ts`).
+  redaction); NaN store values no longer recurse forever (commit ad24804, `test/nan.test.ts`); F2 never diffs a
+  redacted value and strong secret containers hide numbers/bigints/arrays (commit f107013,
+  `test/redaction-v2.test.ts`); situation building prunes nothing (commit 29b7f28, `test/situation-purity.test.ts`).
 
 ## How to change it safely
 
@@ -831,7 +875,9 @@ packages/runtime/src/situation`.
 also drive delivery prediction (`predictedWrites`).
 
 **Change redaction**: `isSensitivePath`/`isSensitiveName`/`SECRET_WORDS`/`SECRET_PAIRS`/`WEAK_CONTAINER`/`OPAQUE` in
-`util.ts`; update `test/batch3.test.ts` (auth store), `test/review-redaction.test.ts`, API.md "Privacy".
+`util.ts`, `redactedStringDiff` in `state/fields.ts`; update `test/batch3.test.ts` (auth store),
+`test/review-redaction.test.ts`, `test/redaction-v2.test.ts`, API.md "Privacy". Any new diff or preview of a field
+value must go through the redactor first (use `redactedStringDiff`).
 
 **Change timeline or action-effect wording**: `eventLine` (`describe.ts`), `changeText`/`stringDiff`
 (`state/fields.ts`), effect strings in `runtime.ts` (`runDelivery` discard/defer, `onDropped`) and observers,
@@ -851,11 +897,14 @@ also drive delivery prediction (`predictedWrites`).
 | `packages/runtime/test/atoms.test.ts` | runs with `holdWrites: true`: held writes never reordered, read-your-writes |
 | `packages/runtime/test/learn.test.ts` | baselines and profiles (unchanged) |
 | `packages/runtime/test/review-precision.test.ts`, `review-redaction.test.ts`, `review-hub.test.ts`, `review-fetch.test.ts`, `review-actions.test.ts`, `invariants.test.ts`, `plugins.test.ts`, `ask.test.ts`, `dom.test.ts`, `devtools-runtime.test.ts`, `nan.test.ts` | as before (precision, custom redactor, version counts past 16 entries, direction texts, error facts, plugin facts, ask sentences, error fact text, devtools Now view); `dom.test.ts` adds `untrustedEvents` and shadow-DOM descriptions; `nan.test.ts` the NaN fix |
+| `packages/runtime/test/redaction-v2.test.ts` (10, new, commit f107013) | F2 on a secret field renders `[redacted] → [redacted]` with the default redactor and the replacement with a custom one, never characters of the raw text; an unredacted field keeps the diff-centred preview; `redactedStringDiff` returns null unless both sides pass the redactor; strong secret containers hide numbers, bigints and arrays (booleans/null/undefined visible, plain objects judged key by key); broad containers and unrelated paths unchanged; `changeText` and `describe()` hide those values |
+| `packages/runtime/test/situation-purity.test.ts` (2, new, commit 29b7f28) | a mixed app raising every trigger kind (`triage: "always"`), probed with `situation()`, `situation(kind)` and from-scratch rebuilds inside handlers, timers, fetch continuations, message dispatch and tasks: next op id (`OpRegistry.peekNextId`), op count, event seq, decisions, interventions, in-flight count, hub seq, timers and provider calls unchanged, and the whole run identical with and without probes; devtools-style polling (`situation`, `inflight`, `explain`, `interventions`, `history` on every `setImmediate` turn of `test/browser/ui/session.ts` -> `runStoreSession`) changes no decision, intervention, op or event |
+| `packages/runtime/test/observe-delivery.test.ts` (11, new, commit 054da38) | observe: a conflicting fetch response with a slow body resolves at network time and is decided once in the background on the state it was delivered into; an app write before the body is read decides it at that write; F1 is not lost; standing questions on `delivery` answered; XHR body analysed before the listeners run; WebSocket/EventSource messages delivered synchronously and in order, still decided; guard: stale response held and discarded, a too-slow model releases at once and the write is late-reverted on its own |
 
-Full unit run on mvp-v2 at b435acb (lead, 2026-10-08): 40 files passed + 1 skipped, 332 passed + 14 skipped, plus
-`review-perf` alone 4 passed (see [build-test-release](build-test-release.md)). An uncommitted working-tree change
-(`state/hub.ts` ignores a held-write verdict after the write is `done`, plus one test in `atoms.test.ts`) would make
-it 333 + 14 once committed (see [state-and-adapters](state-and-adapters.md)).
+Full unit run on `mvp-v2-merge` (f107013, 2026-10-08, `npx vitest run` in `packages/runtime`, no model
+directory): 45 files passed + 1 skipped, 379 passed + 14 skipped (393), `review-perf` included (see
+[build-test-release](build-test-release.md)). The earlier mvp-v2 run at b435acb was 40 + 1 files, 332 + 14 tests;
+the uncommitted `state/hub.ts` held-write-verdict change mentioned there is not in this branch.
 
 ## Drift and open issues
 

@@ -34,7 +34,10 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 >   runtime. Do not self-host them with this version.
 > - **Versions.** `0.1.0-alpha.1` is the current `latest` on npm: the v2 runtime, observe by default, with the
 >   `NaN` fix. It does **not** include the one-command install, the `@genclass/runtime/auto` entries or the script
->   tag described under [Install](#install); those are in this repository and ship in the next release.
+>   tag described under [Install](#install). It also lacks two fixes made since: observe mode no longer holds or
+>   delays any response, and two redaction leaks are closed (see [Privacy](#privacy)). All of these are in this
+>   repository and ship in the next release: `0.1.0-beta.0` with the model, or `0.1.0-alpha.2` if a release
+>   without the model goes out first.
 >   `0.1.0-alpha.0`, the first version on npm, is the older v1 runtime: guard by default, holds store writes, and
 >   can crash when app state contains `NaN`. Do not use it.
 >
@@ -63,11 +66,11 @@ user action (#5). Delivered the response to GET /api/search?q=rea (#4) and dropp
 newer data (search.results). (stale, 0.97; discard 0.97)
 ```
 
-In observe mode the response is delivered without waiting for the model, and the write it causes is judged in the
-background instead:
+In observe mode the response reaches the app at once, exactly as without GenClass, and the same decision is made
+in the background, for the report only:
 
 ```
-[GenClass] Flagged a stale write: search.results was written once by other operations since this write's cause (#4)
+[GenClass] Flagged a stale response: search.results was written once by other operations since its operation (#4)
 started (version 1 → 2), … Not acted on (would have done discard 0.97): observe mode never changes execution. (stale, 0.97)
 ```
 
@@ -103,7 +106,9 @@ npx @genclass/runtime remove          # undo exactly what init added
 ```
 
 Other flags: `--no-install`, `--no-devtools`, `--cwd <dir>`, `remove --keep-package`. `init` sets up observe mode;
-to let GenClass act, change the import it added to `@genclass/runtime/auto/guard` (see the next path).
+to let GenClass act, change the import it added to `@genclass/runtime/auto/guard` (see the next path). Do this by
+hand for now: `init --mode guard` still writes the observe import (see
+[Known limitations](#known-limitations)).
 
 Tested end to end on fresh projects from each framework's own generator: Vite 8 (React with npm and pnpm, Vue,
 Svelte), Next.js 16.4 (App and Pages Router, plus the paths for Next < 15.3), Create React App 5, SvelteKit, Astro,
@@ -414,7 +419,7 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
 
 - **Bundle:** the main entry is about 240 KB minified / 83 KB gzip, measured with esbuild and onnxruntime-web
   external. ONNX Runtime Web (the only dependency) is loaded by the model worker on demand: about 2.7 MB brotli for
-  the WASM-only path, 4.7 MB with WebGPU. The script-tag file (next release) is 253 KB / 86 KB gzip without ONNX
+  the WASM-only path, 4.7 MB with WebGPU. The script-tag file (next release) is 255 KB / 86 KB gzip without ONNX
   Runtime; its model worker (16 KB gzip) and ONNX Runtime glue (25–39 KB gzip) load on demand.
 - **Model size:** the round-1 R17 export (pruned 16k vocabulary, int8) is 9.6 MB. On single-thread WASM it took about
   0.18 s per decision on a 500-token situation, measured in Node.
@@ -443,22 +448,30 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
 - **Redaction:** the default redactor (`redact` option) works by the leaf field's meaning, not by substring.
   - Redacted: `auth.token`, `form.password`, `users.3.password`, `payment.card.number`, `settings.apiKey`, and
     opaque credential-like strings under `auth` / `session` / `cookie`.
+  - Under a container named for a secret, strings, numbers and arrays are all redacted: `payment.cvv.value = 123`,
+    `login.otp.code`, `account.password.history = [...]`. A side effect: numbers under a container whose name is
+    a secret word in another sense are hidden too (`map.pin.lat`).
   - Visible: `auth.loading`, `auth.user.name`, and a kanban `card`.
   - Booleans and null are never redacted.
   - Query parameters are redacted by the same rule.
+  - The "would replace text the user typed" fact shows a character diff only when the redactor leaves both values
+    unchanged; otherwise it prints `[redacted] → [redacted]` (or your redactor's replacement).
   - Pass your own `redact(path, value)` for app-specific secrets or PII. The default has gaps (see below).
+  - The container rule for numbers and arrays and the typed-text rule are fixes made after `0.1.0-alpha.1`; they
+    ship in the next release.
 
 ## Known limitations
 
 **Today.** Without a published model nothing is detected or prevented (see Status). The bullets below matter once a
 model ships and you opt into `guard` or `heal`, unless a bullet says otherwise.
 
-- **Redaction gaps (all modes with a model).** These values reach the situation text, `explain()`, the console
-  evidence and devtools, though never the network:
-  - The "would replace text the user typed" fact prints a diff of the raw strings, even for a field the redactor
-    hides.
-  - The default redactor does not redact numbers or arrays under a secret-named container, for example
-    `payment.cvv.value = 123` or `login.otp.code`.
+- **Redaction gaps (all modes with a model).**
+  - A container named by a two-word secret (`cardNumber`, `apiKey`, `creditCard`) counts as broad, like `auth`.
+    So `payment.cardNumber.value = "4111 1111 1111 1111"`, or the same number, is shown. It reaches the situation
+    text, `explain()`, the console evidence and devtools, though never the network. A leaf with such a name
+    (`settings.apiKey`) is redacted.
+  - The fact "X changed since #N started and is back to V" compares the rendered text, so two different redacted
+    values read as "back to [redacted]".
 
   Pass a custom `redact`, and avoid keeping secrets in observed stores.
 - **Redux/Zustand discard.** If a stale response's dispatch also changes other fields, a delivery `discard` applies
@@ -473,9 +486,6 @@ model ships and you opt into `guard` or `heal`, unless a bullet says otherwise.
   the app closed the socket meanwhile. EventSource `open` events are not kept in order behind held messages.
 - **XHR listeners of a held response** run after the original dispatch, so `e.currentTarget` is `null`. Use the
   `xhr` object itself.
-- **Observe mode with a model.** A conflicting delivery whose body is read can still be delayed up to 100 ms.
-  Delivery decisions are not made in observe mode (the resulting write is judged instead), so standing questions on
-  `delivery` are not answered there.
 - **`retry` (heal) does not check idempotency.** It is offered for any replayable fetch, POST included. The model
   sees whether the method is idempotent and whether the failed request may have been applied. HTTP 502 is
   described as usually not processed, which is not always true behind proxies.
@@ -489,9 +499,35 @@ model ships and you opt into `guard` or `heal`, unless a bullet says otherwise.
   This is best effort; wrap important work in `rt.op(name, fn)` for exact attribution.
 - **Store state** is visible and protectable only through GenClass-aware stores. Other state is seen only through
   its effects.
-- **React Router dev server (next-release install).** On the very first dev start after `init`, Vite discovers the
-  new imports late, re-optimizes and reloads the page, logging a few "Outdated Optimize Dep" errors once. Later
-  loads are clean.
+- **Next-release install (`init`, `remove`, `/auto`, script tag).** Known issues, to be fixed before or in that
+  release. Always read the diff `init` and `remove` show before you confirm.
+  - **`init --mode guard` installs observe.** It prints `Mode guard`, but writes the plain `@genclass/runtime/auto`
+    import (or a script tag without `data-mode`), which observes. Plain `init` also prints `guard` as the
+    default. Change the import to `@genclass/runtime/auto/guard` yourself.
+  - **Running `init` again with another `--mode`** reports "Nothing to do" and leaves the existing import alone.
+  - **TypeScript with `"moduleResolution": "node"`** (Create React App TypeScript, older templates) cannot find the
+    types of `@genclass/runtime/auto`, `/devtools` or `/react` (TS2307), so the type check, and with it a CRA
+    build, fails after `init`. `"moduleResolution": "bundler"` works.
+  - **Server and library projects.** A project that lists esbuild, rollup, parcel or webpack is treated as a
+    browser app, so `init` can add the import to a Node server's or a library's entry file.
+  - **Formatters.** If a formatter rewraps a line `init` added (the dev-only devtools line, or the one-line form
+    in a Next.js layout), `remove` takes out only part of it and leaves code that does not compile. Fix the file
+    by hand.
+  - **What `remove` deletes.** Code you added inside a block `init` marked goes with the block; a file `init`
+    created is one such block and is deleted whole. If a block's end marker is missing, everything after its start
+    marker goes. Any other line that contains `genclass:init` goes too. It uninstalls the package unless it finds
+    an import in your sources, and it does not look in dot-folders (`.storybook`), `tmp`, `out` or `build`. Use
+    `remove --keep-package` when you import GenClass there.
+  - **`init --cdn <url>`** adds an SRI hash of the CLI's own copy of the file, whatever version the URL names. With
+    `@latest` or another version, the browser refuses the script. Pass `--no-sri`.
+  - **SRI covers only the script-tag file.** The model worker, ONNX Runtime glue and overlay it loads from the CDN
+    are not integrity-checked.
+  - **Page configuration is read from every `<meta name="genclass">` in the document**, including the body,
+    and it may set the mode and the model and ONNX Runtime URLs. On a page that renders untrusted HTML which can
+    include `<meta>` tags, set those keys in `window.GENCLASS_CONFIG` (it overrides meta tags), or call
+    `GenClass.init(options)` instead of importing `/auto`.
+  - **React Router dev server.** On the very first dev start after `init`, Vite discovers the new imports late,
+    re-optimizes and reloads the page, logging a few "Outdated Optimize Dep" errors once. Later loads are clean.
 - **The model can be wrong.** It is trained on simulated apps and real apps driven in a headless browser. It is not
   a substitute for tests. That is why the default only observes, guard acts only at ≥ 0.9, and every action is
   logged.

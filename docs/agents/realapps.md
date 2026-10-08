@@ -8,7 +8,7 @@
 > **Read this when:** you need to know what a REAL (`meta.source = "realapps"`) training row is and how it was
 > labelled; you add or change an app, a harness rule, a cost term or a diagnosis rule; you rerun the determinism or
 > interference ("never worse") sweeps after a runtime change; or you plan a real-browser generation batch.
-> **Source of truth:** the code. Verified against branch `mvp-v2` at b435acb (origin/runtime 74f17c0 = situation-v2, plus default mode observe and CI), 2026-10-08. If this doc and the code disagree, the code wins.
+> **Source of truth:** the code. Verified against branch `mvp-v2-merge` (mvp-v2 + origin/runtime eff18cb + observe/redaction fixes), 2026-10-08. If this doc and the code disagree, the code wins.
 
 ## TL;DR
 
@@ -18,21 +18,29 @@
   the **sim's own cost weights and label rule** (it imports them from `sim/src`), and writes **CONTRACT-D rows** in
   the same shape as SIM rows. It closes the sim-to-real gap (React's MessageChannel scheduler, Vue/Svelte microtask
   flushes, TanStack Query/SWR dedupe, XHR libraries, Redux middleware, the apps' own bugs).
-- **Corpus at b435acb: 91 apps** (77 written for the corpus + 14 open-source RealWorld "Conduit" front-ends),
-  23 distinct `framework` values. `realapps/README.md` and `HANDOFF.md` still say 66 apps and
-  `docs/runtime/RESULTS.md` §6 says "66 → ~96"; 25 apps were added after fcb8189 (24 in d73d20c, `preact-mappins` in
-  74f17c0; see Drift).
+- **Corpus on `mvp-v2-merge`: 128 app manifests** (114 written for the corpus + 14 open-source RealWorld "Conduit"
+  front-ends), still 23 distinct `framework` values; the 37 apps added since 74f17c0 put more apps on the smaller
+  stacks (Knockout, Backbone, Mithril, petite-vue, Hyperapp, Alpine, Lit) and libraries (RxJS, effector, nanostores,
+  XState, Valtio, Jotai). Growth: 66 at fcb8189, 91 at
+  74f17c0, **96 after "realapps wave 3"** (d53e836, the count its commit message, `OPEN_TASKS.md` and
+  [RESULTS.md](../runtime/RESULTS.md) use), then 18 more in f3a9dd1 and 14 more in eff18cb that neither commit's
+  message mentions. `realapps/README.md` and `HANDOFF.md` still say 66 (see Drift).
 - It is also the runtime's **"never make a correct app worse" harness**: `debug.js --interference` compares observe
   mode with heal mode under an all-passive decider. Situation-v2 result (STATUS.md): **0/396 clean runs changed**
-  over all 66 apps then in the corpus, seeds 1–6; 3/198 changed under chaos (an open item per RESULTS.md §4). Under
-  situation-v1 the gothinkster React/Redux Conduit never rendered its feed.
+  over all 66 apps then in the corpus, seeds 1–6; 3/198 changed under chaos (an open item per RESULTS.md §4). The
+  wave-3 commit (d53e836) claims each new app passes determinism (120/120), drop-free trajectories and zero
+  interference on situation-v2; no recorded sweep covers all 128 apps or the merged runtime. Under situation-v1 the
+  gothinkster React/Redux Conduit never rendered its feed.
 - **Nothing here is in CI or the root workspaces, there are no tests and no tsconfig.** Every real step needs
   Chromium, and generation runs on Azure F80 nodes. Under our run policy: **ask the user before running anything
   in `realapps/`** that launches Chromium (`debug.js`, `gen.js`, `chromium_probe.mjs`), clones the OSS corpus
   (`corpus/prepare_oss.sh`), or touches a VM (`scripts/vm.sh`, `realapps/scripts/cluster.sh`, `node_setup.sh`).
-- Data status (from `training/NEEDS.md` 16, not verifiable from here): v2 production batches `v2b1`/`v2b2`/`v2b3` on
-  c01/c10/c11 (30k trajectories each, target ≥ 500k gold; [HANDOFF.md](../../HANDOFF.md)/[RESULTS.md](../runtime/RESULTS.md): about 495k), to be copied to `train:/data/real-out/`. No training
-  code in the repo reads realapps output by name yet; it is consumed as generic CONTRACT-D batches (see
+- Data status (from `training/NEEDS.md` 16, not verifiable from here): **use `v2c1`..`v2c4`** (fixed labels: runtime
+  diagnosis vocabulary, `delivery` diagnosed by its first write, S1; 96 apps; 4 × 20k trajectories on c01, c10, c11,
+  `data`; seeds 11M/12M/13M/14M+; expected ≈ 530k gold + ≈ 500k unlabeled), to land on `train:/data/real-out/`. The
+  earlier `v2b1`..`v2b3` (66 apps, ≈ 380k gold, stopped at ≈ 20.5k trajectories each) have **pre-fix diagnosis
+  labels**; their action labels are valid. Audit pilot: `v2-pilot4` (400 trajectories, 92 apps, 2,631 gold). No
+  training code in the repo reads realapps output by name yet; it is consumed as generic CONTRACT-D batches (see
   [training.md](training.md)).
 
 ## Files
@@ -43,11 +51,11 @@
 | `realapps/EXAMPLES.md` | 13 audited rows from the v1 pilot `pilot4` (situation, labels, per-action and per-future costs, cost parts, verdict). Not re-audited on v2 (unverified). |
 | `realapps/package.json` | `@genclass/realapps` 0.0.0, private. Scripts `build` (`node build.mjs`), `gen` (`node dist/harness/gen.js`), `build:runtime`. devDependencies: `playwright`/`@playwright/test` 1.63.0, esbuild, esbuild-svelte, and every framework/library the apps use (React 19, Redux/RTK, Zustand, Vue 3, Pinia, Solid, Preact, Lit, jQuery, MobX, TanStack Query, SWR, axios, Alpine, Jotai, Valtio, XState, effector, nanostores, redux-saga, ky, ofetch, wretch, superagent, React Router 7, vue-router, Mithril, Hyperapp, petite-vue, htm, RxJS, Backbone, Knockout...). |
 | `realapps/.gitignore` | `node_modules/`, `dist/`, `src/harness/apps.gen.ts` (generated by `build.mjs`). |
-| `realapps/build.mjs` | esbuild build of the world IIFE (`dist/world.js`), the harness entries (`dist/harness/{gen,worker,debug}.js`; it would also pick up `audit`/`evalset` entries, which do not exist), the manifest registry (`dist/manifests.mjs`) and every app whose manifest has no `build.vite`/`build.prebuilt` (`dist/apps/<name>/{index.html,bundle.js}`): the 77 written apps plus the 3 OSS apps of build kind `esbuild` (`oss-react-redux-conduit`, `oss-rtk-conduit`, `oss-mobx-conduit`, bundled from their `$RW_OSS_DIR` checkout). Writes `dist/runtime-tag.txt`. |
+| `realapps/build.mjs` | esbuild build of the world IIFE (`dist/world.js`), the harness entries (`dist/harness/{gen,worker,debug}.js`; it would also pick up `audit`/`evalset` entries, which do not exist), the manifest registry (`dist/manifests.mjs`) and every app whose manifest has no `build.vite`/`build.prebuilt` (`dist/apps/<name>/{index.html,bundle.js}`): the 114 written apps plus the 3 OSS apps of build kind `esbuild` (`oss-react-redux-conduit`, `oss-rtk-conduit`, `oss-mobx-conduit`, bundled from their `$RW_OSS_DIR` checkout). Writes `dist/runtime-tag.txt`. |
 | `realapps/apps/<name>/manifest.ts` + source | One app: an `AppManifest` default export (Node side) plus the app source (entry = `manifest.entry`). OSS apps have only a manifest; their source is cloned by `corpus/prepare_oss.sh`. |
 | `realapps/apps/README.md` | Authoring guide for app-writing agents: hard rules, mock backend API, affordance options, cost meaning, determinism do/don't, test loop. Written for the colleague's setup (absolute Mac path, branch `runtime`, "never run node on the Mac"). |
 | `realapps/apps/_shared/genclass.ts` | The app's one-line integration: `rt = GenClass.init(window.__GENCLASS_INIT__ ?? {})` and `flag(name, default)` reading `window.__RW_VARIANT`. |
-| `realapps/apps/_shared/{vue,svelte,solid,preact,lit}-atom.ts`, `lit-toast.ts`, `hyperapp-guard.ts`, `react-genclass-reducer.ts`, `w3-http.ts` | Bridges from framework state to runtime atoms/guards, and small shared helpers. |
+| `realapps/apps/_shared/{vue,svelte,solid,preact,lit}-atom.ts`, `lit-toast.ts`, `hyperapp-guard.ts`, `react-genclass-reducer.ts`, `w3-http.ts`, `w4-effector.ts` | Bridges from framework state to runtime atoms/guards, and small shared helpers (`w4-effector.ts` -> `guardStore`: an effector store behind `rt.guard`, async results written through the guarded handle). |
 | `realapps/apps/_shared/conduit-manifest.ts` | `conduitManifest(...)` and `conduitAffordances`: the shared manifest builder for the 14 OSS Conduit apps (title, domain, server `{ base: "/api", ext: ["conduit"] }`, affordances, external events, `errorSelector`, `sessionMs`, `startMs`). It does **not** set `domWeight`; each observe-only OSS manifest sets `domWeight: 2` itself. |
 | `realapps/apps/_shared/onnx-stub.ts` | Stub aliased for `onnxruntime-web*`: the harness never loads a model. |
 | `realapps/corpus/oss.json` | The 14 open-source apps: name, repo, pinned commit, build kind, deps, licence. |
@@ -55,20 +63,20 @@
 | `realapps/corpus/prepare_oss.sh` | On a VM: clone each OSS app at its commit into `$RW_OSS_DIR` (default `~/gcl/real-cache/oss`), install deps and toolchain, apply `patch_oss.py`, build into `dist/apps/<name>/`. Build kinds: `esbuild` (left to `build.mjs`), `vite-*` (`vite.oss.config.mjs`), `angular`/`elm`/`ember`/`purescript` (own compiler then `rebundle.mjs`), `webcomponents`, `angularjs` (`build_angularjs.mjs`). Clones from GitHub. |
 | `realapps/corpus/patch_oss.py` | The GenClass integration a developer would add to each OSS app (Redux apps: `genclassEnhancer`; others: one init import, observe-only). |
 | `realapps/corpus/{rebundle.mjs,build_angularjs.mjs,vite.oss.config.mjs}` | OSS build helpers. |
-| `realapps/src/world/index.ts` | The in-page world entry (an IIFE injected as an init script before any page script): installs the loop, network, server, user and probe; clears storage/cookies and applies the manifest's preloads; sets `window.__GENCLASS_INIT__` and `window.__RW_VARIANT`; prevents link/submit navigation; exposes `window.__RW.start()`, which schedules external events, WebSocket drops and the ask probes (`runtime.situation("ask")`, base run only) and runs the session. |
-| `realapps/src/world/loop.ts` | Virtual time: timers, rAF, idle callbacks, MessageChannel, `scheduler.postTask`, `AbortSignal.timeout`, `Date`, `performance.now`, seeded randomness; real-macrotask yielding until native async work settles. |
+| `realapps/src/world/index.ts` | The in-page world entry (an IIFE injected as an init script before any page script): installs the loop, network, server, user and probe; clears storage/cookies and applies the manifest's preloads; sets `window.__GENCLASS_INIT__` and `window.__RW_VARIANT`; prevents link/submit navigation; exposes `window.__RW.start()`, which schedules external events, WebSocket drops and the ask probes (`runtime.situation("ask")`; scheduled in every non-ideal run, kept only in the recording base run) and runs the session; returns a per-step `stepLog` for debugging. |
+| `realapps/src/world/loop.ts` | Virtual time: timers, rAF, idle callbacks, MessageChannel, `scheduler.postTask`, `AbortSignal.timeout`, `Date`, `performance.now`, seeded randomness; real-macrotask yielding until native async work settles. Also disables scrolling (focus never scrolls, `scrollIntoView`/`scrollTo`/`scroll`/`scrollBy` are no-ops, scroll events are stopped), because the browser fires scroll events on real time. |
 | `realapps/src/world/net.ts`, `netapi.ts` | In-page `fetch` (a `Response` subclass from `makeResponseClass`), `XMLHttpRequest`, `WebSocket` on virtual time, with chaos draws. `netapi.ts` sets `window.EventSource = undefined`, so the runtime's v2 `eventsource` observer never installs. |
 | `realapps/src/world/server.ts`, `ext/conduit.ts` | The mock backend (collections, CRUD, versions/409, `Idempotency-Key` replay, relative actions, bulk, docs, counters, auth with rotating refresh tokens, cart echoes, replica lag, live WebSocket topics) and the RealWorld API extension. |
 | `realapps/src/world/user.ts` | The scripted user (user-event style untrusted events), intent pinning to the ideal run. |
-| `realapps/src/world/probe.ts` | `Probe`: the recording `DecisionProvider` (forced actions by decision index, ε-exploration, simulated model latency, answers with confidence 1), runtime hooks, the store-snapshot plugin, DOM text snapshots, error episodes/writes, and the in-page diagnosis call. |
-| `realapps/src/world/diagnose.ts` | In-page diagnosis rules from harness knowledge (scripted intents, server failure records, user writes, retries); handles situation-v2's `delivery` trigger. |
-| `realapps/src/harness/scenario.ts` | `buildScenario(seed, apps, opts)`: app + flags, scripted session, chaos profile, external events, wording vocabulary, budget, exploration, split. Holds `TEST_FRAMEWORKS`, `TEST_APPS`, `TEST_PATTERNS`, `splitOf`. |
+| `realapps/src/world/probe.ts` | `Probe`: the recording `DecisionProvider` (forced actions by decision index, ε-exploration, simulated model latency, answers with confidence 1), runtime hooks, the store-snapshot plugin, DOM text snapshots, error episodes/writes, and the in-page diagnosis call. Marks S1 inputs on each decision (`repeat`: the subject repeats an accidental user step; `twin`, on `request` decisions only: an identical request in flight or answered within 10 s) and, when a `delivery` decision's own verdict is `rel-check` or missing, diagnoses it by the first write its response or message makes (`pendingDelivery`, mutation rules). |
+| `realapps/src/world/diagnose.ts` | In-page diagnosis rules from harness knowledge (scripted intents, server failure records, user writes, retries); handles situation-v2's `delivery` trigger. Includes the generic `stale` rule `newer-op-wrote <path>`: a write from an older async operation over elements already written by a newer one. |
+| `realapps/src/harness/scenario.ts` | `buildScenario(seed, apps, opts)`: app + flags, scripted session, chaos profile, external events, wording vocabulary, budget, exploration, split. Holds `TEST_FRAMEWORKS`, `TEST_APPS`, `TEST_PATTERNS`, `splitOf`, and `DEFAULT_DIAGNOSES` (now the bundled runtime's own map, via `@rt/questions`). |
 | `realapps/src/harness/trajectory.ts` | `generateTrajectory`: ideal run, base run, counterfactuals, prefix check, cost, labels, the four row kinds. Holds `PASSIVE` (from the bundled runtime), `RUNTIME_TAG`, `TRIGGER_W`, `OBSERVE`, `runConfig`. |
 | `realapps/src/harness/cost.ts` | `runCost`, `states`, `serverDist`, `relationBroken`; `BLOCKED = 1.0`. Mirrors `sim/src/oracle/cost.ts`. |
-| `realapps/src/harness/labels.ts` | `finishDiagnosis` (Node-side diagnosis finishing with the manifest's relations), `duplicateKeys`. |
+| `realapps/src/harness/labels.ts` | `finishDiagnosis` (Node-side diagnosis finishing with the manifest's relations), `duplicateKeys`, and the S1 rule as in SIM: `S1_GAP` (1.0), `divergedAt`, `diagnosisFromOutcome` (rules a–e). |
 | `realapps/src/harness/browser.ts` | `Runner`: one headless Chromium per worker, a fresh page per run, contexts recycled every 60 runs, apps served from memory at `ORIGIN = "https://app.example.com"`. |
 | `realapps/src/harness/gen.ts`, `worker.ts` | The resumable generator (worker pool, per-split JSONL append, `done.txt`, `stats.json`, `manifest.json`) and its worker process. |
-| `realapps/src/harness/debug.ts` | Inspection CLI: one scenario, `--twice`, `--traj`, `--force k:action`, `--det` (determinism sweep), `--interference` (never-worse sweep). |
+| `realapps/src/harness/debug.ts` | Inspection CLI: one scenario, `--twice`, `--traj`, `--force k:action`, `--det` (determinism sweep; on a mismatch it prints the first differing step and request with their neighbours), `--interference` (never-worse sweep), `--ask-check` (the base run with and without ask probes must decide identically). |
 | `realapps/src/shared/{manifest,types,routes}.ts` | `AppManifest`/`Affordance`/`Relation` types; `RunConfig`, `RunResult`, `ServerSpec`, `Step`...; `endpointsOf`. |
 | `realapps/scripts/analyze.py` | Batch stats plus comparison with `sim/samples/stats-final-a.json` (the v1 sim final-A stats; `--sim`, `--json`). |
 | `realapps/scripts/evalset.py` | Builds `<out>/real_eval.jsonl` plus a `manifest.json`, the unambiguous real-app eval set. |
@@ -94,8 +102,10 @@
   `sameNth`, `followOnly`, `resets`, `requires`, `requiresText`.
 - **Integration kinds.** `stores`: the app puts state in runtime stores (`rt.atom`, `useGenClassState`,
   `genclassEnhancer` for Redux/RTK, `genclass()` for Zustand, `rt.guard` for Pinia/MobX, atom bridges for
-  Vue/Svelte/Solid/Preact/Lit). `observe`: no stores (17 manifests at b435acb: the jQuery apps, `superagent-fleet`
-  and the non-Redux OSS Conduits); they still produce request, failure, stall and error rows, and their divergence is
+  Vue/Svelte/Solid/Preact/Lit, `guardStore` for effector). `observe`: no stores (27 manifests on `mvp-v2-merge`: the
+  4 jQuery apps with `integration: "observe"`, `superagent-fleet`, 10 apps added since 74f17c0 (`alpine-bikeshare`,
+  `backbone-logtail`, `hyperapp-webhooks`, `knockout-shifts`, `lit-draft`, `mithril-elections`, `nano-departures`,
+  `petite-transcode`, `preact-beds`, `rx-jobs`) and the 12 non-Redux OSS Conduits); they still produce request, failure, stall and error rows, and their divergence is
   measured on visible DOM text. "Observe-only" here is an integration style; the harness still runs these apps with
   `mode: "heal"`.
 - **Scenario** (`realapps/src/harness/scenario.ts` -> `Scenario`): one seed determines app, flags (`variant`,
@@ -127,8 +137,9 @@
    `apps/*/manifest.ts` whose directory does not start with `_`).
 2. It bundles `src/world/index.ts` into `dist/world.js` (IIFE) and the harness into `dist/harness/*.js` (ESM, Node
    22, `playwright` external). Alias `@rt/questions` -> `<RT>/situation/questions.ts`, so both the in-page probe
-   and `trajectory.ts` read the **runtime's own `PASSIVE` map** (the only symbol imported through it).
-3. Every app without `build.vite`/`build.prebuilt` (the 77 written apps and the 3 `esbuild`-kind OSS apps, the
+   and `trajectory.ts` read the **runtime's own `PASSIVE` map**, and `scenario.ts` reads its `DEFAULT_DIAGNOSES` (the
+   only two symbols imported through it).
+3. Every app without `build.vite`/`build.prebuilt` (the 114 written apps and the 3 `esbuild`-kind OSS apps, the
    latter from their `$RW_OSS_DIR` checkout) is bundled by esbuild with aliases
    `@genclass/runtime[/react|/redux|/zustand]` -> `<RT>/index.ts` / `<RT>/adapters/*.ts`, `@realapps/genclass` ->
    `apps/_shared/genclass.ts`, `onnxruntime-web*` -> the stub, plus framework settings (JSX mode, Svelte plugin, Vue
@@ -139,9 +150,11 @@
    (`cluster.sh sync` with `TAG=...` does this into `~/gcl/real-cache/runtime/<tag>/src` and writes
    `~/gcl/real-cache/runtime/current`; `node_setup.sh` exports both variables from it). The tag goes to
    `dist/runtime-tag.txt` and from there (`trajectory.ts` -> `RUNTIME_TAG`, `"unknown"` when the file is missing)
-   into every row's `meta.runtime`. At b435acb, `packages/runtime/src` differs from `situation-v2` only by our
-   default-mode commit f3636b2, which realapps overrides with explicit modes; a working-tree build still stamps
-   `working-tree`, not `situation-v2`.
+   into every row's `meta.runtime`. On `mvp-v2-merge`, `packages/runtime/src` differs from `situation-v2` (6e5e86e)
+   by f3636b2 (default mode observe; realapps sets modes explicitly), 29b7f28 (errors pruned on record), f3a9dd1
+   (`/auto` entry, CDN build; not used by realapps), 054da38 (observe mode never holds deliveries; background
+   delivery decisions recorded) and f107013 (redaction of F2 diffs and numeric/array secrets). A working-tree build
+   therefore is **not** situation-v2 and stamps `working-tree`; data batches are built from the frozen tag.
 
 ### One run (`realapps/src/harness/browser.ts` -> `Runner.run`)
 
@@ -173,7 +186,8 @@
    `skipped = "test-subsample"`).
 2. **Ideal run**; its states define the target and its `pins` define the user's intents.
 3. **Base run** with exploration (ε on decisions whose in-page diagnosis is not `expected`, ε/4 elsewhere) and ask
-   probes (`runtime.situation("ask")`).
+   probes (`runtime.situation("ask")`). Counterfactuals schedule the same probes (unless `ask: false`), so a probe
+   can never make a counterfactual prefix differ; only the base run keeps their output.
 4. **Decision points:** `pickPoints` samples up to `maxPoints` (6) decisions with ≥ 2 actions, weighted by
    `TRIGGER_W` (mutation 1, request 1, failure 1.6, stall 2.2, inconsistency 3, transition 3, error 2.2; anything
    else, including `delivery`, 1) × 1.5 for a non-`expected` diagnosis.
@@ -193,11 +207,19 @@
    realapps-only **blocked intents** term (`BLOCKED = 1.0` per user step whose element never appeared beyond the
    ideal run's). Client state = registered stores (manifest weights) plus visible DOM text lines × `domWeight`.
 8. **Action label:** sim's `actionLabel(costs, passive)` (tier premiums, tie pinning, `p ∝ exp(−gap/τ)`,
-   `τ = 0.1 + SE`), then sim's `transformQuestions` (option shuffles/drops, paraphrases).
-9. **Diagnosis:** in-page rules (`diagnose.ts`) finished in Node by `finishDiagnosis` (relations, duplicate
-   entities, `delivery` handled like `mutation` for `rel-check`). The label is written only when the diagnosis is in
-   the row's (possibly reduced) vocabulary; otherwise counted in `notes` (`diagnosis-not-in-vocab`,
-   `diagnosis-uncorrelated`). `meta.diag_why`/`diag_trace` say which rule fired.
+   `τ = 0.1 + SE`), then sim's `transformQuestions` (action option shuffles and drops only; wording paraphrases come from the scenario's `vocab` through the runtime).
+9. **Diagnosis:** in-page rules (`diagnose.ts`; a `delivery` decision without its own verdict, or with only `rel-check`, takes the verdict of its first write) finished
+   in Node by `finishDiagnosis` (relations, duplicate entities, `delivery` handled like `mutation` for `rel-check`).
+   Then **S1** (as SIM): when the result is `expected` or missing but a non-passive action wins with adjusted passive
+   cost ≥ `S1_GAP` (1.0), `diagnosisFromOutcome` names what the action repairs (a: verdict of the latest
+   non-`expected` mutation/delivery that wrote the diverged fields; b: `duplicate` for a repeated accidental step;
+   c: `duplicate` for a coalesce/block of a twin request; d: `inconsistent` or `stale` for diverged fields; e:
+   `unusual`). The S1 label goes into `meta.diagnosis` and the row's diagnosis label; `meta.diagnosis_s1` records which rule fired
+   (`a-write`, `b-repeat`, `c-twin`, `d-diverged`, `e-other`) and `meta.diagnosis_subject` the pre-S1 verdict (`null`
+   when there was none). The
+   vocabulary always holds every runtime label (only wording is paraphrased), so the label is normally written;
+   otherwise `notes` counts `diagnosis-not-in-vocab:<label>` or `diagnosis-uncorrelated`. `meta.diag_why`/
+   `diag_trace` say which rule fired.
 10. **Ask rows** from the base run's probes, using sim's `askQuestions` generators with exact answers.
 11. **Unlabeled rows:** up to `unlabeled` (40) other base decisions with ≥ 2 actions; gold diagnosis only,
     `meta.unlabeled: true`, `base_choice`; action left to the teacher.
@@ -210,14 +232,17 @@
   appends to `done.txt`. `stats.json` and `manifest.json` refresh every 30 s and at the end. Rerunning the same
   command resumes.
 - `stats.json`: per trigger (n, passive-best count, best actions, diagnoses, mean harm of non-passive actions on
-  passive-best points), per app, drops, notes, skipped, run counts and times, first 50 errors.
+  passive-best points), per app (trajectories, rows, decisions, `stepsRan`, `stepsSkipped`, `dead` = trajectories
+  whose base run ran no step), drops, notes, skipped, run counts and times, first 50 errors (including
+  `prefix-mismatch <app> seed <seed> k=<k> a=<action> j=<future> first-diff=<k>` lines).
 - `manifest.json` (for TRAIN, `training/NEEDS.md` 11): seeds, counts, file descriptions, `on_policy: false`,
   held-out frameworks/apps/patterns, app list with OSS repo/commit/licence, options. Its `runtime` field is a
   hard-coded string (see Drift).
 
 ### Splits (`realapps/src/harness/scenario.ts` -> `splitOf`)
 
-- **test:** framework in `TEST_FRAMEWORKS` (`lit`), app in `TEST_APPS` (`swr-status`, `alpine-tasks`,
+- **test:** framework in `TEST_FRAMEWORKS` (`lit`: 6 apps now, including `lit-draft`, `lit-expenses`,
+  `lit-shipping` added since 74f17c0), app in `TEST_APPS` (`swr-status`, `alpine-tasks`,
   `xhr-autocomplete`), manifest `heldOut` (only `oss-rtk-conduit`), or a pattern in `TEST_PATTERNS`
   (`react-search/guard:reqid`, `vue-editor/save:serialize`, `zustand-board/push:version-check`).
 - **dev:** `hashAll("realapps-dev-v1", app, ...patterns) % 100 < 4`.
@@ -235,8 +260,9 @@
   `program_family`, `family`, `patterns`, `chaos`, `clean`, `budget`, `runtime`, `browser = "chromium-headless"`,
   `oss`; decision rows add `trigger`, `decision`, `t`, `explored_before`, `best`, `passive_best`, `passive`,
   `costs`, `cost_futures`, `futures`, `adjusted`, `se`, `non_passive_mass`, `cost_parts`, `tiers`, `diagnosis`,
-  `diag_why`, `diag_trace`, `subject`, `transform`; ask rows add `kinds`; unlabeled rows add `unlabeled`,
-  `base_choice`; diagnosis-only rows add `diagnosis_only`.
+  `diag_why`, `diag_trace`, `diagnosis_s1`/`diagnosis_subject` (when S1 fired), `subject`, `transform`; ask rows add
+  `kinds`; unlabeled rows add `unlabeled`, `base_choice`, `repeat` (when set); diagnosis-only rows add
+  `diagnosis_only`.
 - **Eval set** (`realapps/scripts/evalset.py <dirs> --out <dir> [--splits test,dev]`; default splits
   `test,dev,train`): cases `stale-overwrite`, `duplicate-submit`, `clean-benign`, `benign-salient`, `genuine-break`,
   each with `meta.eval_case` and `meta.eval_expect`, capped per case (`--per-case`, default 2000), original split
@@ -254,7 +280,9 @@
   "never make a correct app worse" check cited in `docs/runtime/RESULTS.md` §4 and `packages/runtime/STATUS.md`.
 - Single-scenario modes (`--app`, `--seed`, `--clean`): default (ideal + base summary, triggers, diagnoses, network
   correlation), `--twice`, `--traj` (runs `generateTrajectory` with `testKeep: 1`), `--show N`, `--steps`,
-  `--dom-at t1,t2`, `--force K:action` (DOM over time: ideal vs base vs forced), `--mode <mode>` for the base run.
+  `--dom-at t1,t2`, `--force K:action` (DOM over time: ideal vs base vs forced, plus whether the forced run's
+  decision `k` kept the base `fp`), `--mode <mode>` for the base run, `--ask-check` (base run without vs with ask
+  probes; first differing decision). `--traj` also prints base/ideal step counts and flags a `DEAD SESSION`.
 
 ## Configuration and constants
 
@@ -298,11 +326,19 @@ Throughput (README, measured on `train`, 64 vCPU): 28 workers ≈ 3.3 trajectori
 - **Passive actions come from the bundled runtime's `PASSIVE`;** a trigger missing there (or mapped to `""`, as
   `ask` is) falls back to the first offered action. `realapps/scripts/analyze.py` and `evalset.py` keep their own
   copies of the map (both include `delivery`); update them if the runtime's map changes.
-- **Secret-word redaction:** `apps/README.md` says not to name a store `auth` (use `session`). At b435acb the
-  runtime (`packages/runtime/src/util.ts` -> `isSensitivePath`) judges object fields by their leaf name, so
-  `auth.loading` or `auth.user.name` survive and only secret leaves (`auth.token`, `form.password`) or opaque
-  credential-like strings under `auth`/`session`/`cookie` are redacted; a string or number atom named `auth` is
-  still redacted whole. Keep following the guide's advice.
+- **Secret-word redaction:** `apps/README.md` says not to name a store `auth` (use `session`). The runtime
+  (`packages/runtime/src/util.ts` -> `isSensitivePath`) judges object fields by their leaf name, so `auth.loading` or
+  `auth.user.name` survive and only secret leaves (`auth.token`, `form.password`) or opaque credential-like strings
+  under `auth`/`session`/`cookie` are redacted; a string or number atom named `auth` is still redacted whole. On
+  `mvp-v2-merge` (f107013, not in `situation-v2`) numbers, bigints and arrays under a strong secret-named container
+  (`payment.cvv.value`, `login.otp.code`) are redacted too, so a working-tree build can show different situation
+  text from the tagged data. Keep following the guide's advice.
+- **No scrolling in the world** (`loop.ts`): scroll events would fire on real time, so focus never scrolls and
+  programmatic scrolling is a no-op. Apps must not depend on scroll position or scroll handlers (infinite lists need
+  an explicit "load more" path).
+- **The diagnosis vocabulary is the bundled runtime's `DEFAULT_DIAGNOSES`** (`scenario.ts` imports it through
+  `@rt/questions`); `DIAG_PARA` only paraphrases. `diagVocab` still draws the old label-drop coin so every other
+  scenario choice keeps its RNG stream; do not remove that draw without accepting that all scenarios change.
 - **The ideal run's `ALL_OFF` (`src/world/index.ts`) and the other runs' `OBSERVE` (`trajectory.ts`) predate the v2
   `eventsource` observer** (neither lists it, so the
   runtime's default "on" applies). It never installs because `netapi.ts` sets `window.EventSource = undefined`;
@@ -311,8 +347,8 @@ Throughput (README, measured on `train`, 64 vCPU): 28 workers ≈ 3.3 trajectori
 - **The DOM term is coarse** (line multisets): an empty page and a page with different data can look alike. Store
   weights and blocked intents carry most of the signal for store apps.
 - **Observe-only OSS apps weigh the DOM ×2 via their own manifests** (each of the 12 sets `domWeight: 2`;
-  `conduitManifest` does not, so the two store-integrated OSS Conduits use 1); the jQuery and `superagent-fleet`
-  observe-only apps do not set it and use 1, although the README says 2 for all observe-only apps.
+  `conduitManifest` does not, so the two store-integrated OSS Conduits use 1); the jQuery, `superagent-fleet` and the 10
+  observe-only apps added since 74f17c0 do not set it and use 1, although the README says 2 for all observe-only apps.
 - **Ideal runs are blind but installed:** observe mode, every observer off, no decider. Do not turn observers on
   there; the ideal must not depend on the runtime.
 - **`debug.js --interference` compares explicit modes**, so it is unaffected by the library's default mode. Its
@@ -360,14 +396,23 @@ Throughput (README, measured on `train`, 64 vCPU): 28 workers ≈ 3.3 trajectori
   - v2 runtime batch 5 (STATUS.md): all 66 apps, seeds 1–6, clean: 0/396 changed; chaos seeds 1–3: 3/198 changed
     (preact-likes ×2, vanilla-spreadsheet), from request-time holds shifting a request about 25 ms; Conduit 0/30;
     determinism 198/198.
+  - Wave 3 (d53e836 commit message): each new app passes determinism (120/120), drop-free trajectories and zero
+    interference on situation-v2. `v2-pilot4` (NEEDS 16): 400 trajectories, 92 apps, 2,631 gold.
 
 ## Drift and open issues
 
-- **App count.** 91 app manifests at b435acb against 66 at fcb8189: 24 added in d73d20c (e.g. `alpine-podcast`,
-  `react-ci`, `rtk-payroll`, `svelte-auction`, `vue-wiki`, `zustand-sequences`, `lit-dispatch`) and `preact-mappins`
-  in 74f17c0. The framework count stayed at 23. `realapps/README.md`,
-  [HANDOFF.md](../../HANDOFF.md) and the STATUS.md sweep say 66; [RESULTS.md](../runtime/RESULTS.md) §6 says "66 → ~96". The v2 sweeps above were over 66
-  apps; whether v2b1–v2b3 include the new 25 depends on what was synced to the nodes (unverified).
+- **App count.** 128 app manifests on `mvp-v2-merge`: 66 at fcb8189, +24 in d73d20c and `preact-mappins` in 74f17c0
+  (91), +5 in the wave-3 commit d53e836 (96, the "96 total" of its message; its "30 more" counts from 66), +18 in f3a9dd1 (e.g. `effector-kds`,
+  `knockout-cfp`, `xstate-loan`) and +14 in eff18cb (e.g. `rx-jobs`, `valtio-vetclinic`, `vue-dataimport`), whose
+  messages do not mention apps (origin/runtime ca08174, a later commit not merged into `mvp-v2-merge`, calls these 32
+  "realapps wave 4 (128 total)"). The framework count stayed at 23. `realapps/README.md` (also its "52 written"),
+  [HANDOFF.md](../../HANDOFF.md) and the STATUS.md sweep say 66; [RESULTS.md](../runtime/RESULTS.md) and
+  `OPEN_TASKS.md` say 96. The v2 sweeps were over 66 apps; `v2b1`..`v2b3` used 66 and `v2c1`..`v2c4` 96 (NEEDS 16),
+  so the last 32 apps are in no recorded batch or sweep (unverified beyond NEEDS).
+- **The merged runtime changes the never-worse observe leg.** 054da38 (ours) makes observe mode deliver responses
+  immediately and decide deliveries in the background. `--interference` on a working-tree build of `mvp-v2-merge`
+  therefore compares against a different observe baseline than the recorded 0/396; rerun it (with the user's OK)
+  before citing never-worse numbers for the merged runtime. Tagged data (`situation-v2`) is unaffected.
 - **`gen.ts` -> `manifest` hard-codes `runtime: "situation-v1 (packages/runtime/src bundled from source)"`.** v2
   batch `manifest.json` files therefore say situation-v1. The per-row `meta.runtime` is correct (read from
   `dist/runtime-tag.txt`). Trust `meta.runtime`.

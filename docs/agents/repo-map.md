@@ -1,8 +1,8 @@
 # Repository map (GenClass-lib)
 
-> **Scope:** every tracked path (`git ls-files`: 1,082 files at b435acb, up from 749 at 654d822), plus the generated and ignored paths that show up in a working copy.
+> **Scope:** every tracked path (`git ls-files`: 1,202 files at f107013, 1,082 at b435acb, 749 at 654d822), plus the generated and ignored paths that show up in a working copy.
 > **Read this when:** you need to find where a file, symbol, constant, CLI command, env var or config key lives; decide whether a directory matters for `@genclass/runtime`; or want to know which paths are generated, ignored or too large to read in full.
-> **Source of truth:** the code. Verified against branch `mvp-v2` at b435acb (origin/runtime 74f17c0 = situation-v2, plus default mode observe and CI), 2026-10-08. If this doc and the code disagree, the code wins.
+> **Source of truth:** the code. Verified against branch `mvp-v2-merge` at f107013 (`mvp-v2` + origin/runtime eff18cb merged + two runtime fixes), 2026-10-08. Sections not touched by the merge keep their b435acb wording where nothing changed. If this doc and the code disagree, the code wins.
 
 Conventions: code pointers are `path/from/repo/root` -> `symbol`. Relevance to the runtime library:
 
@@ -14,37 +14,45 @@ Workstream names (lead, CORE, MODEL, UI, SIM, REAL, DEMOS, TRAIN, REVIEW) and th
 
 **What changed since 654d822** (the commit the first version of this map described): `git log --oneline 654d822..b435acb` lists the NaN fix (ad24804), runtime batch 4 (fcd1e68: decisions at the network boundary), the `realapps/` corpus (fcb8189), runtime batch 5 and the `situation-v2` freeze (6e5e86e), `HANDOFF.md` and the v2 curriculum port (d73d20c), `docs/runtime/RESULTS.md` (74f17c0), then our three commits on `mvp-v2`: agent docs (7dab2b3), default mode `observe` (f3636b2) and CI plus the committed root lockfile (b435acb). Use `git diff --stat 654d822 b435acb -- <path>` to see what changed in a path.
 
+**What changed since b435acb** (`git log --oneline b435acb..f107013`): our docs and release commits (b561244, 6ac4737,
+806a296 = published `0.1.0-alpha.1`, c16a3b0), the merge dabbce2 of Mehar's `origin/runtime` at eff18cb (realapps wave 3
+and more apps, the npm README rewrite, the `situation()` purity test, **the one-command install**: `packages/runtime/bin/lib/`,
+`packages/runtime/src/auto.ts`, `packages/runtime/src/cdn/`, `packages/runtime/test/install/`, `packages/genclass-runtime/`,
+and the v2 import/eval scripts under `training/`), 10e5c3b (lockfile), 054da38 (observe never holds deliveries) and
+f107013 (redaction). `origin/runtime` has four newer commits (up to 5bc40c9, runtime batch 6) that are not in this tree.
+
 ## 1. Top-level directories
 
 | dir | tracked files | what | owner / workstream | doc | relevance |
 |---|---|---|---|---|---|
-| `packages/runtime/` | 154 | `@genclass/runtime` 0.1.0-alpha.1 (since release commit 806a296), the npm library: `src/` (61), `test/` (84), `bin/genclass-runtime.mjs` CLI (mode 100755 since b435acb), package and build configs, STATUS/UI-NEEDS | CORE. MODEL owns `src/model/**` and `bin/`. UI owns `src/devtools/**` and `src/adapters/**`. REVIEW owns `test/review-*.test.ts`. Lead (us, on `mvp-v2`): `test/default-mode.test.ts` | the 8 docs under `runtime/`; start with [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md) | core |
+| `packages/runtime/` | 183 | `@genclass/runtime`, version `0.1.0-alpha.1` in the tree (= the published `latest`, which lacks the install code: bump before the next build), the npm library: `src/` (72), `test/` (95), `bin/` (6: `genclass-runtime.mjs` CLI, mode 100755, plus `bin/lib/` with `init`/`remove`), package and build configs, STATUS, CHANGELOG, INSTALL-NEEDS, UI-NEEDS | CORE. MODEL owns `src/model/**` and `bin/genclass-runtime.mjs` (`fetch-model`, `info`). INSTALL owns `src/auto.ts`, `src/cdn/**`, `bin/lib/**`, `test/install/**`. UI owns `src/devtools/**` and `src/adapters/**`. REVIEW owns `test/review-*.test.ts`. Us (lead): `test/default-mode.test.ts`, `test/observe-delivery.test.ts`, `test/redaction-v2.test.ts` | the 8 docs under `runtime/`; start with [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md) | core |
+| `packages/genclass-runtime/` | 4 | (new, f3a9dd1) unscoped alias package `genclass-runtime` 0.1.0-alpha.1: `cli.mjs` imports `@genclass/runtime`'s `bin/genclass-runtime.mjs`; `package.json` (dependency `@genclass/runtime` `0.1.0-alpha.1`), `README.md`, `LICENSE`. A workspace (`packages/*`), **not published** | INSTALL | `packages/runtime/INSTALL-NEEDS.md` item 1 | core (planned) |
 | `packages/runtime-model/` | 1 | `MODEL_CARD.md` only. Planned npm package `@genclass/runtime-model` that `DEFAULT_MODEL_BASE_URL` points at. It has no `package.json` and its `files/` directory is gitignored, so it is not a workspace and is unpublished (npm 404). No situation-v2 model exists yet | lead | [runtime/model-host.md](runtime/model-host.md) | core (planned) |
 | `sim/` | 106 | `@genclass/sim` (private): training-data simulator that drives the real runtime and writes CONTRACT-D rows. Now 46 feature combinators, 115 domains, S1/S2 labels, gold / unlabeled / on-policy row modes, Azure cluster scripts, separability analysis | SIM | [sim.md](sim.md) | supporting |
-| `realapps/` | 230 | `@genclass/realapps` (private, **not** a root workspace): 91 real web apps (77 written + 14 open-source Conduit front-ends) run in headless Chromium with the real runtime; counterfactual labels like the sim; the "never worse" interference and determinism sweeps | REAL | [realapps.md](realapps.md) | supporting |
-| `training/` | 61 | Python curriculum generator, runtime-text port (`curriculum/rt.py`, frozen at `situation-v2`), eval, ONNX export, Azure launch scripts for R17/R32/R68 students and the T150 teacher, teacher labelling, T1 expected-gain scripts | TRAIN (CONTRACT §1 says lead) | [training.md](training.md), [model-io-contract.md](model-io-contract.md) | supporting |
+| `realapps/` | 307 | `@genclass/realapps` (private, **not** a root workspace): 128 app directories with a `manifest.ts` (114 written + 14 open-source Conduit front-ends; Mehar's commit messages say 96 after wave 3, the wave-4 apps arrived inside f3a9dd1 and eff18cb) run in headless Chromium with the real runtime; counterfactual labels like the sim; the "never worse" interference and determinism sweeps | REAL | [realapps.md](realapps.md) | supporting |
+| `training/` | 69 | Python curriculum generator, runtime-text port (`curriculum/rt.py`, frozen at `situation-v2`), eval, ONNX export, Azure launch scripts for R17/R32/R68 students and the T150 teacher, teacher labelling, T1 expected-gain scripts | TRAIN (CONTRACT §1 says lead) | [training.md](training.md), [model-io-contract.md](model-io-contract.md) | supporting |
 | `demos/` | 133 | `@genclass/demos`: Vite site with six demo apps, a Service Worker chaos backend, Playwright trial eval and shipped results (still the v0.1 model) | DEMOS | [demos.md](demos.md) | supporting |
-| `scripts/` | 26 | Ops scripts (unchanged since 654d822). `vm.sh` is the runtime team's VM build/test path; `azvm.sh`, `launch_run.sh` (training launches) and `genclass_export.py` (`ExportModel` for `training/export_runtime.py`) also support the runtime; the rest are legacy GenClass/benchmax/Azure ops | not recorded (`vm.sh` is listed in CONTRACT §1) | [extension-and-benchmarks.md](extension-and-benchmarks.md) ("Scripts"), [runtime/build-test-release.md](runtime/build-test-release.md) ("VM workflow") | `vm.sh`, `azvm.sh`, `launch_run.sh`, `genclass_export.py`: supporting. Rest: legacy |
+| `scripts/` | 26 | Ops scripts (since 654d822 only `vm.sh` changed, in eff18cb: its sync keeps the `sim/out` symlink). `vm.sh` is the runtime team's VM build/test path; `azvm.sh`, `launch_run.sh` (training launches) and `genclass_export.py` (`ExportModel` for `training/export_runtime.py`) also support the runtime; the rest are legacy GenClass/benchmax/Azure ops | not recorded (`vm.sh` is listed in CONTRACT §1) | [extension-and-benchmarks.md](extension-and-benchmarks.md) ("Scripts"), [runtime/build-test-release.md](runtime/build-test-release.md) ("VM workflow") | `vm.sh`, `azvm.sh`, `launch_run.sh`, `genclass_export.py`: supporting. Rest: legacy |
 | `.github/` | 1 | `workflows/ci.yml`: the only CI (added in b435acb) | lead (us) | [runtime/build-test-release.md](runtime/build-test-release.md) | core |
 | `jev_local/` | 136 | Python package `jev-local` 0.1.0: Jev-wire API, encoder engine, trainer, voice harness, benchmark harnesses | none of the runtime workstreams (pre-runtime GenClass) | [genclass-model-lineage.md](genclass-model-lineage.md) | legacy. `serialize.py`, `confidence.py`, `engine/encoder/{tokenize_pack,calibrate,heads}.py` are the parity references for `packages/runtime/src/model`; `train/` is used by `training/` (the gain head the T1 scripts need exists only in the parent repo on the nodes, not here) |
 | `extension/` | 104 | GenClass 0.1.0 MV3 voice-control Chrome extension. Its own npm package, not a workspace | none of the runtime workstreams | [extension-and-benchmarks.md](extension-and-benchmarks.md) | legacy. `src/core/{engine,packer,tokenizer,serialize,pyutil}.js` are the ancestors of the runtime's `src/model/*.ts` |
 | `bench/` | 5 | jevbench and benchmax pre-registrations, `public/` target and exclusion JSON | none of the runtime workstreams | [extension-and-benchmarks.md](extension-and-benchmarks.md) | legacy |
 | `tests/` | 74 | pytest suites for `jev_local` (71 `test_*.py`, `conftest.py`, 2 fixtures) | none of the runtime workstreams | [genclass-model-lineage.md](genclass-model-lineage.md) ("Tests") | legacy |
 | `results/` | 3 | Benchmark write-ups (CU head-to-head, jevbench M0, Z-68m notes) | none of the runtime workstreams | [extension-and-benchmarks.md](extension-and-benchmarks.md) | legacy |
-| `docs/` | 36 | `docs/runtime/` (4: CONTRACT, API, ARCHITECTURE, RESULTS: the runtime's human docs), `docs/agents/` (20 tracked: these docs; `realapps.md` is new, not yet committed), `docs/benchmax-research/` (5), 7 legacy jev-local docs | `docs/runtime/CONTRACT.md`: lead. `docs/agents/**`: lead (us). Rest: not recorded / legacy | [status-and-known-issues.md](status-and-known-issues.md) (doc drift tables) | `docs/runtime/`, `docs/agents/`: core. Rest: legacy |
+| `docs/` | 37 | `docs/runtime/` (4: CONTRACT, API, ARCHITECTURE, RESULTS: the runtime's human docs), `docs/agents/` (21: these docs), `docs/benchmax-research/` (5), 7 legacy jev-local docs | `docs/runtime/CONTRACT.md`: lead. `docs/agents/**`: lead (us). Rest: not recorded / legacy | [status-and-known-issues.md](status-and-known-issues.md) (doc drift tables) | `docs/runtime/`, `docs/agents/`: core. Rest: legacy |
 
 Root files (13):
 
 | file | what | relevance |
 |---|---|---|
-| `package.json` | private `genclass-lib`, `"type": "module"`, workspaces `packages/*`, `sim`, `demos` (not `realapps`, not `extension`, not `training/ortweb`); scripts `build` and `test` (runtime only), `typecheck` (all workspaces); devDep `typescript ~5.9.3`; `engines.node >=20` | core |
-| `package-lock.json` | root lockfile, **committed in b435acb** (3,203 lines); CI runs `npm ci` from it. Update it only with a deliberate `npm install` | core |
+| `package.json` | private `genclass-lib`, `"type": "module"`, workspaces `packages/*` (runtime and, since the merge, the `genclass-runtime` alias), `sim`, `demos` (not `realapps`, not `extension`, not `training/ortweb`); scripts `build` and `test` (runtime only), `typecheck` (all workspaces); devDep `typescript ~5.9.3`; `engines.node >=20` | core |
+| `package-lock.json` | root lockfile, **committed in b435acb** (3,220 lines at f107013; 10e5c3b added the alias workspace); CI runs `npm ci` from it. Update it only with a deliberate `npm install` | core |
 | `tsconfig.base.json` | shared TypeScript compiler options | core |
 | `.gitignore` | ignore rules (see [section 4](#4-generated-and-ignored-paths)) | core |
 | `README.md` | repo landing page: status banner, install, repo map. Says `observe` is the default (Status box and Modes table) | core |
 | [`HANDOFF.md`](../../HANDOFF.md) | the colleague's "read this first" for continuing sessions (d73d20c): current state table, repo map, hard rules for the 8 GB Mac and Azure, how to continue. Still says "guard (default)" | core |
-| [`OPEN_TASKS.md`](../../OPEN_TASKS.md) | project-level status: done, in progress, next, needs the user, known risks (owner inferred: lead). Describes the situation-v2 pipeline under In progress/Next, items 1-14, CI listed as done | core |
-| [`RELEASE.md`](../../RELEASE.md) | release procedure for `@genclass/runtime` and `@genclass/runtime-model` (new, not yet committed) | core |
+| [`OPEN_TASKS.md`](../../OPEN_TASKS.md) | project-level status: done, in progress, next, needs the user, known risks (owner inferred: lead). In the merged tree: r17-v2a and t150-v2a in progress, the one-command install "not in the published `0.1.0-alpha.1`", Next 14 = the next prerelease with it, Polar Parts rollout under Needs the user | core |
+| [`RELEASE.md`](../../RELEASE.md) | release procedure for `@genclass/runtime` and `@genclass/runtime-model` (b561244; publish recorded in c16a3b0). Part A (alpha.1) is done; no part yet for the next prerelease with the install | core |
 | `LICENSE` | Apache-2.0 | core |
 | `pyproject.toml` | Python package `jev-local` 0.1.0 (Python >=3.12,<3.14), console script `jev-local`, pytest config | legacy |
 | `BENCHMARKS.md` | public summary of GenClass 0.1 benchmark results | legacy |
@@ -67,41 +75,75 @@ docs/runtime/RESULTS.md     (new) model stages compared, R17 vs R32, why round 1
                             comparison, demo baseline, data volume, training log summary
 ```
 
-### `packages/runtime/` package root (9 files)
+### `packages/runtime/` package root (10 files, plus `bin/` with 6)
 
 Doc: [runtime/build-test-release.md](runtime/build-test-release.md), [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md).
 
 ```text
 packages/runtime/
-  package.json              @genclass/runtime 0.1.0-alpha.1 (806a296); exports . ./react ./redux ./zustand ./devtools ./worker; bin genclass-runtime;
-                            dep onnxruntime-web ^1.30.0; optional peers react/redux/zustand; scripts build typecheck test test:browser
+  package.json              @genclass/runtime, version 0.1.0-alpha.1 (= published latest; bump before the next build); exports . ./auto
+                            ./auto/observe ./auto/guard ./auto/heal ./react ./redux ./zustand ./devtools ./worker (no typesVersions);
+                            sideEffects [dist/auto.js, dist/auto/*.js, dist/genclass.global{,.min}.js, dist/cdn/*.js, src/model/worker.ts];
+                            unpkg/jsdelivr -> dist/genclass.global.min.js; bin genclass-runtime; dep onnxruntime-web ^1.30.0;
+                            optional peers react/redux/zustand; scripts build typecheck test test:browser
   tsconfig.json             typecheck project (include src only: tests are never type-checked)
-  tsup.config.ts            6 ESM entries (index, adapters/react|redux|zustand, devtools/index, worker) -> dist/; .d.ts for all but worker
+  tsup.config.ts            four configs: ESM (10 entries: index, auto, auto/{observe,guard,heal}, adapters/react|redux|zustand,
+                            devtools/index, worker; .d.ts for all but worker); globalBuild(false|true) -> dist/genclass.global{,.min}.js
+                            (IIFE, onnxruntime-web external, __GENCLASS_VERSION__ = package version); CDN worker -> dist/cdn/{worker,
+                            ort-webgpu,ort-wasm}.js (onnxruntime-web bundled, plugin cdnOrt)
   vitest.config.ts          unit tests: test/**/*.test.ts, excludes test/browser/**, env node, testTimeout 20000
-  README.md                 npm package README (observe default; notes no model is published yet)
-  STATUS.md                 CORE status: test state (41 files / 346 tests before default-mode.test.ts), never-worse sweep,
-                            batch 4/5 notes, headless recipe, trigger table, example situations, deviations, open issues
+  README.md                 npm package README (rewritten by Mehar, d05abc1): one-command install, observe default, no model yet;
+                            says init, /auto and the script tag are "not in 0.1.0-alpha.1"
+  CHANGELOG.md              (new, f3a9dd1) "## 0.1.0-alpha.1" wrongly lists the install paths (they are not in the published alpha.1)
+  INSTALL-NEEDS.md          (new, f3a9dd1) INSTALL -> lead/CORE/MODEL/UI: npx naming decision, package.json and tsup changes,
+                            runtime behaviour INSTALL relies on
+  STATUS.md                 CORE status: test state (42 files / 348 tests on the VM), "Fix after 0.1.0-alpha.1: two redaction leaks",
+                            "Fix after batch 5: situation() purity", never-worse sweep, batch 4/5 notes, headless recipe, trigger table,
+                            example situations, deviations, open issues
   UI-NEEDS.md               UI -> CORE request log (partly stale)
   LICENSE                   Apache-2.0
-  bin/genclass-runtime.mjs  CLI (Node >= 20, no deps): fetch-model <dir> [--from] [--variant q8|fp16|all] [--force] [--quiet], info <dir>
+  bin/genclass-runtime.mjs  CLI (Node >= 20, no deps; also `npx @genclass/runtime <cmd>`): init, remove (in bin/lib/),
+                            fetch-model <dir> [--from] [--variant q8|fp16|all] [--force] [--quiet], info <dir>
+  bin/lib/init.mjs          (new) USAGE, init (detect -> plan -> diff -> confirm -> write -> install), remove (strip markers, delete
+                            created files, uninstall if unused); installSpec (@genclass/runtime@^<own version> or --from); flags incl.
+                            undocumented --no-sri, --strategy
+  bin/lib/detect.mjs        (new) detectProject (framework, entry, package manager, TS), walkSources (SKIP_DIRS, dot-dirs skipped,
+                            depth 10, 20,000 files), detectState, htmlModuleEntry
+  bin/lib/plan.mjs          (new) AUTO (mode -> import path; treats guard as the default), planInit and one plan per framework (Vite,
+                            CRA, webpack-likes, Angular, SvelteKit, Nuxt, Remix/React Router, Next app/pages, Astro, HTML),
+                            scriptTag, integrityFor (SRI from the local dist file)
+  bin/lib/edit.mjs          (new) MARK "genclass:init", MARK_INLINE "genclass:inline", insertTop, appendEnd, removeMarked, codeStyle
+  bin/lib/ui.mjs            (new) colours, symbols, line diff, yes/no prompt
 ```
 
-### `packages/runtime/src/` (61 files)
+### `packages/runtime/src/` (72 files)
 
 ```text
 packages/runtime/src/
   index.ts                  public facade: GenClass (init/runtime/destroy), createRuntime, re-exports; killSwitch, makeHost, NATIVE_FETCH, ALL_OFF
   runtime.ts                RuntimeImpl: wires every layer; default mode (o.mode ?? "observe"); installObservers, trigger (triage),
-                            runDelivery (delivery gate), observeWrite / gateMutation, covered, dropFilter / writtenOver (discard
-                            marks), noteResponse, onChannel, markWrites (F9), onDecision, settled points, rollback/revertChain/resync,
-                            explain, undo, destroy
+                            runDelivery (delivery gate), deliveryHoldable / writesCanAct / finalizeDeliveries (054da38: deliveries
+                            that cannot be held are released at once and decided in the background), observeWrite / gateMutation,
+                            covered, dropFilter / writtenOver (discard marks), noteResponse, onChannel, markWrites (F9), onDecision,
+                            settled points, rollback/revertChain/resync, explain, undo, destroy
+  auto.ts                   (new, INSTALL) @genclass/runtime/auto: startAuto() with no defaults (observe), default export = the runtime
   types.ts                  every public and shared type: options (PolicyOptions.holdWrites, observe.untrustedEvents), Runtime,
                             RuntimeEvents, plugins, and the "model seam" (JevState, Question, Answer, EvaluateRequest, DecisionProvider)
                             mirrored by sim/src/types.ts
   errors.ts                 GenClassUnavailableError
   clock.ts                  browserClock (timers captured at module load, afterTask)
   util.ts                   hashing (fnv1a, stableStringify, hashValue), URL signatures (normalizePath, isIdSegment,
-                            requestSignature), formatting (secs, rel, fmtNum, truncate), redaction (defaultRedact, isSensitivePath: leaf-based)
+                            requestSignature), formatting (secs, rel, fmtNum, truncate), redaction (defaultRedact, isSensitivePath:
+                            leaf-based; since f107013 numbers, bigints and arrays under strong secret containers are redacted too)
+  cdn/auto-start.ts         (new, INSTALL) startAuto(defaults): meta tag + window.GENCLASS_CONFIG -> GenClass.init, optional devtools
+  cdn/auto-observe.ts, cdn/auto-guard.ts, cdn/auto-heal.ts   (new) the /auto/<mode> entries: startAuto({ mode })
+  cdn/config.ts             (new) page config: parsePairs, fromPairs, fromDataset, readMetaConfig (every meta[name="genclass"]),
+                            readWindowConfig, mergeConfig, splitConfig, devtoolsOptions, isLocalHost, isKilled, whenBody
+  cdn/global.ts             (new) script-tag build entry: install (window.GenClass, data attributes, data-manual), assetBase
+                            (pins jsDelivr/unpkg URLs to the baked __GENCLASS_VERSION__), blobModuleWorker (Blob-URL module worker)
+  cdn/worker.ts             (new) CDN worker entry: imports ../model/worker.js, captures ortWasmPaths (cdnState)
+  cdn/ort-env.ts            (new) cdnState, prepareOrt (points ORT's threaded .mjs glue at the wasm directory)
+  cdn/ort-webgpu.ts, cdn/ort-wasm.ts  (new) onnxruntime-web wrappers bundled into dist/cdn/
   adapters/react.ts         @genclass/runtime/react: GenClassProvider, useGenClass, useGenClassState, useAtom, useGenClassDecisions/Interventions/Status
   adapters/redux.ts         @genclass/runtime/redux: genclassEnhancer, GENCLASS_REPLACE
   adapters/zustand.ts       @genclass/runtime/zustand: genclass middleware
@@ -158,19 +200,20 @@ packages/runtime/src/
   situation/env.ts          SitEnv (read-only runtime view for situation code), SubjectSpec (incl. DeliverySpec), ReqMeta, FailureInfo, Violation
   state/hub.ts              StoreHub: atom/guard/adapter stores, mutation pipeline (holdWrites opt-in), propose -> applyFilter (delivery
                             drop filter), flushQueue, field versions, stale marks and logs, late revert, snapshots
-  state/fields.ts           flatten, diffLeaves, deltaOf, changeText, stringDiff (diff-centred previews), patchValue, cloneValue;
-                            MAX_DEPTH, MAX_FIELDS_PER_STORE
+  state/fields.ts           flatten, diffLeaves, deltaOf, changeText, stringDiff (diff-centred previews), redactedStringDiff (f107013:
+                            diff only when the redactor leaves both values unchanged; used by changeText and contentFacts),
+                            patchValue, cloneValue; MAX_DEPTH, MAX_FIELDS_PER_STORE
   state/invariants.ts       InvariantMiner (9 templates + count-by-group; relation-quality rules (F8); LEARN_AFTER, LEARN_AFTER_NONNULL), expect()
   trace/ops.ts              OpRegistry, OpRec (+ delivery, discardMark)
   trace/context.ts          Context (ambient op: run, stick, isUserSync), LazyOp
   trace/events.ts           EventLog ring buffer
 ```
 
-Docs by folder: `index.ts`, `runtime.ts`, `types.ts`, `errors.ts`, `clock.ts`, `util.ts` -> [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md); `observe/`, `trace/` -> [runtime/observe-and-trace.md](runtime/observe-and-trace.md); `state/`, `adapters/` -> [runtime/state-and-adapters.md](runtime/state-and-adapters.md); `learn/`, `situation/` and the delivery gate -> [runtime/learn-situation-triage.md](runtime/learn-situation-triage.md); `decide/` and the delivery actions -> [runtime/decide-policy-actions.md](runtime/decide-policy-actions.md); `model/` -> [runtime/model-host.md](runtime/model-host.md); `devtools/` -> [runtime/devtools.md](runtime/devtools.md). Everything the model reads is frozen at tag `situation-v2` (6e5e86e): [model-io-contract.md](model-io-contract.md). `git diff situation-v2 b435acb -- packages/runtime/src` touches only `runtime.ts`, `types.ts` and `devtools/index.ts` (the default-mode change).
+Docs by folder: `index.ts`, `runtime.ts`, `types.ts`, `errors.ts`, `clock.ts`, `util.ts` -> [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md); `observe/`, `trace/` -> [runtime/observe-and-trace.md](runtime/observe-and-trace.md); `state/`, `adapters/` -> [runtime/state-and-adapters.md](runtime/state-and-adapters.md); `learn/`, `situation/` and the delivery gate -> [runtime/learn-situation-triage.md](runtime/learn-situation-triage.md); `decide/` and the delivery actions -> [runtime/decide-policy-actions.md](runtime/decide-policy-actions.md); `model/` -> [runtime/model-host.md](runtime/model-host.md); `devtools/` -> [runtime/devtools.md](runtime/devtools.md). `auto.ts`, `cdn/` (INSTALL) have no subsystem doc yet; see [status-and-known-issues.md](status-and-known-issues.md) ("What the merged install paths do", "Install code review"). Everything the model reads is frozen at tag `situation-v2` (6e5e86e): [model-io-contract.md](model-io-contract.md). At f107013, `git diff --stat situation-v2 HEAD -- packages/runtime/src` lists `auto.ts`, `cdn/*`, `devtools/index.ts`, `observe/messages.ts`, `observe/xhr.ts`, `runtime.ts`, `trace/ops.ts`, `types.ts` and three model-visible files changed by the redaction fix f107013: `situation/content.ts`, `state/fields.ts`, `util.ts`.
 
-### `packages/runtime/test/` (84 files)
+### `packages/runtime/test/` (95 files)
 
-Doc: [runtime/build-test-release.md](runtime/build-test-release.md) ("Tests" has one row per file with test counts). 36 top-level `*.test.ts` + 6 `model/*.test.ts` = 42 unit test files; the local run on b435acb excluding `review-perf` gave 40 passed + 1 skipped files, 332 passed + 14 skipped tests; `review-perf` alone 4 passed.
+Doc: [runtime/build-test-release.md](runtime/build-test-release.md) ("Tests" has one row per file with test counts). 39 top-level `*.test.ts` + 6 `model/*.test.ts` + 1 `install/cli.test.ts` = 46 unit test files; the local run on f107013 excluding `review-perf` gave 44 passed + 1 skipped files, 375 passed + 14 skipped tests; `review-perf` alone 4 passed (393 in total).
 
 ```text
 packages/runtime/test/
@@ -195,6 +238,8 @@ packages/runtime/test/
   invariants.test.ts                InvariantMiner learning, inconsistency once per episode, rollback
   learn.test.ts                     Baselines and Profiles; transition trigger
   nan.test.ts                       (new) no infinite recursion when a store value is NaN (ad24804; the 0.1.0-alpha.1 patch)
+  observe-delivery.test.ts          (new, ours, 054da38) observe never holds/delays fetch, XHR, WebSocket, EventSource deliveries;
+                                    background delivery decisions recorded; guard unchanged (11 tests)
   no-reorder.test.ts                (new) realworld promise middleware through genclassEnhancer with an always-passive model:
                                     guard/heal give the same dispatches, order and final state as observe
   plugins.test.ts                   plugin facts/diagnoses/actions, ctx.builtin, standing questions, vocabulary
@@ -210,6 +255,9 @@ packages/runtime/test/
   review-redaction.test.ts          REVIEW: custom redact applies to invariant facts
   review-timers.test.ts             REVIEW: recursive timer loops; gc check needs NODE_OPTIONS=--expose-gc
   review-xhr.test.ts                REVIEW: sync XHR never held, abort while held
+  redaction-v2.test.ts              (new, ours, f107013) F2 never diffs redacted text; numbers/bigints/arrays under strong secret
+                                    containers redacted (10 tests)
+  situation-purity.test.ts          (new, 29b7f28) building situations changes no counter, id, decision or hold (2 tests)
   situation.test.ts                 one situation per trigger: key order and section limits; prints situations
   smoke.test.ts                     atoms, context through real awaits, stale delivery discarded in guard mode (explicit mode "guard")
   xhr.test.ts                       XHR op + cause, block, detection-only failures, destroy restores open/send
@@ -243,6 +291,15 @@ packages/runtime/test/
   browser/ui/page.ts                fake "Acme" store page for the UI spec (window.__gc)
   browser/ui/screenshots/           18 PNGs: {activity,detections,evidence-answers,evidence,interventions,loading,now,overlay,pill}-{dark,light}.png
   smoke/smoke.sh                    npm pack -> fresh Vite 8 app -> headless Chromium check (run from packages/runtime; ask first)
+  install/cli.test.ts               (new, INSTALL) init/remove on fixture projects in temp dirs with --no-install (20 tests; runs in CI);
+                                    covers --mode observe only, no case for guard or the default mode
+  install/run-all.sh                (new) VM: build + pack -> cli tests -> cdn-check -> scaffold -> frameworks (ask first)
+  install/scaffold.sh               (new) VM: scaffold real projects with each framework's generator (network, package managers)
+  install/frameworks.mjs            (new) VM: per scaffold init -> build -> Chromium (prod + dev) -> remove -> byte comparison
+  install/cdn-check.mjs             (new) VM: script-tag build and /auto in headless Chromium, cross-origin "CDN"
+  install/server.mjs                (new) static/CORS server for those checks
+  install/RESULTS.md                (new) VM results, recorded against a 0.1.0-alpha.0-versioned tarball of Mehar's tree (guard default)
+  install/INSTALL-README-SNIPPET.md (new) README snippet; still says guard is the default
 ```
 
 The 18 PNGs are written by `ui-devtools.spec.ts`; no README embeds them.
@@ -330,9 +387,9 @@ sim/
   test/latent.test.ts       (new) S2 latent re-draws
 ```
 
-Check run on b435acb when these docs were written: `SIM_RUNTIME=real npx vitest run` in `sim/` gives 19 passed (5 files); `tsc` clean.
+Check run on b435acb when these docs were written: `SIM_RUNTIME=real npx vitest run` in `sim/` gives 19 passed (5 files); `tsc` clean. `sim/` is unchanged since b435acb (not rerun at f107013; the sim pins `mode: "heal"`, so 054da38's observe change does not reach it, but a heal-mode delivery that cannot be held is now released before its body read).
 
-### `realapps/` (230 files)
+### `realapps/` (307 files)
 
 Doc: [realapps.md](realapps.md). Not a root workspace, no tsconfig, no tests, not in CI; everything real needs Chromium (ask first).
 
@@ -345,14 +402,15 @@ realapps/
                             every esbuild-built app; RW_RUNTIME_SRC / RW_RUNTIME_TAG pin the runtime (default: working tree,
                             tag "working-tree"); writes dist/runtime-tag.txt
   README.md                 design document (corpus, integration, determinism, labels, row kinds, splits, run commands, v1 pilot numbers);
-                            still says 66 apps
+                            still says 66 apps (128 app directories now)
   EXAMPLES.md               13 audited rows from the v1 pilot
   apps/README.md            authoring guide for app-writing agents (written for the colleague's Mac and branch runtime)
   apps/_shared/             12 files: genclass.ts (one-line integration: GenClass.init(window.__GENCLASS_INIT__ ?? {}), flag()),
                             {vue,svelte,solid,preact,lit}-atom.ts, lit-toast.ts, hyperapp-guard.ts, react-genclass-reducer.ts,
                             w3-http.ts, conduit-manifest.ts (conduitManifest for the 14 OSS apps), onnx-stub.ts (aliased for onnxruntime-web)
-  apps/<name>/              91 apps: manifest.ts (AppManifest) + source (88 .ts/.tsx/.svelte files across the 77 written apps;
-                            the 14 oss-*-conduit apps have a manifest only). Names: actions-comments, alpine-*, backbone-*, effector-iot,
+  apps/<name>/              128 apps at f107013 (91 at b435acb; the merge added waves 3 and 4): manifest.ts (AppManifest) + source
+                            (the 14 oss-*-conduit apps have a manifest only). The name list below is from b435acb; newer apps add
+                            more of the same stacks (backbone-*, knockout-*, valtio-*, xstate-*, vue-*, svelte-*, vanilla-*, ...). Names: actions-comments, alpine-*, backbone-*, effector-iot,
                             htm-iot-dashboard, hyperapp-*, jotai-planner, jquery-*, knockout-*, ky-banking, lit-*, mithril-*, mobx-*,
                             nano-notifications, ofetch-clinic, oss-{angular,angularjs,elm,ember,halogen,mobx,react-redux,rescript,rtk,
                             solid,svelte,vue2,vue3,wc}-conduit, petite-*, pinia-*, preact-*, react-*, reducer-inbox, router-crm, rtk-*,
@@ -392,7 +450,7 @@ realapps/
   scripts/cluster.sh        Mac-side ssh/rsync helper: sync, setup, run (detached gen.js into ~/gcl/real-out/<name>), status, stop
 ```
 
-### `training/` (61 files)
+### `training/` (69 files)
 
 Doc: [training.md](training.md). Every script here runs on Azure VMs; ask before running any of them.
 
@@ -400,9 +458,10 @@ Doc: [training.md](training.md). Every script here runs on Azure VMs; ask before
 training/
   README.md                 overview and reproduce commands (partly stale)
   PLAN-v1.md                (new) the scaled program: targets, data, models R17/R32/R68/T150/T400, phases P0-P5, costs, eval, risks
-  LOG.md                    dated run log (what ran where, throughput, costs, decisions) up to the v2 freeze
+  LOG.md                    dated run log (what ran where, throughput, costs, decisions) up to the r17-v2a / t150-v2a launches (05:22 UTC)
   EVAL.md                   metric definitions and results (baseline, stage 1c, sizes/latency, stage-2 pilot, final round 1)
-  NEEDS.md                  TRAIN requests to SIM / CORE / MODEL / REAL; node claims; v2 data locations
+  NEEDS.md                  TRAIN requests to SIM / CORE / MODEL / REAL; node claims (TRAIN: c02 workbench, r17-v2a, t150-v2a); v2 data
+                            locations; item 16: use REAL v2c1..v2c4, not v2b*
   prune_vocab.py            prune/analyze: keep the first N BPE merges (16,000 -> 16,364 tokens) of a checkpoint or HF base
   eval_runtime.py           accuracy, NLL/Brier/ECE, temperature fit (calibration.json), CONTRACT §8 gate metrics, SIM cost regret
   eval_gain.py              (new) T1 expected-gain evaluation of gate policies from cached logits
@@ -421,6 +480,16 @@ training/
   configs/mix_t150.json     (new) teacher (v1 buckets simA .9, cur4 .1)
   configs/mix_r68.json      (new) R68 student benchmark (never run)
   configs/mix_t1a.json, mix_t1b.json, mix_t1h.json   (new) T1 runs (simAg10 / simAg20 / simAh)
+  configs/mix_v2a.json      (new, eff18cb) r17-v2a: sim2 .86, cur5 .11, cur1 .02, gen .01; 500M tokens per pass
+  configs/mix_t150v2.json   (new, eff18cb) t150-v2a teacher: sim2 .9, cur5 .1
+  import_v2.sh              (new, eff18cb) v2 import from the Mac: serve a collected SIM batch, then on the workbench (c02) download gz
+                            shards, prep_v2.py, the cur5 curriculum replay (300k, 80% runtime-exact), tar served on WB:8799 (Azure)
+  prep_v2.py                (new) collected SIM gz shards -> train shards + eval sets (sim2, sim2e, sim2f held-out features)
+  v2_node_setup.sh          (new) prepare one node for v2 training (sync code, pull the v2 data tar from the workbench)
+  v2_post.sh                (new) detached on a v2 run's rank-0 node: wait for final, eval_sim on sim2e and sim2f, eval_gain, export
+                            with the sim2e calibration, serve the tar on :8801 (runs for r17-v2a on c09)
+  import_real.sh            (new) REAL v2 batches -> data/s3/real2 shards, real2e eval sets, realev (REAL's unambiguous eval set)
+  eval_real.py              (new) REAL eval set under the runtime gate (rows with meta.eval_case / eval_expect)
   curriculum/__init__.py    package docstring
   curriculum/generate.py    seeded parallel curriculum generator (CONTRACT-D jsonl + stats.json); --p-runtime -> GC_P_RUNTIME
   curriculum/rt.py          Python port of packages/runtime/src/situation/* (runtime-exact rows); "FROZEN at git tag situation-v2"
@@ -611,7 +680,7 @@ scripts/
   demo_proof.sh             offline mid-sentence proof (Mac only)
 ```
 
-### `docs/` (36 tracked files)
+### `docs/` (37 tracked files)
 
 ```text
 docs/
@@ -620,8 +689,7 @@ docs/
   runtime/ARCHITECTURE.md   architecture overview
   [runtime/RESULTS.md](../runtime/RESULTS.md) (new) results, comparisons and training-log summary; "update it with every result" (HANDOFF)
   agents/                   these docs: README, overview, repo-map, glossary, playbooks, status-and-known-issues, model-io-contract,
-                            genclass-model-lineage, extension-and-benchmarks, demos, sim, training, runtime/ (8 docs);
-                            realapps.md (new, not yet committed)
+                            genclass-model-lineage, extension-and-benchmarks, demos, sim, training, realapps, runtime/ (8 docs)
   benchmax-research/        5 planning notes (read-only background)
   SPEC.md, CONTRACT.md, CONTRACT-v2.md, DEMO.md, GENCLASS.md, COMPARISON.md, PLAN-excel.md   legacy jev-local docs
 ```
@@ -663,7 +731,7 @@ demos/screenshots/                       31  <demo>.png, <demo>-dark.png, <demo>
 
 ## 3. Where is X?
 
-Verified with `grep` at b435acb. Methods are `RuntimeImpl.<name>` in `packages/runtime/src/runtime.ts` unless stated.
+Verified with `grep` at b435acb; rows touched by the merge and the two fixes re-checked at f107013. Methods are `RuntimeImpl.<name>` in `packages/runtime/src/runtime.ts` unless stated.
 
 ### Runtime public API, options and lifecycle
 
@@ -702,11 +770,27 @@ Verified with `grep` at b435acb. Methods are `RuntimeImpl.<name>` in `packages/r
 | In-flight age that blocks settled points (10 s) | constant | `packages/runtime/src/runtime.ts` -> `LONG_RUNNING_MS` | [state-and-adapters](runtime/state-and-adapters.md) |
 | Console line `[GenClass] Model unavailable (...); observing only.` | string | `packages/runtime/src/runtime.ts` -> `RuntimeImpl` constructor (status subscription) | [status](status-and-known-issues.md) |
 
+### Install paths (INSTALL, f3a9dd1; not in the published `0.1.0-alpha.1`)
+
+| X | kind | where | doc |
+|---|---|---|---|
+| `import "@genclass/runtime/auto"` (observe on this branch) | entry | `packages/runtime/src/auto.ts`; `packages/runtime/src/cdn/auto-start.ts` -> `startAuto` | [status](status-and-known-issues.md) |
+| `/auto/observe`, `/auto/guard`, `/auto/heal` | entry | `packages/runtime/src/cdn/auto-observe.ts`, `auto-guard.ts`, `auto-heal.ts` | [status](status-and-known-issues.md) |
+| Page config (`<meta name="genclass">`, `window.GENCLASS_CONFIG`, `data-*`) | function | `packages/runtime/src/cdn/config.ts` -> `readMetaConfig`, `readWindowConfig`, `fromDataset`, `fromPairs`, `mergeConfig` | [status](status-and-known-issues.md) |
+| Script-tag build (`window.GenClass`) and its asset base | function | `packages/runtime/src/cdn/global.ts` -> `install`, `assetBase`, `blobModuleWorker`; build `packages/runtime/tsup.config.ts` -> `globalBuild` | [status](status-and-known-issues.md) |
+| CDN model worker and ORT glue | file, function | `packages/runtime/src/cdn/worker.ts`; `packages/runtime/src/cdn/ort-env.ts` -> `prepareOrt`, `cdnState` | [model-host](runtime/model-host.md) |
+| `npx @genclass/runtime init` / `remove` | CLI | `packages/runtime/bin/lib/init.mjs` -> `init`, `remove`, `USAGE` | [status](status-and-known-issues.md) |
+| Mode -> import path (guard treated as default: install finding 1) | function | `packages/runtime/bin/lib/plan.mjs` -> `AUTO`, `scriptTag`, `integrityFor` | [status](status-and-known-issues.md#install-code-review-2026-10-08) |
+| Framework / entry detection | function | `packages/runtime/bin/lib/detect.mjs` -> `detectProject`, `walkSources` | [status](status-and-known-issues.md#install-code-review-2026-10-08) |
+| Edit markers `genclass:init` / `genclass:inline` and their removal | constant, function | `packages/runtime/bin/lib/edit.mjs` -> `MARK`, `MARK_INLINE`, `removeMarked` | [status](status-and-known-issues.md#install-code-review-2026-10-08) |
+| Unscoped alias `npx genclass-runtime` (unpublished) | file | `packages/genclass-runtime/cli.mjs` | [status](status-and-known-issues.md) |
+
 ### Delivery decisions (situation-v2, batches 4 and 5)
 
 | X | kind | where | doc |
 |---|---|---|---|
-| **The delivery trigger / gate** (pre-filter, body read, hold, actions) | method | `RuntimeImpl.runDelivery` (public member) | [learn-situation-triage](runtime/learn-situation-triage.md), [decide-policy](runtime/decide-policy-actions.md) |
+| **The delivery trigger / gate** (pre-filter, body read, hold, actions) | method | `RuntimeImpl.runDelivery` (public member) |
+| Can this delivery be held? (false in observe, while paused, model not ready, nothing permitted, model too slow) | method | `RuntimeImpl.deliveryHoldable`; `RuntimeImpl.writesCanAct`; `RuntimeImpl.finalizeDeliveries` (decide a released fetch delivery at its chain's first write) (054da38) | [decide-policy](runtime/decide-policy-actions.md) | [learn-situation-triage](runtime/learn-situation-triage.md), [decide-policy](runtime/decide-policy-actions.md) |
 | Body wait for salience (100 ms) | constant | `packages/runtime/src/runtime.ts` -> `BODY_WAIT_MS` | [learn-situation-triage](runtime/learn-situation-triage.md) |
 | Discard mark lifetime (10 s) and the drop filter | constant, method | `packages/runtime/src/runtime.ts` -> `DISCARD_MARK_MS`; `RuntimeImpl.dropFilter`, `RuntimeImpl.writtenOver`, `RuntimeImpl.onDropped`; `packages/runtime/src/state/hub.ts` -> `StoreHub.propose` (calls the private `applyFilter`) | [decide-policy](runtime/decide-policy-actions.md), [state-and-adapters](runtime/state-and-adapters.md) |
 | Discard mark on the op (`discardMark`) and the delivery record (`delivery`) | type | `packages/runtime/src/trace/ops.ts` -> `OpRec` | [observe-and-trace](runtime/observe-and-trace.md) |
@@ -727,7 +811,7 @@ Verified with `grep` at b435acb. Methods are `RuntimeImpl.<name>` in `packages/r
 | Delivery facts and the trigger sentence's prediction text | function | `packages/runtime/src/situation/facts.ts` -> `computeFacts` (internal `deliveryFacts`), `predictedText` | [learn-situation-triage](runtime/learn-situation-triage.md) |
 | Delivery actions `deliver` / `discard` / `defer` | constant | `packages/runtime/src/situation/questions.ts` -> `TRIGGER_ACTIONS.delivery`, `PASSIVE.delivery` | [decide-policy](runtime/decide-policy-actions.md) |
 | Relation quality (F8) and count-by-group invariants | class | `packages/runtime/src/state/invariants.ts` -> `InvariantMiner` | [state-and-adapters](runtime/state-and-adapters.md) |
-| Diff-centred string previews (F2, timeline, deltas) | function | `packages/runtime/src/state/fields.ts` -> `stringDiff`, `changeText` | [learn-situation-triage](runtime/learn-situation-triage.md) |
+| Diff-centred string previews (F2, timeline, deltas); only for values the redactor leaves unchanged (f107013) | function | `packages/runtime/src/state/fields.ts` -> `stringDiff`, `redactedStringDiff`, `changeText` | [learn-situation-triage](runtime/learn-situation-triage.md) |
 
 ### Observers and trace
 
@@ -749,7 +833,7 @@ Verified with `grep` at b435acb. Methods are `RuntimeImpl.<name>` in `packages/r
 | Event ring buffer | class | `packages/runtime/src/trace/events.ts` -> `EventLog` | [observe-and-trace](runtime/observe-and-trace.md) |
 | Op signature normalisation (`GET /api/items/:id`) | function | `packages/runtime/src/util.ts` -> `normalizePath`, `isIdSegment`, `requestSignature` | [observe-and-trace](runtime/observe-and-trace.md) |
 | Hashing | function | `packages/runtime/src/util.ts` -> `fnv1a`, `stableStringify` | [public-api](runtime/public-api-and-lifecycle.md) |
-| Default redaction (leaf-name based) | function | `packages/runtime/src/util.ts` -> `defaultRedact`, `isSensitivePath` | [learn-situation-triage](runtime/learn-situation-triage.md) |
+| Default redaction (leaf-name based; numbers/bigints/arrays under strong secret containers since f107013) | function | `packages/runtime/src/util.ts` -> `defaultRedact`, `isSensitivePath` | [learn-situation-triage](runtime/learn-situation-triage.md) |
 
 ### State and adapters
 
@@ -782,7 +866,7 @@ Verified with `grep` at b435acb. Methods are `RuntimeImpl.<name>` in `packages/r
 | Read-only runtime view for situation code; trigger subjects | type | `packages/runtime/src/situation/env.ts` -> `SitEnv`, `SubjectSpec` | [learn-situation-triage](runtime/learn-situation-triage.md) |
 | Op phrasing in situations and `changed` sentences | function | `packages/runtime/src/situation/describe.ts` -> `opPhrase` | [learn-situation-triage](runtime/learn-situation-triage.md) |
 | Python port of the situation text | function | `training/curriculum/rt.py` -> `render` | [training](training.md) |
-| Freeze marker | git tag | `situation-v2` (6e5e86e; current); `situation-v1` (1a77558; old format). Check with `git diff situation-v2 HEAD -- packages/runtime/src/situation packages/runtime/src/learn packages/runtime/src/util.ts packages/runtime/src/state/fields.ts` (empty at b435acb) | [model-io-contract](model-io-contract.md) |
+| Freeze marker | git tag | `situation-v2` (6e5e86e; the v2 data's format); `situation-v2.1` (5bc40c9, on `origin/runtime` only); `situation-v1` (1a77558; old format). Check with `git diff situation-v2 HEAD -- packages/runtime/src/situation packages/runtime/src/learn packages/runtime/src/util.ts packages/runtime/src/state/fields.ts` (empty at b435acb; at f107013 it shows the redaction fix in `content.ts`, `fields.ts`, `util.ts`) | [model-io-contract](model-io-contract.md) |
 
 ### Decide, policy and reports
 
@@ -840,8 +924,8 @@ Verified with `grep` at b435acb. Methods are `RuntimeImpl.<name>` in `packages/r
 | Workspaces (`packages/*`, `sim`, `demos`) and root scripts `build`, `test`, `typecheck` | config | `package.json` -> `workspaces`, `scripts` | [build-test-release](runtime/build-test-release.md) |
 | Root lockfile (committed) | file | `package-lock.json` | [build-test-release](runtime/build-test-release.md) |
 | **CI** (typecheck, build, unit tests, perf budgets) | workflow | `.github/workflows/ci.yml` -> job `runtime` | [build-test-release](runtime/build-test-release.md) |
-| Subpath exports and `bin` | config | `packages/runtime/package.json` -> `exports`, `bin` | [build-test-release](runtime/build-test-release.md) |
-| Build entries and externals | config | `packages/runtime/tsup.config.ts` -> `entry`, `dts`, `external` | [build-test-release](runtime/build-test-release.md) |
+| Subpath exports (incl. `./auto*`), `sideEffects`, `bin`, `version` | config | `packages/runtime/package.json` -> `exports`, `sideEffects`, `bin`, `version` | [build-test-release](runtime/build-test-release.md) |
+| Build entries and externals (ESM, two global builds, CDN worker) | config | `packages/runtime/tsup.config.ts` -> `entry`, `dts`, `external`, `globalBuild`, plugins `cdnOrt`, `ortExternal` | [build-test-release](runtime/build-test-release.md) |
 | Unit-test include/exclude | config | `packages/runtime/vitest.config.ts` | [build-test-release](runtime/build-test-release.md) |
 | Typecheck: `npx tsc -p tsconfig.json --noEmit` (in `packages/runtime`), or `npm run typecheck -w @genclass/runtime` | command | `packages/runtime/package.json` -> `scripts.typecheck` | [build-test-release](runtime/build-test-release.md) |
 | Unit tests: `NODE_OPTIONS=--expose-gc npx vitest run --exclude "test/browser/**" --exclude test/review-perf.test.ts`, then `npx vitest run test/review-perf.test.ts --retry=2` (in `packages/runtime`) | command | `packages/runtime/vitest.config.ts`; `.github/workflows/ci.yml`; gc check in `packages/runtime/test/review-timers.test.ts` | [build-test-release](runtime/build-test-release.md) |
@@ -854,12 +938,14 @@ Verified with `grep` at b435acb. Methods are `RuntimeImpl.<name>` in `packages/r
 | Playwright global setup (rebuilds `dist/`) | function | `packages/runtime/test/browser/build.mjs` -> `buildLibrary` | [build-test-release](runtime/build-test-release.md) |
 | Model fixtures from an export instead of v0.1 | flag | `packages/runtime/test/model/helpers.ts` -> `FIXTURES_FROM_MODEL` | [build-test-release](runtime/build-test-release.md) |
 | VM helper `scripts/vm.sh sync\|run\|exec\|get SLOT ...` (Azure; ask first) | command | `scripts/vm.sh` | [build-test-release](runtime/build-test-release.md) |
-| Release and freeze tags `v0.1.0-alpha.0` (654d822), `situation-v1` (1a77558), `situation-v2` (6e5e86e) | git tag | `git tag -n1` | [build-test-release](runtime/build-test-release.md) |
+| Release and freeze tags `v0.1.0-alpha.0` (654d822), `v0.1.0-alpha.1` (806a296, local), `situation-v1` (1a77558), `situation-v2` (6e5e86e), `situation-v2.1` (5bc40c9, not merged) | git tag | `git tag -n1` |
+| Changelog and install requests | file | `packages/runtime/CHANGELOG.md`; `packages/runtime/INSTALL-NEEDS.md` | [build-test-release](runtime/build-test-release.md) |
 
 ### Environment variables
 
 | X | used by | where | doc |
 |---|---|---|---|
+| `INSTALL_OUT`, `INSTALL_TMP`, `SCAFFOLDS`, `WORK`, `TGZ`, `SKIP_DEV` | install suite on the VM (ask first) | `packages/runtime/test/install/run-all.sh`, `scaffold.sh`, `frameworks.mjs` | [status](status-and-known-issues.md) |
 | `GENCLASS_MODEL_DIR` (default `<repo>/.cache-model`) | model unit tests and browser specs | `packages/runtime/test/model/helpers.ts` -> `MODEL_DIR`; `packages/runtime/test/browser/model-helpers.ts` -> `MODEL_DIR` | [build-test-release](runtime/build-test-release.md) |
 | `GENCLASS_WEBGPU_VARIANTS` | WebGPU spec variants | `packages/runtime/test/browser/model-webgpu.spec.ts` | [build-test-release](runtime/build-test-release.md) |
 | `GENCLASS_BENCH_MODELS`, `GENCLASS_OFFLINE` | browser model specs | `packages/runtime/test/browser/model.spec.ts` | [build-test-release](runtime/build-test-release.md) |
@@ -985,7 +1071,7 @@ Ignore rules live in `.gitignore` (root), `demos/.gitignore`, `extension/.gitign
 | `node_modules/` (root) | root | `npm ci` / `npm install` at the repo root (workspaces hoisted) | `extension/`, `realapps/` and `training/ortweb/` are not workspaces and need their own `npm install` |
 | `package-lock.json` (root) | **tracked** since b435acb | `npm install` at the root rewrites it | CI uses `npm ci`, which fails if `package.json` and the lockfile disagree; commit lockfile changes only when you changed dependencies on purpose |
 | `packages/runtime/bin/genclass-runtime.mjs` mode | — | committed as 100755 since b435acb | the old spurious "mode changed" diff after `npm install` is gone |
-| `packages/runtime/dist/` | root `dist/` | `npx tsup` / `npm run build` (in `packages/runtime`); also `sim`'s `build:runtime-core` script and `packages/runtime/test/browser/build.mjs` (Playwright global setup) rewrite it | `sim` and `demos` import the runtime through this `dist/`; a working copy may hold a stale one |
+| `packages/runtime/dist/` | root `dist/` | `npx tsup` / `npm run build` (in `packages/runtime`); also `sim`'s `build:runtime-core` script and `packages/runtime/test/browser/build.mjs` (Playwright global setup) rewrite it | `sim` and `demos` import the runtime through this `dist/`; a working copy may hold a stale one. Since the merge it also holds `auto.js`, `auto/*.js`, `genclass.global{,.min}.js` (version baked in) and `cdn/` (the CDN worker with onnxruntime-web bundled); the CLI hashes the global build for SRI |
 | `sim/dist/` | root `dist/` | `npm run build` in `sim` (tsup: `gen`, `worker`, `index`, `smoke`; plus `build:model-host` -> `sim/dist/model-host/`) | — |
 | `realapps/dist/`, `realapps/node_modules/` | root and `realapps/.gitignore` | `node build.mjs` in `realapps/` (world, harness, apps, `runtime-tag.txt`); `npm install` there | builds launch nothing, but the outputs are only useful with Chromium (ask first to run) |
 | `realapps/src/harness/apps.gen.ts` | `realapps/.gitignore` | `realapps/build.mjs` (one import per `apps/*/manifest.ts`) | regenerate after adding an app |
@@ -1009,11 +1095,11 @@ Ignore rules live in `.gitignore` (root), `demos/.gitignore`, `extension/.gitign
 | `extension/release-assets/*.onnx` | `extension/.gitignore` | `extension/tools/genclass_export.py` | absent |
 | `.venv/`, `__pycache__/`, `*.pyc`, `.pytest_cache/`, `*.egg-info/` | root | Python venv, pytest, `pip install -e .` of `jev-local` | — |
 | `.DS_Store` | root, `extension/.gitignore` | macOS Finder | — |
-| `docs/agents/realapps.md` | not ignored | new, not yet committed | untracked at b435acb; commit it with the other doc refreshes |
+| `/data/install/*` (VM) | outside the repo | `packages/runtime/test/install/run-all.sh` (`INSTALL_OUT`, scaffolds, work dirs, tarball) | VM paths |
 
 ## 5. Large files: do not read in full
 
-Sizes from `git ls-tree -l b435acb` / `wc -l`. "0 lines" means one line with no trailing newline: inspect it with `python3 -c` or `jq` (keys, lengths, one record) instead of opening it.
+Sizes from `git ls-tree -l b435acb` / `wc -l` (rows marked f107013 re-measured there). "0 lines" means one line with no trailing newline: inspect it with `python3 -c` or `jq` (keys, lengths, one record) instead of opening it.
 
 | path | bytes | lines | what it is / how to read it |
 |---|---|---|---|
@@ -1033,12 +1119,12 @@ Sizes from `git ls-tree -l b435acb` / `wc -l`. "0 lines" means one line with no 
 | `extension/test/fixtures/questions_py.json` | 222,955 | 16,984 | Python-harness question fixtures |
 | `docs/benchmax-research/jev-published.md` | 217,513 | 2,206 | census of published Jev numbers |
 | `packages/runtime/test/fixtures/model/py_fixtures.json` | 167,629 | 0 | Python reference cases for serialize/tokenize/calibrate/confidence |
-| `package-lock.json` | 105,864 | 3,203 | root lockfile; never edit by hand |
+| `package-lock.json` | 106,273 | 3,220 | root lockfile (f107013); never edit by hand |
 | `jev_local/bench/registry.py` | 90,896 | 1,888 | jevbench dataset registry and exclusion rules (source; grep it) |
-| `packages/runtime/src/runtime.ts` | 87,440 | 2,003 | `RuntimeImpl`; jump to methods by name (`trigger`, `runDelivery`, `onDecision`, `settled`) |
+| `packages/runtime/src/runtime.ts` | 95,517 | 2,143 | `RuntimeImpl` (f107013); jump to methods by name (`trigger`, `runDelivery`, `deliveryHoldable`, `onDecision`, `settled`) |
 | `docs/SPEC.md` | 84,347 | 1,131 | legacy jev-local rebuild spec |
 | `docs/benchmax-research/{PLAN,feasibility-targets,suite-reproduction-specs,train-data-and-supervised-ceilings}.md` | 72,630-93,641 each | 768-971 each | benchmax planning notes |
-| `packages/runtime/STATUS.md` | 75,336 | 1,045 | CORE status; read "State", then the batch section you need |
+| `packages/runtime/STATUS.md` | 80,206 | 1,097 | CORE status (f107013); read "State", then the fix or batch section you need |
 | `sim/samples/EXAMPLES.md` | 68,211 | 1,484 | pretty-printed sim rows |
 | `training/curriculum/rt.py` | 66,963 | 1,349 | Python port of the situation renderer; grep by function (`render`, `event_lines`, `content_facts`) |
 | `extension/test/fixtures/spans_py.json` | 59,806 | 5,458 | Python-harness span fixtures |
@@ -1057,9 +1143,22 @@ Other source files over 25 KB that are better read by symbol than end to end: `p
 
 Doc-vs-code drift you will meet while navigating; the subsystem docs have the details.
 
-- **Default mode**: code, `docs/runtime/API.md`, CONTRACT §13 and the devtools say `observe`; `README.md` and `packages/runtime/README.md` agree; only `HANDOFF.md` (and the older published alpha.0) still say guard is the default.
-- **`OPEN_TASKS.md`** now describes the v2 pipeline (items 1-14); see also [HANDOFF.md](../../HANDOFF.md) and [training.md](training.md).
-- **App counts**: `realapps/README.md` and `HANDOFF.md` say 66 apps; the tree has 91 (25 added after the sweeps were run). The never-worse result 0/396 covers the 66 ([realapps.md](realapps.md)).
-- **Sim budget**: `sim/src/world/scenario.ts` still samples situation budgets 3,200 / 2,000 / 1,000 (40/30/30), while the v2 runtime's full budget is 2,400 ([sim.md](sim.md)).
-- **Test counts**: `packages/runtime/STATUS.md` says 41 files / 346 tests (before `default-mode.test.ts`); see [runtime/build-test-release.md](runtime/build-test-release.md) for the b435acb numbers.
-- **realapps output**: batch `manifest.json` files hardcode `situation-v1` and `TRIGGER_W` has no `delivery` weight (`realapps/src/harness/gen.ts`, `realapps/src/harness/trajectory.ts`); see [realapps.md](realapps.md).
+- **Default mode**: code, `docs/runtime/API.md`, CONTRACT §13, the devtools and both READMEs say `observe`; `HANDOFF.md`,
+  `origin/runtime` (code), the older published alpha.0, the `init` usage text (`packages/runtime/bin/lib/init.mjs` ->
+  `USAGE`), its mode mapping (`packages/runtime/bin/lib/plan.mjs` -> `AUTO`) and
+  `packages/runtime/test/install/INSTALL-README-SNIPPET.md` still assume guard
+  ([status-and-known-issues.md](status-and-known-issues.md#install-code-review-2026-10-08)).
+- **Version**: `packages/runtime/package.json` and `packages/genclass-runtime/package.json` say `0.1.0-alpha.1`, already
+  published without the install paths; `packages/runtime/CHANGELOG.md` lists the install paths under alpha.1.
+- **Subsystem docs**: `docs/agents/runtime/build-test-release.md` and `public-api-and-lifecycle.md` (as committed at
+  f107013) still describe six tsup entries and `"sideEffects": false`; no subsystem doc covers `src/auto.ts`,
+  `src/cdn/` or `bin/lib/` yet.
+- **App counts**: `realapps/README.md` and `HANDOFF.md` say 66 apps; the tree has 128 app directories. The never-worse
+  result 0/396 covers the 66 ([realapps.md](realapps.md)).
+- **Sim budget**: `sim/src/world/scenario.ts` still samples situation budgets 3,200 / 2,000 / 1,000 (40/30/30), while the
+  v2 runtime's full budget is 2,400 ([sim.md](sim.md)); the finished v2 SIM data carries it.
+- **Test counts**: `packages/runtime/STATUS.md` says 42 files / 348 tests; this branch has 46 files / 393 tests.
+- **realapps output**: batch `manifest.json` files hardcode `situation-v1` and `TRIGGER_W` has no `delivery` weight
+  (`realapps/src/harness/gen.ts`, `realapps/src/harness/trajectory.ts`); see [realapps.md](realapps.md).
+- **Newer upstream**: `origin/runtime` 5bc40c9 (batch 6, `situation-v2.1`, 150 app directories) is not merged here; the
+  local branch `mvp-v2-b6` merges it.
