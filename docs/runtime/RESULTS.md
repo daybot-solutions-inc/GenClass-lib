@@ -31,6 +31,22 @@ chosen before labels became expected costs and now block nearly every action. Ne
   clean real-app and sim traffic; fit on dev, verify on test) and ship them in the model's meta.json.
 - **Training:** finish the 150M teacher (with real-app gold), distil, and run DAgger rounds.
 
+### Data-derived gate thresholds (r17-v2a)
+
+The thresholds are fitted per tier and trigger on held-out dev data, under these constraints: FIR ≤ 0.1% (guard)
+or ≤ 0.5% (heal), and harm ≤ 0.2% or ≤ 1%. Each constraint must hold at the 95% upper confidence bound. The
+thresholds ship in the model's `meta.json` `gate`. Verified on held-out test (95% bootstrap intervals):
+
+| Policy | Fires | FIR sim | FIR real apps | Harm (sim / real) | Recall on clear cases | Gain captured |
+|---|---|---|---|---|---|---|
+| guard, derived gates (0.70–0.90) | 0.14% | 0.03% [0.00, 0.08] | 0.00% | 0.01% / 0.00% | 2.5% | 3.0% |
+| guard, fixed 0.9 | – | 0.00% | 0.00% | – | 0.2% | 0.04% |
+| heal, derived gates | 0.99% | 0.19% [0.13, 0.25] | 0.00% | 0.05% / 0.04% | 5.2% | 5.1% |
+| heal, fixed 0.8 | – | **0.66%** [0.56, 0.77] (over the limit) | – | – | 12.0% | 9.3% |
+
+The derived gates keep both tiers inside their safety limits on data never used for fitting. Recall is now
+limited by the model's discrimination, which is what the 150M teacher, distillation and DAgger rounds target.
+
 Targets: guard FIR ≤ 0.1% (met), heal FIR ≤ 0.5% (met), calibration error ≤ 0.02 (met: 0.009),
 diagnosis ≥ 95% (not yet), clear-case recall ≥ 80% (not yet).
 

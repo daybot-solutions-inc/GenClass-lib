@@ -95,7 +95,7 @@ function explorePolicy(scale: number, rngT: Rng): ExplorePolicy | undefined {
 export const ONPOLICY_MAX_CALLS = 80;
 
 /** Runtime build the rows come from (meta.runtime_tag; SIM_RUNTIME_TAG overrides). */
-export const RUNTIME_TAG = (typeof process !== "undefined" && process.env.SIM_RUNTIME_TAG) || "situation-v2.1";
+export const RUNTIME_TAG = (typeof process !== "undefined" && process.env.SIM_RUNTIME_TAG) || "situation-v2.2";
 
 /** On-policy: favour points where the model acted (false-intervention candidates) or stayed passive on a problem. */
 function pickOnPolicy(decs: DecisionRec[], max: number, rng: Rng): DecisionRec[] {

@@ -19,26 +19,9 @@ import { api, itemsOf, errText, HttpError } from "../_shared/w3-http";
 
 type Task = { id: number; caption: string; image: string; assignee: string; label: string; status: "open" | "claimed" | "done"; version: number };
 type ListRes = { items: Task[]; total: number };
-interface Session {
-  status: "signed-out" | "signed-in";
-  user: string;
-  busy: boolean;
-  error: string;
-}
-interface Board {
-  queue: Task[];
-  mine: Task[];
-  cursor: number;
-  pages: number;
-  hasMore: boolean;
-  labeled: number;
-  doneByMe: number;
-  pending: number[];
-  loading: boolean;
-  loadingMore: boolean;
-  error: string;
-  notice: string;
-}
+type Session = { status: "signed-out" | "signed-in"; user: string; busy: boolean; error: string };
+/** queue: unassigned tasks shown (cursor = last id seen, pages = pages loaded); mine: tasks claimed by you. */
+type Board = { queue: Task[]; mine: Task[]; cursor: number; pages: number; hasMore: boolean; labeled: number; doneByMe: number; pending: number[]; loading: boolean; loadingMore: boolean; error: string; notice: string };
 
 const REFRESH = flag("refresh", "single-flight");
 const CLAIM = flag("claim", "if-match");
@@ -261,9 +244,7 @@ function SignIn() {
       {s.error && <p role="alert">{s.error}</p>}
       <input name="username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" autoComplete="username" />
       <input name="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" autoComplete="current-password" />
-      <button className="sign-in" type="submit" disabled={s.busy}>
-        {s.busy ? "Signing in…" : "Sign in"}
-      </button>
+      <button className="sign-in" type="submit" disabled={s.busy}>{s.busy ? "Signing in…" : "Sign in"}</button>
     </form>
   );
 }
@@ -275,17 +256,14 @@ function Workbench() {
     const h = setInterval(() => void Promise.all([refreshQueue(), loadMine(), COUNTER === "server" ? loadCounter() : null]), 4000);
     return () => clearInterval(h);
   }, []);
+  const busy = (t: Task) => b.pending.includes(t.id);
   return (
     <main className="labeling">
       <header>
         <h1>Caption QA</h1>
         <span className="who">Signed in as {s.user}</span>
-        <span className="stats">
-          {b.labeled} captions labelled by the team · {b.doneByMe} by you this session
-        </span>
-        <button type="button" className="sign-out" onClick={() => kickOut("")}>
-          Sign out
-        </button>
+        <span className="stats">{b.labeled} captions labelled by the team · {b.doneByMe} by you this session</span>
+        <button type="button" className="sign-out" onClick={() => kickOut("")}>Sign out</button>
       </header>
       {b.error ? <p role="alert">{b.error}</p> : b.notice ? <p className="notice">{b.notice}</p> : null}
       <section className="yours">
@@ -296,14 +274,10 @@ function Workbench() {
               <span className="caption">“{t.caption}”</span> <span className="image">{t.image}</span>
               <span className="labels">
                 {LABELS.map((l) => (
-                  <button key={l} type="button" disabled={LABEL_GUARD && b.pending.includes(t.id)} onClick={() => void label(t, l)}>
-                    {l}
-                  </button>
+                  <button key={l} type="button" disabled={LABEL_GUARD && busy(t)} onClick={() => void label(t, l)}>{l}</button>
                 ))}
               </span>
-              <button type="button" className="skip" disabled={b.pending.includes(t.id)} onClick={() => void release(t)}>
-                Skip
-              </button>
+              <button type="button" className="skip" disabled={busy(t)} onClick={() => void release(t)}>Skip</button>
             </li>
           ))}
         </ul>
@@ -311,26 +285,18 @@ function Workbench() {
       </section>
       <section className="queue">
         <h2>Unassigned</h2>
-        {b.loading ? (
-          <p className="muted">Loading…</p>
-        ) : (
+        {b.loading ? <p className="muted">Loading…</p> : (
           <ul>
             {b.queue.map((t) => (
               <li key={t.id} className="task" data-id={t.id}>
                 <span className="caption">“{t.caption}”</span> <span className="image">{t.image}</span>{" "}
-                <button type="button" className="claim" disabled={b.pending.includes(t.id)} onClick={() => void claim(t)}>
-                  Claim
-                </button>
+                <button type="button" className="claim" disabled={busy(t)} onClick={() => void claim(t)}>Claim</button>
               </li>
             ))}
           </ul>
         )}
         {!b.loading && !b.queue.length && <p className="muted">The queue is empty — nice work.</p>}
-        {b.hasMore && (
-          <button type="button" className="load-more" disabled={b.loadingMore} onClick={() => void loadMore()}>
-            {b.loadingMore ? "Loading…" : "Load more"}
-          </button>
-        )}
+        {b.hasMore && <button type="button" className="load-more" disabled={b.loadingMore} onClick={() => void loadMore()}>{b.loadingMore ? "Loading…" : "Load more"}</button>}
       </section>
     </main>
   );

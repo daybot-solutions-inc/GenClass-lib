@@ -284,3 +284,23 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
   (sim2 0.9, cur5 0.1), 2 × 500M tokens, ETA ≈ 08:30. REAL `v2c*` not landed yet → continuation run adds them.
 - Fix: `launch_student.sh` failed on macOS bash 3.2 with an empty INIT array under `set -u`.
 - Cost since 01:56 ≈ $50 (T1 runs 03:00–03:35 + smoke); running burn now 20 nodes ≈ $110/h. **Total ≈ $440.**
+
+### 06:10–07:10 r17-v2a evaluated, exported, gated; REAL import; teacher restarted with REAL gold
+- `r17-v2a` done 06:10 → eval (sim2e, sim2f, expected gain, real2e, REAL eval set), export 2.0.0-rc1 (q8 9.58 MB,
+  parity 223/223), delivered to `train:~/gcl/train-out/v2a/r17/` + `packages/runtime-model/files/r17/`; numbers in
+  EVAL.md and sent to the coordinator.
+- REAL v2c1–4 imported (`import_real.sh`, c02): `real2` 467k gold rows minus the 14,102 rows that are in REAL's eval
+  set, `real2e` (20k test + 8k dev), `realev` (16,600), `realunl` 405k unlabeled; tar pulled by all 19 nodes; c02
+  deallocated 06:12.
+- Teacher `t150-v2a` stopped at step 139 (checkpoint) and resumed 06:14 with `mix_t150v2r` (sim2 0.78 / real2 0.12 /
+  cur5 0.10); ≈ 0.045 steps/s, ETA ≈ 08:30.
+- `r17-v2b` (06:15, c03–c05 c13): r17-v2a + 1B tokens with REAL gold (`mix_v2b`: sim2 0.70, real2 0.18, cur5 0.10),
+  lr 1e-4. `r17-v2t` (06:15, c06–c08, GA 5): T1 on v2 — `t1_relabel.py --tau 1` on sim2 (4.87M of 7.56M rows
+  relabelled), same recipe as r17-v2a (from r17-final1, 4 passes).
+- Coordinator 07:00: thresholds must be data-derived and shipped. `fit_gates.py` (+ `collect_gate_set.sh`,
+  `gates_for.sh`, `gates_post.sh`): 104k-row SIM dev sample `sim2g` (c09), fit on dev with Wilson upper bounds, verify
+  on test with bootstrap CIs, v2.2 retry applicability; r17-v2a gates written to its meta.json (+ model.json hash) and
+  re-delivered. `v2_post.sh` now ends with `gates_post.sh`; `gates_post.sh` launched for v2b (c03) and v2t (c06).
+- `eval_real.py`, `eval_real_sets.sh`: REAL eval-set metrics per case (and per held-out test split) under the gate.
+- c09 restarted 06:40 as the gate/eval workbench (serves `sim2g.tar` on :8805).
+- Cost since 05:22: 20 nodes × ≈ 1.8 h ≈ $195. **Total ≈ $635.** Burn now 19 nodes ≈ $105/h.

@@ -77,7 +77,7 @@ const manifest: AppManifest = {
     { kind: "update", target: "cues", perMin: 3, data: [{ text: "Can you hear the bell?" }, { text: "Stay where I can see you." }, { text: "[thunder rumbling]" }, { text: "We're not alone here." }] },
     { kind: "action", target: "cues", perMin: 1.5, verb: "nudge", by: 100 },
   ],
-  weights: { "editor.error": 0, "editor.status": 0, "editor.saving": 0.1, drafts: 0.3, "editor.label": 0, "editor.from": 0.5 },
+  weights: { "editor.error": 0, "editor.status": 0, drafts: 0.3, "editor.label": 0, "editor.from": 0.5 },
   relations: [{ name: "no cue listed twice", fields: ["cues.items"], check: (s) => !s.cues || new Set(s.cues.items.map((c: { id: number }) => c.id)).size === s.cues.items.length }],
   errorSelector: "[role=alert]",
   sessionMs: [25000, 60000],

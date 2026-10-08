@@ -79,7 +79,7 @@ const manifest: AppManifest = {
     // the other judges scoring at the same time; organisers pausing the round now and then
     { kind: "update", target: "scores", perMin: 6, where: { judge: { $ne: "Dana Okafor" } }, data: [{ value: 2 }, { value: 3 }, { value: 4 }, { value: 5 }] },
     { kind: "create", target: "scores", perMin: 2, data: otherScores },
-    { kind: "doc", target: "round", perMin: 1.5, data: [{ status: "closed" }, { status: "open" }, { status: "open" }, { status: "open" }] },
+    { kind: "doc", target: "round", perMin: 1.5, data: [{ status: "closed" }, { status: "open" }, { status: "open" }, { status: "open" }, { status: "open" }] },
   ],
   weights: { "judging.error": 0, "judging.notice": 0, "judging.page": 0.3, "judging.roundName": 0 },
   relations: [
