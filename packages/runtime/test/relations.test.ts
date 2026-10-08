@@ -35,12 +35,13 @@ describe("relation learner precision (batch 8)", () => {
   });
 
   it("(2) uniqueness only for id columns (≥ 3 rows) or id-shaped values (≥ 5 rows)", () => {
-    const row = (i: number, status: string) => ({ id: i, status, title: `T${i}`, ref: `post-${i}a7k${i}` });
+    const row = (i: number, status: string) => ({ id: i, status, title: `T${i}`, ref: `post-${i}a7k${i}`, partId: 100 + i });
     const page = (n: number, off: number) => ({ feed: { rows: Array.from({ length: n }, (_, i) => row(off + i, ["open", "done", "late"][i % 3])) } });
     const r = learn([page(3, 0), page(3, 3), page(3, 6), page(3, 9)]);
     expect(r.learned).toContain("feed.rows[*].id unique");
     expect(r.learned).not.toContain("feed.rows[*].title unique"); // an ordinary column
     expect(r.learned).not.toContain("feed.rows[*].status unique");
+    expect(r.learned).not.toContain("feed.rows[*].partId unique"); // a foreign key
     expect(r.learned).not.toContain("feed.rows[*].ref unique"); // id-shaped values, but only 3 rows
     const big = learn([page(5, 0), page(5, 5), page(5, 10), page(5, 15)]);
     expect(big.learned).toContain("feed.rows[*].ref unique");
@@ -50,13 +51,13 @@ describe("relation learner precision (batch 8)", () => {
     expect(r.m.observe(leaves(dup), 0).violations).toEqual([]);
   });
 
-  it("(3) envelope / pagination metadata never enters a relation; equality needs related names", () => {
+  it("(3) envelope / pagination metadata never enters a relation; equality and aggregates need compatible names", () => {
     // a paged list: total is all matches across pages, items is this page; page/limit coincide with counts
-    const env = (page: number, items: number[], total: number) => ({ list: { items, total, page, limit: 2, offset: (page - 1) * 2 }, stats: { shown: items.length, unread: 2 } });
+    const env = (page: number, items: number[], total: number) => ({ list: { items, total, page, limit: 2, offset: (page - 1) * 2 }, stats: { shownCount: items.length, unread: 2 } });
     const states = [env(1, [1, 2], 2), env(2, [3, 4], 2), env(1, [5, 6], 2), env(2, [7, 8], 2)];
     const r = learn(states);
     for (const t of r.learned.filter((x) => x.includes("==") || x.includes("∈"))) expect(t).not.toMatch(/list\.(total|page|limit|offset)/);
-    expect(r.learned).toContain("stats.shown == len(list.items)");
+    expect(r.learned).toContain("stats.shownCount == len(list.items)");
     expect(r.learned).not.toContain("stats.unread == list.limit");
     // more results arrive: total grows past the page size; nothing breaks
     expect(learn([...states, env(1, [1, 2], 7)]).violations.flat()).toEqual([]);
@@ -64,6 +65,21 @@ describe("relation learner precision (batch 8)", () => {
     const pairs = [3, 4, 5, 6, 7].map((n) => ({ a: { retries: n, visitors: n } }));
     expect(learn(pairs).learned.filter((t) => t.includes("=="))).toEqual([]);
     expect(learn([3, 4, 5, 6].map((n) => ({ a: { cartCount: n }, b: { badgeCount: n } }))).learned).toContain("a.cartCount == b.badgeCount");
+    // an aggregate needs an aggregate-like name: `active == len(hits)` is a coincidence, `hitCount` is not
+    const hits = (n: number) => ({ ill: { hits: Array.from({ length: n }, (_, i) => ({ id: i + 1 })), active: n, hitCount: n } });
+    const agg = learn([hits(1), hits(2), hits(3), hits(4)]).learned;
+    expect(agg).toContain("ill.hitCount == len(ill.hits)");
+    expect(agg).not.toContain("ill.active == len(ill.hits)");
+    // membership only for a selection in the list's own id column: a filter equal to some item's kind, a draft's id,
+    // a foreign key are not selections
+    const inbox = (filter: string, i: number) => ({ inbox: { filter, draft: { id: i }, reportId: i, items: [{ id: 1, kind: "mail", reportId: 1 }, { id: 2, kind: "chat", reportId: 2 }, { id: 3, kind: "mail", reportId: 3 }] } });
+    expect(learn([inbox("mail", 1), inbox("chat", 2), inbox("mail", 3), inbox("chat", 1)]).learned.filter((t) => t.includes("∈"))).toEqual([]);
+    // sums never run over id or version columns; group counters are named after the group
+    const polls = (v: number[]) => ({ polls: { total: v.reduce((x, y, i) => x + y * (i + 1), 0), options: v.map((votes, i) => ({ pollId: i + 1, votes, version: votes })), counts: { open: 1, waitingParts: 1 }, jobs: [{ status: "open" }, { status: "waiting" }] } });
+    const pl = learn([polls([1, 2]), polls([2, 2]), polls([3, 1]), polls([1, 4])]).learned;
+    expect(pl.filter((t) => /pollId|version/.test(t) && t.includes("sum("))).toEqual([]);
+    expect(pl).toContain('polls.counts.open == count(polls.jobs[*].status == "open")');
+    expect(pl.filter((t) => t.includes("waitingParts") && t.includes("count("))).toEqual([]);
   });
 
   it("(5) busy counters only enter derived relations (len/sum), never equality or membership", () => {

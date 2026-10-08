@@ -47,14 +47,21 @@ existing facts is unchanged, only when inconsistency (and transition) triggers f
    ("nothing selected"); so are `a == b`, `a >= 0` and `typeof a stable` when a field is an id/selection (`*Id`, `id`,
    `key`, `slug`, `selected*`, `active*`, `current*`); selection fields never get `!= null`; no candidate is proposed
    from a sentinel value.
-2. **`unique` needs evidence:** an id column (`id`, `_id`, `uuid`, `key`, `slug`, `code`, `*Id`) with ≥ 3 rows, or a
+2. **`unique` needs evidence:** the row's own id column (`id`, `_id`, `uuid`, `key`, `slug`) with ≥ 3 rows, or a
    column whose values are all id-shaped (uuids, long hex, slug ids) with ≥ 5 rows. Ordinary columns (`name`,
-   `title`, `text`, `status`) never.
+   `title`, `text`, `status`, `qty`) and foreign keys (`partId`, `user_id`) never.
 3. **Envelope / pagination metadata** never enters a relation: fields named page, pages, offset, limit, cursor, pager,
    pagination, skip, take, next, prev/previous, has more, per page, page size; and total/count fields (`total`,
-   `articlesCount`) next to such a field (a response envelope's total is not this page's size). `a == b` now needs
-   semantically compatible names (a shared meaningful word: `cart.count == badge.itemCount`); batch 5 allowed unrelated
-   names after 3 distinct values, which no longer applies.
+   `articlesCount`) next to such a field (a response envelope's total is not this page's size). Name compatibility,
+   generically: `a == b` needs a shared meaningful word (`cart.count == badge.itemCount`; batch 5 allowed unrelated
+   names after 3 distinct values, no longer); `a == len(B)` and sums need an aggregate-like name for `a` (count, total,
+   sum, size, amount, balance, qty, nX, ...) or a word shared with the list or column (`ill.active == len(ill.hits)`
+   is a coincidence); sums never run over id or version columns (`sum(options[*].pollId * votes)`,
+   `sum(loans[*].version)`); count-by-group only for a counter named after the group (`counts.done`, `doneCount`; not
+   `counts.waitingParts` for status "waiting"); membership `a ∈ B[*].k` only for a selection field (named selected /
+   active / current / focused / editing / ..., or under such a parent) into the list's own id column (`id`, `_id`,
+   `uuid`, `key`, `slug`): a filter equal to an item's kind, a title found in a list of titles, a draft's id, a foreign
+   key or an id from another entity are coincidences.
 4. **Typing bursts.** At a settled point, stores written by a `type` user action within the last 1 s are neither
    checked nor learned on (candidates touching them are skipped, their pending changes kept, a lingering episode is not
    restarted); another settled point is scheduled 1 s after the last keystroke, so a real divergence is still reported

@@ -15,7 +15,8 @@ reports are in `training/EVAL.md`, `training/LOG.md`, `sim/SEPARABILITY.md`, `re
 | **Final round 1, R17** (format v1) | 448k sim rows (phase A) | **90.5%** | **81.9%** | **0.05%** | **0.24%** | **7.7%** |
 | Final round 1, R32 (format v1) | same | 89.7% | 81.8% | 0.05% | 0.22% | 5.9% |
 | **r17-v2a** (format v2, first round) | 2B tokens of v2 sim gold + v2 curriculum | 84.4% | 77.9% | **0.00%** | 0.46% | 3.1% (heal clear-case 11.3%) |
-| Round 2 continues (teacher, REAL gold, DAgger, data-derived gates) | 10.4M sim gold + 51M unlabeled + 616k real | in progress | | | | |
+| **r17-v2b** (+1B tokens with real-app gold) | sim 84.2% / real 83.6% | sim 77.8% / real 80.0% | 0.02% sim, 0.00% real (derived gates) | 0.23% sim, 0.00% real | heal 6.0% clear; real duplicate 8.2% (14% held-out apps) |
+| Round 2 continues (teacher, DAgger, detection gates) | 10.4M sim gold + 51M unlabeled + 616k real | in progress | | | | |
 
 ### r17-v2a on held-out data (details)
 

@@ -17,10 +17,14 @@
 // Precision (batch 8, REAL's 158 apps):
 //   - selections: `a ∈ B[*].k`, and `a == b` where a field is an id/selection, are vacuous while the selection is a
 //     sentinel (0, -1 or any negative number, "", null): nothing is selected;
-//   - `B[*].k unique` only for id columns (id, _id, uuid, key, slug, code, *Id) with ≥ 3 rows, or columns whose values
-//     are all id-shaped (uuids, long hex, slugs) with ≥ 5 rows;
+//   - `B[*].k unique` only for the row's own id column (id, _id, uuid, key, slug) with ≥ 3 rows, or columns whose
+//     values are all id-shaped (uuids, long hex, slugs) with ≥ 5 rows; never foreign keys (`partId`);
 //   - envelope metadata (page, offset, limit, cursor, next/prev, hasMore, ...; and total/count next to them) never
-//     enters a relation; `a == b` needs related names (a shared meaningful word);
+//     enters a relation; `a == b` needs related names (a shared meaningful word); aggregates (`a == len(B)`,
+//     sums) need an aggregate-like name for `a` (count, total, sum, size, amount, ...) or a word shared with B/f;
+//     membership `a ∈ B[*].k` only for a selection field (selected/active/current/...) into the list's own id column
+//     (id, _id, uuid, key, slug); sums never over id or version columns; count by group only for a counter named
+//     after the group (`counts.done`, `doneCount`);
 //   - busy scalar counters (numbers that change on nearly every write of their store) only enter derived relations
 //     (len, sum, sum of products, count by group), never equality or membership;
 //   - the runtime skips stores the user wrote within the last second (typing bursts): neither checked nor learned.
@@ -85,6 +89,35 @@ function relatedNames(a: string, b: string): boolean {
 
 function versionLike(path: string): boolean {
   return nameWords(path).some((w) => VERSION_WORDS.test(w));
+}
+
+const AGGREGATE_WORDS = new Set(["count", "total", "sum", "length", "len", "size", "num", "number", "amount", "balance", "subtotal", "quantity", "qty", "tally"]);
+
+/**
+ * Whether `a` can name an aggregate of list B (column f): an aggregate word (count, total, sum, size, amount, ...),
+ * or a word shared with the list or the column (`cartItems` / `items`). `ill.active == len(ill.hits)` is a coincidence.
+ */
+function aggregateName(a: string, B: string, f?: string): boolean {
+  const ws = rawWords(a).map((w) => w.replace(/(ies)$/, "y").replace(/s$/, ""));
+  if (ws.some((w) => AGGREGATE_WORDS.has(w)) || /^n[A-Z]/.test(a.split(".").pop() ?? "")) return true;
+  return relatedNames(a, B) || (f !== undefined && relatedNames(a, f));
+}
+
+const SELECTION_WORDS = new Set(["selected", "selection", "active", "current", "focused", "focus", "chosen", "picked", "highlighted", "editing", "open", "opened"]);
+const PRIMARY_ID = /^(id|_id|uuid|key|slug)$/;
+
+/** A selection: the field (or its parent) is named selected / active / current / focused / ... (`ui.selectedId`, `crm.current`). */
+function selectionName(path: string): boolean {
+  const segs = path.split(".");
+  const ws = [...rawWords(segs[segs.length - 1] ?? ""), ...(segs.length > 2 ? rawWords(segs[segs.length - 2]) : [])];
+  return ws.some((w) => SELECTION_WORDS.has(w));
+}
+
+/** `counts.done == count(status == "done")`: the field's own words (minus count/total/...) are the group value's words. */
+function groupName(a: string, value: string): boolean {
+  const own = rawWords(a).filter((w) => !AGGREGATE_WORDS.has(w) && !GENERIC_WORDS.has(w));
+  const want = rawWords(value);
+  return own.length > 0 && own.length === want.length && own.every((w, i) => w === want[i]);
 }
 
 /** The field names a selection or an id (`selectedId`, `activeKey`, `current.id`). */
@@ -424,12 +457,15 @@ export class InvariantMiner {
     }
   }
 
-  /** Enough evidence that a column identifies rows: an id column with ≥ 3 rows, or id-shaped values with ≥ 5. */
+  /**
+   * Enough evidence that a column identifies rows: the row's own id column (id, _id, uuid, key, slug) with ≥ 3 rows,
+   * or id-shaped values with ≥ 5 rows. Foreign keys (`partId`, `user_id`) repeat across rows: never.
+   */
   private uniqueEvidence(k: string, B: Leaf | undefined): boolean {
     if (!B || B.kind !== "array" || !Array.isArray(B.value)) return false;
     const n = B.len;
-    if (ID_COLUMN.test(k)) return n >= 3;
-    if (n < 5) return false;
+    if (PRIMARY_ID.test(k)) return n >= 3;
+    if (ID_COLUMN.test(k) || n < 5) return false;
     for (const o of B.value as unknown[]) if (!isPlainObject(o) || !idShaped(o[k])) return false;
     return true;
   }
@@ -552,13 +588,15 @@ export class InvariantMiner {
       if (!st) continue;
       for (const [a, av] of numeric) {
         if (av === 0) continue;
-        if (av === leaf.len) this.add({ id: `len:${a}:${B}`, tpl: "len", text: `${a} == len(${B})`, a, B, watch: [a, B] });
+        // aggregates need a compatible name: a count/total/sum-like word, or a word shared with the list or column
+        if (av === leaf.len && aggregateName(a, B)) this.add({ id: `len:${a}:${B}`, tpl: "len", text: `${a} == len(${B})`, a, B, watch: [a, B] });
         if (!st.objs) continue;
         for (const f of st.numCols) {
-          if (numEq(av, st.sums.get(f)!)) this.add({ id: `sum:${a}:${B}:${f}`, tpl: "sum", text: `${a} == sum(${B}[*].${f})`, a, B, f, watch: [a, B] });
+          if (ID_COLUMN.test(f) || versionLike(f)) continue; // ids and versions are never summed
+          if (numEq(av, st.sums.get(f)!) && aggregateName(a, B, f)) this.add({ id: `sum:${a}:${B}:${f}`, tpl: "sum", text: `${a} == sum(${B}[*].${f})`, a, B, f, watch: [a, B] });
           for (const g of st.numCols) {
-            if (g <= f) continue;
-            if (numEq(av, this.prod(leaf, st, f, g))) this.add({ id: `sumprod:${a}:${B}:${f}:${g}`, tpl: "sumprod", text: `${a} == sum(${B}[*].${f} * ${B}[*].${g})`, a, B, f, g, watch: [a, B] });
+            if (g <= f || ID_COLUMN.test(g) || versionLike(g)) continue;
+            if (numEq(av, this.prod(leaf, st, f, g)) && aggregateName(a, B)) this.add({ id: `sumprod:${a}:${B}:${f}:${g}`, tpl: "sumprod", text: `${a} == sum(${B}[*].${f} * ${B}[*].${g})`, a, B, f, g, watch: [a, B] });
           }
         }
       }
@@ -568,8 +606,10 @@ export class InvariantMiner {
         const set = this.colSet(leaf, st, k);
         for (const [a, l] of scalar) {
           if (a.startsWith(B + ".") || SENTINEL(l.value)) continue;
-          // numbers: only membership in an id column (or a related column), never in counters or versions
-          if (l.kind === "number" && (!(ID_COLUMN.test(k) || relatedNames(a, k)) || versionLike(k) || versionLike(a))) continue;
+          // membership: a selection must name an existing row, so only a selection field (selected/active/current/...)
+          // in the list's own id column. A value matching another column (a filter equal to a kind, a title in a list
+          // of titles, an id from another entity or a foreign key) is a coincidence.
+          if (!PRIMARY_ID.test(k) || !selectionName(a) || versionLike(a)) continue;
           if (set.has(l.value)) this.add({ id: `in:${a}:${B}:${k}`, tpl: "in", text: `${a} ∈ ${B}[*].${k}`, a, B, f: k, watch: [a, B] });
         }
       }
@@ -581,8 +621,9 @@ export class InvariantMiner {
           if (n < 1 || groups.size < 2) continue;
           for (const [a, av] of numeric) {
             if (av !== n || a.startsWith(B + ".") || versionLike(a)) continue;
-            const related = relatedNames(a, String(gv)) || relatedNames(a, k);
-            this.add({ id: `count:${a}:${B}:${k}:${String(gv)}`, tpl: "count", text: `${a} == count(${B}[*].${k} == ${JSON.stringify(gv)})`, a, B, f: k, v: gv as string | boolean, watch: [a, B], ...(related ? {} : { minDistinct: 3 }) });
+            // the counter is named after the group (`counts.done`, `doneCount`, `perPerson.Lena`)
+            if (typeof gv !== "string" || !groupName(a, gv)) continue;
+            this.add({ id: `count:${a}:${B}:${k}:${String(gv)}`, tpl: "count", text: `${a} == count(${B}[*].${k} == ${JSON.stringify(gv)})`, a, B, f: k, v: gv, watch: [a, B] });
           }
         }
       }
