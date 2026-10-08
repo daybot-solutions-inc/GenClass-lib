@@ -19,6 +19,7 @@ $PY training/eval_gain.py --rows data/sim2e/test.jsonl \
   --model "$M=out/records/${M}__sim2e__test.jsonl:out/cal/$M-sim2e.json${T1TAU:+:$T1TAU}" \
   --out out/eval/gain-$M-sim2e.json > logs/v2-gain-$M.log 2>&1
 bash training/eval_real_sets.sh "$M" > logs/v2-real-$M.log 2>&1
+[ -d data/onpae ] && EVAL_THREADS=10 bash training/eval_sim.sh onpae "$M" > logs/v2-eval-$M-onpa.log 2>&1
 touch out/.eval-done-$M
 $PY training/export_runtime.py --ckpt models/$M --out out/export-$M --name "$NAME" --version "$VER" \
     --calibration out/cal/$M-sim2e.json --data-rows data/sim2e/dev.jsonl,data/cur5e/dev.jsonl --n-per-file 60 --threads 24 \

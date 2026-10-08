@@ -110,14 +110,11 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 | c01, c10, c11 | REAL (TRAIN processes killed 03:35; c01 clean) | — | real-browser rows |
 | c02–c09, c12–c23 (20 nodes) | SIM (done 04:05–05:00 UTC, **all deallocated**) | was: from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
 
-| **c02** | **TRAIN workbench (v2)** | from 05:05 UTC | v2 import, curriculum replay, eval, export |
-| **c03–c09, c13** | **TRAIN `r17-v2a`** (R17 on v2 gold) | from ≈ 05:30 UTC, ≈ 1.5 h | first v2 R17 export |
-| **c12, c14–c23** | **TRAIN `t150-v2a`** (teacher on v2 gold) | from ≈ 05:30 UTC, ≈ 5 h | teacher for labelling/distillation |
-(TRAIN starts these after SIM's deallocation pass of 05:00 finishes; SIM: the nodes above are TRAIN's from then on.)
-
-| c01, c02, c10, c11, data | SIM (claim, lead-assigned 06:40 UTC; c09 released 06:55 to TRAIN's `collect_gain.py` eval, which started there at 06:39) | until ≥ 1M on-policy rows are collected (≈ 1.3 h, 5 × 216k) | on-policy (DAgger) rounds with r17-v2a (shipping + explore gates) → `train:/data/sim-out/v2-onpol-a/`; each node deallocated as soon as its share is collected |
-
-| c01, c02, c10, c11, data (same five, restarted after round a) | SIM (claim, 08:05 UTC) | ≈ 08:25–10:00 UTC | (1) **v2.3 gold top-up**: 2M gold rows, situation-v2.3, 46 features, S1+S2, seeds 26e9 + NN·1e8 → `train:/data/sim-out/v2.3-gold/` (≈ 30 min); (2) **on-policy round b**: r17-v2b (gates from its meta.json) through situation-v2.3, shipping (c01, c02) + explore 0.5 (c10, c11, data), ≈ 1M rows, seeds 28e9 / 30e9 + NN·1e8 → `train:/data/sim-out/v2-onpol-b/` (≈ 1 h). Each node deallocated as soon as its share is collected. c09 stays TRAIN's. |
+| **c09** | **TRAIN workbench (v2)** | from 06:40 UTC | data prep (sim2r / on-policy), gate dev set, eval |
+| **c07 c08 c02 c03 c04 c05 c13** | **TRAIN `r17-v2c`** (v2b + on-policy round a) | 08:34 → ≈ 09:40 UTC | next student; c07 = rank 0 / eval / export |
+| **c12, c14–c23** | **TRAIN `t150-v2a`** teacher | training done 08:30; distributed eval ≈ 08:50; then labelling if the teacher clearly beats v2b, else deallocated | teacher |
+| c06 | TRAIN `r17-v2t` (T1 on v2) eval/export | until ≈ 09:00 | then deallocated |
+| c01, c10, c11 | free (REAL done) | — | — |
 
 SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
 
