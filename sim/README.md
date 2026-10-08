@@ -259,7 +259,11 @@ answer arrives after the scenario's virtual model latency, so runs stay determin
 actually ran at every earlier decision. Past decisions do not render in situations, so prefixes are byte-identical
 (checked).
 
-Every row also has `meta.runtime_tag` (the runtime build, e.g. `situation-v2.1`), `meta.program_family`, `meta.passive`, `meta.clean` (5% clean runs: calm network, no failures,
+Every row also has `meta.runtime_tag` (the runtime build, e.g. `situation-v2.2`); decision rows whose subject is a
+request carry `meta.request = {method, idempotent, idempotencyKey}`, and every decision row `meta.not_offered` (the
+trigger's built-in actions the runtime did not offer, name → reason; from situation-v2.2 `retry` is offered only for
+idempotent methods or requests with an `Idempotency-Key` / `X-Idempotency-Key` header, so failed un-keyed POSTs become
+diagnosis-only rows). Also `meta.program_family`, `meta.passive`, `meta.clean` (5% clean runs: calm network, no failures,
 no accidental clicks, correct guards; any non-passive answer there is a false positive), `meta.persona` and
 `meta.chaos`.
 

@@ -48,6 +48,8 @@ export interface DecisionRec {
   feature?: string;
   /** `delivery` decisions: diagnosis = verdict of the first write this op / push caused (filled after the run). */
   diagFrom?: { op?: number; push?: number };
+  /** The runtime's Situation.notOffered, when the evaluate request carries it (copied verbatim into meta). */
+  notOffered?: Record<string, string>;
   /** SIM_PROBE=1: separability probes (oracle/probe.ts). */
   probe?: Probe;
   probeSubj?: { op?: number; write?: number };
@@ -439,6 +441,8 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       }
       if (o.record || (o.fpUpTo !== undefined && idx <= o.fpUpTo)) {
         const rec: DecisionRec = { ...base, chosen, explored, fp: o.fpUpTo !== undefined || o.record ? JSON.stringify([req.trigger, req.state, questions]) : "" };
+        const no = (req as { notOffered?: unknown }).notOffered;
+        if (no && typeof no === "object") rec.notOffered = no as Record<string, string>;
         if (probeState) {
           try {
             rec.probe = probeDecision(req.trigger, subject.s, know, network, probeState, t);

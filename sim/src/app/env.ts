@@ -63,6 +63,9 @@ export interface RegisteredStore {
   weights: Record<string, number>;
 }
 
+/** The runtime's default `policy.idempotencyHeaders` (situation-v2.2). */
+export const IDEMPOTENCY_HEADERS = ["idempotency-key", "x-idempotency-key"];
+
 export class AppEnv {
   readonly stores: RegisteredStore[] = [];
   /** Results of app requests by sim op id (ideal-world exactly-once sharing). */
@@ -113,6 +116,8 @@ export class AppEnv {
     const k = this.know;
     k.callingOp = op;
     try {
+      const h = new Headers(init?.headers ?? {});
+      op.idemKey = IDEMPOTENCY_HEADERS.some((n) => h.has(n));
       return this.G.fetch(url, init);
     } finally {
       k.callingOp = null;

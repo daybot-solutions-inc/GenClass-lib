@@ -8,9 +8,10 @@ import { clientDivergenceAt, divergedFieldsAt, actionLabel, runCost, TIER, W, ty
 import { hashAll, Rng } from "../rng.js";
 import { S2, type FutureSpec } from "../run/latent.js";
 import { runScenario, type DecisionRec, type ExplorePolicy, type RunResult } from "../run/runner.js";
+import type { Knowledge } from "../oracle/knowledge.js";
 import type { RuntimeFactory } from "../run/rt.js";
 import { transformQuestions } from "../run/transform.js";
-import { PASSIVE, type Label, type Row } from "../types.js";
+import { PASSIVE, TRIGGER_ACTIONS, type Label, type Row } from "../types.js";
 import { buildScenario, splitOf, type Scenario } from "../world/scenario.js";
 
 export interface GenOptions {
@@ -237,6 +238,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
         cost_parts: Object.fromEntries(Object.entries(parts).map(([a, c]) => [a, { area: r3(c.area), final_client: r3(c.finalClient), final_server: r3(c.finalServer), relation_s: r3(c.relationS), relation_final: c.relationFinal, errors: c.shownErrors, uncaught: c.uncaught, wasted: c.wasted, latency_s: r3(c.latencyS) }])),
         tiers: Object.fromEntries(p.actions.map((a) => [a, TIER[a] ?? "heal"])),
         diagnosis: diag ?? null,
+        ...requestMeta(base.know, p),
         ...(diagS1 ? { diagnosis_s1: diagS1, diagnosis_subject: p.diagnosis ?? null } : {}),
         subject: p.subject,
         transform: tr.variant,
@@ -276,7 +278,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
       state: d.state,
       questions: d.questions,
       labels: { diagnosis: { type: "choice", label: d.diagnosis! } },
-      meta: { ...meta0, trigger: d.trigger, passive: PASSIVE[d.trigger] ?? d.actions[0] ?? null, subject_feature: d.feature ?? null, decision: d.k, t: Math.round(d.t), diagnosis: d.diagnosis, diagnosis_only: true, subject: d.subject },
+      meta: { ...meta0, trigger: d.trigger, passive: PASSIVE[d.trigger] ?? d.actions[0] ?? null, subject_feature: d.feature ?? null, decision: d.k, t: Math.round(d.t), diagnosis: d.diagnosis, diagnosis_only: true, subject: d.subject, ...requestMeta(base.know, d) },
     });
   }
   // ------------------------------------------------------------------------------------------- ask rows
@@ -317,6 +319,44 @@ const r3 = (x: number) => Math.round(x * 1000) / 1000;
 export let costMs = 0;
 export function resetCostMs(): void {
   costMs = 0;
+}
+
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]);
+
+/**
+ * meta.request (the subject request: method, HTTP idempotency, idempotency key header) and meta.not_offered (built-in
+ * actions of the trigger the runtime did not offer, name -> reason). The runtime's own Situation.notOffered is copied
+ * verbatim when the evaluate request carries it; otherwise the names are exact (built-ins minus what the runtime
+ * offered, before any wording transform) and the reasons follow the runtime's applicability rules (situation-v2.2).
+ */
+export function requestMeta(know: Knowledge, d: DecisionRec): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const op = d.subject.kind === "op" ? know.getOp(d.subject.ref) : undefined;
+  if (op) {
+    const method = op.method.toUpperCase();
+    out.request = { method, idempotent: IDEMPOTENT_METHODS.has(method), idempotencyKey: op.idemKey === true };
+  }
+  const builtins = TRIGGER_ACTIONS[d.trigger];
+  if (builtins) {
+    if (d.notOffered) out.not_offered = d.notOffered;
+    else {
+      const no: Record<string, string | null> = {};
+      for (const a of builtins) {
+        // The passive action always runs when nothing else does (no action question when it is the only one).
+        if (d.actions.includes(a) || a === PASSIVE[d.trigger]) continue;
+        let why: string | null = null;
+        if (op) {
+          const m = op.method.toUpperCase();
+          if ((a === "retry" || a === "hedge") && !IDEMPOTENT_METHODS.has(m) && !op.idemKey) why = `${m} is not idempotent and the request has no idempotency key header`;
+          else if (a === "hedge" && m !== "GET") why = `only GET requests are hedged (${m})`;
+          else if (a === "serve_cached") why = m !== "GET" ? `${m} responses are never served from cache` : "no cached response exists for this request";
+        }
+        no[a] = why;
+      }
+      if (Object.keys(no).length) out.not_offered = no;
+    }
+  }
+  return out;
 }
 
 /** S1: a clear non-passive win (passive's label gap, premiums included) at least this large never keeps `expected`. */
@@ -484,7 +524,7 @@ async function unlabeledTrajectory(scn: Scenario, split: string, out: Trajectory
       state: d.state,
       questions: tr.questions,
       labels,
-      meta: { ...meta0, trigger: d.trigger, passive, subject_feature: d.feature ?? null, decision: d.k, t: Math.round(d.t), diagnosis: d.diagnosis ?? null, actions: d.actions, ran: d.chosen, explored: d.explored, subject: d.subject, transform: tr.variant },
+      meta: { ...meta0, trigger: d.trigger, passive, subject_feature: d.feature ?? null, decision: d.k, t: Math.round(d.t), diagnosis: d.diagnosis ?? null, actions: d.actions, ran: d.chosen, explored: d.explored, subject: d.subject, transform: tr.variant, ...requestMeta(base.know, d) },
     });
   }
   base.asks.forEach((a, i) => {
