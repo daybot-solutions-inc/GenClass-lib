@@ -3,12 +3,14 @@
 [![npm](https://img.shields.io/npm/v/@genclass/runtime/latest?label=npm)](https://www.npmjs.com/package/@genclass/runtime)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-**Install one library. Find and prevent runtime failures automatically.**
+**A runtime that watches your web app from the inside and, with a small local model, flags (and optionally
+prevents) stale responses, races, duplicate requests, inconsistent state and failure storms.**
 
-GenClass Runtime watches your web app from the inside: user actions, async operations, network requests, state
-changes, errors, timing and causality. When something looks risky, it asks a small model that runs locally in the
-browser (WebGPU or WASM, cached after the first load) what is happening and what to do. It then reports what it
-saw, or prevents the failure with a minimal, reversible action. Nothing leaves the browser.
+GenClass Runtime records what your app does: user actions, async operations and their causes, fetch/XHR/WebSocket/
+EventSource traffic, store writes with per-field versions, errors and timing. It computes generic facts about each
+write, request and response. When a situation looks risky, a small GenClass model running in the browser (WebGPU or
+WASM, in a Web Worker) answers two questions: what is happening, and which of the available actions is best. The
+runtime has no list of known bugs: triage picks the situations, the model decides.
 
 ```bash
 npm install @genclass/runtime
@@ -17,119 +19,207 @@ npm install @genclass/runtime
 ```ts
 import { GenClass } from "@genclass/runtime";
 
-GenClass.init();
+GenClass.init(); // observe mode: reports only, never takes an action (see Known limitations)
 ```
 
-> **Status: alpha (`0.1.0-alpha.0` on npm).** The runtime, model host, devtools and adapters work and are
-> tested. The runtime-specialist model is still in training and not yet published, so this alpha observes and
-> records but does not act yet: until the model ships, the runtime fails open and takes the passive action. To
-> try decisions now, self-host a model with `npx genclass-runtime fetch-model`. Remaining work is listed in
-> [OPEN_TASKS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/OPEN_TASKS.md).
+> **Status: alpha. No trained model is published yet, so today the runtime finds nothing.**
+>
+> - The runtime, model host, devtools overlay and React/Redux/Zustand adapters are built and unit-tested.
+> - The model for this runtime's situation format (`situation-v2`) is still in training.
+>   `@genclass/runtime-model` is not on npm, so the default model URL returns 404. A default `GenClass.init()`
+>   prints `[GenClass] Model unavailable (...); observing only.`, consults no model, records no detections and takes
+>   no actions. It still traces, learns baselines and answers `rt.situation()`; `rt.ask()` / `rt.decide()` reject
+>   with `GenClassUnavailableError`.
+> - The only trained models so far (round 1) read the previous format (`situation-v1`) and do not match this
+>   runtime. Do not self-host them with this version.
+> - `0.1.0-alpha.0`, the first version on npm, is the older v1 runtime: guard by default, holds store writes, and
+>   can crash when app state contains `NaN` (fixed since). Use a later version.
+>
+> Progress: [OPEN_TASKS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/OPEN_TASKS.md) ·
+> measured results: [RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md).
+
+## Contents
+
+[Modes](#modes) · [What it looks for](#what-it-looks-for) · [State it can protect](#state-it-can-protect) ·
+[Ask it questions](#ask-it-questions) · [Observability](#observability) · [Extend it](#extend-it) ·
+[Model quality](#model-quality) · [Performance](#performance) · [Privacy](#privacy) ·
+[Known limitations](#known-limitations) · [API reference](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md)
 
 ## What it looks like
 
-Run your app as usual. The console starts saying things like this (example output):
+Run your app as usual. When the model flags something, the console gets one plain-English line per detection or
+intervention, followed by a collapsed group with the evidence. This is real output of the runtime in guard mode for
+an out-of-order search response. A scripted stand-in decider supplied the answer (`stale`, `discard`, 0.97), since no
+trained model exists yet:
 
 ```
-[GenClass] Prevented a stale write: GET /api/search?q=rea (started 1.8 s ago) would have overwritten
-           search.results written 0.4 s ago by a newer GET /api/search?q=react. Dropped it. (stale, 0.97)
-[GenClass] Coalesced a duplicate: POST /api/orders was sent again 90 ms after an identical one from the
-           same click. Reused the first response. (duplicate, 0.95)
-[GenClass] Flagged: POST /api/cart usually writes cart.items and cart.total (317 of 317 times); this time it
-           wrote only cart.items. (unusual, 0.88)
+[GenClass] Prevented a stale response: search.results was written once by other operations since its operation (#4)
+started (version 1 → 2), last 0.40s ago by GET /api/search?q=react (#6), which started 1.30s after #4, from a later
+user action (#5). Delivered the response to GET /api/search?q=rea (#4) and dropped the state changes it makes over
+newer data (search.results). (stale, 0.97; discard 0.97)
 ```
 
-Each line expands into the evidence: the facts, the timeline, the exact text the model read, its answer
-probabilities, exactly what GenClass changed, and how to undo it.
+In observe mode the response is delivered without waiting for the model, and the write it causes is judged in the
+background instead:
 
-## What it handles
-
-The runtime has no list of known bugs. It computes generic facts about every write and request: what caused it,
-which versions it was based on, what happened in between, repeats, failure streaks, latency against learned
-baselines, broken learned relations, and unusual transitions. The model decides what is going on.
-
-| situation | example | what GenClass can do |
-|---|---|---|
-| stale overwrite | an old response lands after a newer one | drop or defer the write |
-| race / conflict | two operations write the same state | defer, drop, roll back |
-| duplicate | a double click sends the same order twice | coalesce with the first request |
-| inconsistent state | `total` no longer equals the sum of the lines | roll back or resync (heal) |
-| failure patterns | an endpoint fails 5 times in a row | back off, serve cached (heal) |
-| transient failure | a one-off 503 | retry (heal) |
-| slow / overload | a request is 8× slower than usual; a render loop floods an API | hedge, delay |
-| unusual behaviour | an operation writes different fields than its last 300 runs | flag, roll back (heal) |
-| your own questions | "is now a good moment to start the upload?" | `ask` / `decide` |
+```
+[GenClass] Flagged a stale write: search.results was written once by other operations since this write's cause (#4)
+started (version 1 → 2), … Not acted on (would have done discard 0.97): observe mode never changes execution. (stale, 0.97)
+```
 
 ## Modes
 
-| mode | behaviour |
-|---|---|
-| `observe` | Finds and reports anomalies. Never changes execution. |
-| `guard` (default) | Also prevents failures with guard-tier actions only (`discard`, `defer`, `coalesce`, `delay`). These withhold, deduplicate or slow something down, and only run when the model is very sure (≥ 0.9) that acting beats doing nothing. |
-| `heal` | Also recovers: `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync`, plus your own actions (≥ 0.8). |
+| mode | what it does | non-passive actions | gate |
+|---|---|---|---|
+| `observe` (**default**) | Reports what it sees and what it would have done. Never holds a request, never runs an action. | none | n/a |
+| `guard` (opt-in) | Also prevents failures with guard-tier actions: `discard`, `defer`, `coalesce`, `delay`. These withhold, deduplicate or slow something down. | guard tier | summed probability of the permitted actions ≥ 0.9, and the top diagnosis is not `expected` |
+| `heal` (**experimental**) | Also recovers: `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync`, plus your own actions. | guard + heal tier | guard actions ≥ 0.9, heal actions ≥ 0.8, diagnosis not `expected` |
 
 ```ts
-GenClass.init({ mode: "observe" });
+GenClass.init({ mode: "guard" });
 ```
 
-**Kill switch:** append `?genclass=off` to the URL, or set `localStorage.genclass = "off"`, to rule GenClass out
-while debugging. `?genclass=observe` switches to observe mode.
+In every mode, a decision is reported as a detection when its diagnosis is not `expected` at confidence ≥ 0.6. Actions
+are also limited to 60 per minute (`policy.maxActionsPerMinute`). A held decision that misses the hold budget runs
+the passive action; a background write decision can still revert the write late. Thresholds and the `allow` / `deny`
+lists are in `policy`. Switch at runtime with `rt.setMode(mode)`, or stop consulting the model with `rt.pause()` / `rt.resume()`.
+
+**The default changed.** Earlier versions defaulted to `guard`. Now `GenClass.init()` with no `mode` observes only;
+pass `mode: "guard"` to let it act.
+
+**Kill switch.** Append `?genclass=off` to the URL, or set `localStorage.genclass = "off"`, and nothing is installed.
+`?genclass=observe|guard|heal` (or the same localStorage value) overrides the mode.
+
+`GenClass.init()` never throws, and a second call returns the first runtime (its options are ignored). Outside a
+browser (SSR, Node) it returns a runtime with no observers and no model. For tests and headless use, call
+`createRuntime(options)` instead.
+
+## What it looks for
+
+The runtime decides at nine **triggers**. Only salient ones (a conflict, a repeat, a failure, an anomaly, a broken
+relation, an error) reach the model; everything else is a cheap fact computation.
+
+| trigger | when | passive action | other actions (tier) |
+|---|---|---|---|
+| `delivery` | a fetch/XHR response or a WebSocket/EventSource message is about to reach the app | `deliver` | `discard` (guard): deliver, but drop the writes it makes over newer data · `defer` (guard): wait for related in-flight work, then decide again |
+| `request` | a request is about to be sent | `send` | `coalesce`, `delay` (guard) · `block`, `serve_cached` (heal) |
+| `failure` | a request failed (network error, timeout, 5xx/429/408) | `deliver` | `retry`, `serve_cached` (heal) |
+| `stall` | a request is far slower than usual | `wait` | `hedge`, `serve_cached` (heal) |
+| `mutation` | a salient store write that no delivery decision covered | `apply` | `discard`, `defer` (guard), decided in the background |
+| `inconsistency` | a learned relation (`total == sum(items[*].price × qty)`) broke at a settled point | `ignore` | `rollback`, `resync` (heal) |
+| `transition` | an operation wrote different fields than it usually does | `ignore` | `rollback`, `resync` (heal) |
+| `error` | an uncaught error or rejection | `ignore` | `rollback` (heal) |
+| `ask` | your own question (`rt.ask`, `rt.decide`) | | |
+
+The model also gives a diagnosis: `expected`, `stale`, `conflict`, `duplicate`, `inconsistent`, `failing`, `slow`,
+`overload`, `unusual` or `transient`.
+
+**Delivery decisions (the main change in this version).** GenClass decides about responses and messages *at the
+network boundary*, before the app sees them, and never holds or reorders the app's store writes. A delivery is
+salient only when:
+
+- a field the response is predicted to write already holds **newer applied data** (an operation that started later
+  wrote it since) and no newer request of the same kind is still in flight;
+- or it would **revert a pending local change** (an optimistic update whose request is still in flight) to the value
+  the user's change replaced;
+- or it would **replace text the user typed** after the request started.
+
+The runtime predicts the write set from what the same operation wrote before. For salient candidates it reads the
+response body (a clone, at most 256 KB of JSON, waiting at most 100 ms). A response equal to the current values is not
+salient. The model then reads facts such as these (real output from the example above):
+
+```
+The response has search.results = 1 item ["rea-1"]: neither the current value 1 item ["react-1"], nor the value when #4 started.
+In 1 earlier completions of GET /api/search its chain wrote search.results (1 of 1 wrote state).
+The response to GET /api/search?q=rea (#4) arrived after 1.80s (200); the app has not seen it yet.
+This request comes from user typed "rea" into input "Search" (#3), started 1.80s ago.
+```
+
+Clean in-order typeahead and autosave make no model calls and hold nothing (covered by the unit tests). Other facts
+cover:
+
+- repeats and multi-clicks;
+- failure streaks and failure scope (other endpoints, `navigator.onLine`);
+- whether a failed POST may have been applied;
+- learned cadences (polling, debounced saves);
+- latency against learned baselines;
+- values known to be stale;
+- read-your-writes.
 
 ## State it can protect
 
-Fetch, XHR, WebSocket, DOM events, errors, navigation and storage are observed automatically. To let GenClass
-hold, drop or roll back writes, create state through it, or wrap the store you already have:
+Fetch, XHR, WebSocket, EventSource, DOM user events, errors, navigation, storage, long tasks and timers are observed
+automatically. Store writes are traced (and can be dropped or reverted) only when the store goes through GenClass:
 
 ```ts
-const rt = GenClass.init();
+const rt = GenClass.init({ mode: "guard" });
 
 // Built-in atom
 const cart = rt.atom("cart", { items: [], total: 0 }, { resync: () => loadCart() });
 cart.set((c) => ({ ...c, items: [...c.items, item] }));
 
-// React
+// React (uses GenClass.runtime, or the runtime from <GenClassProvider runtime={…}>; plain useState without one)
 import { useGenClassState } from "@genclass/runtime/react";
-const [results, setResults] = useGenClassState("search.results", []);
+const [results, setResults] = useGenClassState("searchResults", []);
 
-// Redux
+// Redux / Redux Toolkit (put the enhancer last in compose())
 import { genclassEnhancer } from "@genclass/runtime/redux";
 const store = createStore(reducer, genclassEnhancer(rt, { name: "app" }));
 
 // Zustand
 import { genclass } from "@genclass/runtime/zustand";
-const useStore = create(genclass(rt, "board")((set) => ({ cards: [], move: () => set(/* … */) })));
+const useBoard = create(genclass(rt, "board")((set) => ({ cards: [], move: () => set(/* … */) })));
 
-// Any store with get/set/subscribe
+// Any store with get/set (and optionally subscribe)
 const prefs = rt.guard("prefs", { get: () => store.prefs, set: (v) => store.setPrefs(v) });
 ```
 
-`resync` is optional. It tells GenClass how to reload a store from its source, which enables the `resync`
-recovery action.
+What each kind of protection needs:
+
+| protection | how | works with |
+|---|---|---|
+| delivery `discard` | the response is delivered; its chain's writes to the protected fields are dropped synchronously inside each write, and its other fields (loading flags, counts) apply | atoms, `rt.guard`, React state. Redux/Zustand: only when every change of a dispatch is dropped (see [limitations](#known-limitations)) |
+| late revert | a background `mutation` decision to `discard` reverts the write if it is at most 2 s old, its fields are unchanged since, and no later write of the same chain followed | any GenClass-aware store |
+| `rollback` (heal) | restores the last settled snapshot where every learned relation held | stores GenClass can write (atoms, `rt.guard`, Redux and Zustand adapters) |
+| `resync` (heal) | calls your `resync` handler | stores registered with `{ resync }` |
+
+`{ hold: false }` on a store keeps its writes out of the opt-in write holds (`policy.holdWrites: true`, off by
+default). The default never holds a store write: `set(x); get()` always returns `x`.
 
 ## Ask it questions
 
-The model answers typed questions about what is happening right now, using the same request shape as Jev's
-System One API:
+The model answers typed questions about what is happening now (the request shape of Jev's System One API):
 
 ```ts
 const busy = await rt.ask({ type: "noul", instructions: "Is a save in flight or failing?" });
-// { type: "noul", noul: 0.91 }
+// { type: "noul", noul: <calibrated P(true)> }
 
-const mode = await rt.decide("Which upload strategy fits what is happening now?", {
+const when = await rt.decide("Which upload strategy fits what is happening now?", {
   now: "start the upload immediately",
   later: "wait until the network is calm and the user is idle",
 });
-// "later"
+// "now" | "later"
 ```
+
+Without a model (today, or with `model: false`) both reject with `GenClassUnavailableError` (`reason`: `off`,
+`error`, `timeout` or `destroyed`). `{ timeoutMs }` bounds the wait.
+
+Standing questions ride along with built-in decisions: `rt.question({ id, on: ["failure"], question, onAnswer })`.
 
 ## Observability
 
-- **Console:** one plain-English line per detection and per intervention, with collapsible evidence.
-- **Events:** `rt.on("detect" | "decide" | "act" | "event" | "status" | "report", fn)`.
-- **`rt.explain(id)`:** the situation text, facts, timeline, answers and what changed.
-- **`rt.interventions()`:** every non-passive action that ran, with `undo()` where the action is reversible.
-- **Devtools overlay:** interventions, detections, a live activity log, and a "what GenClass sees now" view. Load it
-  in development only (52 KB minified, 17 KB gzip):
+- **Console:** one line per detection and per intervention, with the evidence collapsed below it. Identical repeats
+  within a minute are summarised. `report: "silent"` or `report: (r) => …` to route them yourself.
+- **Events:** `rt.on("detect" | "decide" | "act" | "event" | "status" | "report", fn)` returns an unsubscribe function.
+- **`rt.explain(id)`:** the exact situation text the model read, its facts and timeline, every answer with
+  probabilities, and what changed.
+- **`rt.decisions()`, `rt.interventions()`, `rt.history()`, `rt.inflight()`, `rt.situation()`** for introspection.
+- **Undo, where it exists:** `ActionRecord.undo()` is set for `discard` (delivery and write), late reverts,
+  `rollback` and chain reverts, plus custom actions that register `onUndo`. `defer`, `coalesce`, `delay`, `block`,
+  `serve_cached`, `retry`, `hedge` and `resync` cannot be undone; their record says what changed.
+- **Altered responses** carry an `x-genclass` header: `coalesced`, `cached` or `blocked`.
+- **Devtools overlay:** interventions, detections, a live activity log and a "what GenClass sees now" view, with
+  evidence and undo. About 52 KB minified / 17 KB gzip, so load it in development only:
 
 ```ts
 if (import.meta.env.DEV) {
@@ -137,8 +227,6 @@ if (import.meta.env.DEV) {
   mountDevtools(rt);
 }
 ```
-
-Responses GenClass altered carry an `x-genclass` header: `coalesced`, `cached` or `blocked`.
 
 ## Extend it
 
@@ -155,45 +243,134 @@ rt.use({
     description: "pause background sync until the page is visible again",
     on: ["failure", "stall"],
     tier: "heal",
-    run: () => sync.pause(),
+    run: (ctx) => { sync.pause(); ctx.describe("Paused background sync."); ctx.onUndo(() => sync.resume()); },
   }],
 });
 ```
 
-Plugins can add observers, facts, actions, standing questions and diagnosis labels. The model reads each action's
-description, so new actions work without retraining when the description is clear.
+Plugins can add observers (`setup`), facts, actions, standing questions and diagnosis labels. The model reads each
+action's description. The goal is that clearly described actions work without retraining; this has not been
+measured.
 
-## Model, performance, privacy
+## Model quality
 
-- **Local inference:** a GenClass encoder running in a Web Worker on WebGPU when available, otherwise WASM. The
-  model downloads at idle after page load (`model.preload: "idle"`) and is cached in Cache Storage.
-- **Size:** the runtime models use a pruned vocabulary and int8 weights. Preview exports are 9.6 MB (17M
-  parameters) and 22.5 MB (32M parameters). The ONNX Runtime WASM is about 2.7 MB brotli without WebGPU and 4.7 MB
-  with it.
-- **Tiered:** normal traffic never reaches the model. Cheap facts are computed for every write and request, and
-  the model is asked only about salient situations. What it reads is sized to the device: 3,200 characters on
-  WebGPU, 2,000 with WASM threads, 1,000 on single-thread WASM.
-- **Latency:** held writes and requests wait at most the adaptive hold budget (150–800 ms), then proceed
-  unchanged. A write GenClass decides about too late can still be reverted within 2 s if nothing has touched it
-  since. On single-thread WASM the 17M model takes about 0.2 s per decision on a 500-token situation (preview
-  build, measured in Node).
-- **Threads:** serving your page with `Cross-Origin-Opener-Policy: same-origin` and
-  `Cross-Origin-Embedder-Policy: require-corp` enables WASM threads, about 3× faster.
-- **Self-hosting:** `npx genclass-runtime fetch-model public/genclass-model`, then
-  `GenClass.init({ model: { baseUrl: "/genclass-model/" } })`.
-- **Privacy:** nothing is sent anywhere. Values of password and payment fields are never recorded, and fields
-  matching `pass|token|secret|card|cvv|ssn|auth` are redacted. Pass `redact` to add your own rules.
+There are no numbers yet for a model that matches this runtime.
 
-## Limits
+**Round 1 (previous format, `situation-v1`)**, R17 on held-out simulated apps:
 
-- Causality across `await` is tracked by instrumenting fetch, XHR, timers and Response bodies. This is best
-  effort; wrap important work in `rt.op(name, fn)` for exact attribution.
-- Only writes that go through GenClass-aware stores can be held, dropped or rolled back. Other state is observed
-  through its effects.
-- The model is trained on a large simulated space of apps. It is not a substitute for tests, and it can be wrong.
-  That is why the default mode only takes reversible actions at very high confidence, and every action is logged
-  and undoable.
+| metric | value |
+|---|---|
+| diagnosis accuracy | 90.5% |
+| action accuracy | 81.9% |
+| guard false-intervention rate | 0.05% |
+| heal false-intervention rate | 0.24% |
+| calibration error | 0.009 |
+| recall on clear stale/duplicate cases | 7.7% |
+
+R17 was precise but timid. The analysis found the limit was in the situation text and the labels, not the model
+size: many clear cases had benign twins with identical visible facts, and some labels were wrong.
+
+**Round 2 (`situation-v2`, this runtime)** adds measured facts aimed at those twins, plus relabelled data. It is
+being generated and trained now (~10M simulated rows, ~50M unlabeled rows for teacher labelling, ~0.5M rows from
+real apps in headless Chromium). Results will be published with the model package.
+
+The "never make a correct app worse" check uses an always-passive model in heal mode, compared against observe mode,
+on 66 real apps (6 seeds each). **0 of 396 clean runs** changed, measured on final page text (inputs and alerts
+excluded) and server state. The check does not compare request timing or store contents, and it does not compare
+observe mode against running without GenClass. With network chaos, 3 of 198 runs differed: a request held about
+25 ms changed the simulated network's draws. Details:
+[RESULTS.md §4](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md).
+
+## Performance
+
+- **Most work never reaches the model.** Facts are computed for every write and request. Measured by the perf tests
+  on a shared VM:
+
+  | operation | time |
+  |---|---|
+  | keystroke write into a store holding a 5,000-item array | 0.22 ms |
+  | Redux-style dispatch on 5,000 entities | about 0.7 ms |
+  | settled-point check | 0.3 ms |
+
+- **Bundle:** the main entry is about 240 KB minified / 83 KB gzip, measured with esbuild and onnxruntime-web
+  external. ONNX Runtime Web (the only dependency) is loaded by the model worker on demand: about 2.7 MB brotli for
+  the WASM-only path, 4.7 MB with WebGPU.
+- **Model size:** the round-1 R17 export (pruned 16k vocabulary, int8) is 9.6 MB. On single-thread WASM it took about
+  0.18 s per decision on a 500-token situation, measured in Node.
+- **Holds are bounded.** A held response or request waits at most the hold budget, then proceeds unchanged. The
+  default `"auto"` budget is 1.5 × the median of the last 20 model latencies, clamped to 150–800 ms; it is 300 ms
+  before any latency is known.
+  - A hold happens only if the model is expected to answer within the budget.
+  - Reading a response body for salience adds at most 100 ms.
+  - Background (non-held) decisions have a 5 s deadline.
+- **Situation size by device:** 2,400 characters on WebGPU; on WASM, 1,000 (1 thread) to 2,000 (4 threads).
+  Override with `situation: { budget }`.
+- **Threads:** serving the page with `Cross-Origin-Opener-Policy: same-origin` and
+  `Cross-Origin-Embedder-Policy: require-corp` enables WASM threads.
+- **Loading:** the model loads at idle after page load (`model.preload: "idle"`). It is cached in Cache Storage and
+  checked with sha256. `model: { baseUrl }` points at a self-hosted model directory (`npx genclass-runtime fetch-model
+  <dir>` downloads one); there is none for this runtime yet.
+
+## Privacy
+
+- **No app data leaves the browser.** No telemetry, and the model runs locally. The default configuration downloads
+  the model files (and ONNX Runtime's WASM when the model loads) from cdn.jsdelivr.net. `model.baseUrl` and
+  `model.ortWasmPaths` self-host them; `model: false` loads nothing.
+- **Inputs:** typed values of password fields, `cc-*` / `one-time-code` / password autocomplete fields, and fields
+  whose name or label names a secret are never recorded.
+- **Redaction:** the default redactor (`redact` option) works by the leaf field's meaning, not by substring.
+  - Redacted: `auth.token`, `form.password`, `users.3.password`, `payment.card.number`, `settings.apiKey`, and
+    opaque credential-like strings under `auth` / `session` / `cookie`.
+  - Visible: `auth.loading`, `auth.user.name`, and a kanban `card`.
+  - Booleans and null are never redacted.
+  - Query parameters are redacted by the same rule.
+  - Pass your own `redact(path, value)` for app-specific secrets or PII. The default has gaps (see below).
+
+## Known limitations
+
+**Today.** Without a published model nothing is detected or prevented (see Status). The bullets below matter once a
+model ships and you opt into `guard` or `heal`, unless a bullet says otherwise.
+
+- **Redaction gaps (all modes with a model).** These values reach the situation text, `explain()`, the console
+  evidence and devtools, though never the network:
+  - The "would replace text the user typed" fact prints a diff of the raw strings, even for a field the redactor
+    hides.
+  - The default redactor does not redact numbers or arrays under a secret-named container, for example
+    `payment.cvv.value = 123` or `login.otp.code`.
+
+  Pass a custom `redact`, and avoid keeping secrets in observed stores.
+- **Redux/Zustand discard.** If a stale response's dispatch also changes other fields, a delivery `discard` applies
+  the whole dispatch. The `ActionRecord` still reports the stale fields as dropped. Atoms and `rt.guard` stores drop
+  only the stale fields, as intended.
+- **The discard mark lasts 10 s.** After a `discard`, writes by operations chained from the discarded one (a
+  `setTimeout`-driven poll, a saga) to the protected fields are also dropped for 10 s, even when they carry fresh
+  data. The marks also outlive `rt.pause()` and `setMode("observe")`.
+- **`defer` can wait long.** A delivery may be deferred twice, each time until the related operations finish or
+  10 s pass. A deferred WebSocket/EventSource message holds back the messages queued behind it.
+- **Held messages after `close()`.** A WebSocket/EventSource message held for a decision is still dispatched if
+  the app closed the socket meanwhile. EventSource `open` events are not kept in order behind held messages.
+- **XHR listeners of a held response** run after the original dispatch, so `e.currentTarget` is `null`. Use the
+  `xhr` object itself.
+- **Observe mode with a model.** A conflicting delivery whose body is read can still be delayed up to 100 ms.
+  Delivery decisions are not made in observe mode (the resulting write is judged instead), so standing questions on
+  `delivery` are not answered there.
+- **`retry` (heal) does not check idempotency.** It is offered for any replayable fetch, POST included. The model
+  sees whether the method is idempotent and whether the failed request may have been applied. HTTP 502 is
+  described as usually not processed, which is not always true behind proxies.
+- **Transport coverage.** `coalesce`, `retry`, `hedge` and failure/stall `serve_cached` are fetch-only. XHR
+  failures and stalls are detection-only.
+- **Synthetic events.** DOM events with `isTrusted === false` (`el.click()`, `dispatchEvent`, in-page test
+  drivers) are not user actions unless you pass `observe: { untrustedEvents: true }`.
+- **`policy.holdWrites: true` (opt-in).** A held write that a later write flushed early can be recorded as dropped
+  while it stays applied.
+- **Causality** across `await` is tracked by instrumenting fetch, XHR, timers, message events and Response bodies.
+  This is best effort; wrap important work in `rt.op(name, fn)` for exact attribution.
+- **Store state** is visible and protectable only through GenClass-aware stores. Other state is seen only through
+  its effects.
+- **The model can be wrong.** It is trained on simulated apps and real apps driven in a headless browser. It is not
+  a substitute for tests. That is why the default only observes, guard acts only at ≥ 0.9, and every action is
+  logged.
 
 ## License
 
-Apache-2.0. The model weights are trained only on synthetic data from the GenClass project.
+Apache-2.0. The model package, once published, comes with its own model card.

@@ -1,192 +1,187 @@
 # AGENTS.md
 
-Root entry point for AI coding agents in GenClass-lib. Verified against commit 654d822 (2026-10-07).
-The code is the source of truth: if this file or any other doc disagrees with it, the code wins.
+Root entry point for AI coding agents in GenClass-lib.
+
+> **Source of truth:** the code. Verified against branch `mvp-v2` at b435acb (origin/runtime 74f17c0 = situation-v2, plus default mode observe and CI), 2026-10-08. If this doc and the code disagree, the code wins.
 
 ## 1. What this repo is
 
 - `@genclass/runtime` (`packages/runtime/`) is an npm library for self-healing web apps. It observes a running app
-  (fetch/XHR/WebSocket, user actions, timers, state stores, errors, causality) and computes generic facts.
-- For salient situations a small local model (ONNX in a Web Worker, WebGPU or WASM) chooses a diagnosis and an action.
-  Actions are minimal (only `discard`, a late revert, `rollback` and custom actions with `onUndo` can be undone), and they
-  pass a precision-first policy gate. Without a model the runtime only observes.
-- `sim/` generates training data by driving the real runtime. `training/` trains and exports the model, and `demos/` holds six evaluation apps.
-- `jev_local/`, `extension/`, `bench/`, `results/` and the legacy `docs/*.md` are the older GenClass model, Chrome extension and benchmarks that the runtime builds on.
-- npm workspaces: `packages/*`, `sim`, `demos`. Branches `main`, `origin/main` and `origin/runtime` all point at 654d822.
+  (fetch/XHR/WebSocket/EventSource, user actions, timers, state stores, errors, causality) and computes generic facts.
+  For salient situations a small local model (ONNX in a Web Worker, WebGPU or WASM) chooses a diagnosis and an action,
+  which must pass a precision-first policy gate. Without a model the runtime only observes.
+- **Situation-v2 design:** decisions happen at the network boundary. The `delivery` trigger (`packages/runtime/src/types.ts`
+  -> `TriggerKind`) holds only the delivery of a response or push message, and only when newer data already sits in the
+  fields it would write. Store writes are not held by default (`policy.holdWrites` is opt-in).
+- `sim/` generates training data by driving the real runtime. `realapps/` runs real framework apps in headless Chromium
+  with the real runtime for real-browser training rows and the "never worse" sweep. `training/` trains and exports the
+  model. `demos/` holds six evaluation apps.
+- `jev_local/`, `extension/`, `bench/`, `results/`, `tests/` and the legacy `docs/*.md` are the older GenClass model,
+  Chrome extension and benchmarks that the runtime builds on.
+- npm workspaces: `packages/*`, `sim`, `demos` (`realapps/` has its own `package.json` but is not a workspace).
 
-Read next: [docs/agents/README.md](docs/agents/README.md) (index: which doc answers which question), then
-[docs/agents/overview.md](docs/agents/overview.md) (how the parts fit together). Also:
-[repo-map](docs/agents/repo-map.md), [glossary](docs/agents/glossary.md), [playbooks](docs/agents/playbooks.md), and
-[status-and-known-issues](docs/agents/status-and-known-issues.md) before you change anything.
+Read next: **[HANDOFF.md](HANDOFF.md)** (the team's live handoff, kept current by the colleague, Mehar) and
+**[docs/agents/README.md](docs/agents/README.md)** (index: which doc answers which question), then
+[overview](docs/agents/overview.md), [repo-map](docs/agents/repo-map.md), [glossary](docs/agents/glossary.md),
+[playbooks](docs/agents/playbooks.md), [status-and-known-issues](docs/agents/status-and-known-issues.md) and
+[RELEASE.md](RELEASE.md) (release procedure).
 
-## 2. Status in brief
+## 2. Status in brief (2026-10-08)
 
-- `@genclass/runtime@0.1.0-alpha.0` is on npm (per `OPEN_TASKS.md`; git tag `v0.1.0-alpha.0` = 654d822). **It only observes.**
-  `packages/runtime/src/model/host.ts` -> `DEFAULT_MODEL_BASE_URL` points at `@genclass/runtime-model@0.1.0`, which is
-  not published yet (`packages/runtime-model/` holds only `MODEL_CARD.md`). So a default `GenClass.init()` ends with model status `error` and
-  prints `[GenClass] Model unavailable (...); observing only.` From then on it never holds a write or takes an action.
-- The runtime source is frozen at tag `situation-v1` (1a77558): `git diff situation-v1 HEAD -- packages/runtime/src` is
-  empty. SIM phase A (600,676 rows) came from that code. Final training round 1 was launched, and the repo has no results from it.
-- Next (`OPEN_TASKS.md`): choose the shipping model (R17 and/or R32), publish `@genclass/runtime-model@0.1.0` and its GitHub
-  release, publish `@genclass/runtime@0.1.0`, add CI, then re-run the demos with the trained model.
-- The repo has no CI (no `.github/`) and no committed root `package-lock.json`. Demo results so far use the v0.1 GenClass model
-  (a general classifier, not trained for runtime decisions).
-- `demos/src/server/data/cities.ts` is not in git (root `.gitignore` rule `data/`), so a fresh clone cannot build or typecheck the demos.
-- Open product risks (`demos/NEEDS.md` §1, §2, §5, all still open in code): held writes can land after a newer user write, holds add
-  latency, and `retry` is offered for non-idempotent requests. Details: [status doc](docs/agents/status-and-known-issues.md).
+- **Branches.** `mvp-v2` (here) = `origin/runtime` 74f17c0 (Mehar's latest: runtime batches 4 and 5, situation-v2, `realapps/`,
+  v2 curriculum port, `HANDOFF.md`, `docs/runtime/RESULTS.md`) plus three local commits: 7dab2b3 (these agent docs),
+  f3636b2 (default mode `observe`), b435acb (CI, committed root lockfile, CLI mode 100755). Not pushed. The local
+  branch `mvp` is based on situation-v1 (654d822) and is superseded.
+- **Runtime:** situation-v2, frozen at tag `situation-v2` (6e5e86e). Since that tag, `packages/runtime/src` changed only in
+  f3636b2 (`runtime.ts`, `types.ts`, `devtools/index.ts`); `git diff situation-v2 HEAD -- packages/runtime/src/situation` is empty.
+- **Model: none for v2.** Round-1 R17/R32 models were trained on situation-v1 and do not match this runtime. The v2 plan
+  (HANDOFF "Current state"): 150M teacher on v2 gold -> teacher labels on unlabeled rows -> distil R17 (default) and R32 ->
+  DAgger via SIM `--on-policy` -> EVAL -> `@genclass/runtime-model@0.1.0` -> demos rerun -> `@genclass/runtime@0.1.0`.
+- **Data is being generated now on Azure by Mehar** (per `training/NEEDS.md`): SIM situation-v2 gold and unlabeled rows on
+  20 nodes, REAL real-browser gold rows on 3 nodes. Nobody on our side touches Azure.
+- **npm:** `@genclass/runtime@0.1.0-alpha.0` is `latest`. It predates situation-v2, defaults to `guard`, and has no model.
+  `@genclass/runtime-model` is not published, so `packages/runtime/src/model/host.ts` -> `DEFAULT_MODEL_BASE_URL` and the
+  CLI's `DEFAULT_FROM` 404: a default `GenClass.init()` ends with model status `error` and logs
+  `[GenClass] Model unavailable (...); observing only.` A `0.1.0-alpha.1` patch (NaN fix) waits on the owner's 2FA
+  (`OPEN_TASKS.md` "Needs the user"). Release plan: [RELEASE.md](RELEASE.md) (see also
+  [build-test-release](docs/agents/runtime/build-test-release.md) "Cut a release").
+- **Stale human docs:** `HANDOFF.md` ('Modes: observe → guard (default; ...)') and the published `0.1.0-alpha.0` still
+  say guard is the default; both READMEs now say observe. Test counts in STATUS/HANDOFF are older. Drift tables: [status-and-known-issues](docs/agents/status-and-known-issues.md).
+- **Open defects found by review at b435acb** (details and fixes in the subsystem docs' "Drift and open issues"):
+  the F2 content fact can print the raw text of redacted fields (`situation/content.ts` -> `contentFacts`); a delivery
+  `discard` applies a Redux/Zustand dispatch whole when it also changes other fields, yet the record names the fields
+  as dropped (`state/hub.ts` -> `StoreHub.applyFilter`); SIM still samples the
+  v1 3,200-char budget (`sim/src/world/scenario.ts`); unlabeled SIM rows hard-label `expected` diagnoses that S1 would
+  relabel. Several of these touch model-visible text or live data generation: coordinate with the user before fixing.
+- `demos/src/server/data/cities.ts` is not in git (root `.gitignore` rule `data/`), so a fresh clone cannot build or
+  typecheck the demos, and root `npm run typecheck` fails.
 
-## 3. Ground rules (binding; `docs/runtime/CONTRACT.md` §0 and §0.5)
+## 3. Ground rules (binding; `docs/runtime/CONTRACT.md` §0, §0.5, §13)
 
-CONTRACT: "If something here is wrong, tell the lead; do not silently diverge." The workstream roles in the docs
-(lead, CORE, MODEL, UI, SIM, DEMOS, TRAIN, REVIEW) belong to the original team. Where a rule says "ask the lead", ask the user.
+CONTRACT: "If something here is wrong, tell the lead; do not silently diverge." The roles in the docs (lead, CORE, MODEL,
+UI, SIM, REAL, DEMOS, TRAIN, REVIEW) belong to the original team. Where a rule says "ask the lead", ask the user.
 
-1. **No hardcoded bug rules in the runtime (§0 rule 1).** The runtime may compute generic, uniform facts and may triage, which means
-   deciding whether a situation is worth asking the model about. It must never map a fact pattern to a diagnosis or an action with an if/then. Diagnoses and
-   actions come from the model. In code, triage is `facts.every((f) => f.neutral)` in `packages/runtime/src/runtime.ts` ->
-   `RuntimeImpl.trigger`. Actions are chosen only by `packages/runtime/src/decide/policy.ts` -> `gate` from model probabilities.
-   `packages/runtime/src/situation/build.ts` -> `builtinApplicable` says only whether an action *can* run.
-2. **Train/runtime parity (§0 rule 2).** There is exactly one implementation of situation building and serialization:
-   `packages/runtime/src/situation/*`. The sim drives the real runtime (`sim/src/run/rt.ts` -> `realRuntimeFactory`), and
-   `training/curriculum/rt.py` is a Python port of it. The situation format is frozen at tag `situation-v1`. **Any change to
-   situation text, facts, questions, action/diagnosis wording, `packages/runtime/src/util.ts` formatting or op/event names
-   invalidates the SIM data and the trained model.** Do not make such a change without the user's explicit go-ahead.
-3. **Determinism (§0 rule 3).** Runtime code never calls `Math.random`, `Date.now` or `performance.now` directly, and never
-   schedules with the global `setTimeout`. It uses the injected `Clock` (`packages/runtime/src/clock.ts` -> `browserClock`
-   captures the real timers at module load). IDs come from counters (e.g. `OpRegistry` `nextId`, action ids `a<n>`).
-   Same inputs give byte-identical situations. Known exceptions, none of which touch situation text:
-   `packages/runtime/src/model/engine.ts` defaults `now` to `performance.now()` (timing only),
-   `packages/runtime/src/model/host.ts` -> `scheduleIdle` uses `requestIdleCallback`, and
-   `packages/runtime/src/devtools/index.ts` captures the global `requestAnimationFrame` and `setTimeout` at module load
-   (`rawRaf`, `rawSetTimeout`: render flushes, the Copy-button reset and the no-plugin timer fallback).
-4. **Honest-evaluation separation (§0 rule 4).** `sim/` and `demos/` never read or model each other. The sim never models a
-   demo. Demos contain nothing beyond a normal integration: stores, optional resync handlers, and custom actions or questions only in
-   the extensibility demo. Do not copy code, scenarios or knowledge between the two.
-5. **Precision first, fail open (§0 rule 1, §0.5 principle 1, §8, §11).** The default mode (`guard`) takes only minimal guard-tier
-   actions (`discard`, `defer`, `coalesce`, `delay`; only `discard` has an undo, so CONTRACT's "reversible" is drift:
-   [decide-policy-actions](docs/agents/runtime/decide-policy-actions.md) Drift 10). An action runs only when the summed calibrated
-   probability of the permitted non-passive actions reaches the candidate action's tier threshold (guard-tier 0.9, heal-tier 0.8;
-   `packages/runtime/src/decide/policy.ts` -> `gate`), and the model's top diagnosis is not `expected`. If the model is unavailable, loading, late or erroring, the runtime takes the passive action. Held writes and
-   requests are released when the hold budget expires. False interventions on clean runs are a first-class metric.
-6. **Dependencies (§0 rule 6).** `onnxruntime-web` is the only runtime `dependency` (`packages/runtime/package.json`). Do not
-   add another runtime dependency without asking. React, Redux and Zustand are optional peers.
-7. **TypeScript strict, ESM only (§0 rule 6).** `tsconfig.base.json` sets `strict`, `verbatimModuleSyntax` and `isolatedModules`.
-   The package is ESM-only (no `require` export). `packages/runtime/tsconfig.json` has `types: []`, so `src/` must not use Node APIs.
-8. **Leave legacy content alone (§1).** "Existing GenClass content (jev_local/, extension/, docs/, etc.) stays as is." This
-   covers the pre-runtime GenClass content: `jev_local/`, `extension/`, `bench/`, `results/`, `tests/`, the legacy `docs/*.md`,
-   `docs/benchmax-research/` and the legacy scripts in `scripts/`. It does not cover `docs/runtime/`, `docs/agents/` or
-   `scripts/vm.sh`. Edit legacy content only when the user asks ([playbooks](docs/agents/playbooks.md) recipe 27).
-9. **REVIEW tests are a contract.** Never edit `packages/runtime/test/review-*.test.ts` to make them pass. Fix `src/` instead.
+1. **No hardcoded bug rules in the runtime.** The runtime may compute generic facts and triage (decide whether a situation
+   is worth asking the model about). It never maps a fact pattern to a diagnosis or action with an if/then. Triage is
+   `facts.every((f) => f.neutral)` in `packages/runtime/src/runtime.ts` -> `RuntimeImpl.trigger`; actions are chosen only by
+   `packages/runtime/src/decide/policy.ts` -> `gate`; `packages/runtime/src/situation/build.ts` -> `builtinApplicable`
+   says only whether an action *can* run.
+2. **Situation-v2 freeze (train/runtime parity).** There is one implementation of situation building and serialization:
+   `packages/runtime/src/situation/*`. The sim drives the real runtime (`sim/src/run/rt.ts` -> `realRuntimeFactory`),
+   realapps bundles it from source, and `training/curriculum/rt.py` ports it. **Any change to
+   `packages/runtime/src/situation/*` or to other model-visible text** (facts, questions, action/diagnosis wording,
+   `packages/runtime/src/util.ts` formatting and redaction, op/event names) **means a new tag and regenerated data** (and
+   an `rt.py` mirror and retraining). Data is being generated from this code right now: never make such a change without
+   the user's explicit go-ahead. See [model-io-contract](docs/agents/model-io-contract.md).
+3. **Determinism.** Runtime code never calls `Math.random`, `Date.now` or `performance.now` directly and never schedules
+   with the global `setTimeout`; it uses the injected `Clock` (`packages/runtime/src/clock.ts`). IDs come from counters.
+   Same inputs give byte-identical situations. Known exceptions, none touching situation text:
+   `packages/runtime/src/model/engine.ts` (default `now`), `packages/runtime/src/model/host.ts` -> `scheduleIdle`
+   (`requestIdleCallback`), `packages/runtime/src/devtools/index.ts` (`rawRaf`, `rawSetTimeout`).
+4. **Honest-evaluation separation.** `sim/` and `realapps/` never read or model `demos/`; demos are never tuned and contain
+   nothing beyond a normal integration. (`realapps/` does import the sim's cost weights and label rule from `sim/src`.)
+5. **Default `observe`; never make a correct app worse.** Since f3636b2 the default mode is `observe` (`runtime.ts` ->
+   `o.mode ?? "observe"`, CONTRACT §13): it never takes an action. `guard` is opt-in (minimal guard-tier actions:
+   `discard`, `defer`, `coalesce`, `delay`); `heal` is experimental. An action runs only when the summed calibrated
+   probability of permitted non-passive actions reaches the tier threshold (`decide/policy.ts`: guard 0.9, heal 0.8) and
+   the top diagnosis is not `expected`. Model unavailable, loading, late or erroring means the passive action; holds are
+   released when the hold budget expires. False interventions on clean runs are a first-class metric: report FIR next to
+   every recall number (HANDOFF "How to continue" step 4).
+6. **Dependencies.** `onnxruntime-web` is the only runtime `dependency`. Ask before adding another. React, Redux and
+   Zustand are optional peers. Keep the committed root `package-lock.json` in sync (CI runs `npm ci`).
+7. **TypeScript strict, ESM only.** `tsconfig.base.json` sets `strict`, `verbatimModuleSyntax`, `isolatedModules`.
+   `packages/runtime/tsconfig.json` has `types: []`, so `src/` must not use Node APIs.
+8. **Leave legacy content alone** (CONTRACT §1): `jev_local/`, `extension/`, `bench/`, `results/`, `tests/`, legacy
+   `docs/*.md`, `docs/benchmax-research/`, legacy `scripts/`. Not covered: `docs/runtime/`, `docs/agents/`, `scripts/vm.sh`.
+9. **REVIEW tests are a contract.** Never edit `packages/runtime/test/review-*.test.ts` to make them pass. Fix `src/`.
 
 ## 4. Where to run things
 
-- **The team's rule (CONTRACT §0 rule 5).** "The Mac only edits files." Every build, test, browser and model run went to the Azure `train` VM through
-  `scripts/vm.sh` in a per-workstream slot, because the original author's Mac has 8 GB RAM. `vm.sh` needs
-  `~/.jev-local/azure_hosts`, `~/.ssh/jev_azure` and GNU `timeout`, none of which are in the repo.
-- **Policy for agents (set when these docs were written, 2026-10-07).** On other machines, `npm install`, typecheck, build and unit tests are
-  light and were verified locally (macOS, 16 GB RAM, Node v25.6.0, npm 11.8.0). You may run the verified commands in §5.
-- **Ask the user first** before running any of these: the sim (generation, `sim/scripts/*`), training (`training/*.sh`, any Python training or eval),
-  Playwright (`npm run test:browser`, the UI spec, `test/smoke/smoke.sh`), model downloads (`genclass-runtime fetch-model`,
-  `demos/scripts/fetch-model.sh`), the demos' eval (`npm run eval` in `demos/`, `demos/scripts/vm-eval.sh`), or any script that touches Azure
-  (`scripts/*.sh`, `training/*.sh`, `sim/scripts/*`).
-- **Side effects of `npm install` at the root.** It creates an untracked root `package-lock.json` (never committed; whether to commit
-  one is the user's decision). It also chmods `packages/runtime/bin/genclass-runtime.mjs` to 755, which git reports as a mode change
-  (committed mode is 644). Revert it with `git checkout -- packages/runtime/bin/genclass-runtime.mjs`.
+- **Our run policy (lead, 2026-10-08).** Light local checks are fine on this machine (macOS, 16 GB, Node v25.6.0):
+  `npm install`/`npm ci`, `tsc`, `tsup`, vitest unit tests (runtime and sim).
+- **Ask the user first** before: Playwright (`npm run test:browser`, the UI spec), `test/smoke/smoke.sh`, the sim generator
+  (`sim/scripts/*`, `gen.js`), training (`training/*.sh`, any Python training or eval), realapps runs (`gen.js`,
+  `debug.js`, `realapps/scripts/*`), the demos' eval, model downloads (`genclass-runtime fetch-model`), **anything on
+  Azure** (`scripts/*.sh`, `az`, ssh to nodes), **`git push`** and **`npm publish`**.
+- `HANDOFF.md` "Rules" ("never run npm, tsc, vitest ... on the Mac"; build and test on the Azure `train` VM via
+  `scripts/vm.sh`) describes Mehar's workflow on his 8 GB Mac and his Azure cluster. It is context, not instructions for us.
 
-## 5. Commands
-
-Verified when these docs were written, 2026-10-07 (Node v25.6.0). "Dir" is where to run the command from.
+## 5. Commands (verified 2026-10-08 on mvp-v2, Node v25.6.0)
 
 | command | dir | result / notes |
 |---|---|---|
-| `npm install` | repo root | OK in 18 s, 134 packages. One EBADENGINE warning: vitest 5.0.3 wants Node `^22.12.0 \|\| ^24.0.0 \|\| >=26.0.0` (Node 25 works). Side effects: see §4 |
-| `npx tsc -p tsconfig.json --noEmit` | `packages/runtime` | clean, ~1.6 s. Checks `src/` only: test files are never type-checked |
-| `npx tsup` | `packages/runtime` | ~2.5 s. Cleans `dist/` first. 6 entries: `index`, `adapters/{react,redux,zustand}`, `devtools/index`, `worker`; `.d.ts` for all but `worker`; ~1.6 MB with maps |
-| `NODE_OPTIONS=--expose-gc npx vitest run --exclude "test/browser/**"` | `packages/runtime` | ~2.4 s. Files 36 passed, 1 skipped (37). Tests 286 passed, 14 skipped (300). The 14 skips are model-parity tests that need model files at `GENCLASS_MODEL_DIR` (default `<repo>/.cache-model`): `test/model/packer.test.ts` (all 10), `engine.test.ts` (3 of 4), `calibrate.test.ts` (1 of 8). With a model dir, all 300 pass |
+| `npm ci --no-audit --no-fund` | repo root | OK from the committed lockfile (fresh clone too). Add `ONNXRUNTIME_NODE_INSTALL=skip` on Linux, as CI does. EBADENGINE warning from vitest on Node 25 is harmless |
+| `npx tsc -p tsconfig.json --noEmit` | `packages/runtime` | clean. Checks `src/` only: test files are never type-checked |
+| `npx tsup` | `packages/runtime` | OK. 6 entries (`index`, 3 adapters, `devtools/index`, `worker`) into `dist/` |
+| `NODE_OPTIONS=--expose-gc npx vitest run --exclude "test/browser/**" --exclude test/review-perf.test.ts` | `packages/runtime` | Files 40 passed, 1 skipped (41). Tests 332 passed, 14 skipped (346). The 14 skips are model-parity tests needing `GENCLASS_MODEL_DIR` |
+| `NODE_OPTIONS=--expose-gc npx vitest run test/review-perf.test.ts` | `packages/runtime` | 4 passed. Run it alone: in a full parallel run it flaked once (5.5 ms vs a 2 ms bound). CI uses `--retry=2` |
+| `npm run build` then `SIM_RUNTIME=real npx vitest run` | root, then `sim/` | 19 passed (5 files). Sim `tsc` clean. Without `SIM_RUNTIME=real` the sim tests use a fake runtime |
 
-Not verified when these docs were written (taken from [build-test-release.md](docs/agents/runtime/build-test-release.md)):
-
-| command | dir | notes |
-|---|---|---|
-| `npm run build` / `npm test` | repo root | run only in `@genclass/runtime` (`tsup` / `vitest run`). `vitest.config.ts` already excludes `test/browser/**` |
-| `npm run typecheck` | repo root | every workspace. The demos typecheck needs `packages/runtime/dist/*.d.ts`, so build first; it also needs the missing `demos/src/server/data/cities.ts` (see [demos.md](docs/agents/demos.md)). Until that file is recreated, the demos typecheck, and so the root typecheck, fails (inferred from the imports; not run) |
-| `npx vitest run test/atoms.test.ts -t "late discard"` | `packages/runtime` | one file or one test |
-| `npm run test:browser` | `packages/runtime` | **ask first.** Playwright, rebuilds `dist/`, needs Chromium for `@playwright/test` 1.63.0 and a model dir, overwrites the committed UI screenshots |
-| `npx playwright test --config test/browser/ui/playwright.config.ts` | `packages/runtime` | **ask first.** Devtools UI spec, writes 18 screenshots |
-| `bash test/smoke/smoke.sh` | `packages/runtime` | **ask first.** `npm pack` into a temp Vite 8 app (registry access), then headless Chromium; leaves the `.tgz` and the temp dir |
-| `npm run build && cd sim && SIM_RUNTIME=real npx vitest run` | repo root | **ask first** (sim). Sim tests against the real runtime; without `SIM_RUNTIME=real` they use a fake runtime |
-| `node packages/runtime/bin/genclass-runtime.mjs fetch-model <dir> --from https://github.com/MeharPro/GenClass/releases/download/v0.1.0/` | repo root | **ask first** (download). Fetches the v0.1 model for the model tests (`GENCLASS_MODEL_DIR=<dir>`). The default `--from` is an unpublished release |
-| `scripts/vm.sh run\|exec <SLOT> '<cmd>'` | repo root | **ask first** (Azure). The original team's path for every command above |
+Total: 350 runtime unit tests (336 passed, 14 skipped without a model dir). CI (`.github/workflows/ci.yml`, Node 22) runs
+`npm ci` -> runtime typecheck -> build -> the two vitest steps above; triggers: push to `main`/`runtime`/`mvp`/`mvp-v2`,
+`pull_request`, `workflow_dispatch`. It has not run on GitHub yet (mvp-v2 is not pushed). Not run by us: Playwright,
+`smoke.sh`, realapps, demos eval, Python tests, training. One test: `npx vitest run test/delivery.test.ts -t "<name>"`.
 
 ## 6. Top-level layout
 
 | path | what it is | doc |
 |---|---|---|
-| `packages/` | `runtime/`: the `@genclass/runtime` library (`src/`, `test/`, `bin/genclass-runtime.mjs` CLI, `STATUS.md`, `UI-NEEDS.md`). `runtime-model/`: only `MODEL_CARD.md` of the unpublished model package | [docs/agents/runtime/](docs/agents/runtime/public-api-and-lifecycle.md) (8 docs; start with public-api-and-lifecycle, [build-test-release](docs/agents/runtime/build-test-release.md)) and [model-io-contract](docs/agents/model-io-contract.md) |
-| `sim/` | `@genclass/sim`: training-data simulator driving the real runtime (private, Node 22 ESM) | [sim.md](docs/agents/sim.md) |
-| `training/` | Python training, eval and export of the runtime model (R17/R32), plus Azure scripts | [training.md](docs/agents/training.md) |
-| `demos/` | `@genclass/demos`: six Vite demo apps, Service Worker chaos backend, Playwright trial harness | [demos.md](docs/agents/demos.md) |
-| `docs/` | `runtime/` (`CONTRACT.md`, which is binding, plus `API.md` and `ARCHITECTURE.md`; all three drift from the code), `agents/` (these docs), legacy `*.md` and `benchmax-research/` (do not edit) | [status-and-known-issues](docs/agents/status-and-known-issues.md) (drift tables) |
-| `jev_local/` | legacy Python predecessor (`jev-local`): the model the runtime's `src/model` was ported from, the trainer `training/` drives, server and harness | [genclass-model-lineage.md](docs/agents/genclass-model-lineage.md) |
-| `tests/` | Python tests for `jev_local` (the 20 `test_data_*.py` files fail at collection: `jev_local/data` is gitignored) | [genclass-model-lineage.md](docs/agents/genclass-model-lineage.md) |
-| `extension/` | legacy GenClass 0.1.0 MV3 voice-control Chrome extension, the JS ancestor of `src/model` | [extension-and-benchmarks.md](docs/agents/extension-and-benchmarks.md) |
-| `bench/`, `results/` | benchmark pre-registrations and published results (jevbench, benchmax, CU head-to-head) | [extension-and-benchmarks.md](docs/agents/extension-and-benchmarks.md) |
-| `scripts/` | ops and benchmark scripts; for the runtime: `vm.sh` (VM build/test), `azvm.sh` and `launch_run.sh` (called by `training/*.sh`), and `genclass_export.py` (its `ExportModel` is imported by `training/export_runtime.py`) | [extension-and-benchmarks.md](docs/agents/extension-and-benchmarks.md) (one row per script) |
-| root files | `package.json` (workspaces), `tsconfig.base.json`, `pyproject.toml` (`jev-local`), `OPEN_TASKS.md`, `README.md`, `BENCHMARKS.md`, `LICENSE` (Apache-2.0) | [status-and-known-issues](docs/agents/status-and-known-issues.md) |
+| `packages/runtime/` | `@genclass/runtime`: `src/`, `test/`, `bin/genclass-runtime.mjs` CLI, `STATUS.md` (runtime state, example situations, deviations), `UI-NEEDS.md` | [runtime/](docs/agents/runtime/public-api-and-lifecycle.md) (8 docs; start with public-api-and-lifecycle and [build-test-release](docs/agents/runtime/build-test-release.md)), [model-io-contract](docs/agents/model-io-contract.md) |
+| `packages/runtime-model/` | only `MODEL_CARD.md` of the unpublished model package | [model-host](docs/agents/runtime/model-host.md) |
+| `sim/` | `@genclass/sim`: deterministic training-data simulator (S1/S2 labels, `SEPARABILITY.md`) | [sim.md](docs/agents/sim.md) |
+| `realapps/` | 91 real apps (corpus + 14 open-source Conduit front-ends) in headless Chromium; REAL rows and the never-worse sweep | [realapps.md](docs/agents/realapps.md) |
+| `training/` | Python training, curriculum (`curriculum/rt.py`), eval, export, Azure launch scripts; `NEEDS.md`, `LOG.md`, `EVAL.md` | [training.md](docs/agents/training.md) |
+| `demos/` | `@genclass/demos`: six Vite demo apps, Service Worker chaos backend, Playwright trials | [demos.md](docs/agents/demos.md) |
+| `docs/runtime/` | `CONTRACT.md` (binding; changes appended to §13), `API.md`, `ARCHITECTURE.md`, [RESULTS.md](docs/runtime/RESULTS.md) (model and design comparisons, data volume, training log) | [status-and-known-issues](docs/agents/status-and-known-issues.md) |
+| `docs/agents/` | these docs | [README](docs/agents/README.md) |
+| `.github/workflows/ci.yml` | the only CI workflow | [build-test-release](docs/agents/runtime/build-test-release.md) |
+| `jev_local/`, `tests/` | legacy Python predecessor and its tests | [genclass-model-lineage](docs/agents/genclass-model-lineage.md) |
+| `extension/`, `bench/`, `results/`, `scripts/` | legacy extension and benchmarks; `scripts/vm.sh`, `azvm.sh`, `launch_run.sh`, `genclass_export.py` serve the runtime | [extension-and-benchmarks](docs/agents/extension-and-benchmarks.md) |
+| root files | `HANDOFF.md` (live handoff), `OPEN_TASKS.md`, [`RELEASE.md`](RELEASE.md) (release procedure), `package.json` + `package-lock.json`, `tsconfig.base.json`, `pyproject.toml`, `README.md`, `BENCHMARKS.md`, `LICENSE` (Apache-2.0) | [repo-map](docs/agents/repo-map.md) |
 
 ## 7. Conventions
 
-**Code (observed in `packages/runtime/src`; there is no formatter or linter config).**
-- Every module opens with a `//` header comment that states its role and invariants. Many cite the CONTRACT section they implement
-  (e.g. `// Policy gate for non-passive actions (CONTRACT §8)`). Most `packages/runtime/src/model/*` headers name the
-  `jev_local` Python file or extension code they port.
-- Comments are sparse: about 4-10% of lines in the large modules. Use `/** */` JSDoc on exported symbols and non-obvious fields. Inline
-  comments mostly explain why, or state an invariant.
-- Naming: PascalCase classes and types (`RuntimeImpl`, `StoreHub`, `OpRegistry`), camelCase functions, UPPER_SNAKE module constants
-  (`LATE_REVERT_MS`, `CACHE_MAX`), short locals. Named exports only. The one default export is
-  `packages/runtime/src/index.ts` -> `GenClass`.
-- Imports: relative paths with `.js` extensions; `import type` for types (`verbatimModuleSyntax`). Style: 2-space indent,
-  double quotes, semicolons, lines mostly at most 120 chars.
-- Errors: never throw into the host app. Hooks, plugins, listeners and callbacks run in `try/catch` with a comment
-  (`/* hooks never break the app */`, `/* listeners never break tracing */`). `ask()`/`decide()` reject with
-  `GenClassUnavailableError` and a `reason` (`packages/runtime/src/errors.ts`); with `timeoutMs` set, a failed model load
-  rejects with the provider's own error instead. A failing action controller throws a plain `Error` with an English
-  message: the runtime records `ok: false` plus `error` on the `ActionRecord` and runs the passive action instead.
-- Every user-visible or model-visible string (facts, reports, `changed` sentences) is plain English. Model-visible text is frozen (rule 2).
+**Code (observed in `packages/runtime/src`; no formatter or linter config).**
+- Every module opens with a `//` header comment stating its role and invariants, often citing the CONTRACT section.
+- Sparse comments; `/** */` JSDoc on exported symbols and non-obvious fields. PascalCase classes/types (`RuntimeImpl`,
+  `StoreHub`, `OpRegistry`), camelCase functions, UPPER_SNAKE module constants (`LATE_REVERT_MS`, `CACHE_MAX`).
+  Named exports only, except `packages/runtime/src/index.ts` -> `GenClass` (default export).
+- Relative imports with `.js` extensions; `import type` for types. 2-space indent, double quotes, semicolons, ~120 chars.
+- Never throw into the host app: hooks, plugins, listeners and callbacks run in `try/catch` with a comment.
+  `ask()`/`decide()` reject with `GenClassUnavailableError` (`packages/runtime/src/errors.ts`). A failing action
+  records `ok: false` on the `ActionRecord` and the passive action runs instead.
+- Model-visible text is plain English and frozen (rule 2).
 
 **Tests (`packages/runtime/test/`, vitest).**
-- One `<area>.test.ts` per area (`test/model/` for model code). Use `test/helpers.ts`: `setup()` returns `{ clock, server, g, decider, rt, fetch }`
-  and builds a `FakeClock`, a `FakeServer`, an instrumented global and a `ScriptedDecider` around `createRuntime`. There is no real time, network or model.
-- Drive time with `clock.advance(ms)` / `clock.flush()`. Control answers with `defaultScript({ <trigger>: { diagnosis, action } })`,
-  or with `ManualDecider` plus `answer()`. Force consultation with `triage: "always"`. Assert on `decider.calls[i].state`, `rt.decisions()`,
-  `rt.interventions()`, `server.hits`.
-- Name the CONTRACT section in the `describe` (e.g. `"atoms and the mutation pipeline (CONTRACT §4)"`). DOM tests start with
-  `// @vitest-environment happy-dom`. Never use real timers or `Date.now` in tests except where noted in the build doc.
+- One `<area>.test.ts` per area (`test/model/` for model code). `test/helpers.ts` -> `setup()` returns
+  `{ clock, server, g, decider, rt, fetch }` around `createRuntime` with `FakeClock`, `FakeServer` and `ScriptedDecider`.
+  No real time, network or model.
+- `setup()` defaults to `mode: "guard"` (not the product default); pass `mode: undefined` for `observe`
+  (`test/default-mode.test.ts`). Held store writes need `policy: { holdWrites: true }`; delivery behaviour is in
+  `delivery.test.ts`, `content.test.ts`, `no-reorder.test.ts`.
+- Drive time with `clock.advance(ms)` / `clock.flush()`; control answers with `defaultScript(...)` or `ManualDecider`;
+  force consultation with `triage: "always"`. Name the CONTRACT section in the `describe`. DOM tests start with
+  `// @vitest-environment happy-dom`.
 
-**Coordination files (the original team's protocol; keep using it).**
-- `OPEN_TASKS.md` (lead): project status in Done / In progress / Next / Needs the user / Known risks.
-- `packages/runtime/STATUS.md` (CORE): test state, batch changes, headless recipe, trigger table, example situations,
-  **Deviations from the contract (and why)**, **Open issues**.
-- `NEEDS.md` files live in the *requester's* directory: `sim/NEEDS.md`, `training/NEEDS.md`, `demos/NEEDS.md`, and
-  (an exception) `packages/runtime/UI-NEEDS.md`. `sim/NEEDS.md` and `training/NEEDS.md` mark items OPEN (needed) / ASK (would help) /
-  DONE (landed and verified by the requester), and training/NEEDS also uses INFO. `UI-NEEDS.md` uses Open / Nice to have / Done
-  sections. `demos/NEEDS.md` uses numbered sections addressed to an owner. Owners may add answers to a requester's file
-  (training/NEEDS has "CORE → TRAIN" and "MODEL → TRAIN (from MODEL, ...)" sections); only the requester closes an item.
-- `docs/runtime/CONTRACT.md` (lead): the binding spec. An approved change is appended to §13, and an accepted divergence goes into STATUS
-  "Deviations". A deviation without a STATUS entry is a bug. CONTRACT, STATUS, API.md and the NEEDS files are stale in places
-  (CONTRACT was last edited before batch 3): check the drift tables in the status doc before relying on them.
+**Coordination files (the team's protocol; keep using it).**
+- `HANDOFF.md`: live state and how to continue. `OPEN_TASKS.md`: Done / In progress / Next / Needs the user / Known risks.
+- `packages/runtime/STATUS.md`: test state, batch changes, example situations, "Deviations from the contract", "Open issues".
+- [docs/runtime/RESULTS.md](docs/runtime/RESULTS.md): update it with every result (HANDOFF repo map).
+- `NEEDS.md` files live in the requester's directory (`sim/`, `training/`, `demos/`, plus `packages/runtime/UI-NEEDS.md`);
+  only the requester closes an item. `training/NEEDS.md` also holds Azure node claims and data locations.
+- `docs/runtime/CONTRACT.md`: approved changes go to §13; an accepted divergence goes into STATUS "Deviations".
 
 ## 8. Definition of done
 
-1. If you touched `packages/runtime/src`: `npx tsc -p tsconfig.json --noEmit` is clean, and `npx tsup` still builds when you changed
-   entries, exports or the worker. Keep tsup entries as literal `"src/...ts"` strings, and keep the worker URL and ORT `import()` literals.
-2. Unit tests pass: 286 passed and 14 skipped without a model dir (all 300 with one), plus new tests in house style for new
-   behaviour. No `review-*.test.ts` was edited. For sim or demos changes, name the checks you could not run and why.
-3. No model-visible text changed (rule 2), unless the user explicitly approved it. If it was approved, also update the exact-text
-   tests and the STATUS example situations, and flag that SIM data and training must be regenerated.
-4. Update the affected `docs/agents/` doc(s) (see [docs/agents/README.md](docs/agents/README.md)) and set its header line
-   `Verified against commit <sha> (<date>)` to the commit you re-checked it against. A public-surface change also updates
-   `docs/runtime/API.md` and the JSDoc in `packages/runtime/src/types.ts`.
-5. If behaviour changed: update `packages/runtime/STATUS.md` (Updated line, batch section, Deviations, Open issues) and move the item
-   in `OPEN_TASKS.md`. Add or answer the relevant `NEEDS.md` item.
-6. Leave no `npm install` side effects in the diff: revert the `bin/genclass-runtime.mjs` mode change and do not commit the root
-   `package-lock.json` unless the user decided to.
+1. If you touched `packages/runtime/src`: `tsc` clean and `tsup` builds (keep tsup entries as literal `"src/...ts"`
+   strings and the worker URL / ORT `import()` literals).
+2. Runtime unit tests pass in both CI steps (§5: 332 + 14 skipped, then review-perf 4), plus new tests in house style.
+   No `review-*.test.ts` edited. For sim, realapps, demos or training changes, name the checks you could not run and why.
+3. No model-visible text changed (rule 2) unless the user approved it; if approved, update exact-text tests and STATUS
+   example situations, and flag that a new situation tag, `rt.py` mirror, regenerated data and retraining are needed.
+4. Update the affected `docs/agents/` doc(s) and set the header's "Verified against" line to the commit you re-checked.
+   A public-surface change also updates `docs/runtime/API.md` and the JSDoc in `packages/runtime/src/types.ts`.
+5. If behaviour changed: update `packages/runtime/STATUS.md`, `OPEN_TASKS.md`, `HANDOFF.md` if its state table changes,
+   `docs/runtime/RESULTS.md` for new numbers, and the relevant `NEEDS.md` item.
+6. A dependency change commits the updated root `package-lock.json` in the same commit.
+7. Commit locally with the attribution the session gives you; **do not push or publish without the user** (publish steps: [RELEASE.md](RELEASE.md)).
