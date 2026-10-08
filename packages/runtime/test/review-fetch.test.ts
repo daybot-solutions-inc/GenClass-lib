@@ -11,7 +11,7 @@ function headless(fetchImpl: (input: unknown, init?: Record<string, unknown>) =>
   const clock = new FakeClock();
   const g: Record<string, unknown> = { fetch: fetchImpl, Response, location: { href: "http://app.test/", pathname: "/", search: "" } };
   const decider = new ScriptedDecider(script);
-  const rt = createRuntime({ clock, global: g, decider, report: "silent", observe: ONLY_FETCH }) as RuntimeImpl;
+  const rt = createRuntime({ clock, global: g, decider, mode: "guard", report: "silent", observe: ONLY_FETCH }) as RuntimeImpl;
   return { clock, g, decider, rt, fetch: (u: unknown, i?: RequestInit) => (g.fetch as (u: unknown, i?: RequestInit) => Promise<Response>)(u, i) };
 }
 

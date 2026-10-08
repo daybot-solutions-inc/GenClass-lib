@@ -277,7 +277,7 @@ export async function runStoreSession(opts: SessionOptions = {}): Promise<Sessio
   const decider = new SessionDecider(clock, opts.status ?? READY);
   let route = "/search";
   const g: Record<string, unknown> = { fetch: backend.fetch, Response, location: { href: "https://acme.test/search", pathname: "/search", search: "" } };
-  const rt = createRuntime({ clock, global: g, decider, report: "silent", observe: OBSERVE, app: () => ({ title: "Acme Store", route }) });
+  const rt = createRuntime({ clock, global: g, decider, mode: "guard", report: "silent", observe: OBSERVE, app: () => ({ title: "Acme Store", route }) });
   const http = g.fetch as typeof fetch;
   const json = (path: string, init?: RequestInit) => http(path, init).then((r) => r.json());
 

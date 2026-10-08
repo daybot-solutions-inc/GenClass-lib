@@ -7,7 +7,7 @@ risky. Depending on the mode it reports what it saw, or prevents the failure wit
 ```ts
 import { GenClass } from "@genclass/runtime";
 
-const rt = GenClass.init();                          // guard mode, local model, console reports
+const rt = GenClass.init();                          // observe mode, local model, console reports
 const cart = rt.atom("cart", { items: [], total: 0 }); // state GenClass can protect
 ```
 
@@ -27,9 +27,9 @@ GenClass.destroy(): void                        // uninstall observers, restore 
 
 | mode | what it does |
 |---|---|
-| `observe` | Watches and reports detections. Never changes execution: nothing is held, no action runs. |
-| `guard` (default) | Also takes *guard-tier* actions at very high confidence: `discard`, `defer`, `coalesce`, `delay`. These withhold, deduplicate or slow something down; they never invent data or fail a request. |
-| `heal` | Also takes *heal-tier* actions: `block`, `serve_cached`, `retry`, `hedge`, `rollback`, `resync`, plugin actions. |
+| `observe` (default) | Watches and reports detections. Never changes execution: nothing is held, no action runs. |
+| `guard` (opt-in) | Also takes *guard-tier* actions at very high confidence: `discard`, `defer`, `coalesce`, `delay`. These withhold, deduplicate or slow something down; they never invent data or fail a request. |
+| `heal` (experimental) | Also takes *heal-tier* actions: `block`, `serve_cached`, `retry`, `hedge`, `rollback`, `resync`, plugin actions. |
 
 Kill switch, for "is my app broken or did GenClass change something?":
 
@@ -43,7 +43,7 @@ no model. Use [`createRuntime`](#headless-use-tests-ssr-simulation) for headless
 
 ```ts
 interface InitOptions {
-  mode?: "observe" | "guard" | "heal";                 // default "guard"
+  mode?: "observe" | "guard" | "heal";                 // default "observe"; "guard" is opt-in, "heal" experimental
   model?: {                                             // or false: no model (observe only)
     baseUrl?: string;                                   // directory with model.json (default: jsDelivr CDN)
     device?: "auto" | "webgpu" | "wasm";                // default "auto"

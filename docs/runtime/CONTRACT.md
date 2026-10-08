@@ -42,7 +42,8 @@ The narrow, real claim: **install one library; find and prevent runtime failures
 positives.** Three things kill the product, and the design answers each:
 
 1. **False positives.** If GenClass "heals" correct code and creates a bug, developers uninstall it. So: the
-   default mode only takes minimal, reversible *guard* actions at very high calibrated confidence; a non-passive
+   default mode (`observe`, §13) only reports; the opt-in `guard` mode takes only minimal *guard* actions at very
+   high calibrated confidence; a non-passive
    action also requires the model's own diagnosis to say something is wrong; false-intervention rate on clean
    runs is a first-class metric in the sim test split and in every demo.
 2. **Performance.** Tiered detection: generic facts and learned baselines run always and cost ~nothing; the
@@ -53,7 +54,8 @@ positives.** Three things kill the product, and the design answers each:
    reversible actions, responses marked with `x-genclass`, and a kill switch (`?genclass=off`).
 
 Adoption path = modes: **observe** (find anomalies you didn't know existed) → **guard** (prevent only
-extremely-high-confidence failures; default) → **heal** (broader autonomous recovery).
+extremely-high-confidence failures; opt-in) → **heal** (broader autonomous recovery; experimental). The default
+mode is **observe** (§13, 2026-10-08).
 
 The console should read like:
 ```
@@ -108,7 +110,7 @@ export const GenClass: {
 export function createRuntime(options?: CreateOptions): Runtime;   // advanced/headless (sim, tests, SSR-safe)
 
 interface InitOptions {
-  mode?: "observe" | "guard" | "heal";       // default "guard" (section 8). observe never changes execution.
+  mode?: "observe" | "guard" | "heal";       // default "observe" (§13, 2026-10-08). observe never changes execution.
   model?: {
     baseUrl?: string;                        // directory holding model.json (default: CDN of @genclass/runtime-model@<pinned>)
     device?: "auto" | "webgpu" | "wasm";     // default auto (webgpu+fp16 if shader-f16, else wasm+q8)
@@ -489,7 +491,7 @@ A Vite multi-page site (works as static files, deployable to GitHub Pages). The 
 mock server (real `fetch` from the page's point of view) with chaos controls (latency, jitter, failure rate,
 outages, slowdowns). Each demo: a real small app, a GenClass on/off switch, chaos controls, the devtools
 overlay, and a "Run trials" button that drives scripted user sessions and reports the bug rate measured by the
-demo's own oracle, GenClass off vs on (observe = off baseline, guard = default, heal), plus **false
+demo's own oracle, GenClass off vs on (off, observe, guard, heal), plus **false
 interventions on clean runs** (no chaos, correct behaviour: any non-passive action there is a false positive)
 as a headline number next to the bug rate. A Playwright script on the VM
 runs all trials headless and writes `demos/results.json`. Demos use only the public API. Required demos (all
@@ -517,3 +519,7 @@ genuinely different failures or decisions):
 - The runtime model uses a pruned vocabulary (first 16,000 BPE merges; 16,364 tokens incl. markers). Marker and
   special ids are read from `tokenizer.json`/`meta.json`, never hardcoded.
 - Devtools and adapters are owned by UI (`src/devtools/**`, `src/adapters/**`).
+- **Default mode is `observe`** (approved by the user 2026-10-08, MVP): `GenClass.init()` and `createRuntime()` start
+  in `observe` when no `mode` is given, so a fresh install reports findings and never holds, delays or changes
+  anything. `guard` is opt-in (`mode: "guard"` or `?genclass=guard`); `heal` is experimental. Situation text,
+  facts and questions are unchanged (they do not depend on the mode), so `situation-v1` training data stays valid.

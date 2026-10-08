@@ -328,7 +328,10 @@ export interface ModelOptions {
 }
 
 export interface InitOptions {
-  /** Default "guard". observe never changes execution. */
+  /**
+   * Default "observe": reports what GenClass sees and would do, and never holds, delays or changes anything.
+   * "guard" (opt-in) takes minimal guard-tier actions at very high confidence; "heal" is experimental.
+   */
   mode?: Mode;
   /** false: no model (observe-only). */
   model?: ModelOptions | false;

@@ -107,9 +107,9 @@ const TABS: [DevtoolsTab, string][] = [
   ["now", "Now"],
 ];
 const MODES: [Mode, string, string][] = [
-  ["observe", "Observe", "Observe: never changes execution; reports what GenClass would have done"],
-  ["guard", "Guard", "Guard (default): prevents only extremely-high-confidence failures with minimal, reversible actions"],
-  ["heal", "Heal", "Heal: broader autonomous recovery (retry, cached responses, rollback, resync)"],
+  ["observe", "Observe", "Observe (default): never changes execution; reports what GenClass would have done"],
+  ["guard", "Guard", "Guard (opt-in): prevents only extremely-high-confidence failures with minimal actions (drop, defer, coalesce, delay)"],
+  ["heal", "Heal", "Heal (experimental): broader autonomous recovery (retry, cached responses, rollback, resync)"],
 ];
 const FILTERS: [Group, string][] = [
   ["user", "User"],
@@ -664,7 +664,7 @@ class Devtools {
   }
 
   private mode(): Mode {
-    return safe(() => this.rt.mode, "guard" as Mode);
+    return safe(() => this.rt.mode, "observe" as Mode);
   }
 
   private renderMode(): void {

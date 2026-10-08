@@ -11,9 +11,9 @@ This document explains how the parts fit together and why they are built this wa
    generic facts and asks the model. All runtimes compute the same facts: happens-before order, versions,
    repetition, failure streaks, latency against learned baselines, learned invariants and transition profiles.
    The diagnosis and the action come from the model.
-2. **Precision first.** A false intervention costs more than a missed bug. The default `guard` mode takes only
-   minimal, reversible actions, and only when the model is very confident and its own diagnosis says something
-   is wrong.
+2. **Precision first.** A false intervention costs more than a missed bug. The default `observe` mode only
+   reports. The opt-in `guard` mode takes only minimal actions, and only when the model is very confident and its
+   own diagnosis says something is wrong. `heal` is experimental.
 3. **Observable.** Every detection and intervention is reported in plain English with its evidence, can be
    explained after the fact, and can be undone where possible. A kill switch rules GenClass out in one step.
 4. **Cheap by default.** Facts are cheap and always on. The model runs only for salient situations, off the main

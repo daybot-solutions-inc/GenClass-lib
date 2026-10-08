@@ -198,6 +198,8 @@ export function setup(opts: Partial<CreateOptions> & { script?: Script; extraGlo
     clock,
     global: g,
     decider,
+    // Most CORE tests exercise interventions, so the harness keeps guard; the product default is observe.
+    mode: "guard",
     report: "silent",
     observe: { fetch: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, timers: false },
     ...rest,

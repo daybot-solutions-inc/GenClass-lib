@@ -8,7 +8,7 @@ function setup(script = defaultScript()) {
   const server = new FakeServer(clock);
   const g = makeGlobal(server);
   const decider = new ScriptedDecider(script);
-  const rt = createRuntime({ clock, global: g, decider, report: "silent", observe: { fetch: true } }) as RuntimeImpl;
+  const rt = createRuntime({ clock, global: g, decider, mode: "guard", report: "silent", observe: { fetch: true } }) as RuntimeImpl;
   return { clock, server, g, decider, rt, fetch: (u: string, i?: RequestInit) => (g.fetch as typeof fetch)(u, i) };
 }
 

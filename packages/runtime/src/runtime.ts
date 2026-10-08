@@ -202,7 +202,7 @@ export class RuntimeImpl implements Runtime {
     this.hub.holdUserWrites = this.policy.holdUserWrites;
     this.hub.holdWrites = this.policy.holdWrites;
     this.rate = new RateLimiter(() => this.policy.maxActionsPerMinute);
-    this._mode = o.mode ?? "guard";
+    this._mode = o.mode ?? "observe";
     this.triage = o.triage ?? "salient";
     this.vocab = o.vocabulary;
     this.hooks = o.hooks ?? {};
