@@ -52,6 +52,9 @@ export interface PointStat {
   app: string;
 }
 
+/** Prefix mismatches seen in this process (for stats.errors). */
+export const mismatches: string[] = [];
+
 export interface TrajectoryOut {
   seed: number;
   app: string;
@@ -63,6 +66,7 @@ export interface TrajectoryOut {
   /** Base-run steps that ran / were skipped (by reason), and the ideal run's skips: dead sessions show up here. */
   steps?: { ran: number; skipped: number; why: Record<string, number>; idealSkipped: number; idealWhy: Record<string, number> };
   runs: number;
+  mismatchInfo?: string[];
   decisions: number;
   realMs: number;
   runMs: number;
@@ -227,7 +231,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
           cfStates = baseStates;
         } else {
           const forced: [number, string][] = [...forcedPrefix, [p.k, a]];
-          cf = await run(runConfig(scn, { runId: `${seed}-cf-${p.k}-${a}-${j}`, forced, fpUpTo: p.k, pins, tStop: Math.min(scn.tEnd, p.t + W.finalMs), snapFrom: Math.max(0, p.t - 1), ...(future ? { future } : {}) }));
+          cf = await run(runConfig(scn, { runId: `${seed}-cf-${p.k}-${a}-${j}`, forced, fpUpTo: p.k, pins, ...(o.ask === false ? {} : { askTimes: scn.askTimes }), tStop: Math.min(scn.tEnd, p.t + W.finalMs), snapFrom: Math.max(0, p.t - 1), ...(future ? { future } : {}) }));
           if (!cf.ok) {
             dropped = "cf-error";
             break;
@@ -235,6 +239,8 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
           const mine = cf.decisions.filter((d) => d.k <= p.k);
           if (mine.length !== p.k + 1 || mine.some((d) => d.fp !== base.decisions[d.k]?.fp)) {
             dropped = "prefix-mismatch";
+            const first = mine.find((d) => d.fp !== base.decisions[d.k]?.fp);
+            mismatches.push(`${scn.app.name} seed ${seed} k=${p.k} a=${a} j=${j} first-diff=${first?.k ?? (mine.length !== p.k + 1 ? `count ${mine.length}/${p.k + 1}` : "?")}`);
             break;
           }
           cfStates = states(cf);
@@ -360,5 +366,6 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
     });
   }
   out.realMs = Date.now() - t0;
+  if (mismatches.length) out.mismatchInfo = mismatches.splice(0);
   return out;
 }

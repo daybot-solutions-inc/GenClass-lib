@@ -150,9 +150,12 @@ declare global {
       for (const d of cfg.net.wsDrops) if (!cfg.ideal) loop.at(d.t, () => net.dropSockets(d.downMs), "ws-drop");
       let driver: UserDriver;
       const skipWhy: Record<string, number> = {};
+      const stepLog: string[] = [];
       // developer-question probes (side-effect free: runtime.situation() consumes no ids)
       const asks: NonNullable<RunResult["asks"]> = [];
-      if (cfg.record && !cfg.ideal)
+      // probes run in every real run of a trajectory (base and counterfactuals), so a probe can never make a
+      // counterfactual prefix differ; only the base run (record) keeps them
+      if (!cfg.ideal)
         for (const at of cfg.askTimes ?? [])
           loop.at(at, () => {
             if (!probe.rt) return;
@@ -163,7 +166,7 @@ declare global {
               const recent = net.log.filter((r) => r.td !== undefined && r.td >= now - 15000).map((r) => ({ sig: r.sig, method: r.method, ...(r.status !== undefined ? { status: r.status } : {}), outcome: r.outcome, t: r.t0, td: r.td! }));
               const pendingUser = net.log.filter((r) => r.td === undefined && r.step !== undefined);
               const stores: Record<string, unknown> = {};
-              asks.push({
+              if (cfg.record) asks.push({
                 t: now,
                 state: sit.state,
                 facts: { now, inflight, recent, lastUserAt: probe.stepsRan.length ? probe.stepsRan[probe.stepsRan.length - 1]!.t : -1, userWaitingMs: pendingUser.length ? Math.max(...pendingUser.map((r) => now - r.t0)) : 0, stores, errorsShown: probe.errorWrites.length + probe.errorEpisodes.length, route: w.location.pathname },
@@ -187,8 +190,9 @@ declare global {
           skipWhy[why] = (skipWhy[why] ?? 0) + 1;
           if (why === "missing") probe.skippedAt.push(loop.now);
         },
-        ran: (st) => {
+        ran: (st, el) => {
           probe.stepsRan.push({ i: st.i, t: loop.now });
+          if (el && stepLog.length < 400) stepLog.push(`${st.i}@${Math.round(loop.now)} ${el.tagName.toLowerCase()}${el.className && typeof el.className === "string" ? "." + el.className.trim().split(/\s+/).join(".") : ""} "${((el as HTMLElement).innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 30)}"`);
         },
       });
       driver.pins = cfg.pins;
@@ -226,6 +230,7 @@ declare global {
         stepsRun: probe.stepsRan.length,
         stepsSkipped: probe.stepsSkipped,
         skipWhy,
+        stepLog,
         internalErrors: [...loop.internalErrors, ...(navAttempts ? [`nav-prevented:${navAttempts}`] : []), ...errLog],
         wsMessages: probe.wsMessages,
         ...(asks.length ? { asks } : {}),

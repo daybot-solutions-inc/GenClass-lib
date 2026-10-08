@@ -1,6 +1,10 @@
 #!/usr/bin/env node
-// genclass-runtime CLI (Node >= 20, no dependencies).
+// genclass-runtime CLI (Node >= 20, no dependencies). Also runs as `npx @genclass/runtime <command>`.
 //
+//   genclass-runtime init [--mode observe|guard|heal] [--yes] [--dry-run] [--no-install] [--no-devtools]
+//   genclass-runtime remove [--yes] [--dry-run] [--keep-package]
+//       Set GenClass up in a project (framework detection, install, one marked import in the entry file) and take it
+//       out again. Implemented in bin/lib/ (owner: INSTALL).
 //   genclass-runtime fetch-model <dir> [--from <baseUrl>] [--variant q8|fp16|all] [--force] [--quiet]
 //       Download a GenClass model directory (model.json + model files) so an app can self-host it:
 //       GenClass.init({ model: { baseUrl: "/genclass-model/" } }). Follows redirects (GitHub release URLs work),
@@ -22,9 +26,13 @@ const CARD_FORMAT = "genclass-runtime-model/1";
 const ROLES = ["tokenizer", "calibration", "meta"];
 
 const USAGE = `Usage:
+  genclass-runtime init [--mode observe|guard|heal] [--yes] [--dry-run] [--no-install] [--no-devtools]
+  genclass-runtime remove [--yes] [--dry-run] [--keep-package]
   genclass-runtime fetch-model <dir> [--from <baseUrl>] [--variant q8|fp16|all] [--force] [--quiet]
   genclass-runtime info <dir>
 
+init sets GenClass up in the current project (shows the diff and asks first); remove undoes it
+(\`genclass-runtime init --help\` for details).
 fetch-model downloads a GenClass model directory for self-hosting (default --from ${DEFAULT_FROM},
 default --variant all). Serve <dir> and point the runtime at it: GenClass.init({ model: { baseUrl: "/genclass-model/" } }).`;
 
@@ -397,7 +405,13 @@ async function info(dirArg) {
 }
 
 async function main() {
-  const { pos, flags } = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv[0] === "init" || argv[0] === "remove") {
+    const { run } = await import("./lib/init.mjs");
+    process.exitCode = await run(argv[0], argv.slice(1));
+    return;
+  }
+  const { pos, flags } = parseArgs(argv);
   const [cmd, dir] = pos;
   if (flags.help || !cmd) {
     console.log(USAGE);

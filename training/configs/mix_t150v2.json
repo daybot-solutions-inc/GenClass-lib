@@ -1,0 +1,6 @@
+{
+  "bucket_weights": {"sim2": 0.9, "cur5": 0.1},
+  "buckets": ["sim2", "cur5"],
+  "pass_tokens": 500000000,
+  "max_repeat": {"*": 2.0, "sim2": 1.0}
+}

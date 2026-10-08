@@ -282,6 +282,8 @@ export interface RunResult {
   stepsSkipped: number;
   /** Skipped steps by reason (missing = blocked intent; precondition, chain, not-inflight = harmless). */
   skipWhy?: Record<string, number>;
+  /** Per step that ran: index, virtual time and the element it acted on (debugging). */
+  stepLog?: string[];
   internalErrors: string[];
   wsMessages: number;
   asks?: { t: number; state: Record<string, unknown>; facts: AskFacts }[];

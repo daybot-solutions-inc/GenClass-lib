@@ -7,11 +7,12 @@
 ### Your app's race conditions, stale responses and double submits, caught while they happen.
 
 ```bash
-npx genclass-runtime init
+npx @genclass/runtime init
 ```
 
-That's the whole setup. It finds your framework, adds one line to your entry file, and shows you the diff before
-writing anything. Prefer to do it by hand? It's one import:
+That's the whole setup. It finds your framework and package manager, installs the package, adds one line to your
+entry file (plus the devtools overlay in development only), and shows you the diff before writing anything.
+Prefer to do it by hand? It's one import:
 
 ```ts
 import "@genclass/runtime/auto";
@@ -55,13 +56,15 @@ see it.
 
 Pick whichever fits; all three are the same runtime.
 
-**1. One command** (Vite, Next.js, Create React App, Remix / React Router, Nuxt, SvelteKit, Astro, Angular, plain
-HTML):
+**1. One command.** Tested end to end in fresh Vite (React, Vue, Svelte), Next.js (App and Pages Router), Create
+React App, SvelteKit, Astro, Nuxt, React Router, Angular and plain-HTML projects. Each one builds and runs after
+`init`, and `remove` restores every file byte for byte.
 
 ```bash
-npx genclass-runtime init           # shows the diff, asks, then writes
-npx genclass-runtime init --yes     # no questions
-npx genclass-runtime remove         # undoes exactly what init did
+npx @genclass/runtime init                  # shows the diff, asks, then writes
+npx @genclass/runtime init --yes            # no questions
+npx @genclass/runtime init --mode observe   # report only, never change anything
+npx @genclass/runtime remove                # undo exactly what init added
 ```
 
 **2. One import** (any bundler):
@@ -73,7 +76,7 @@ import "@genclass/runtime/auto"; // at the top of your entry file
 **3. One script tag** (no build step):
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime/dist/genclass.global.js" data-mode="observe"></script>
+<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime" data-mode="observe" data-devtools></script>
 ```
 
 To configure it from code:
@@ -200,7 +203,7 @@ where every number sits next to its false-intervention rate.
 - **It won't catch every bug.** It catches runtime failures that leave evidence: ordering, staleness, duplicates,
   broken relations, failure patterns. It won't catch logic that is consistently wrong, CSS, or security bugs, and
   it never rewrites your code.
-- **Self-hosting the model:** `npx genclass-runtime fetch-model public/genclass-model`, then
+- **Self-hosting the model:** `npx @genclass/runtime fetch-model public/genclass-model`, then
   `GenClass.init({ model: { baseUrl: "/genclass-model/" } })`.
 - **Faster without WebGPU:** WASM threads are about 3× faster when your page sends
   `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`.

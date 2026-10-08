@@ -87,6 +87,7 @@ function record(t: TrajectoryOut): void {
     if (k !== "test-subsample" && stats.errors.length < 50) stats.errors.push(`${t.seed} ${t.app}: ${t.skipped.slice(0, 300)}`);
   }
   for (const [k, v] of Object.entries(t.drops)) stats.drops[k] = (stats.drops[k] ?? 0) + v;
+  for (const m of t.mismatchInfo ?? []) if (stats.errors.length < 50) stats.errors.push(`prefix-mismatch ${m}`);
   for (const [k, v] of Object.entries(t.notes ?? {})) stats.notes[k] = (stats.notes[k] ?? 0) + v;
   const a = (stats.byApp[t.app] ??= { trajectories: 0, rows: 0, decisions: 0, stepsRan: 0, stepsSkipped: 0, dead: 0 });
   a.trajectories++;

@@ -68,7 +68,11 @@ const DIAG_PARA: Record<string, string[]> = {
 function diagVocab(rng: Rng): Record<string, string> | undefined {
   if (rng.bool(0.5)) return undefined;
   const out: Record<string, string> = {};
-  const drop = rng.bool(0.3) ? new Set(rng.sample(["conflict", "slow", "overload", "unusual", "inconsistent", "duplicate", "transient"], rng.int(1, 2))) : new Set<string>();
+  // The label set always equals the runtime's default vocabulary (paraphrased wording only): production apps offer
+  // every label, and a row whose gold label was dropped would lose its diagnosis. (The draw is kept so the RNG
+  // stream, and every other choice of the scenario, stays the same.)
+  rng.bool(0.3);
+  const drop = new Set<string>();
   for (const [k, v] of Object.entries(DEFAULT_DIAGNOSES)) {
     if (drop.has(k)) continue;
     out[k] = rng.bool(0.6) && DIAG_PARA[k] ? rng.pick(DIAG_PARA[k]!) : v;

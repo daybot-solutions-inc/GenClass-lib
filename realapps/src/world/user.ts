@@ -15,7 +15,7 @@ export interface DriverHooks {
   end(): void;
   inflight(): number;
   skipped(step: Step, why: string): void;
-  ran(step: Step): void;
+  ran(step: Step, el?: Element): void;
 }
 
 function deepQueryAll(root: ParentNode, sel: string): Element[] {
@@ -162,7 +162,7 @@ export class UserDriver {
       this.loop.schedule(100, () => this.run(st, waited + 100), "user-wait", USER_PHASE);
       return;
     }
-    this.hooks.ran(st);
+    this.hooks.ran(st, el);
     this.usedEl.set(st.i, el);
     if (this.ideal && st.kind !== "type" && st.kind !== "key") {
       const pin = pinOf(el);
@@ -203,7 +203,8 @@ export class UserDriver {
       prev.dispatchEvent(new Event("change", { bubbles: true }));
     }
     this.dirtyValue = false;
-    if (typeof (el as HTMLElement).focus === "function") (el as HTMLElement).focus();
+    // a user who clicks an element is looking at it: focusing never scrolls (scrolling is real-time; see loop.ts)
+    if (typeof (el as HTMLElement).focus === "function") (el as HTMLElement).focus({ preventScroll: true });
     this.lastFocus = el;
   }
 

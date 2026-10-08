@@ -491,6 +491,30 @@ export function installTime(w: Window & typeof globalThis, opts: { epoch: number
     }
   }
 
+  // ------------------------------------------------------------------------------------------- scrolling
+  // Scroll events are fired by the browser's rendering steps on REAL time (after focus() scrolls an element into
+  // view, scrollIntoView, scrollTo, or when content shrinks under a scrolled viewport), so an app's scroll handler
+  // (infinite lists, sticky headers) would run at a nondeterministic virtual instant. The page therefore never
+  // scrolls: focus never scrolls, programmatic scrolling is a no-op, and any scroll event that still fires is
+  // stopped before app code sees it. (Apps that load more on scroll keep their explicit "load more" paths.)
+  try {
+    const HP = w.HTMLElement.prototype as unknown as Record<string, AnyFn>;
+    const focus = HP.focus!;
+    HP.focus = function (this: HTMLElement, o?: FocusOptions) {
+      return focus.call(this, { ...(o ?? {}), preventScroll: true });
+    };
+    const EP = w.Element.prototype as unknown as Record<string, unknown>;
+    for (const n of ["scrollIntoView", "scrollIntoViewIfNeeded", "scrollTo", "scroll", "scrollBy"]) if (typeof EP[n] === "function") EP[n] = () => undefined;
+    const WG = w as unknown as Record<string, unknown>;
+    for (const n of ["scrollTo", "scroll", "scrollBy"]) WG[n] = () => undefined;
+    const stop = (e: Event) => e.stopImmediatePropagation();
+    w.addEventListener("scroll", stop, true);
+    w.addEventListener("scrollend", stop, true);
+    w.document.addEventListener("scroll", stop, true);
+  } catch {
+    /* ignore */
+  }
+
   // ----------------------------------------------------------- observers that depend on real layout timing
   class VObserver {
     constructor(_cb: unknown) {}

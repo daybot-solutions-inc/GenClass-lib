@@ -76,7 +76,7 @@ the model's recent median latency, 150 to 800 ms), then proceed unchanged; nothi
 expected to answer within that budget. Serving your page with `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp` enables WASM threads (about 3× faster without WebGPU).
 
-Self-hosting the model: `npx genclass-runtime fetch-model public/genclass-model` then
+Self-hosting the model: `npx @genclass/runtime fetch-model public/genclass-model` then
 `GenClass.init({ model: { baseUrl: "/genclass-model/" } })`.
 
 ## State
