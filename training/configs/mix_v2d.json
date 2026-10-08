@@ -1,0 +1,6 @@
+{
+  "bucket_weights": {"sim2r": 0.36, "sim3": 0.16, "onpa": 0.16, "onpax": 0.06, "real2": 0.10, "real3": 0.08, "cur5": 0.06, "cur1": 0.015, "gen": 0.005},
+  "buckets": ["sim2r", "sim3", "onpa", "onpax", "real2", "real3", "cur5", "cur1", "gen"],
+  "pass_tokens": 500000000,
+  "max_repeat": {"*": 2.0, "sim2r": 1.0, "sim3": 1.5, "onpa": 1.5, "onpax": 3.0, "real2": 2.0, "real3": 2.0}
+}

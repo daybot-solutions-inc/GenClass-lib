@@ -55,6 +55,10 @@ def load(spec: str, cal: dict) -> tuple[str, list[dict]]:
     name, rest = spec.split("=", 1)
     parts = rest.split(":")
     filt = parts[2] if len(parts) > 2 else ""
+    trig_in = trig_out = None
+    if len(parts) > 3 and parts[3]:
+        k, _, v = parts[3].partition("=")
+        trig_in, trig_out = (set(v.split(",")), None) if k == "only" else (None, set(v.split(",")))
     rows = {}
     with open(parts[0]) as f:
         for line in f:
@@ -72,6 +76,9 @@ def load(spec: str, cal: dict) -> tuple[str, list[dict]]:
                 continue
             split, m, gold = rows[q["id"]]
             if (filt == "test" and split != "test") or (filt == "notest" and split == "test"):
+                continue
+            trg = m.get("trigger")
+            if (trig_in is not None and trg not in trig_in) or (trig_out is not None and trg in trig_out):
                 continue
             bh = cal.get("by_header") or {}
             p = softmax(q["logits"], float(bh[q.get("header")]) if q.get("header") in bh else float(cal.get("choice", 1.0)))

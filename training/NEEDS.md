@@ -115,7 +115,7 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 | **c12, c14–c23** | **TRAIN `t150-v2a`** teacher | training done 08:30; distributed eval ≈ 08:50; then labelling if the teacher clearly beats v2b, else deallocated | teacher |
 | c06 | TRAIN `r17-v2t` (T1 on v2) eval/export | until ≈ 09:00 | then deallocated |
 | c01, c10, c11 | free (REAL done) | — | — |
-| **c01, c10, c11, data** | **SIM on-policy round b** (r17-v2b, situation-v2.3; c01 shipping gate, c10/c11/data explore 0.5) | 08:49 → ≈ 10:20 UTC | → `train:/data/sim-out/v2-onpol-b/`; each node deallocated by SIM as soon as its share is collected. (SIM also ran its job on c02 from 08:49 until 09:04, then yielded c02 to TRAIN's r17-v2c, which had claimed it at 08:34; SIM will not deallocate c02.) |
+| **c01, c10, c11, data** | **SIM on-policy round b** (r17-v2b, situation-v2.3; c01 shipping gate, c10/c11/data explore 0.5) | 08:49 → 10:12 UTC (done; locks released, all four **deallocated**) | → `train:/data/sim-out/v2-onpol-b/`; each node deallocated by SIM as soon as its share is collected. (SIM also ran its job on c02 from 08:49 until 09:04, then yielded c02 to TRAIN's r17-v2c, which had claimed it at 08:34; SIM will not deallocate c02.) |
 
 SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
 
@@ -160,9 +160,13 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     Trigger mix vs v2 gold (first train shard each): inconsistency 5.5 % → 1.6 % of rows (batch 8), its labelled
     passive-best 80 % → 68 % and `inconsistent` share of its diagnoses 23 % → 50 %; failure: half the failure rows are
     now diagnosis-only (v2.2: un-keyed POST/PATCH failures offer only `deliver`), labelled failure passive-best 69 % →
-    57 %; other triggers unchanged within ±2 points. Then **on-policy round b** (running since 08:49 UTC) (r17-v2b with its meta.json gates, situation-v2.3; seeds 28e9 / 30e9
+    57 %; other triggers unchanged within ±2 points. Then **on-policy round b** DONE 10:12 UTC →
+    `train:/data/sim-out/v2-onpol-b/`: 1,094,953 rows (train 797,922 / dev 33,731 / test 263,300), 612 MB gz,
+    policy **r17-v2b** with its meta.json gates (`gate_source: model`), runtime **situation-v2.3**; shipping on c01
+    (seeds 28.1e9) + c02 until 09:04 (1 part), explore 0.5 on c10, c11, data (seeds 31.0–31.2e9); report
+    `onpolicy_report.md` / `.json` there. (Original plan text: (r17-v2b with its meta.json gates, situation-v2.3; seeds 28e9 / 30e9
     + NN·1e8) → `train:/data/sim-out/v2-onpol-b/`. From these builds on rows also carry `meta.request` and
-    `meta.not_offered`; on-policy rows `gate_threshold` / `gate_source` / `gate_mass`.
+    `meta.not_offered`; on-policy rows `gate_threshold` / `gate_source` / `gate_mass`.)
 - Distributed batches (gz shards + `manifest.json`, deduped, test-first): collected per run under
   `data:~/simdata/<run>/` — locations listed here as they land.
 

@@ -93,6 +93,22 @@ Where the false interventions come from:
 The worst `retry` harm (POSTs that had already committed) is now prevented by the v2.2 rule: retry only when the
 request is idempotent or carries an idempotency key. These rows train the next student, up-weighted.
 
+### On-policy round b (r17-v2b with its data-derived gates, situation-v2.3)
+
+| Gate | Acts | False among acts | Harmful | Misses |
+|---|---|---|---|---|
+| shipping (the model's own gates) | 1.9% | 11% | 201 (0.09% of rows) | 10.9% |
+| exploratory 0.5 | 22% | 36% | 14,920 | – |
+
+Compared with round a:
+- **failure** is much cleaner: 6% of acts false, and 8 false retries vs 198, thanks to the v2.2 retry rule;
+- **delivery** now acts: 99 acts, 18% false.
+
+Remaining issues:
+- the **heal transition gate (0.55) is too loose on-policy**: 41% of its acts are false. Gates are being refitted on
+  on-policy dev data, falling back to the tier default where evidence is thin;
+- **request** acts are 19% false, mostly coalescing deliberate repeated clicks.
+
 Targets: guard FIR ≤ 0.1% (met), heal FIR ≤ 0.5% (met), calibration error ≤ 0.02 (met: 0.009),
 diagnosis ≥ 95% (not yet), clear-case recall ≥ 80% (not yet).
 
@@ -169,6 +185,7 @@ trained v2 model once it exists.
 | Sim v2 gold (S1+S2 labels, 46 features, 115 domains) | **10,423,855** (7.56M train / 318k dev / 2.55M test) | done, 20 nodes in ~31 min |
 | Sim v2.3 gold top-up (relation-learner fixes) | **2,107,824** (inconsistency rows 5.5% → 1.6%) | done |
 | Sim on-policy round a (model r17-v2a acting in the sim; DAgger) | **1,248,131** (448k at shipping gate, 672k at explore gate 0.5) | done |
+| Sim on-policy round b (r17-v2b with its own gates, v2.3) | **1,094,953** | done |
 | Sim v2 unlabeled (for teacher labelling) | **51,272,078** | done (~21k rows/s per node) |
 | Real-browser v2 gold (158 apps, 40+ stacks) | **616,437** (+523k unlabeled) | done; determinism 3,030/3,030, interference 0/256 |
 | Real-browser v2.3 top-up (relation-learner fixes) | **221,186** (real total 837,623) | done; real inconsistency triggers 18.3% → 2.6% of decisions, genuine share 10% → 40% |

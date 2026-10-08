@@ -118,6 +118,13 @@ def load(spec: str, cal: dict, v22: bool = True) -> list[dict]:
     parts = rest.split(":")
     rows_p, rec_p = parts[0], parts[1]
     filt = parts[2] if len(parts) > 2 else ""
+    trig_in = trig_out = None  # optional 4th field: "only=t1,t2" or "not=t1,t2" (per-trigger source choice)
+    if len(parts) > 3 and parts[3]:
+        k, _, v = parts[3].partition("=")
+        if k == "only":
+            trig_in = set(v.split(","))
+        elif k == "not":
+            trig_out = set(v.split(","))
     rows = {}
     with open(rows_p) as f:
         for line in f:
@@ -140,6 +147,9 @@ def load(spec: str, cal: dict, v22: bool = True) -> list[dict]:
         if filt == "test" and split != "test":
             continue
         if filt == "notest" and split == "test":
+            continue
+        trg = m.get("trigger")
+        if (trig_in is not None and trg not in trig_in) or (trig_out is not None and trg in trig_out):
             continue
         tiers = m.get("tiers") or {}
         passive = m.get("passive") or next((a for a, t in tiers.items() if t == "passive"), None)
