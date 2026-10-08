@@ -183,7 +183,8 @@ def load(spec: str, cal: dict, v22: bool = True) -> list[dict]:
             pb = all(costs[passive] <= costs[a] + PREM.get(tiers.get(a, "heal"), 0.5) for a in names if a in costs)
         case = m.get("eval_case")
         expect = set(m.get("eval_expect") or [])
-        item = {"kind": kind, "trigger": m.get("trigger") or "?", "diag_ok": top_d != "expected", "modes": {}}
+        item = {"kind": kind, "trigger": m.get("trigger") or "?", "diag_ok": top_d != "expected", "modes": {},
+                "cluster": (f"traj:{m.get('seed')}" if passive_fir and m.get("seed") is not None else f"row:{rid}")}
         for mode in ("guard", "heal"):
             A = [a for a in names if a != passive and tiers.get(a, "heal") in PERMIT[mode]]
             if not A:
@@ -233,6 +234,7 @@ class Table:
         self.clear_hit = g(lambda it, x: x["clear_hit"], bool)
         self.act_case = g(lambda it, x: x["act_case"], bool)
         self.act_hit = g(lambda it, x: x["act_hit"], bool)
+        self.cluster = np.array([it["cluster"] for it, _ in its])
 
     def fired(self, th: dict, mode: str) -> np.ndarray:
         """th: {tier: {"default": t, "byTrigger": {...}}}"""
@@ -252,8 +254,16 @@ def metrics(T: Table, fired: np.ndarray, sel: np.ndarray, boot: int = 0, seed: i
         def rate(num, den):
             d = den.sum()
             return float((num & den).sum() / d) if d else None
+        cl = T.cluster[ix]
+
         def cnt(num, den):
-            return [int((num & den).sum()), int(den.sum())]
+            """Cluster-robust counts: a cluster (trajectory for the REAL cert set, the row otherwise) is one unit,
+            an event if any of its rows has one."""
+            if not den.any():
+                return [0, 0]
+            c_den = np.unique(cl[den])
+            c_ev = np.unique(cl[num & den])
+            return [int(len(c_ev)), int(len(c_den))]
         orc = T.oracle[ix][sim].sum()
         return {
             "_counts": {"fir_sim": cnt(f, sim & T.fir_row[ix]), "fir_real": cnt(f, real & T.fir_row[ix]),
@@ -287,6 +297,7 @@ def metrics(T: Table, fired: np.ndarray, sel: np.ndarray, boot: int = 0, seed: i
     return base
 
 
+NOT_CERTIFIABLE = {"error"}
 DEV_MARGIN = 0.8  # dev fits must meet 0.8 × each limit, so they hold on the shifted test sets (coordinator, 08:00)
 Z_UB = 1.645  # one-sided 95% Wilson upper bound: dev rows are in-distribution, test/real apps are not
 
@@ -338,8 +349,9 @@ def certifiable(T: Table, sel: np.ndarray, tier: str) -> dict:
     """Which constraint sets have enough dev rows to certify their limit (0 events → Wilson UB ≤ margin × limit)."""
     L = LIMITS[tier]
     sim, real = (T.kind == "sim") & sel, ((T.kind == "real") | (T.kind == "realc")) & sel
-    n = {"fir_sim": int((sim & T.fir_row).sum()), "harm_sim": int((sim & T.has_cost).sum()),
-         "fir_real": int(((T.kind == "real") & sel & T.fir_row).sum()), "harm_real": int((real & T.has_cost).sum())}
+    u = lambda m: int(len(np.unique(T.cluster[m])))  # cluster-robust: trajectories of the cert set count once
+    n = {"fir_sim": u(sim & T.fir_row), "harm_sim": u(sim & T.has_cost),
+         "fir_real": u((T.kind == "real") & sel & T.fir_row), "harm_real": u(real & T.has_cost)}
     lim = {"fir_sim": L["fir"], "fir_real": L["fir"], "harm_sim": L["harm"], "harm_real": L["harm"]}
     return {k: (v > 0 and wilson_upper(0, v) <= DEV_MARGIN * lim[k] + 1e-12, v) for k, v in n.items()}
 
@@ -371,6 +383,8 @@ def fit(items: list[dict], min_passive: int, min_real: int) -> tuple[dict, dict]
             nn = dict((k, v[1]) for k, v in c.items())
             bad = [k for k, (ok_, n) in c.items() if n > 0 and not ok_]
             sim_ok = c["fir_sim"][0] and c["harm_sim"][0]
+            if trig in NOT_CERTIFIABLE:  # coordinator: REAL evidence from one app — never a per-trigger value below the default
+                bad, sim_ok = bad + ["single-app REAL evidence"], False
             if not bad:
                 per[trig] = lowest_safe(T, mode, tier, th, sel, trig, True)
                 notes[f"{tier}:{trig}"] = f"fitted (certified: n {nn})"

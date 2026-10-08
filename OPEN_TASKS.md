@@ -5,6 +5,9 @@ The runtime decides through a trained local model; nothing here is hardcoded per
 
 ## Done
 
+- **npm:** `@genclass/runtime@0.1.0-beta.0` (latest) and `@genclass/runtime-model@0.1.0` (r17-v2b, with gates refit on on-policy data)
+  are published. Checked on 2026-10-08 against the registry tarballs: guard fixed an out-of-order typeahead 6/6, observe detected it, and
+  clean typing made 0 model calls. The `genclass-runtime` alias is not published yet; its tarball is in `packages/runtime/.publish/`.
 - **Published `@genclass/runtime@0.1.0-alpha.0` to npm** (2026-10-08, `genclass` org, owner meharpro). The
   tarball was smoke-tested in a fresh Vite app in headless Chromium (`packages/runtime/test/smoke/smoke.sh`).
   The alpha takes no actions until the runtime model package is published.

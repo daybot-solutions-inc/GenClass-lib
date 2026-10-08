@@ -87,7 +87,8 @@ def load(spec: str, cal: dict) -> tuple[str, list[dict]]:
             p = softmax(q["logits"], float(bh[q.get("header")]) if q.get("header") in bh else float(cal.get("choice", 1.0)))
             k = int(p.argmax())
             pb = m.get("passive_best")
-            out.append({"benign_gold": name.startswith("realp") and gold == "expected" and bool(pb),
+            out.append({"cluster": (f"traj:{m.get('seed')}" if name.startswith("realp") else f"row:{q['id']}"),
+                        "benign_gold": name.startswith("realp") and gold == "expected" and bool(pb),
                         "top": q["labels"][k], "p": float(p[k]), "gold": gold, "passive_best": bool(pb) if pb is not None else None,
                         "case": m.get("eval_case"), "trigger": m.get("trigger")})
     return name, out
@@ -114,9 +115,12 @@ def table(items: list[dict], r: float, is_sim: bool) -> dict:
     if is_sim:
         pbr = [d for it, d in zip(items, det) if it["passive_best"]]
         res["false_on_sim_passive"] = [sum(pbr), len(pbr)]
-    ben = [d for it, d in zip(items, det) if it["case"] in BENIGN or (it.get("benign_gold"))]
+    ben = [(it["cluster"], d) for it, d in zip(items, det) if it["case"] in BENIGN or (it.get("benign_gold"))]
     if ben:
-        res["false_on_real_benign"] = [sum(ben), len(ben)]
+        cl = {}
+        for c, d in ben:  # cluster-robust (cert-set trajectories count once)
+            cl[c] = cl.get(c, False) or d
+        res["false_on_real_benign"] = [sum(cl.values()), len(cl)]
         cases = defaultdict(lambda: [0, 0, 0])
         for it, d in zip(items, det):
             if it["case"]:
