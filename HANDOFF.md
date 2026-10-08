@@ -45,7 +45,7 @@ generic action. It has no hardcoded bug rules.
   situation-v2), Azure launch scripts, ONNX export, eval.
 - `demos/`: six demo apps with a Service Worker chaos backend and Playwright trials (`results.md`). They are
   honest evaluation: never tune them, and don't let sim/ or realapps/ read them.
-- `docs/runtime`: `CONTRACT.md`, `ARCHITECTURE.md`, `API.md`.
+- `docs/runtime`: `CONTRACT.md`, `ARCHITECTURE.md`, `API.md`, `RESULTS.md` (comparisons + training log; update it with every result).
 
 ## Rules (hard-won)
 

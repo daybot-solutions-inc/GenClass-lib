@@ -39,7 +39,7 @@ bugs; the model infers from runtime context.
 | [`sim`](sim) | Training-data simulator: thousands of random apps run on the real runtime in a deterministic virtual world, labelled by counterfactual outcomes |
 | [`training`](training) | Curriculum, vocabulary pruning, multi-node CPU training on Azure, int8 ONNX export, evaluation |
 | [`demos`](demos) | Six demo apps (typeahead, autosave, checkout, flaky dashboard, live kanban, real-time decisions) with a Service Worker chaos backend and Playwright trials |
-| [`docs/runtime`](docs/runtime) | [Architecture](docs/runtime/ARCHITECTURE.md) · [build contract](docs/runtime/CONTRACT.md) · [API](docs/runtime/API.md) |
+| [`docs/runtime`](docs/runtime) | [Results & comparisons](docs/runtime/RESULTS.md) · [Architecture](docs/runtime/ARCHITECTURE.md) · [build contract](docs/runtime/CONTRACT.md) · [API](docs/runtime/API.md) |
 | `jev_local`, `extension`, `bench`, … | The GenClass model, Jev-compatible server, voice harness, Chrome extension and benchmarks this runtime builds on ([details](docs/GENCLASS.md)) |
 
 ## How it works

@@ -55,7 +55,7 @@ async function save(body?: string, version?: number) {
       wiki.update((w) => ({ ...w, error: errText(e, "saving the page") }));
     } else if (CONFLICT === "overwrite") {
       wiki.update((w) => ({ ...w, saving: false }));
-      return save(text, cur.version);
+      return await save(text, cur.version);
     } else if (CONFLICT === "take-theirs") {
       wiki.update((w) => ({ ...w, draft: cur.body, title: cur.title, baseVersion: cur.version, notice: "Page refreshed." }));
     } else {
