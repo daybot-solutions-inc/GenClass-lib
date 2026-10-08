@@ -30,8 +30,13 @@ which available action is best. There is no list of known bugs in the code.
 > - **No model is published for this format yet.** `@genclass/runtime-model` is not on npm, so a default
 >   `GenClass.init()` prints `[GenClass] Model unavailable (...); observing only.` and finds nothing.
 > - **Round 1 models** (format `situation-v1`) exist but do not match this runtime.
-> - **On npm:** `@genclass/runtime@0.1.0-alpha.1` is this runtime. `0.1.0-alpha.0` is the older v1 runtime: it
->   defaults to guard, holds store writes, and has a `NaN` crash that alpha.1 fixes.
+> - **On npm:** `@genclass/runtime@0.1.0-alpha.1` (`latest`) is this runtime. `0.1.0-alpha.0` is the older v1
+>   runtime: it defaults to guard, holds store writes, and has a `NaN` crash that alpha.1 fixes.
+> - **In this repository, not yet on npm:** the one-command install (`npx @genclass/runtime init`), the
+>   `@genclass/runtime/auto` entries and the script tag; observe mode never holding or delaying a response; and
+>   two redaction fixes. They ship in the next release: `0.1.0-beta.0` with the model, or `0.1.0-alpha.2` if a
+>   release without the model goes out first ([RELEASE.md](RELEASE.md)). The install path still has known issues,
+>   listed under the runtime README's known limitations.
 >
 > What's next: [OPEN_TASKS.md](OPEN_TASKS.md). Picking up the work: [HANDOFF.md](HANDOFF.md). AI coding agents:
 > start at [AGENTS.md](AGENTS.md).
@@ -90,7 +95,7 @@ All numbers are on held-out data, with each recall reported next to its false-in
 | [`packages/runtime`](packages/runtime) | `@genclass/runtime`, the library. Observers, causality, stores and adapters, learned baselines/relations/profiles, facts, triage, policy gate, actions, model host (Web Worker, ONNX Runtime Web on WebGPU/WASM), devtools overlay. [README](packages/runtime/README.md) · [STATUS](packages/runtime/STATUS.md) |
 | [`packages/runtime-model`](packages/runtime-model) | Model card for the not-yet-published `@genclass/runtime-model` |
 | [`sim`](sim) | Training-data simulator: random apps run on the real runtime in a deterministic virtual world, labelled by counterfactual outcomes |
-| [`realapps`](realapps) | About 90 real apps (written for the corpus, plus open-source ones) run with the real runtime in headless Chromium, labelled the same way; the never-worse sweep covered the first 66. [README](realapps/README.md) |
+| [`realapps`](realapps) | 128 real apps (written for the corpus, plus open-source ones) run with the real runtime in headless Chromium, labelled the same way; the never-worse sweep covered the first 66. [README](realapps/README.md) |
 | [`training`](training) | Vocabulary pruning, curriculum (`curriculum/rt.py` mirrors the runtime's renderer), multi-node CPU training on Azure, int8 ONNX export, evaluation |
 | [`demos`](demos) | Six demo apps (typeahead, autosave, checkout, flaky dashboard, live kanban, real-time decisions) with a Service Worker chaos backend and Playwright trials |
 | [`docs/runtime`](docs/runtime) | [Results](docs/runtime/RESULTS.md) · [Architecture](docs/runtime/ARCHITECTURE.md) · [Build contract](docs/runtime/CONTRACT.md) · [API](docs/runtime/API.md) |
@@ -113,8 +118,9 @@ NODE_OPTIONS=--expose-gc npx vitest run test/review-perf.test.ts --retry=2   # t
 The same steps run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml), Node 22) on pushes to `main`,
 `runtime`, `mvp` and `mvp-v2`, on pull requests, and on manual dispatch.
 
-Last full local run (2026-10-08): 336 tests passed and 14 skipped. The skips are model-parity tests, which need
-`GENCLASS_MODEL_DIR`. The perf tests time a 5,000-item store and can fail under parallel load.
+Last full local run (2026-10-08, branch `mvp-v2-merge` at f107013): 375 tests passed and 14 skipped, plus the 4
+perf tests run alone. The skips are model-parity tests, which need `GENCLASS_MODEL_DIR`. The perf tests time a
+5,000-item store and can fail under parallel load.
 
 Releasing: [RELEASE.md](RELEASE.md).
 
