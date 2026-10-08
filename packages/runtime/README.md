@@ -1,5 +1,8 @@
 # @genclass/runtime
 
+[![npm](https://img.shields.io/npm/v/@genclass/runtime/latest?label=npm)](https://www.npmjs.com/package/@genclass/runtime)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 **Install one library. Find and prevent runtime failures automatically.**
 
 GenClass Runtime watches your web app from the inside: user actions, async operations, network requests, state
@@ -17,10 +20,11 @@ import { GenClass } from "@genclass/runtime";
 GenClass.init();
 ```
 
-> **Status: preview (0.1.0, not yet published).** The runtime, model host, devtools and adapters work and are
-> tested. The runtime-specialist model is still being trained. Until it ships, run in `observe` mode, or
-> self-host a model with `npx genclass-runtime fetch-model`. Remaining work is listed in
-> [OPEN_TASKS.md](../../OPEN_TASKS.md).
+> **Status: alpha (`0.1.0-alpha.0` on npm).** The runtime, model host, devtools and adapters work and are
+> tested. The runtime-specialist model is still in training and not yet published, so this alpha observes and
+> records but does not act yet: until the model ships, the runtime fails open and takes the passive action. To
+> try decisions now, self-host a model with `npx genclass-runtime fetch-model`. Remaining work is listed in
+> [OPEN_TASKS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/OPEN_TASKS.md).
 
 ## What it looks like
 

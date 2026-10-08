@@ -99,7 +99,7 @@ teammate moving a card or an incident), the chaos for the session, server parame
 Every seed runs in all three modes. Each run is a fresh page (fresh runtime, fresh server session). The in-page
 "Run trials" button runs them in iframes with synthetic DOM events; `e2e/eval.ts` runs them in fresh tabs with real
 Playwright input. After the steps, the server's scripted activity is frozen, the harness waits for the network to go
-quiet and the demo's oracle (`src/demos/<demo>/oracle.ts`, test code only; never passed to GenClass) scores what the
+quiet plus 2.5 s (in every mode, so writes GenClass is still holding and late reverts land first) and the demo's oracle (`src/demos/<demo>/oracle.ts`, test code only; never passed to GenClass) scores what the
 user saw against the server's truth:
 
 | demo | a trial is a bug when | user-visible latency metric |

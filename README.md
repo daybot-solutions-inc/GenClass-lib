@@ -1,5 +1,8 @@
 # GenClass Runtime
 
+[![npm](https://img.shields.io/npm/v/@genclass/runtime/latest?label=%40genclass%2Fruntime)](https://www.npmjs.com/package/@genclass/runtime)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 **An AI runtime for self-healing web apps. Install one library. Find and prevent runtime failures automatically.**
 
 ```bash
@@ -23,9 +26,10 @@ bugs; the model infers from runtime context.
            search.results written 0.4 s ago by a newer GET /api/search?q=react. Dropped it. (stale, 0.97)
 ```
 
-> **Status: preview, work in progress.** The runtime, model host, devtools and adapters are built and tested. The
-> runtime-specialist model is being trained, and the demos are being evaluated with it. See
-> [OPEN_TASKS.md](OPEN_TASKS.md).
+> **Status: alpha.** [`@genclass/runtime@0.1.0-alpha.0`](https://www.npmjs.com/package/@genclass/runtime) is on
+> npm. The runtime, model host, devtools and adapters are built and tested. The runtime-specialist model is still
+> being trained and is not yet published, so for now the alpha observes and records but does not act yet. The
+> demos will be evaluated with the trained model. See [OPEN_TASKS.md](OPEN_TASKS.md).
 
 ## What's in this repo
 

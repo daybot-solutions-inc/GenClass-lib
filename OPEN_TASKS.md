@@ -5,6 +5,9 @@ The runtime decides through a trained local model; nothing here is hardcoded per
 
 ## Done
 
+- **Published `@genclass/runtime@0.1.0-alpha.0` to npm** (2026-10-08, `genclass` org, owner meharpro). The
+  tarball was smoke-tested in a fresh Vite app in headless Chromium (`packages/runtime/test/smoke/smoke.sh`).
+  The alpha takes no actions until the runtime model package is published.
 - **Runtime fix batch 3** (frozen as tag `situation-v1`): all 34 review findings fixed, each with its
   regression test; summed-probability gate; `transient`; compact questions; redaction by field meaning;
   300 tests passing. A keystroke write on a 5,000-item store takes 0.14 ms.
@@ -49,13 +52,12 @@ The runtime decides through a trained local model; nothing here is hardcoded per
      clean runs.
 7. **Docs**: READMEs and ARCHITECTURE.md are written; still to do: fill in honest results (install, two-line init, modes, what it detects, observability, performance,
    honest results), ARCHITECTURE.md, model card, and dev-only lazy import of the devtools (52 KB min / 17 KB gz).
-8. **Packaging**: model files as `@genclass/runtime-model` (CDN default URL) and a GitHub release on this repo;
+8. **Packaging**: publish the trained model as `@genclass/runtime-model@0.1.0` (the runtime's default CDN URL)
+   and attach it to a GitHub release, then publish `@genclass/runtime@0.1.0` without the alpha tag;
    CI workflow (build, typecheck, unit tests); `npm pack` smoke test in a fresh Vite app.
 
 ## Needs the user
 
-- **npm publish**: an `@genclass` npm org and `npm login` on this machine (not logged in), or another scope
-  name.
 - **Public demo hosting** (GitHub Pages on this repo): OK to publish?
 - **Merging `runtime` into `main`** when ready.
 

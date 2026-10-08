@@ -249,12 +249,8 @@ function results(): HTMLElement {
         .map((m) => m.guard?.decisionP50)
         .filter((x): x is number => typeof x === "number")
         .sort((a, b) => a - b);
-      const budgetMisses = (ne?: Record<string, number>) => Object.entries(ne ?? {}).reduce((n, [k, v]) => n + (/hold budget/i.test(k) ? v : 0), 0);
-      const late = Object.values(data.demos).reduce((n, m) => n + budgetMisses(m.guard?.notExecuted) + budgetMisses(m.heal?.notExecuted), 0);
       const acted = Object.values(data.demos).reduce((n, m) => n + Object.values(m.guard?.actions ?? {}).reduce((a, b) => a + b, 0) + Object.values(m.heal?.actions ?? {}).reduce((a, b) => a + b, 0), 0);
-      const timing = lat.length
-        ? ` Median model decision time ${Math.round(lat[Math.floor(lat.length / 2)])} ms against a 300 ms hold budget: ${late} decisions arrived too late to act, ${acted} interventions ran.`
-        : "";
+      const timing = lat.length ? ` Median model decision time ${Math.round(lat[Math.floor(lat.length / 2)])} ms; ${acted} interventions ran across Guard and Heal.` : "";
       const note = h("div", {
         class: "note",
         html: `${esc(data.model?.note ?? "")}${esc(timing)} Bug rate: share of chaos trials where the demo's oracle found a bug. False interventions: non-passive actions GenClass took on clean runs (no chaos, correct behaviour); every one counts as a false positive. ${data.trials ? `${data.trials.chaos} chaos + ${data.trials.clean} clean trials per mode per demo.` : ""} ${data.generatedAt ? `Measured ${esc(new Date(data.generatedAt).toLocaleString())}.` : ""}`,

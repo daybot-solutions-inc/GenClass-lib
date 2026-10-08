@@ -69,7 +69,9 @@ export class TrialHarness {
       await this.link.world("freeze").catch(() => null);
       const s = this.def.settle ?? { idleMs: 700, timeoutMs: 20000 };
       if (s) await this.link.quiet(s.idleMs, s.timeoutMs, s.ignoreStreams);
-      await wait(350);
+      // Let writes GenClass is still holding apply (the hold budget can reach 800 ms) and late reverts happen
+      // (up to ~2 s after a held write applied) before the oracle looks. Same wait in every mode.
+      await wait(s ? 2500 : 350);
       score = await this.oracle.finish();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);

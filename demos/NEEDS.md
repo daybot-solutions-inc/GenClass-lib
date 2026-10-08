@@ -1,55 +1,81 @@
 # What the demos need from @genclass/runtime
 
-Owner: DEMOS. Read by CORE, MODEL, UI and the lead. Evidence: `demos/results.json` (810 trials: 6 demos × Off/Guard/
-Heal × 30 chaos + 15 clean, Playwright with real input, headless Chromium on the `train` VM, no GPU, v0.1 GenClass
-q8 on WASM, pages cross-origin isolated so the model worker gets 4 WASM threads). Most important first.
+Owner: DEMOS. Read by CORE, MODEL, UI and the lead. Runtime: frozen batch 3 (commit 1a77558). Model: v0.1 GenClass
+q8 on WASM (pages cross-origin isolated, 4 threads), so decisions take ~0.5–1.5 s and the "auto" hold budget sits
+at its 800 ms ceiling. Evidence: Playwright with real input on the `train` VM; traced runs (`eval.ts --trace`) record
+every proposed write (CORE's `hooks.mutationProposed`), when it really applied (`state` events), its cause op and
+the decision about it. The mock server uses common random numbers (each logical request and live event gets the
+same latency/failure in every mode), and test code uses native timers, so GenClass sees only the app.
 
-## 1. Guard makes the board worse without taking any action (CORE)
+## 1. Holding a write lets it land after the user's newer write (CORE, product risk)
 
-Board, 30 chaos seeds per mode: Off 15/30 bugs, Guard 23/30, Heal 22/30. Paired by seed, Guard turned 9 seeds that
-were clean with Off into bugs and fixed 1 (Heal: 9 and 2). If timing noise were the only cause, 9-of-10 discordant
-pairs in one direction would have p ≈ 0.01. Guard executed **zero** actions on the board, so the difference comes
-from holding writes. Visible jump-backs (a card the user moved shows its old column again) went from 2.9 to 3.9
-(Guard) / 4.8 (Heal) per session.
+GenClass makes the board demo visibly worse **without executing a single action** (Guard: 0 actions in 30
+sessions). Board, 30 chaos seeds, traced:
 
-Likely mechanism (from `src/state/hub.ts`: "User-sync writes ... bypass the queue and never wait"): a live-event
-write for card X (older) is held for up to 300 ms; the user moves card X, and that write applies at once; the held
-event then applies after it, re-running its functional update on top of the user's newer state and moving X back.
-Without GenClass the event would have applied first and the user's move last.
+| run | bugs | jump-backs per session | writes held (median hold) | held write applied after a newer user write to the same card | of which put the card back | cards stuck "syncing" |
+|---|---|---|---|---|---|---|
+| Off, run A | 17/30 | 3.07 | 1 of 1,058 | 0 | 0 | 6 |
+| Off, run B | 16/30 | 3.00 | 1 of 1,059 | 0 | 0 | 6 |
+| Guard | 19/30 | 4.80 | 408 of 1,081 (681 ms) | 50 | 11 | 9 |
+| Heal | 21/30 | 4.80 | 434 of 1,078 (688 ms) | 65 | 20 | 10 |
 
-Suggestion: fail-open must never change the order the app would have seen. When a user-sync write arrives for a
-store with pending writes, apply the pending ones first (in proposal order), or treat them as superseded and decide
-again, before the user write. A regression test: hold a functional write to `s.x`, apply a user write to `s.x`,
-release the hold with `apply`; the final value must be the user's.
+The A/A pair (Off twice, same seeds) flips 1 seed, so Guard's 5 introduced / 3 fixed and Heal's 7 / 3 are a small
+real effect on the bug rate; the large effect is the +56% visible jump-backs (a card the user moved snaps back).
 
-## 2. The default redaction hides ordinary fields such as kanban `cards` (CORE)
+Mechanism (`src/state/hub.ts`, `propose`): a user-sync write bypasses the store's queue and applies at once, while
+an earlier non-user write to the same store waits in the queue for its decision (up to the hold budget). When the
+held write is released (`apply`, or the budget expires), its functional update re-runs on the current state, which
+now contains the user's newer change, and overwrites it. Without GenClass the older write would have applied first.
+Not involved: executed actions, late reverts, `defer` (never ran), subscriber timing.
 
-The default `redact` matches `/pass|token|secret|card|cvv|ssn|auth/i` anywhere in a path, so every field of the
-board demo's store (`board.cards.*`) reaches the model as `[redacted]`. A real detection from the board page (Guard):
-"Flagged an unusual write: board.cards.c2.column changed since #19 started: [redacted] → [redacted]". The model
-cannot see that a live event moves a card back to an older column, which is exactly what it would need. The same
-pattern also catches `author`, `authors`, `tokens` (design tokens), `passenger`, `compass`, `bypass`, `cardinality`.
+Concrete trace (Guard, seed 1007, card c8; seconds since the session's first write):
 
-Suggestion: match whole path segments (split on `.`, `_`, `-` and camelCase) against a list such as `password`,
-`passwd`, `secret`, `token`/`accessToken`/`refreshToken`, `apiKey`, `cardNumber`/`ccNumber`, `cvv`/`cvc`, `ssn`,
-`authorization`; keep password inputs redacted as today. The demos keep the runtime's default on purpose (a normal
-integration would), so board results include this effect.
+```
+4.813  #13  live event                      review → doing   applied 5.477, held 664 ms  (model: unusual, chose apply, 1,527 ms)
+4.842  #14  user clicks "Move right"        review → done    applied 4.842
+4.919  #15  live event                      done → review    applied 5.583, held 663 ms
+```
 
-## 3. Decisions are slower than the hold budget (MODEL / lead)
+The user moves c8 to Done; 635 ms later the held event (proposed 29 ms before the click) moves it back to Doing, then
+another held event to Review. More examples from the same run: seed 1001 c2 (event held 790 ms lands 0.3 s after the
+user's move), seed 1002 c6 (server confirmation held 608 ms reverses a move to Done for 302 ms), seed 1007 c8 (held
+confirmation reverses a move to Doing for 523 ms).
 
-Model decision latency p50 per demo: 300–520 ms (status dashboard 1.2 s, many concurrent polls); before the pages
-were cross-origin isolated (single-threaded WASM) it was ~1.9 s. With the default `holdBudgetMs` of 300 ms,
-663 decisions arrived too late to act. The ≤ 25 MB runtime model and WASM threads are what helps; the demos now serve
-COOP/COEP from their Service Worker (`?coi=0` turns it off) and record `gc.isolated` per trial. Please document the
-isolation recommendation in API.md (headers, or a Service Worker like `demos/src/server/sw.ts`).
+The same ordering problem can defeat app-level guards (expected from the mechanism; traced editor run pending):
+the editor decides "is the user typing?" when a save response arrives (`applyBody`), then GenClass may hold that
+write for up to 800 ms; keystrokes typed during the hold would be overwritten when it applies. The board's whole-board rollback also captures snapshots that miss writes GenClass is
+holding, so restoring them erases more (cards stuck "syncing": 6 → 9/10).
 
-## 4. Holds add user-visible latency when the model cannot answer in time (CORE)
+Suggestions: fail-open must never change the order the app would have seen. When a user-sync write arrives for a
+store with pending (held or queued) writes, apply the pending ones first in proposal order (or treat the overlapping
+ones as superseded and decide again) before the user write. Regression test: hold a functional write to `s.x`, make a
+user-sync write to `s.x`, release the hold with `apply`: the final value must be the user's.
 
-Clean runs (no chaos, correct app behaviour), user-visible latency, mean: search final results 20 ms (Off) → 199 ms
-(Guard); checkout order confirmation under chaos 811 ms → 1,141 ms; status change detection 1.51 s → 2.0 s (chaos).
-Suggestion: do not hold when the recent decision latency (e.g. p50 of the last N decisions) is above
-`holdBudgetMs`: fail open at once and still record/report the late decision. That removes the latency tax and the
-ordering issue in §1 while the model is slow.
+## 2. Holds cost interactive latency while the model is slower than the budget (CORE / MODEL)
+
+Search typeahead, clean runs (no chaos, calm typist, 15 seeds): final results p50 **6 ms with Off, 389 ms with
+Guard**. 127 of 148 result writes were held (median 543 ms): every response is "salient" because the user keeps
+typing (the input moved since the request started), which is normal for a typeahead. Decisions also queue: the
+median decision took 826 ms and slowed from 504 ms (first of a session) to 941 ms (last), because the model host
+answers one request at a time and a typing burst produces one decision request per response.
+
+Suggestions: do not hold when the recent decision latency is above the budget (fail open immediately, still decide
+in the background for reporting); drop queued decision requests that a newer write to the same fields has
+superseded; consider a lower ceiling than 800 ms for writes the user is waiting on.
+
+## 3. Resolved in batch 3: redaction of ordinary fields
+
+The default redactor used to hide every `board.cards.*` field ("[redacted] → [redacted]"). Batch 3's word-level
+redaction fixed it; the board's situations now show columns and versions.
+
+## 4. Demos-side fixes that changed earlier numbers (for the record)
+
+- Earlier runs reported Guard introducing 9 board bugs (vs 1 fixed). Most of that was my mock server: it drew all
+  chaos from one random stream in request-arrival order, so any timing shift re-rolled every later latency and
+  failure. Common random numbers fixed it (A/A flips: 1 of 30).
+- Oracle samplers and other test timers used the page's `setInterval`, so the runtime's timer observer saw them as
+  ops ("interval 0.05s") and could attribute app writes to them. Test code now uses timers captured before
+  `GenClass.init`.
 
 ## 5. `retry` is offered for non-idempotent requests (CORE / policy)
 

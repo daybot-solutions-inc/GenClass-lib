@@ -174,3 +174,15 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
   (simA 0.85, cur4 0.12, cur1 0.02, gen 0.01), `launch_final1.sh` (R32 on c02–c07 rank 0 c02; R17 on c09 c10 c11 c08,
   rank 0 c09 — rank 0 must hold the stage-1c state), `final_post.sh` (on each rank-0 node: SIM eval with dev-fitted
   temperatures, then export with them), per-budget metrics in `eval_runtime.py` (`meta.budget`).
+
+### 00:06–00:12 (2026-10-08) Final round 1 launched
+- SIM phase A (`~/gcl/sim/sim/out/final-a`, frozen runtime `situation-v1`): train 448,420 / dev 14,613 /
+  test 137,643. Imported (`import_final.sh`, after fixing a self-killing `pkill` in it), bundled (2.57 GB),
+  distributed to c02–c11. Eval subsets: 20k random test + 8k random dev rows.
+- `r32-final1`: c02–c07 (48 ranks), from `r32-s1c`, 2.4 passes × 498M tokens, lr 1e-4 / 4e-4, ≈ 253k tok/s.
+  `r17-final1`: c09 c10 c11 c08 (32 ranks), from `r17-s1c`, 3.0 passes, lr 2e-4 / 1e-3, ≈ 322–333k tok/s.
+  Both ETA ≈ 01:28–01:30 UTC.
+- Autonomous tail (survives Mac disconnects): on c02 / c09 a waiter runs `final_post.sh` when the servable's
+  `meta.json` says `final: true` (SIM eval with dev-fitted temperatures → export with them → serve the tar on :8801);
+  on the train VM `pull_on_train.sh` pulls each export into `~/gcl/train-out/final1/{r32,r17}/`, checks sha256 and runs
+  the onnxruntime-web/node check. c01 deallocated 00:12.
