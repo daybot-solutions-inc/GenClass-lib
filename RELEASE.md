@@ -7,11 +7,12 @@
 ## TL;DR
 
 - **Two releases, in this order.**
-  - **Part A (now, no model).** An optional `@genclass/runtime@0.1.0-alpha.1` from `mvp-v2`, published under dist-tag `alpha`. It ships the NaN fix (ad24804), the situation-v2 runtime (batch 4 fcd1e68, batch 5 6e5e86e), the `observe` default (f3636b2) and updated docs.
+  - **Part A (done 2026-10-08, no model).** `@genclass/runtime@0.1.0-alpha.1` from `mvp-v2` (release commit 806a296), planned for dist-tag `alpha` but published under `latest`. It ships the NaN fix (ad24804), the situation-v2 runtime (batch 4 fcd1e68, batch 5 6e5e86e), the `observe` default (f3636b2) and updated docs.
   - **Part B (after a situation-v2 model exists).** First `@genclass/runtime-model@0.1.0` plus the GitHub release `runtime-model-v0.1.0`. Then a demos eval (Off / Observe / Guard). Last, `@genclass/runtime@0.1.0-beta.0` or `0.1.0`.
 - **Who runs what.** Agents prepare and check everything: worktree, install, typecheck, build, unit tests, `npm pack`, the exact commands. **Only the user publishes** (`npm publish` and `npm dist-tag` need their npm 2FA). The user also approves every `git push`, tag push and `gh release`. Agents must ask before Playwright and `smoke.sh`, model downloads, demos eval, and anything that touches training or Azure. Those runs belong to Mehar's setup (`HANDOFF.md`).
-- **Registry today** (`npm view`, 2026-10-08):
-  - `@genclass/runtime` has versions `0.0.0-stage` and `0.1.0-alpha.0`, with `latest` = `0.1.0-alpha.0`. That build is situation-v1, defaults to `guard`, still has the NaN crash, and has no model.
+- **Part A was done** on 2026-10-08: `@genclass/runtime@0.1.0-alpha.1` published 2026-10-08 (~05:33 UTC) by `karanvir1729` under dist-tag `latest`, from release commit 806a296 (local annotated tag `v0.1.0-alpha.1`, not pushed); 26 files, 486.8 kB, shasum 9e3e82bcf752d6eb34db0620d072e6a913508dff. It went to `latest` rather than `alpha`. The first attempt got a 403 (the account had no 2FA); after enabling 2FA it went through browser-based 2FA approval. The procedure below is kept for reference and for later releases.
+- **Registry today** (`npm view`, 2026-10-08, before Part A):
+  - `@genclass/runtime` had versions `0.0.0-stage` and `0.1.0-alpha.0`, with `latest` = `0.1.0-alpha.0`. That build is situation-v1, defaults to `guard`, still has the NaN crash, and has no model. Since Part A, `latest` = `0.1.0-alpha.1`.
   - `@genclass/runtime-model` is **404**.
   - The npm org `genclass` has two members: `meharpro` (owner) and `karanvir1729` (developer). Both have read-write access to `@genclass/runtime`.
 - **The default model URL is pinned.** `packages/runtime/src/model/host.ts` -> `DEFAULT_MODEL_BASE_URL` = `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/`. `packages/runtime/bin/genclass-runtime.mjs` -> `DEFAULT_FROM` = `https://github.com/daybot-solutions-inc/GenClass-lib/releases/download/runtime-model-v0.1.0/`. Both 404 today. npm versions are immutable, so **whatever is published as `@genclass/runtime-model@0.1.0` is what every default `GenClass.init()` loads, permanently**. Validate before publishing.
@@ -22,7 +23,7 @@
 
 | path | role in a release |
 |---|---|
-| `packages/runtime/package.json` | `@genclass/runtime`, `version` `0.1.0-alpha.0` on `mvp-v2`. `files`: `dist`, `bin`, `README.md`, `LICENSE`. No `prepublishOnly`, no `publishConfig`, no publish script |
+| `packages/runtime/package.json` | `@genclass/runtime`, `version` `0.1.0-alpha.1` on `mvp-v2` (bumped in release commit 806a296, now the head of `mvp-v2`). `files`: `dist`, `bin`, `README.md`, `LICENSE`. No `prepublishOnly`, no `publishConfig`, no publish script |
 | `package-lock.json` (root) | committed (b435acb). Records the workspace versions, so a version bump changes it. CI's `npm ci` fails if it is out of sync |
 | `packages/runtime/README.md` | the npm page. Packed into the tarball, so it must be correct **before** packing |
 | `packages/runtime/LICENSE` | Apache-2.0. Packed |

@@ -18,7 +18,7 @@ Workstream names (lead, CORE, MODEL, UI, SIM, REAL, DEMOS, TRAIN, REVIEW) and th
 
 | dir | tracked files | what | owner / workstream | doc | relevance |
 |---|---|---|---|---|---|
-| `packages/runtime/` | 154 | `@genclass/runtime` 0.1.0-alpha.0, the npm library: `src/` (61), `test/` (84), `bin/genclass-runtime.mjs` CLI (mode 100755 since b435acb), package and build configs, STATUS/UI-NEEDS | CORE. MODEL owns `src/model/**` and `bin/`. UI owns `src/devtools/**` and `src/adapters/**`. REVIEW owns `test/review-*.test.ts`. Lead (us, on `mvp-v2`): `test/default-mode.test.ts` | the 8 docs under `runtime/`; start with [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md) | core |
+| `packages/runtime/` | 154 | `@genclass/runtime` 0.1.0-alpha.1 (since release commit 806a296), the npm library: `src/` (61), `test/` (84), `bin/genclass-runtime.mjs` CLI (mode 100755 since b435acb), package and build configs, STATUS/UI-NEEDS | CORE. MODEL owns `src/model/**` and `bin/`. UI owns `src/devtools/**` and `src/adapters/**`. REVIEW owns `test/review-*.test.ts`. Lead (us, on `mvp-v2`): `test/default-mode.test.ts` | the 8 docs under `runtime/`; start with [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md) | core |
 | `packages/runtime-model/` | 1 | `MODEL_CARD.md` only. Planned npm package `@genclass/runtime-model` that `DEFAULT_MODEL_BASE_URL` points at. It has no `package.json` and its `files/` directory is gitignored, so it is not a workspace and is unpublished (npm 404). No situation-v2 model exists yet | lead | [runtime/model-host.md](runtime/model-host.md) | core (planned) |
 | `sim/` | 106 | `@genclass/sim` (private): training-data simulator that drives the real runtime and writes CONTRACT-D rows. Now 46 feature combinators, 115 domains, S1/S2 labels, gold / unlabeled / on-policy row modes, Azure cluster scripts, separability analysis | SIM | [sim.md](sim.md) | supporting |
 | `realapps/` | 230 | `@genclass/realapps` (private, **not** a root workspace): 91 real web apps (77 written + 14 open-source Conduit front-ends) run in headless Chromium with the real runtime; counterfactual labels like the sim; the "never worse" interference and determinism sweeps | REAL | [realapps.md](realapps.md) | supporting |
@@ -73,7 +73,7 @@ Doc: [runtime/build-test-release.md](runtime/build-test-release.md), [runtime/pu
 
 ```text
 packages/runtime/
-  package.json              @genclass/runtime 0.1.0-alpha.0; exports . ./react ./redux ./zustand ./devtools ./worker; bin genclass-runtime;
+  package.json              @genclass/runtime 0.1.0-alpha.1 (806a296); exports . ./react ./redux ./zustand ./devtools ./worker; bin genclass-runtime;
                             dep onnxruntime-web ^1.30.0; optional peers react/redux/zustand; scripts build typecheck test test:browser
   tsconfig.json             typecheck project (include src only: tests are never type-checked)
   tsup.config.ts            6 ESM entries (index, adapters/react|redux|zustand, devtools/index, worker) -> dist/; .d.ts for all but worker
@@ -1000,7 +1000,7 @@ Ignore rules live in `.gitignore` (root), `demos/.gitignore`, `extension/.gitign
 | `test-results/` | root, `demos/.gitignore`, `extension/.gitignore` | Playwright (`packages/runtime/test-results/{browser,ui}`), model benchmarks (`packages/runtime/test-results/model-bench/`) | — |
 | `playwright-report/` | root, `demos/.gitignore`, `extension/.gitignore` | Playwright HTML reporter | — |
 | `demos/e2e/.out/` | `demos/.gitignore` | `demos/e2e/eval.ts` (`partial.json`, `traces*.json` with `--trace`) | input to `demos/e2e/trace-report.ts` |
-| `*.tgz` | root | `npm pack` in `packages/runtime/test/smoke/smoke.sh` (left in `packages/runtime/`) | the alpha.1 patch tarball would also land here |
+| `*.tgz` | root | `npm pack` in `packages/runtime/test/smoke/smoke.sh` (left in `packages/runtime/`) | a release tarball (`genclass-runtime-<version>.tgz`) also lands here |
 | `.publish/` | root | no tracked script; added with the alpha publish (59c213f) | purpose not recorded |
 | `.vite/` | root | Vite cache directory (no config in the repo sets `cacheDir`; Vite's default is `node_modules/.vite`) | — |
 | `data/` (any depth) | root | not produced in this repo. Matches the missing `jev_local/data/` (data generators) and `demos/src/server/data/cities.ts`; Azure hosts keep training data under `$G/data/` | the rule hides source files that the code imports |
@@ -1057,7 +1057,7 @@ Other source files over 25 KB that are better read by symbol than end to end: `p
 
 Doc-vs-code drift you will meet while navigating; the subsystem docs have the details.
 
-- **Default mode**: code, `docs/runtime/API.md`, CONTRACT §13 and the devtools say `observe`; `README.md` and `packages/runtime/README.md` agree; only `HANDOFF.md` (and the published alpha.0) still say guard is the default.
+- **Default mode**: code, `docs/runtime/API.md`, CONTRACT §13 and the devtools say `observe`; `README.md` and `packages/runtime/README.md` agree; only `HANDOFF.md` (and the older published alpha.0) still say guard is the default.
 - **`OPEN_TASKS.md`** now describes the v2 pipeline (items 1-14); see also [HANDOFF.md](../../HANDOFF.md) and [training.md](training.md).
 - **App counts**: `realapps/README.md` and `HANDOFF.md` say 66 apps; the tree has 91 (25 added after the sweeps were run). The never-worse result 0/396 covers the 66 ([realapps.md](realapps.md)).
 - **Sim budget**: `sim/src/world/scenario.ts` still samples situation budgets 3,200 / 2,000 / 1,000 (40/30/30), while the v2 runtime's full budget is 2,400 ([sim.md](sim.md)).

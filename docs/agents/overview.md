@@ -42,7 +42,7 @@ Path convention: every code pointer is `path/from/repo/root` -> `symbol`. Runtim
 - Fail open everywhere: no model, a loading or failed model, a timeout or any error means the passive action runs;
   the runtime holds only when a non-passive action is permitted **and** the model is expected to answer within the
   hold budget (at most 800 ms with the default `"auto"`).
-- **Where it stands:** `@genclass/runtime@0.1.0-alpha.0` (situation-v1 code, default `guard`) is on npm; no model is
+- **Where it stands:** `@genclass/runtime@0.1.0-alpha.1` (situation-v2, NaN fix, default `observe`) is `latest` on npm; no model is
   published (`@genclass/runtime-model` is a 404), so any install only observes. No situation-v2 model exists. The
   colleague is generating v2 data on Azure (SIM ~10M gold + ~50M unlabeled rows on 20 nodes; REAL ~0.5M real-browser
   gold rows on 3 nodes); next comes the 150M teacher, distillation into R17/R32, DAgger, EVAL, the model package, a
@@ -123,7 +123,7 @@ Adoption path: `observe` (default) -> `guard` -> `heal`.
 | Decide | `packages/runtime/src/decide/*`, controllers in `runtime.ts` | queue (stale drop, deadlines), hold budget, policy gate, actions, reports, explain, undo | frozen at `situation-v2` | [decide-policy-actions](runtime/decide-policy-actions.md) |
 | Model host | `packages/runtime/src/model/*`, `packages/runtime/bin/genclass-runtime.mjs` | worker, loader (Cache Storage + sha256), WebGPU/WASM plans, Python-parity packer, calibration, CLI | unchanged since `situation-v1`; no model to load | [model-host](runtime/model-host.md) |
 | Devtools | `packages/runtime/src/devtools/*` | shadow-DOM overlay on the public API | mode labels "Observe (default)", "Guard (opt-in)", "Heal (experimental)" | [devtools](runtime/devtools.md) |
-| Build, test, release | `packages/runtime/{package.json,tsup.config.ts,test/**}`, root `package-lock.json`, `.github/workflows/ci.yml` | tsup ESM build (6 entries), vitest (351 tests), Playwright, smoke test, CI | alpha.0 published; lockfile and CI committed (CI not yet run on GitHub: `mvp-v2` is not pushed) | [build-test-release](runtime/build-test-release.md) |
+| Build, test, release | `packages/runtime/{package.json,tsup.config.ts,test/**}`, root `package-lock.json`, `.github/workflows/ci.yml` | tsup ESM build (6 entries), vitest (351 tests), Playwright, smoke test, CI | alpha.1 published (`latest`; alpha.0 before it); lockfile and CI committed (CI not yet run on GitHub: `mvp-v2` is not pushed) | [build-test-release](runtime/build-test-release.md) |
 | Model I/O contract | runtime `situation/*` + `model/*`, `sim/`, `realapps/`, `training/` | situation text -> packed request -> heads -> calibrated answers; row kinds and labels | format `situation-v2` | [model-io-contract](model-io-contract.md) |
 | Model package | `packages/runtime-model/` | planned home of the published model directory | only `MODEL_CARD.md`; `@genclass/runtime-model` is a 404 on npm | [model-host](runtime/model-host.md), [build-test-release](runtime/build-test-release.md) |
 | Sim | `sim/` (`@genclass/sim`) | training-data generator driving the real runtime in a virtual world: 46 feature combinators × 115 domains; gold, unlabeled and on-policy rows; S1/S2 labels | v1 data on disk (phase A 600,676, phase B 1,415,344 rows); v2 runs in progress on Azure | [sim](sim.md) |
@@ -409,8 +409,8 @@ guard 0.9, heal 0.8. Default: `packages/runtime/src/runtime.ts` -> `RuntimeImpl`
 Also: `policy.allow` / `policy.deny` narrow the permitted set; `policy.holdWrites: true` re-enables held store writes
 (opt-in, never reorders a store's writes); `pause()` stops gating and triggers while tracing continues; `setMode`
 applies to the next gate. Passive actions per trigger: mutation `apply`, request `send`, delivery `deliver`, failure
-`deliver`, stall `wait`, inconsistency/transition/error `ignore`. The published alpha.0 and HANDOFF.md still say
-`guard` is the default; the unit-test harness passes `mode: "guard"`. Details:
+`deliver`, stall `wait`, inconsistency/transition/error `ignore`. The older published alpha.0 and HANDOFF.md still say
+`guard` is the default (alpha.1 says `observe`); the unit-test harness passes `mode: "guard"`. Details:
 [public-api-and-lifecycle](runtime/public-api-and-lifecycle.md), [decide-policy-actions](runtime/decide-policy-actions.md).
 
 ## 7. With no model: fail open, observe only
@@ -463,11 +463,11 @@ update the relevant STATUS/NEEDS entry when you change behaviour they describe.
 
 | item | state |
 |---|---|
-| Branches | `mvp-v2` = origin/runtime 74f17c0 + our three commits (not pushed). The local branch `mvp` (based on 654d822, situation-v1) is superseded. Tags: `situation-v1` (1a77558), `situation-v2` (6e5e86e, current format), `v0.1.0-alpha.0` (654d822). |
+| Branches | `mvp-v2` = origin/runtime 74f17c0 + our six commits, head = release commit 806a296 (not pushed). The local branch `mvp` (based on 654d822, situation-v1) is superseded. Tags: `situation-v1` (1a77558), `situation-v2` (6e5e86e, current format), `v0.1.0-alpha.0` (654d822), `v0.1.0-alpha.1` (806a296, local only). |
 | Runtime | batches 4 and 5 done: decisions at the network boundary, no store holds by default, EventSource observer, F1–F9 facts, leaf-based redaction, 2,400-char full budget; default mode `observe` (ours). |
 | Tests | lead's run on `mvp-v2` (macOS, Node v25.6.0): `tsc` clean, `tsup` OK, vitest 351 tests = 337 passed + 14 model-parity skips (333 + 14 in the main run, counting the uncommitted `atoms.test.ts` test, 4 in `review-perf.test.ts` alone; it flaked once at 5.5 ms vs its 2 ms bound under parallel load). sim: `tsc` clean, `SIM_RUNTIME=real npx vitest run` 19 passed in 5 files. Not run: Playwright, `smoke.sh`, realapps, demos eval, Python tests, training. |
 | CI | `.github/workflows/ci.yml` (Node 22, `npm ci`, typecheck, build, unit tests, then `review-perf` with `--retry=2`); its steps pass in a fresh clone; it has not run on GitHub yet. |
-| npm | `@genclass/runtime@0.1.0-alpha.0` is `latest` (situation-v1 code, default `guard`, no model). Pending with the user's 2FA: `0.1.0-alpha.1` (NaN fix, `OPEN_TASKS.md` "Needs the user"). `@genclass/runtime-model` is a 404. Release procedure: [RELEASE.md](../../RELEASE.md). |
+| npm | `@genclass/runtime@0.1.0-alpha.1` is `latest` (published 2026-10-08 from 806a296; NaN fix, situation-v2, default `observe`, no model). The older `0.1.0-alpha.0` is situation-v1 code with default `guard`. `@genclass/runtime-model` is a 404. Release procedure: [RELEASE.md](../../RELEASE.md). |
 | Model | no situation-v2 model. R17-final1 (situation-v1) is the baseline only (section 5.3). |
 | Data | SIM v2 (≥ 10M gold + ≥ 50M unlabeled) on c02–c09 and c12–c23; REAL v2 (≥ 500k gold) on c01, c10, c11; the colleague is operating the cluster (a read-only portal look at 04:14 UTC showed c01–c23 and `vm-jev-train` running, `vm-jev-data` deallocated). Nobody on our side touches Azure. |
 | Never worse | realapps sweep, v2 runtime, all-passive model: 0/396 clean runs changed, 3/198 with chaos (request-time holds shifting chaos draws; open), determinism 198/198, conduit 0/30 (STATUS.md). These cover the 66 apps at the time, not the 25 added since, and compare final visible text and server content only ([realapps](realapps.md)). |

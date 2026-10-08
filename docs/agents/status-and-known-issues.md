@@ -19,15 +19,17 @@ paths (`runtime.ts`, `types.ts`, `util.ts`, `state/hub.ts`, `situation/content.t
 `model/host.ts`, …) are relative to `packages/runtime/src/`. Every other path is from the repo root.
 
 - **Branches.** `mvp-v2` (this doc) = `origin/runtime` 74f17c0 (the colleague Mehar's latest: runtime batches 4 and
-  5, situation-v2, `realapps/`, v2 curriculum port, `HANDOFF.md`, `docs/runtime/RESULTS.md`) plus three local
+  5, situation-v2, `realapps/`, v2 curriculum port, `HANDOFF.md`, `docs/runtime/RESULTS.md`) plus six local
   commits: 7dab2b3 (AGENTS.md, CLAUDE.md, `docs/agents/**`), f3636b2 (default mode `observe`), b435acb (CI workflow,
-  committed root `package-lock.json`, `bin/genclass-runtime.mjs` as 100755). `mvp-v2` is **not pushed**
-  (`git branch -vv`: "ahead 3" of `origin/runtime`). The local branch `mvp` (b15415b, based on 654d822 =
+  committed root `package-lock.json`, `bin/genclass-runtime.mjs` as 100755), then b561244 and 6ac4737 (docs) and
+  806a296 (release commit for `0.1.0-alpha.1`, the head). `mvp-v2` is **not pushed**
+  (`git rev-list --count origin/runtime..mvp-v2` = 6). The local branch `mvp` (b15415b, based on 654d822 =
   situation-v1) is superseded. `main` and `origin/main` are still 654d822.
-- **Shipped on npm:** `@genclass/runtime@0.1.0-alpha.0` (`latest`, git tag `v0.1.0-alpha.0` = 654d822). It predates
+- **Shipped on npm:** `@genclass/runtime@0.1.0-alpha.1` (`latest`, 2026-10-08, release commit 806a296, local tag
+  `v0.1.0-alpha.1` not pushed): NaN fix, situation-v2, default `observe`, no model. Before it,
+  `@genclass/runtime@0.1.0-alpha.0` (git tag `v0.1.0-alpha.0` = 654d822). That one predates
   situation-v2, defaults to `guard`, has no model, and predates the NaN fix (ad24804: `util.ts` -> `describe`
-  recursed forever on a `NaN` store value). A `0.1.0-alpha.1` patch waits on the owner's 2FA (`OPEN_TASKS.md`
-  "Needs the user"). `@genclass/runtime-model` is **not published** (404).
+  recursed forever on a `NaN` store value). `@genclass/runtime-model` is **not published** (404).
 - **Runtime on `mvp-v2`:** situation-v2, decisions at the network boundary (`delivery` trigger,
   `RuntimeImpl.runDelivery`), no store-write holds by default (`policy.holdWrites` false), default mode `observe`
   (`runtime.ts` -> `o.mode ?? "observe"`). Verified when these docs were written, on 2026-10-08 (macOS, Node v25.6.0): `tsc` clean,
@@ -174,16 +176,17 @@ imports from `sim/src`, which is allowed).
 
 ### Version markers
 
-| marker | value at b435acb | meaning |
+| marker | value (2026-10-08, `mvp-v2` at 806a296) | meaning |
 |---|---|---|
-| `mvp-v2` | b435acb, not pushed | this branch |
+| `mvp-v2` | 806a296 (release commit for `0.1.0-alpha.1`, fast-forwarded), not pushed | this branch |
 | `origin/runtime`, local `runtime` | 74f17c0 | Mehar's line; HANDOFF says "push to `origin runtime` as you go" |
 | `main`, `origin/main` | 654d822 | not updated since the alpha |
 | `mvp` (local) | b15415b on 654d822 | superseded |
 | tag `situation-v1` | → 1a77558 | v1 format; superseded |
 | tag `situation-v2` | annotated tag object 75df720 → commit 6e5e86e | **current frozen training format** |
-| tag `v0.1.0-alpha.0` | → 654d822 | the published alpha |
-| `packages/runtime/package.json` `version` | `0.1.0-alpha.0` | not bumped |
+| tag `v0.1.0-alpha.0` | → 654d822 | the first published alpha |
+| tag `v0.1.0-alpha.1` | → 806a296 | published alpha.1; local only, not pushed |
+| `packages/runtime/package.json` `version` | `0.1.0-alpha.1` on `mvp-v2` | bumped in release commit 806a296 (now the head of `mvp-v2`) |
 | `@genclass/runtime-model@0.1.0` | not published (404); `packages/runtime-model/` tracks only `MODEL_CARD.md` | default `model.baseUrl` |
 | GitHub release `runtime-model-v0.1.0` | no such tag in the repo; the CLI's default `--from` 404s (per the lead) | |
 | v0.1 GenClass model | `https://github.com/MeharPro/GenClass/releases/download/v0.1.0/` | general classifier, **not** a runtime model; used by demos and model tests |
@@ -194,11 +197,11 @@ imports from `sim/src`, which is allowed).
 | item | state | owner | evidence |
 |---|---|---|---|
 | Runtime batches 4 and 5 (situation-v2) | done, frozen | CORE | fcd1e68, 6e5e86e; STATUS; `test/delivery.test.ts`, `no-reorder.test.ts`, `content.test.ts` |
-| Default mode `observe` | done on `mvp-v2` only (not on `origin/runtime`, not on npm) | us (f3636b2) | `runtime.ts` -> `RuntimeImpl` constructor; `test/default-mode.test.ts`; CONTRACT §13 |
+| Default mode `observe` | done on `mvp-v2` and in npm `0.1.0-alpha.1` (not on `origin/runtime`, not in `0.1.0-alpha.0`) | us (f3636b2) | `runtime.ts` -> `RuntimeImpl` constructor; `test/default-mode.test.ts`; CONTRACT §13 |
 | CI | workflow committed; never run on GitHub | us (b435acb) | `.github/workflows/ci.yml` |
-| NaN fix | in code since ad24804; **not on npm** | CORE | `util.ts` -> `describe`; `test/nan.test.ts`; `sim/NEEDS.md` g still says OPEN |
+| NaN fix | in code since ad24804; on npm since `0.1.0-alpha.1` | CORE | `util.ts` -> `describe`; `test/nan.test.ts`; `sim/NEEDS.md` g still says OPEN |
 | npm `0.1.0-alpha.0` | published (guard default, no model, v1) | lead | tag `v0.1.0-alpha.0` |
-| npm `0.1.0-alpha.1` (NaN fix) | waiting on the owner's 2FA | user | OPEN_TASKS "Needs the user" |
+| npm `0.1.0-alpha.1` (NaN fix, situation-v2, observe default) | published 2026-10-08, `latest` | karanvir1729 | OPEN_TASKS "Done" |
 | SIM v1 phase A / B | done (600,676 / 1,415,344 rows); superseded | SIM | training/NEEDS "SIM → TRAIN: scaled data" |
 | Final round 1 (situation-v1) | done: R17 81.9% action / 90.5% diagnosis, guard FIR 0.05%, heal FIR 0.24%, ECE 0.009; guard recall on clear stale/duplicate 7.7% | TRAIN | `training/EVAL.md`, RESULTS §1 |
 | T1 runs and v1 teacher `t150-g1` | stopped at the v2 freeze, no results | TRAIN | `training/LOG.md` 01:13–03:35 |
@@ -355,7 +358,7 @@ model only for salient situations, in a worker. (3) Observability: one console l
 
 - **Code wins over every doc.** CONTRACT.md does not describe batch 4/5 (no `delivery` trigger); the deltas live in
   STATUS "Contract deltas". HANDOFF still says guard is the default.
-- **Two defaults in the wild.** `mvp-v2` defaults to `observe`; `origin/runtime` and npm alpha.0 default to `guard`.
+- **Two defaults in the wild.** `mvp-v2` and npm alpha.1 (`latest`) default to `observe`; `origin/runtime` and npm alpha.0 default to `guard`.
   The tests' `setup()` defaults to `guard` on purpose.
 - **"Observe never changes execution" is not quite true yet**: a salient delivery can wait up to 100 ms for its body
   and XHR completion listeners run outside the original dispatch (finding DL-3).
@@ -446,7 +449,7 @@ tests at all.
 | REAL (Mehar) | v2 production `v2b1`–`v2b3` (≥ 500k gold), copy to `train:/data/real-out/` with the eval set | running; see RA-* before using the data |
 | TRAIN | import v2 SIM/REAL data (`import_final.sh` cannot read the v2 gz-shard layout, ST-8), T150 teacher on gold (PLAN P1), teacher eval as the separation gate (P2), soft-label unlabeled rows (P3), distil R17/R32 (P4), DAgger ×3 (P5), EVAL per trigger/budget/held-out set, calibration, export, parity | not started; several scripts untested (ST-2 to ST-7) |
 | lead / user | `@genclass/runtime-model@0.1.0` + GitHub release `runtime-model-v0.1.0`; rerun demos; `@genclass/runtime@0.1.0` without the alpha tag | after EVAL |
-| user | publish `0.1.0-alpha.1` (2FA; npm 11 needs `--tag` for a prerelease per build-test-release.md). Decide which tree it is cut from: the NaN fix alone, or `mvp-v2` with situation-v2 and the observe default | waiting |
+| user | publish `0.1.0-alpha.1` (cut from `mvp-v2`, 806a296) | done 2026-10-08 (`latest`) |
 | user | push `mvp-v2` (first CI run), merge into `runtime`/`main`; public demo hosting | waiting |
 | Mehar / user | re-enable the Azure auto-shutdown schedules when the push ends; deallocate idle nodes | open |
 | CORE | review findings DL-1…DL-12 (behaviour) and SIT-1, SIT-3, SIT-8, SIT-10, SIT-11 (model-visible text) | open; see [How to change it safely](#how-to-change-it-safely) |
@@ -462,7 +465,7 @@ tests at all.
 
 ### Decisions waiting on the user / repo owner
 
-1. `0.1.0-alpha.1`: publish (2FA) and from which tree.
+1. ~~`0.1.0-alpha.1`: publish (2FA) and from which tree.~~ Done 2026-10-08 from `mvp-v2` (806a296), dist-tag `latest`.
 2. Push `mvp-v2`, merge into `runtime` and `main` (`main` is still 654d822; the old "looks merged" note no longer holds).
 3. Public demo hosting (GitHub Pages).
 4. Which review fixes land before vs after the running v2 generation (SIT-2, ST-1 and DL-2 affect data being produced

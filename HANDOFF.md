@@ -26,7 +26,7 @@ generic action. It has no hardcoded bug rules.
 
 | piece | state |
 |---|---|
-| npm | `@genclass/runtime@0.1.0-alpha.0` published (org `genclass`, owner meharpro). The alpha takes no actions: it has no published model yet. Each publish needs the user's 2FA, so give them the exact `npm publish <tgz> --access public` command. |
+| npm | `@genclass/runtime@0.1.0-alpha.1` is `latest` (published 2026-10-08 from 806a296; NaN fix, situation-v2, default `observe`); `0.1.0-alpha.0` is the older v1 build (org `genclass`, owner meharpro). The alphas take no actions: there is no published model yet. Each publish needs the user's 2FA, so give them the exact `npm publish <tgz> --access public` command. |
 | git | Branch `runtime` (also fast-forwarded into `main` once). Tags: `situation-v1` (old format), `situation-v2` (**current frozen training format**, commit 6e5e86e), `v0.1.0-alpha.0` (GitHub pre-release). |
 | runtime | Batch 5 done; 346 tests pass. Decisions happen at the network boundary (`delivery` trigger). Store writes are never held by default. The never-worse sweep over 66 real apps with an always-passive model changed 0/396 clean runs. |
 | model | Round 1 (v1 data): R17 9.6 MB, guard false-intervention rate (FIR) 0.05%, recall on clear cases only ~8%. The cause is analysed in `sim/SEPARABILITY.md`; the fixes are in v2. **No v2 model trained yet.** |

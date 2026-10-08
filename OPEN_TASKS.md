@@ -9,6 +9,11 @@ The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). No sit
 
 ## Done
 
+- **Published `@genclass/runtime@0.1.0-alpha.1` to npm** (published 2026-10-08 (~05:33 UTC) by `karanvir1729` under dist-tag `latest`, from release commit 806a296 (local annotated tag `v0.1.0-alpha.1`, not pushed); 26 files, 486.8 kB, shasum 9e3e82bcf752d6eb34db0620d072e6a913508dff). It ships the NaN fix (ad24804), the
+  situation-v2 runtime (decisions at the network boundary via the `delivery` trigger; store writes not held by default),
+  EventSource observed, synthetic DOM events ignored unless `observe: { untrustedEvents: true }`, default mode `observe`
+  (guard opt-in, heal experimental) and refreshed docs. No model is published, so it only observes. The first attempt
+  got a 403 because the publishing account had no 2FA; with 2FA enabled it went through browser-based 2FA approval.
 - **Published `@genclass/runtime@0.1.0-alpha.0` to npm** (2026-10-08, `genclass` org, owner meharpro). The
   tarball was smoke-tested in a fresh Vite app in headless Chromium (`packages/runtime/test/smoke/smoke.sh`).
   The alpha takes no actions: `@genclass/runtime-model` is not published, so the default model URL returns 404.
@@ -142,14 +147,13 @@ package → demos rerun → runtime release.
 
 ## Needs the user
 
-- **2FA publishes:** patch release `0.1.0-alpha.1` (fixes a crash when app state contains `NaN`, ad24804, found
-  after alpha.0 was published), later `@genclass/runtime-model@0.1.0` and `@genclass/runtime@0.1.0`. Agents
-  prepare the tarball and the exact command per [RELEASE.md](RELEASE.md) (alpha.1: `npm publish
-  genclass-runtime-0.1.0-alpha.1.tgz --access public --tag alpha`); nothing is packed yet.
+- **2FA publishes:** `@genclass/runtime-model@0.1.0` and `@genclass/runtime@0.1.0` (`0.1.0-alpha.1` is done). Agents
+  prepare the tarball and the exact command per [RELEASE.md](RELEASE.md).
+- **Push** `mvp-v2` (head = release commit 806a296) and tag `v0.1.0-alpha.1` to origin (needs an account with write access).
 - **Public demo hosting** (GitHub Pages on this repo): OK to publish?
 - **Merging into `main`**: `runtime` and/or `mvp-v2` when ready.
-- **Default mode decision:** `mvp-v2` defaults to `observe` (f3636b2); HANDOFF.md and the published alpha
-  say `guard`. Pick one before 0.1.0.
+- **Default mode decision:** `mvp-v2` defaults to `observe` (f3636b2); HANDOFF.md and the older published
+  `0.1.0-alpha.0` say `guard` (`0.1.0-alpha.1`, now `latest`, defaults to `observe`). Pick one before 0.1.0.
 - **Re-enable the Azure auto-shutdown schedules when the training push ends** (disabled with the user's OK at
   00:35 UTC; command in HANDOFF.md). Spend so far about $400 (RESULTS.md §7).
 

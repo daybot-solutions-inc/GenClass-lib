@@ -258,7 +258,7 @@ A change is done when all of these hold. Say explicitly in your final report whi
 
 | default | value | defined in |
 |---|---|---|
-| `mode` | `"observe"` (f3636b2; `"guard"` before, and still in `0.1.0-alpha.0` on npm) | `packages/runtime/src/runtime.ts` -> `RuntimeImpl` constructor (`o.mode ?? "observe"`) |
+| `mode` | `"observe"` (f3636b2; `"guard"` before, and still in the older `0.1.0-alpha.0` on npm) | `packages/runtime/src/runtime.ts` -> `RuntimeImpl` constructor (`o.mode ?? "observe"`) |
 | `settleMs`, `historySize` | 60, 500 | same constructor |
 | `policy.thresholds` report / guard / heal | 0.6 / 0.9 / 0.8 | `packages/runtime/src/decide/policy.ts` -> `policyConfig` |
 | `policy.holdBudgetMs` | `"auto"`: clamp(round(1.5 × median latency), `HOLD_MIN_MS` 150, `HOLD_MAX_MS` 800); `HOLD_FALLBACK_MS` 300 with no data | `policyConfig`, `holdBudget` |
@@ -591,7 +591,7 @@ Sim typecheck and `SIM_RUNTIME=real npx vitest run` are light local checks (buil
 
 **Steps.**
 1. **Decide with the user which release** (RELEASE.md A0, B0):
-   - **Part A, `0.1.0-alpha.1` (optional, now, no model):** the NaN fix plus the situation-v2 runtime and the `observe` default, published under dist-tag `alpha` (moving `latest` afterwards is the user's choice). Without a model it only observes, so the open review findings go into the release notes, not the blocker list.
+   - **Part A, `0.1.0-alpha.1` (done 2026-10-08, no model):** the NaN fix plus the situation-v2 runtime and the `observe` default, published under dist-tag `latest` from release commit 806a296 (the plan was dist-tag `alpha`). Without a model it only observes, so the open review findings go into the release notes, not the blocker list.
    - **Part B (after a situation-v2 model exists):** `@genclass/runtime-model@0.1.0` and its GitHub release first (recipe 20), then the demos eval (recipe 22), then `@genclass/runtime@0.1.0-beta.0` or `0.1.0`. Part B treats the open findings as blockers.
    - Which branch and commit: `mvp-v2` is unpushed; the colleague works on `origin/runtime`. The release commit must reach `origin` (the user decides how).
 2. **Fix what the tarball ships** (RELEASE.md A1): `packages/runtime/README.md` is the npm page: check the README status line and version before packing, and commit any fix.

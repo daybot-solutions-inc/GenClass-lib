@@ -29,8 +29,9 @@ Read next: **[HANDOFF.md](HANDOFF.md)** (the team's live handoff, kept current b
 ## 2. Status in brief (2026-10-08)
 
 - **Branches.** `mvp-v2` (here) = `origin/runtime` 74f17c0 (Mehar's latest: runtime batches 4 and 5, situation-v2, `realapps/`,
-  v2 curriculum port, `HANDOFF.md`, `docs/runtime/RESULTS.md`) plus three local commits: 7dab2b3 (these agent docs),
-  f3636b2 (default mode `observe`), b435acb (CI, committed root lockfile, CLI mode 100755). Not pushed. The local
+  v2 curriculum port, `HANDOFF.md`, `docs/runtime/RESULTS.md`) plus six local commits: 7dab2b3 (these agent docs),
+  f3636b2 (default mode `observe`), b435acb (CI, committed root lockfile, CLI mode 100755), b561244 and 6ac4737 (docs),
+  806a296 (release commit, `packages/runtime` version `0.1.0-alpha.1`; the head). Not pushed. The local
   branch `mvp` is based on situation-v1 (654d822) and is superseded.
 - **Runtime:** situation-v2, frozen at tag `situation-v2` (6e5e86e). Since that tag, `packages/runtime/src` changed only in
   f3636b2 (`runtime.ts`, `types.ts`, `devtools/index.ts`); `git diff situation-v2 HEAD -- packages/runtime/src/situation` is empty.
@@ -39,13 +40,13 @@ Read next: **[HANDOFF.md](HANDOFF.md)** (the team's live handoff, kept current b
   DAgger via SIM `--on-policy` -> EVAL -> `@genclass/runtime-model@0.1.0` -> demos rerun -> `@genclass/runtime@0.1.0`.
 - **Data is being generated now on Azure by Mehar** (per `training/NEEDS.md`): SIM situation-v2 gold and unlabeled rows on
   20 nodes, REAL real-browser gold rows on 3 nodes. Nobody on our side touches Azure.
-- **npm:** `@genclass/runtime@0.1.0-alpha.0` is `latest`. It predates situation-v2, defaults to `guard`, and has no model.
+- **npm:** `@genclass/runtime@0.1.0-alpha.1` is `latest` (published 2026-10-08 from 806a296: NaN fix, situation-v2,
+  default `observe`). `0.1.0-alpha.0` predates situation-v2 and defaults to `guard`. Neither has a model.
   `@genclass/runtime-model` is not published, so `packages/runtime/src/model/host.ts` -> `DEFAULT_MODEL_BASE_URL` and the
   CLI's `DEFAULT_FROM` 404: a default `GenClass.init()` ends with model status `error` and logs
-  `[GenClass] Model unavailable (...); observing only.` A `0.1.0-alpha.1` patch (NaN fix) waits on the owner's 2FA
-  (`OPEN_TASKS.md` "Needs the user"). Release plan: [RELEASE.md](RELEASE.md) (see also
+  `[GenClass] Model unavailable (...); observing only.` Release plan: [RELEASE.md](RELEASE.md) (see also
   [build-test-release](docs/agents/runtime/build-test-release.md) "Cut a release").
-- **Stale human docs:** `HANDOFF.md` ('Modes: observe → guard (default; ...)') and the published `0.1.0-alpha.0` still
+- **Stale human docs:** `HANDOFF.md` ('Modes: observe → guard (default; ...)') and the older published `0.1.0-alpha.0` still
   say guard is the default; both READMEs now say observe. Test counts in STATUS/HANDOFF are older. Drift tables: [status-and-known-issues](docs/agents/status-and-known-issues.md).
 - **Open defects found by review at b435acb** (details and fixes in the subsystem docs' "Drift and open issues"):
   the F2 content fact can print the raw text of redacted fields (`situation/content.ts` -> `contentFacts`); a delivery
