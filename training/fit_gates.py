@@ -173,7 +173,7 @@ def load(spec: str, cal: dict, v22: bool = True) -> list[dict]:
                 continue
             mass = float(sum(p[idx[a]] for a in A))
             cand = max(A, key=lambda a: p[idx[a]])
-            ghat = TAU_GAIN * float(np.log(max(p[idx[cand]], 1e-12) / max(p[idx[passive]], 1e-12)))
+            ghat = TAU_GAIN * float(np.log(max(p[idx[cand]], 1e-6) / max(p[idx[passive]], 1e-6)))  # runtime: p clamped ≥ 1e-6
             ctier = tiers.get(cand, "heal")
             harm = gain = None
             oracle = 0.0
@@ -220,6 +220,8 @@ class Table:
     def fired(self, th: dict, mode: str) -> np.ndarray:
         """th: {tier: {"default": t, "byTrigger": {...}}}"""
         t = np.array([th[ct]["byTrigger"].get(tr, th[ct]["default"]) for ct, tr in zip(self.ctier, self.trig)])
+        if KIND == "gain":  # runtime (CORE batch 10): fire iff tauGain·ln(p(a)/p(passive)) > margin
+            return self.diag & (self.mass > t)
         return self.diag & (self.mass >= t - 1e-12)
 
 

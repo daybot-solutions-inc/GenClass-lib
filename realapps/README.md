@@ -330,6 +330,13 @@ Runtime tag `situation-v2` (6e5e86e), 96 apps (128 for the top-up). Sweeps befor
 | `v2c1..4` | 96 | 4 × 20k | 511,333 | 439,006 | `train:/data/real-out/v2c{1..4}` |
 | `v2d1..2` (top-up) | 32 (wave 4) | 2 × 8k | 105,104 | 84,096 | `train:/data/real-out/v2d{1,2}` |
 | **total v2** | 128 | 96k | **616,437** | 523,102 | |
+| `v23e1..2` (`situation-v2.3`) | 62 (waves 4–5) | 2 × 10k | 142,723 | 101,434 | `train:/data/real-out/v23e{1,2}` |
+| `v23e3..4` (`situation-v2.3`) | 96 (earlier) | 2 × 6k | 78,463 | 57,200 | `train:/data/real-out/v23e{3,4}` |
+| `v23-eval` | 158 | — | 10,402 eval rows | — | `train:/data/real-out/v23-eval/real_eval.jsonl` |
+
+On `situation-v2.3` (CORE batch 8, relation-learner precision) the same 96 apps produce far fewer inconsistency
+triggers: 2.6% of decision rows instead of 18.3% (on clean runs 3.4% instead of 35%), and 40% of them are genuine
+(`inconsistent`) instead of 10%.
 | `v2-eval` | 96 | — | 16,600 eval rows | — | `train:/data/real-out/v2-eval/real_eval.jsonl` |
 
 Throughput on F80 nodes: ≈ 7.5–8.5 trajectories/s and ≈ 46 gold + 40 unlabeled rows/s per node (70 workers), i.e.

@@ -228,10 +228,21 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     Lit, every SWR app (`TEST_LIBS`), apps `swr-status`, `alpine-tasks`, `xhr-autocomplete`, `oss-rtk-conduit`, and
     `TEST_PATTERNS`. Next: a top-up for waves 4–5 (62 apps) on `situation-v2.3` once tagged
     (`realapps/scripts/topup.sh`), landing in `train:/data/real-out/v23e<n>/`. REAL holds no nodes now.
-18. **REAL v2.3 top-up (`situation-v2.3`, b107f20), 2026-10-08.** Started on c01/c10/c11/data at 08:30 UTC; the
-    generators were killed ~08:40–08:45 when SIM's on-policy round b took those nodes (REAL's waiter stopped; REAL does
-    not touch SIM's jobs). Partial batches were pulled to `train:/data/real-out/v23e{1..4}/` and are being **resumed on
-    the `train` VM** (resumable via `done.txt`; train claimed with `~/.gcl-claim/owner` = REAL, released by the job
-    when it ends). Batches: `v23e1`/`v23e2` = the 62 wave-4+5 apps (10k trajectories each, seeds 21M/22M+),
-    `v23e3`/`v23e4` = the 96 earlier apps (6k each, seeds 23M/24M+). Sweeps on v2.3: determinism 316/316,
-    interference 0/158. Final counts and the v2.3 eval set (`train:/data/real-out/v23-eval/`) follow here when done.
+18. **REAL v2.3 top-up (`situation-v2.3`, b107f20) — LANDED 09:45 UTC.** Generated on c01/c10/c11/data until SIM's
+    round b took them (~08:40), then resumed on c14/c15 (claimed with `~/.gcl-claim`, locks released, both deallocated
+    09:44–09:45; the train-VM lock was released too). On `train:/data/real-out/`:
+    - `v23e1`, `v23e2`: the 62 wave-4+5 apps, 2 × 10k trajectories (seeds 21M/22M+): gold 142,723 (train 134,220 /
+      dev 3,984 / test 4,519) + unlabeled 101,434.
+    - `v23e3`, `v23e4`: the 96 earlier apps, 2 × 6k trajectories (seeds 23M/24M+): gold 78,463 (train 72,215 /
+      dev 2,632 / test 3,616) + unlabeled 57,200.
+    - **v2.3 total: 221,186 gold + 158,634 unlabeled**, 158 apps (all v2.3-era behaviour). Grand total REAL v2+v2.3
+      gold: 837,623.
+    - Batch 8 shows: on the same 96 apps, inconsistency rows fall from 18.3% (v2c) to 2.6% of decision rows (on clean
+      runs from 35% to 3.4%), and the genuine share of inconsistency rows rises from 10% to 40% (`inconsistent` 447
+      vs `expected` 553). The v2c/v2d inconsistency rows therefore reflect v2's noisier relation learner: prefer v2.3
+      rows for the inconsistency trigger.
+    - **v2.3 eval set:** `train:/data/real-out/v23-eval/real_eval.jsonl` (10,402 rows: benign-salient 4,000,
+      duplicate-submit 4,000, stale-overwrite 940, clean-benign 827, genuine-break 635). Use it for the inconsistency
+      categories (genuine-break, and inconsistency rows in benign-salient / clean-benign); `v2-eval` remains valid for
+      request/mutation/delivery cases. Sweeps on v2.3: determinism 316/316, interference 0/158.
+    REAL holds no nodes now.
