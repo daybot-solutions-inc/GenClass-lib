@@ -12,13 +12,15 @@
 > latency, stale-item dropping, fail-open), the delivery gate, the policy gate or its defaults, any built-in action's
 > mechanics or `changed` text, custom actions / standing questions, the console report wording,
 > `Decision` / `ActionRecord` / `Explanation` shapes, `explain()` or undo.
-> **Source of truth:** the code. Verified against branch `mvp-v2` at b435acb (origin/runtime 74f17c0 = situation-v2, plus default mode observe and CI), 2026-10-08. If this doc and the code disagree, the code wins.
+> **Source of truth:** the code. Verified against branch `mvp-v2-merge` at f107013 (mvp-v2 + origin/runtime eff18cb + observe/redaction fixes 054da38, f107013), 2026-10-08. If this doc and the code disagree, the code wins.
 
 ## TL;DR
 
 - **Default mode is `observe`** (`packages/runtime/src/runtime.ts` -> `RuntimeImpl` constructor, `o.mode ?? "observe"`,
   commit f3636b2): it permits no non-passive action, so nothing is ever held, delayed or changed; decisions still
-  run in the background and detections are still reported. `guard` is opt-in; `heal` is experimental.
+  run in the background and detections are still reported, for mutations, requests **and deliveries** (commit
+  054da38: a response/message is released synchronously, before any body read, and its delivery decision is made in
+  the background; `test/observe-delivery.test.ts`). `guard` is opt-in; `heal` is experimental.
 - **situation-v2 decides at the network boundary** (commit fcd1e68, frozen at tag `situation-v2` = 6e5e86e). A new
   trigger `delivery` fires when a fetch/XHR response or a WebSocket/EventSource message is about to reach the app and
   the fields its operation is predicted to write hold newer data that the body would change (any newer-data conflict
@@ -33,7 +35,11 @@
   single-flight priority queue (`DeciderQueue`). The subject is **held** only if the trigger is holdable
   (`opts.hold`), at least one non-passive action is permitted by mode + policy, the runtime is not paused, **and**
   the expected model latency fits the hold budget (`expectedLatency() <= holdBudgetMs()`). Otherwise the passive
-  action runs at once and the decision is still made in the background.
+  action runs at once and the decision is still made in the background. Deliveries check this up front
+  (`runtime.ts` -> `deliveryHoldable`): one that cannot be held is released before its body is read; it is then
+  decided in the background when its chain's writes could not act on their own (observe, or a policy restricting
+  `discard`), and otherwise (guard/heal with a model too slow to hold for) only when forced (an `always` standing question on `delivery`, or
+  `triage: "always"`).
 - **Fail-open everywhere:** no provider, provider not `ready`, provider error (any `code`), queue overflow, expired
   deadline, superseded subject (`Controller.stale`), runtime-side timeout, hold budget expiry, a throwing action ->
   the passive action runs. A missing model never blocks the app and never produces a `Decision`.
@@ -45,7 +51,8 @@
   Candidate = argmax of probability over A. It runs only if: not paused; Σ p(A) ≥ the candidate's tier threshold
   (guard 0.9, heal 0.8); the model's top diagnosis ≠ `expected` (unless `requireDiagnosis: false`); fewer than
   `maxActionsPerMinute` (60) actions in the last 60 s; and the subject has not already proceeded
-  (`Controller.proceeded`), except for a late-revert `discard` and for custom actions.
+  (`Controller.proceeded`), except for a late-revert `discard` and for custom actions (not on a delivery that was
+  already released).
 - **Built-in actions** are generic capabilities defined in `situation/questions.ts` -> `BUILTIN_ACTIONS` and
   implemented by per-subject `Controller`s (`decide/exec.ts`): mutation (`runtime.ts` -> `mutationController`),
   delivery (`runtime.ts` -> `runDelivery`), request/failure/stall (`observe/fetch.ts`, `observe/xhr.ts`),
@@ -67,14 +74,14 @@
 | `packages/runtime/src/decide/exec.ts` | Types only: the seam between the decision flow and the subject of a trigger | `ActionEffect`, `Controller`, `TriggerOpts`, `EndOpts`, `NetHost` (incl. `deliver`, `noteResponse`) |
 | `packages/runtime/src/decide/policy.ts` | Policy config, mode/tier permission, the §8 gate, rate limiter, hold budget | `policyConfig`, `PolicyConfig`, `modeAllows`, `restriction`, `permittedActions`, `gate`, `GateInput`, `GateOutcome`, `RateLimiter`, `holdBudget`, `HOLD_MIN_MS`, `HOLD_MAX_MS`, `HOLD_FALLBACK_MS` |
 | `packages/runtime/src/decide/report.ts` | Report sentences and console sink with dedupe | `interventionLine`, `detectionLine`, `decisionLine`, `Reporter` |
-| `packages/runtime/src/runtime.ts` | Wiring: `trigger`, `onDecision`, `runCustom`, `mutationController`, `gateMutation` (holdWrites), `observeWrite` (default), `covered`, `expectedLatency`, `runDelivery` (delivery gate), `dropFilter`, `writtenOver`, `onDropped`, `waitOps`, `noteResponse`, `onChannel`, `markWrites`, `waitRelated`, `raiseInconsistency`, `raiseTransition`, `reportError`, `watchStall`, `rollback`, `revertChain`, `resync`, `runAsGenClass`, `explain`, `decisions`, `interventions`, `holdBudgetMs`, `action`, `question`, `use`, `setMode`, `pause`, `resume`, `destroy`, `setReport`, `isPaused` | `RuntimeImpl` (exported publicly from `src/index.ts`; `runDelivery` is a public member) |
+| `packages/runtime/src/runtime.ts` | Wiring: `trigger`, `onDecision`, `runCustom`, `mutationController`, `gateMutation` (holdWrites), `observeWrite` (default), `covered`, `expectedLatency`, `runDelivery` (delivery gate), `deliveryHoldable`, `writesCanAct`, `finalizeDeliveries` (background deliveries), `dropFilter`, `writtenOver`, `onDropped`, `waitOps`, `noteResponse`, `onChannel`, `markWrites`, `waitRelated`, `raiseInconsistency`, `raiseTransition`, `reportError`, `watchStall`, `rollback`, `revertChain`, `resync`, `runAsGenClass`, `explain`, `decisions`, `interventions`, `holdBudgetMs`, `action`, `question`, `use`, `setMode`, `pause`, `resume`, `destroy`, `setReport`, `isPaused` | `RuntimeImpl` (exported publicly from `src/index.ts`; `runDelivery` is a public member) |
 | `packages/runtime/src/situation/questions.ts` | Action catalogue and diagnosis vocabulary (model-facing wording, frozen at tag `situation-v2`) | `BuiltinAction`, `BUILTIN_ACTIONS`, `TRIGGER_ACTIONS`, `PASSIVE`, `ACTION_INSTRUCTIONS`, `TRIGGER_DESCRIPTIONS`, `DIAGNOSIS_INSTRUCTIONS`, `DEFAULT_DIAGNOSES`, `diagnosisVocabulary`, `actionDescription`, `buildQuestions`, `COMPACT_QUESTIONS_BUDGET` |
 | `packages/runtime/src/situation/build.ts` | Which actions are offered for a subject (applicability); delivery subject text and `SubjectRef` | `buildSituation`, `subjectOf`, `relatedInFlight`, `subjectRef`, `ActionOption`, `BuiltSituation` (internal `builtinApplicable`, `revertableChain`) |
 | `packages/runtime/src/situation/conflicts.ts` | Delivery prediction and conflicts (salience inputs; see [learn-situation-triage.md](learn-situation-triage.md)) | `predictedWrites`, `matchFields`, `conflictsOn` |
 | `packages/runtime/src/situation/content.ts` | Response-body analysis at delivery (does the body change / put back a value) | `analyzeBody`, `createdIds`, `vhash`, `parseJsonBody` |
 | `packages/runtime/src/observe/fetch.ts` | fetch controllers: request gate (`send`/`coalesce`/`delay`/`block`/`serve_cached`), failure gate (`deliver`/`retry`/`serve_cached`), stall (`wait`/`hedge`/`serve_cached`); calls `host.deliver` for successful responses | `installFetch` (internal `runRequest`, `failureGate`, `stallController`, `reqCtl`, `jsonOfBuffered`) |
-| `packages/runtime/src/observe/xhr.ts` | XHR request gate (`send`/`delay`/`block`/`serve_cached`); delivery gate for successful async responses (wraps the app's completion listeners); failures/stalls passive-only | `installXHR` (internal `arrive`, `gateCall`, `wrapHandlers`, `fake`, `passiveOnly`) |
-| `packages/runtime/src/observe/messages.ts` | Delivery gate for push channels: per-channel ordered queue, re-dispatch of released messages | `MessageGate`, `MsgHost`, `messageSummary` |
+| `packages/runtime/src/observe/xhr.ts` | XHR request gate (`send`/`delay`/`block`/`serve_cached`); delivery gate for successful async responses (wraps the app's completion listeners; the body is also exposed synchronously as `body.now`, read by `NetHost.deliver` as `bodyNow`); failures/stalls passive-only | `installXHR` (internal `arrive`, `gateCall`, `wrapHandlers`, `fake`, `passiveOnly`) |
+| `packages/runtime/src/observe/messages.ts` | Delivery gate for push channels: per-channel ordered queue, re-dispatch (a cloned event) of messages released after a hold or queued behind one; a message the gate releases synchronously with nothing queued ahead is not re-dispatched (the original event continues to the app's listeners); passes `bodyNow` (the parsed message) | `MessageGate`, `MsgHost`, `messageSummary` |
 | `packages/runtime/src/observe/websocket.ts`, `packages/runtime/src/observe/eventsource.ts` | Install a `MessageGate` per socket / event source; report channel down/up | `installWebSocket`, `installEventSource` |
 | `packages/runtime/src/observe/cache.ts` | Response buffers used by `coalesce` / `serve_cached` | `ResponseCache`, `makeResponse`, `blockedResponse`, `MAX_BODY`, `MAX_ENTRIES`, `COALESCE_WINDOW_MS`, `BUFFER_WAIT_MS` |
 | `packages/runtime/src/state/hub.ts` | Applies a mutation verdict (`apply`/`discard`/`defer`) when `holdWrites`; calls `observeWrite` otherwise; applies the delivery drop filter; late-revert checks and patches | `StoreHub.holdWrites`, `.revertable`, `.revert`, `.reapply`, `.restoreFields`, `.commit`, `.flushQueue`, `.pendingView`, `Verdict` (internal `applyFilter`) |
@@ -108,8 +115,16 @@
   app now (`release()`), after the model, or after related ops (defer). Sets `op.delivery = { patterns, known,
   salient, decided, overNewer? }` on the subject op (`trace/ops.ts` -> `OpRec.delivery`).
 - **covered write**: `runtime.ts` -> `covered(m)`: the write's causal chain (≤ 16 ancestors) passed a delivery gate
-  whose prediction was known and includes every changed path, and that delivery was not salient or was decided
-  before it proceeded. Covered writes raise no `mutation` trigger (never with `triage: "always"`).
+  whose prediction was known and includes every changed path, and that delivery was not salient, was decided
+  before it proceeded, or is a background delivery decision (released without a hold, `trigger` -> `background`)
+  still pending (`deliveryPending`) or done (`decided`). Covered writes raise no `mutation` trigger (never with
+  `triage: "always"`).
+- **background delivery**: a delivery `runDelivery` releases at once because `deliveryHoldable` is false (observe,
+  no permitted non-passive delivery action, model not `ready`, or `expectedLatency()` over the hold
+  budget). Its content analysis and decision run afterwards, on the state it was released into; the decision can
+  only record (`executed` false for a non-passive top, gate reason e.g. `observe mode never changes execution`).
+  When `writesCanAct()` (guard/heal, `discard` not restricted) it is decided only when forced; with the provider not
+  `ready` it is not decided at all (`trigger` fails open).
 - **discard mark / drop filter**: a delivery `discard` sets `op.discardMark = { protect, until, dropped, onDrop? }`;
   for `DISCARD_MARK_MS` (10 s) `StoreHub.propose` asks `runtime.ts` -> `dropFilter(m)` which changes of each write in
   that op's chain to drop (`hub.ts` -> `applyFilter`).
@@ -269,7 +284,7 @@ Call sites and their `TriggerOpts`:
 |---|---|---|---|
 | `runtime.ts` -> `observeWrite` (hub hook, default: `holdWrites` false) | `mutation` | false | 1 |
 | `runtime.ts` -> `gateMutation` (hub `gate` hook, only with `holdWrites: true`) | `mutation` | true | 2 |
-| `runtime.ts` -> `runDelivery` (from fetch, XHR, WebSocket, EventSource) | `delivery` | true | 2 |
+| `runtime.ts` -> `runDelivery` (from fetch, XHR, WebSocket, EventSource) | `delivery` | true; false for a background delivery (already released, `deliveryHoldable` false) | 2 |
 | `observe/fetch.ts` -> `runRequest` request gate | `request` | true (`keepalive` requests raise no trigger: sent at once) | 2 |
 | `observe/fetch.ts` -> `failureGate` | `failure` | true | 2 |
 | `observe/xhr.ts` -> `wSend` (async XHR only) | `request` | true | 2 |
@@ -299,12 +314,20 @@ Steps:
 5. If the provider is not `"ready"` (i.e. `"off"`): read `this.ready` (starts the lazy load) and run passive.
 6. `permitted = permittedActions(policy, mode, built.actions)`; `waits = opts.hold && permitted.length > 0 && !paused
    && expectedLatency() <= holdBudgetMs()`. If `!waits`, run passive **now** and keep deciding in the background.
+   Deliveries that do not wait: if `writesCanAct()` (not paused and `discard` not restricted by mode/policy, i.e.
+   guard/heal) and the trigger is neither forced nor `triage: "always"` -> passive, no record (the chain's writes keep
+   their own decisions and late revert). Otherwise (observe, `discard` restricted) the delivery op is added to
+   `deliveryPending` **before** passive runs (passive may run the app's listeners and their writes synchronously),
+   so `covered()` skips mutation triggers for its chain's predicted writes while the decision is pending.
 7. `budget = holdBudgetMs()`. If `waits`, start a budget timer: on fire set `expired = true` and run passive.
 8. Deadline: `waits` -> `t0 + budget + (ctl.revert ? LATE_REVERT_MS : 0)` (only a held mutation has `revert` and
    waits); not waiting -> `t0 + BACKGROUND_DEADLINE_MS` (5,000), which includes default-mode background mutations.
 9. `queue.submit({ trigger, state, questions, priority: waits ? opts.priority : min(opts.priority, 1), subject },
-   deadline, ctl.stale)`.
-10. On result: clear the budget timer; destroyed or `null` -> passive; else `onDecision(...)`. Any throw -> passive.
+   deadline, stale)`, where `stale = ctl.stale` except for a delivery that does not wait (no `stale`: it is already
+   released and is still decided for detection, reports and standing questions).
+10. On result: clear the budget timer; destroyed or `null` -> passive; else `onDecision(...)` (with `covers` = a
+    background delivery). Any throw -> passive. Either way a background delivery leaves `deliveryPending` (a dropped
+    one leaves its later writes to their own `mutation` decisions).
 
 The `passive` closure in `trigger` is guarded by `passiveRan`, so the controller's `passive()` runs at most once
 through that path. `t0` is read after the situation is built, so `Decision.latencyMs` excludes build time.
@@ -368,11 +391,14 @@ runtime timeout). They bypass triage, the gate and `Decision` records (see
    6. Else `run = candidate`.
    Reasons 1–3 are reported only when the model's own top choice was non-passive; 4–5 are always set.
 3. `proceeded = ctl.proceeded ? ctl.proceeded() : hold && (expired || passiveRan())`. For a `delivery` that has not
-   proceeded, set `op.delivery.decided = true` (this is what makes its chain's writes `covered`).
+   proceeded, or a background delivery (`covers`), set `op.delivery.decided = true` (this is what makes its chain's
+   writes `covered`; a held delivery released at its budget is not marked).
 4. If `run` is a built-in and `proceeded`: `discard` with `ctl.revert`/`ctl.revertable` -> late-revert path (flow 5);
    otherwise `run = null` with reason `"the decision arrived after the hold budget expired"` when the subject had
    waited, else `"the subject was not held (decided in the background)"`. Custom actions are exempt (they run even
-   after the subject proceeded). These overrides never call `rate.take`.
+   after the subject proceeded), except on a `delivery`: a released delivery can only take the passive action. These
+   overrides never call `rate.take`. (In observe mode the gate already returns no `run`, so the reason is the gate's,
+   e.g. `observe mode never changes execution` when the model's top was non-passive.)
 5. A `rate limit` reason emits a status report at most once per 60,000 ms:
    `[GenClass] Rate limit reached (<N> actions/minute): running passive actions until it clears.`
 6. Build `Decision` (`action = run ?? top`), push to `decisionsBuf` (keeps 200) and `explainMap` (if the map holds
@@ -446,8 +472,8 @@ Entry points: fetch -> `NetHost.deliver` for a non-failure response (any status 
 of the primary request while `gated` and not yet answered (body = parsed JSON of the buffered clone, when the request
 has an identity and a `Response` constructor exists); XHR ->
 `arrive()` on the first completion event of a successful async response (`readyState 4`, status not 0/5xx/429/408;
-body = `xhrJson`); WebSocket/EventSource -> `MessageGate.decide` for each incoming message (body =
-`parseJsonBody(data)`). `release()` delivers: fetch resolves the app's promise, XHR runs the queued app completion
+body = `xhrJson`, also synchronously as `bodyNow`); WebSocket/EventSource -> `MessageGate.decide` for each incoming
+message (body = `parseJsonBody(data)`, also as `bodyNow`). Fetch has no `bodyNow` (its clone is still being read). `release()` delivers: fetch resolves the app's promise, XHR runs the queued app completion
 listeners in order with the op ambient, `MessageGate` re-dispatches a cloned event (later messages and close/error
 events wait behind a held one).
 
@@ -457,18 +483,36 @@ events wait behind a held one).
    0, decided: false }`.
 3. No conflicts, no typed-into text field and not forced (`triage: "always"` or an `always` standing question on
    `delivery`) -> release synchronously (no model call, no record).
-4. With a body: wait at most `BODY_WAIT_MS` (100) for it, then `analyzeBody` decides salience: newer-data conflicts
-   whose incoming value differs, pending changes the body would put back (`vhash` of the value the user replaced),
-   typed text the body would replace. If every conflicting field is unchanged, an event `delivery.unchanged` is
-   pushed. No body / timeout / analysis error -> salient iff newer-data conflicts exist. (Salience details:
-   [learn-situation-triage.md](learn-situation-triage.md).)
-5. Not salient and not forced -> release. Else `trigger(spec, ctl, { hold: true, priority: 2 })`.
+4. `deliveryHoldable(op, matched, defers)` false (observe mode, paused, provider not `"ready"`, no non-passive
+   delivery action permitted by mode + policy (`defer` counts only with related ops in flight and `defers < 2`; a
+   permitted custom delivery action counts), or `expectedLatency() > holdBudgetMs()`) -> **background**: release
+   synchronously now, before any body read, so the app gets the delivery exactly as without GenClass.
+5. With a body: `analyzeBody` decides salience: newer-data conflicts whose incoming value differs, pending changes
+   the body would put back (`vhash` of the value the user replaced), typed text the body would replace. If every
+   conflicting field is unchanged, an event `delivery.unchanged` is pushed. No body / timeout / analysis error ->
+   salient iff newer-data conflicts exist. (Salience details: [learn-situation-triage.md](learn-situation-triage.md).)
+   - Held path: wait at most `BODY_WAIT_MS` (100) for the body.
+   - Background with `bodyNow` (XHR, WebSocket, EventSource): analyze at once, before the app's listeners run
+     (errors are logged, never break the delivery).
+   - Background without `bodyNow` (fetch): wait at most `BODY_WAIT_MS`, but no longer than the first write of the
+     delivery's chain: the hub's `proposed` hook calls `finalizeDeliveries(m.cause)` (≤ 16 ancestors), which cuts the
+     analysis short (`deliveryAnalysis`) so the situation shows the state the response was delivered into. At that
+     cut, with newer-data conflicts or forced -> decide without the body; otherwise (only a pending change / typed
+     text, which only the body can show) the delivery stays undecided with `salient = true`, so `covered()` does not
+     cover its writes and they get their own `mutation` decisions (F1/F2 are not lost).
+6. Held path: not salient and not forced -> release; else `trigger(spec, ctl, { hold: true, priority: 2 })`.
+   Background: `markOverNewer()`, then, when salient or forced, `trigger(spec, ctl, { hold: false, priority: 2 })`
+   (flow 1 step 6 decides whether it is recorded and whether it covers the chain's writes).
 
 Delivery controller: `passive()` releases and, when the delivery was salient over conflicts, sets
 `op.delivery.overNewer` (later writes of that chain get a field mark "delivered over newer data", `markWrites`);
 `discard` and `defer` are below. In observe mode nothing is permitted, so a salient delivery is released at once and
-decided in the background; its writes are then not `covered` (not decided in time), so they raise background
-`mutation` decisions too.
+decided in the background: one `Decision` with `trigger: "delivery"` (detection, `decide`/`detect` events, reports,
+standing questions), never acting. While that decision is pending or after it is made, its chain's predicted writes
+are `covered` (no second `mutation` decision about the same writes); writes outside the prediction are still decided
+on their own. In guard/heal mode a delivery that cannot be held (model too slow) is released the same way but is not
+decided unless forced (an `always` standing question or `triage: "always"`); its writes keep their own decisions and late revert (`test/observe-delivery.test.ts` "guard
+mode is unchanged").
 
 ### 7. Custom actions and standing questions (`runtime.ts` -> `action`, `question`, `use`, `runCustom`)
 
@@ -551,7 +595,7 @@ Status lines emitted by `runtime.ts`: `[GenClass] Model ready (<model, device, v
 | `pause()` | `paused = true`, `hub.gating = false`, `NetHost.gated` false (no request/failure/stall/delivery triggers); `consultable()` false; decisions already queued still produce a `Decision` but never run (`"GenClass is paused"`) |
 | `resume()` | undoes `pause()` (no-op after `destroy`) |
 | `isPaused` | getter on `RuntimeImpl` only (not on `Runtime`) |
-| `destroy()` | `destroyed = true`, `hub.gating = false`, `queue.dispose()` (pending decisions resolve `null` -> passive, which releases held deliveries), `reporter.dispose()`, observers uninstalled, plugins unregistered, an owned provider disposed |
+| `destroy()` | `destroyed = true`, `hub.gating = false`, `queue.dispose()` (pending decisions resolve `null` -> passive, which releases held deliveries), pending background delivery analyses cleared, `reporter.dispose()`, observers uninstalled, plugins unregistered, an owned provider disposed |
 | `setReport(sink)` | `RuntimeImpl` only: swaps the report sink live (`Reporter.setSink`) |
 
 ### Events
@@ -636,12 +680,12 @@ Notes:
 | `LATENCY_SAMPLES` | number | 20 | `decider.ts` | provider latencies kept for the hold budget and expected latency |
 | `PROVIDER_TIMEOUT_MS` | ms | 10,000 | `decider.ts` (exported) | runtime-side timeout when a request has no deadline |
 | `LATE_REVERT_MS` | ms | 2,000 | `runtime.ts` | late-revert window; also extends held-mutation deadlines |
-| `BACKGROUND_DEADLINE_MS` | ms | 5,000 | `runtime.ts` | deadline of non-held decisions (incl. default-mode mutations) |
+| `BACKGROUND_DEADLINE_MS` | ms | 5,000 | `runtime.ts` | deadline of non-held decisions (incl. default-mode mutations and background deliveries) |
 | `DISCARD_MARK_MS` | ms | 10,000 | `runtime.ts` | how long a delivery `discard` keeps dropping its chain's writes |
-| `BODY_WAIT_MS` | ms | 100 | `runtime.ts` | max wait for a delivery's body before deciding salience without it |
+| `BODY_WAIT_MS` | ms | 100 | `runtime.ts` | max wait for a delivery's body before deciding salience without it (background fetch deliveries: also cut at their chain's first write) |
 | `DECISIONS_KEPT` | number | 200 (explainMap 400) | `runtime.ts` | `decisions()`, `interventions()`, explain retention |
 | `LONG_RUNNING_MS` | ms | 10,000 | `runtime.ts` | cap on mutation `defer` (`waitRelated`) and delivery `defer` (`waitOps`) waits |
-| ancestor search depth | number | 16 | `runtime.ts` -> `covered`, `dropFilter`, `onDropped` (literals) | how far up a write's chain a delivery / discard mark is looked for |
+| ancestor search depth | number | 16 | `runtime.ts` -> `covered`, `dropFilter`, `onDropped`, `finalizeDeliveries` (literals) | how far up a write's chain a delivery / discard mark is looked for |
 | `WINDOW_MS` | ms | 60,000 | `report.ts` | console dedupe window |
 | rate-limit warning interval | ms | 60,000 | `runtime.ts` -> `onDecision` (literal) | at most one rate-limit status line per minute |
 | `COALESCE_MAX_WAIT_MS` | ms | 8,000 | `observe/fetch.ts` | coalesce wait for the shared response |
@@ -670,9 +714,14 @@ Notes:
   order, `ACTION_INSTRUCTIONS`, `TRIGGER_DESCRIPTIONS`, `DIAGNOSIS_INSTRUCTIONS`, `DEFAULT_DIAGNOSES`, `PASSIVE` are
   model input and are mirrored in `training/curriculum/rt.py` (header "FROZEN at git tag `situation-v2`") and the
   sim. `ActionRecord.changed` and the `dropped` event text are also model input (timelines). No file under
-  `situation/` or `decide/` changed between `situation-v2` and b435acb.
+  `situation/` or `decide/` changed between `situation-v2` and b435acb; since then only `situation/content.ts`
+  (f107013: F2 typed-text diffs go through `state/fields.ts` -> `redactedStringDiff`), which changes redacted
+  rendering, not model wording.
 - **Default mode cannot act.** In observe mode `permittedActions` is empty, so `waits` is always false and no gate
-  `run` exists; only detections are reported. Tests that exercise actions get guard from `test/helpers.ts` ->
+  `run` exists; only detections are reported. Deliveries are never held or delayed there (released synchronously,
+  before any body read; XHR listeners and push messages run inside the original dispatch), but a salient or
+  forced delivery is still decided in the background (one `Decision`, when the provider is `ready` and `trigger`'s
+  triage keeps it). Tests that exercise actions get guard from `test/helpers.ts` ->
   `setup()`; `test/default-mode.test.ts` asserts the product default.
 - **No hold when the model is late.** `expectedLatency()` > budget (e.g. `warmupMs` 2,000 with an 800 ms max
   budget, or a stuck provider) means nothing waits, even in guard mode (`test/delivery.test.ts` "does not hold when
@@ -687,9 +736,16 @@ Notes:
 - **Holds can outlast the budget after a decision:** `coalesce`, `delay` (≤ 8 s), `retry` (≤ 5 s), delivery `defer`
   (≤ 10 s, then a second decision) and custom actions (unbounded) keep the subject waiting.
 - **Custom actions run late.** Unlike built-ins they are not nulled when the subject already proceeded (a custom
-  action may act after a write applied); only `ctx.builtin` refuses then.
-- **Covered writes skip the mutation trigger** only when the delivery was decided before release; a delivery
-  released by budget expiry or in observe mode leaves its writes to background `mutation` decisions.
+  action may act after a write applied); only `ctx.builtin` refuses then. Exception: a delivery already released
+  only ever takes the passive action.
+- **Covered writes skip the mutation trigger** when the delivery was decided before release or is a background
+  delivery decision (pending or done: observe, `discard` restricted). A held delivery released by budget expiry, a
+  guard/heal delivery released because the model is too slow, a dropped background decision (deadline, queue
+  overflow), and a fetch delivery cut at its first write with only pending/typed conflicts all leave their writes to
+  their own `mutation` decisions.
+- **Background delivery analysis must read the pre-delivery state.** The decision is built on the state the delivery
+  was released into: `bodyNow` analysis runs before the listeners; fetch analysis is cut at the chain's first
+  `proposed` write (`finalizeDeliveries`). Keep `deliveryPending.add` before the passive action in `trigger`.
 - **Runtime timeout does not cancel the provider.** A late answer from an abandoned call is still cached and its
   latency still sampled; it also clears `stuck`.
 - **Determinism:** only the injected `Clock` is used (timers, `now`, body wait, discard mark); ids are counters. Do
@@ -707,7 +763,7 @@ Notes:
 
 Light local checks are allowed on this machine (see [build-test-release.md](build-test-release.md)):
 `NODE_OPTIONS=--expose-gc npx vitest run --exclude "test/browser/**" --exclude test/review-perf.test.ts` in
-`packages/runtime` (lead's run at b435acb: 332 passed, 14 skipped), then `test/review-perf.test.ts` alone (flaky under
+`packages/runtime` (run on `mvp-v2-merge` at f107013, 2026-10-08: 44 files passed, 1 skipped; 375 tests passed, 14 skipped), then `test/review-perf.test.ts` alone (flaky under
 parallel load). CI (`.github/workflows/ci.yml`) runs the same split. Do not run Playwright, the sim, realapps or demos
 eval without asking.
 
@@ -723,7 +779,9 @@ eval without asking.
 4. **Change the delivery gate:** `runtime.ts` -> `runDelivery`, `dropFilter`, `writtenOver`, `onDropped`; channel
    plumbing in `observe/fetch.ts`, `observe/xhr.ts`, `observe/messages.ts`; salience in `situation/conflicts.ts` /
    `content.ts`. Salience changes alter which situations exist (sim/training data): coordinate with SIM/TRAIN.
-   Tests `test/delivery.test.ts`, `test/content.test.ts`, `test/no-reorder.test.ts`, `test/smoke.test.ts`.
+   Background (non-holdable) deliveries: `deliveryHoldable`, `writesCanAct`, `finalizeDeliveries`, `covered`,
+   `trigger` (`background`, `deliveryPending`). Tests `test/delivery.test.ts`, `test/observe-delivery.test.ts`,
+   `test/content.test.ts`, `test/no-reorder.test.ts`, `test/smoke.test.ts`.
 5. **Change an action's mechanics:** edit its controller. Keep: throw when it cannot run; return an exact `changed`
    sentence; provide `undo` only if truly reversible; end synthetic ops with `synthetic: true`. Coordinate `changed`
    wording with SIM (timeline input). Tests: `test/fetch.test.ts`, `test/xhr.test.ts`, `test/atoms.test.ts`,
@@ -753,9 +811,10 @@ eval without asking.
 | Test file | What it asserts (scope-relevant) |
 |---|---|
 | `packages/runtime/test/delivery.test.ts` | typeahead makes zero model calls; stale out-of-order response -> delivery `discard` drops only the stale field; hold is only latency; no hold when the model cannot answer in time; default: read-after-write, background late revert, slow model (released at budget, writes late-reverted), superseded queued decision dropped; WebSocket order + discard; EventSource custom types; XHR held before completion listeners, abort during hold; forced actions |
-| `packages/runtime/test/default-mode.test.ts` | `createRuntime` / `GenClass.init` default to observe (`?genclass=guard` opts in); observe never holds or delays even with a sure model or a model that never answers; findings still reported |
+| `packages/runtime/test/default-mode.test.ts` | `createRuntime` / `GenClass.init` default to observe (`?genclass=guard` opts in); observe never holds or delays even with a sure model or a model that never answers; findings still reported (mutation, request and delivery decisions) |
+| `packages/runtime/test/observe-delivery.test.ts` | observe mode: a conflicting fetch response with a slow body resolves at network time, its background decision is recorded/reported and its writes are not decided again; the decision sees the pre-delivery state; an app write before the body is read decides the delivery at that write; F1 (pending change put back) is not lost; standing questions on delivery answered; XHR listeners run inside the original dispatch after body analysis; WebSocket/EventSource messages delivered synchronously and in order, still decided; guard mode unchanged (stale response held, slow model -> writes late-reverted, forced question decides without acting) |
 | `packages/runtime/test/no-reorder.test.ts` | an always-passive model changes nothing in any mode/triage (same dispatches, order, state); `holdWrites` never reorders a store's dispatches |
-| `packages/runtime/test/policy.test.ts` | gate: mass split, mode tiers, thresholds with exact reasons, `requireDiagnosis`, deny/allow, pause, rate limit, observe never holds, `setMode`, `pause/resume`, loading fails open |
+| `packages/runtime/test/policy.test.ts` | gate: mass split, mode tiers, thresholds with exact reasons, `requireDiagnosis`, deny/allow, pause, rate limit, observe never holds (writes, requests and responses; delivery decided in the background), `setMode`, `pause/resume`, loading fails open |
 | `packages/runtime/test/report.test.ts` | line formats (held discard with `holdWrites`; default -> `Reverted a stale write …` late revert), `explain()`, console groups, ×N summary, listeners |
 | `packages/runtime/test/atoms.test.ts` | (all with `holdWrites: true`) holds, fail-open at budget, late revert text and undo, refusals incl. `too late to revert` recorded as a reason, user write never overtakes a held write, read-your-writes, provider error codes fail open, discard + undo, defer max 2 |
 | `packages/runtime/test/budget.test.ts` | `holdBudget` values; adaptive budget; `timeoutMs` = budget + 2,000 for held writes and = budget for requests; expired items never computed; situation budget 2,400 (webgpu) |
@@ -813,7 +872,7 @@ Open items (from `HANDOFF.md`, `OPEN_TASKS.md`, `packages/runtime/STATUS.md`, `d
   proposals are in `sim/NEEDS.md` ("Situation-v2 fact proposals from the separability analysis"). Whether a trained
   v2 model separates `discard` from `deliver` is unmeasured.
 - Slow single-thread WASM: with `expectedLatency` over the budget nothing is held; writes rely on late revert
-  (≤ 2 s) and deliveries are decided too late to act.
+  (≤ 2 s) and, in guard/heal, deliveries are released undecided (decided only when forced: an `always` standing question or `triage: "always"`).
 - Code-reading follow-ups (unverified at runtime): late answers after a runtime timeout still feed the cache and
   latency samples; custom actions can hold a subject indefinitely and can run after it proceeded.
 
