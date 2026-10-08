@@ -32,7 +32,7 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 >   with `GenClassUnavailableError`.
 > - The only trained models so far (round 1) read the previous format (`situation-v1`) and do not match this
 >   runtime. Do not self-host them with this version.
-> - `0.1.0-alpha.0`, the first version on npm, is the older v1 runtime: guard by default, holds store writes, and
+> - This is `0.1.0-alpha.1`. `0.1.0-alpha.0`, the first version on npm, is the older v1 runtime: guard by default, holds store writes, and
 >   can crash when app state contains `NaN` (fixed since). Use a later version.
 >
 > Progress: [OPEN_TASKS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/OPEN_TASKS.md) ·

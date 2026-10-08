@@ -30,8 +30,8 @@ which available action is best. There is no list of known bugs in the code.
 > - **No model is published for this format yet.** `@genclass/runtime-model` is not on npm, so a default
 >   `GenClass.init()` prints `[GenClass] Model unavailable (...); observing only.` and finds nothing.
 > - **Round 1 models** (format `situation-v1`) exist but do not match this runtime.
-> - **`@genclass/runtime@0.1.0-alpha.0` on npm** is the older v1 runtime. It defaults to guard, holds store writes,
->   and has a `NaN` crash that has since been fixed.
+> - **On npm:** `@genclass/runtime@0.1.0-alpha.1` is this runtime. `0.1.0-alpha.0` is the older v1 runtime: it
+>   defaults to guard, holds store writes, and has a `NaN` crash that alpha.1 fixes.
 >
 > What's next: [OPEN_TASKS.md](OPEN_TASKS.md). Picking up the work: [HANDOFF.md](HANDOFF.md). AI coding agents:
 > start at [AGENTS.md](AGENTS.md).
