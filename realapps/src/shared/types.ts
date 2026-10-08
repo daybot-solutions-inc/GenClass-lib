@@ -126,6 +126,8 @@ export interface Step {
 
 export interface ExternalEvent {
   t: number;
+  /** Only items whose fields match (e.g. { kind: "sensor" }). */
+  where?: Record<string, unknown>;
   kind: "create" | "update" | "delete" | "action" | "doc" | "counter";
   target: string;
   /** update/delete/action: index of the item (modulo the collection size at that time). */
@@ -274,6 +276,8 @@ export interface RunResult {
   userOps: [number, number | null][];
   stepsRun: number;
   stepsSkipped: number;
+  /** Skipped steps by reason (missing = blocked intent; precondition, chain, not-inflight = harmless). */
+  skipWhy?: Record<string, number>;
   internalErrors: string[];
   wsMessages: number;
   asks?: { t: number; state: Record<string, unknown>; facts: AskFacts }[];

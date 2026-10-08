@@ -187,8 +187,9 @@ export function buildSession(app: AppManifest, rng: Rng, p: Persona, t0: number,
     if (!a) return 0;
     used.add(a.id);
     for (const x of a.resets ?? []) used.delete(x);
-    const text = a.text?.length ? r.pick(a.text) : undefined;
-    const nth = a.nth ? r.int(0, a.nth - 1) : undefined;
+    const head = a.sameNth && chainHead !== undefined ? steps[chainHead] : undefined;
+    const text = head?.text ?? (a.text?.length ? r.pick(a.text) : undefined);
+    const nth = head?.nth ?? (a.nth ? r.int(0, a.nth - 1) : undefined);
     const value = a.values?.length ? r.pick(a.values) : undefined;
     const key = `${a.key ?? a.id}${a.intent === "text" && text ? `:${text}` : a.intent === "nth" && nth !== undefined ? `:${nth}` : a.intent === "value" && value ? `:${value}` : ""}`;
     const intent = { key, mode: a.mode, affordance: a.id };
@@ -256,7 +257,7 @@ function external(app: AppManifest, rng: Rng, tUser: number): ExternalEvent[] {
     if (e.perMin <= 0) continue;
     let t = r.float(500, 4000);
     while (t < tUser) {
-      const ev: ExternalEvent = { t, kind: e.kind, target: e.target, index: r.int(0, 1000) };
+      const ev: ExternalEvent = { t, kind: e.kind, target: e.target, index: r.int(0, 1000), ...(e.where ? { where: e.where } : {}) };
       if (e.data?.length) ev.data = r.pick(e.data);
       if (e.verb) ev.verb = e.verb;
       if (e.by !== undefined) ev.by = e.by;

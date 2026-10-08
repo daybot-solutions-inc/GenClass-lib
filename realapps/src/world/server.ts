@@ -480,7 +480,7 @@ export class MockServer {
 
   // ---------------------------------------------------------------------------------- external events
   /** Another user's change (external event), applied directly to server state and published. */
-  external(kind: string, target: string, index: number | undefined, data: Item | undefined, verb?: string, by?: number): void {
+  external(kind: string, target: string, index: number | undefined, data: Item | undefined, verb?: string, by?: number, where?: Record<string, unknown>): void {
     const t = this.now();
     if (kind === "counter") {
       const v = (this.counters.get(target) ?? 0) + (by ?? 1);
@@ -508,7 +508,8 @@ export class MockServer {
     const coll = this.colls.get(target);
     if (!coll) return;
     const c = coll.spec;
-    const items = coll.list();
+    const all = coll.list();
+    const items = where ? all.filter((it) => Object.entries(where).every(([k, v]) => it[k] === v)) : all;
     if (kind === "create") {
       const fresh: Item = { ...(data ?? {}) };
       if (this.spec.cart?.collection === (c.path ?? c.name) && fresh.productId !== undefined) {

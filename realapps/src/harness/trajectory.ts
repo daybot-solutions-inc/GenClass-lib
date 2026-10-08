@@ -59,6 +59,7 @@ export interface TrajectoryOut {
   rows: Row[];
   points: PointStat[];
   drops: Record<string, number>;
+  notes: Record<string, number>;
   runs: number;
   decisions: number;
   realMs: number;
@@ -135,8 +136,10 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
   const t0 = Date.now();
   const pool = o.apps?.length ? apps.filter((a) => o.apps!.includes(a.name)) : apps;
   const scn = buildScenario(seed, pool, o.clean ? { clean: true } : {});
-  const out: TrajectoryOut = { seed, app: scn.app.name, split: scn.split, rows: [], points: [], drops: {}, runs: 0, decisions: 0, realMs: 0, runMs: 0 };
+  const out: TrajectoryOut = { seed, app: scn.app.name, split: scn.split, rows: [], points: [], drops: {}, notes: {}, runs: 0, decisions: 0, realMs: 0, runMs: 0 };
   const drop = (k: string) => (out.drops[k] = (out.drops[k] ?? 0) + 1);
+  /** Not drops: the row is kept (without a diagnosis label when the sampled vocabulary lacks it). */
+  const note = (k: string) => (out.notes[k] = (out.notes[k] ?? 0) + 1);
   const R = new Rng(hashAll("realapps-traj", seed));
   if (scn.split === "test" && R.fork("testkeep").next() >= o.testKeep) {
     out.skipped = "test-subsample";
@@ -256,8 +259,8 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
     const labels: Record<string, unknown> = { action: { type: "choice", dist: tr.dist ?? lab.dist } };
     const dq = tr.questions.diagnosis as { type: string; criteria: Record<string, unknown> } | undefined;
     if (diag && dq && dq.type === "choice" && diag in dq.criteria) labels.diagnosis = { type: "choice", label: diag };
-    else if (diag && dq && !(diag in dq.criteria)) drop("diagnosis-not-in-vocab");
-    else if (!diag) drop("diagnosis-uncorrelated");
+    else if (diag && dq && !(diag in dq.criteria)) note("diagnosis-not-in-vocab");
+    else if (!diag) note("diagnosis-uncorrelated");
     out.rows.push({
       id: `real-${scn.app.name}-${seed}-d${p.k}`,
       split: scn.split,

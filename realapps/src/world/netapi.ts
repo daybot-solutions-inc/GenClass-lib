@@ -32,6 +32,26 @@ export function installNetApi(w: Window & typeof globalThis, net: Network): NetA
   g.Response = MockResponse;
   const origin = w.location.origin;
 
+  // Request bodies are IO-backed in Chromium (reading one takes real time): remember the body given to the
+  // constructor so the mock fetch never has to read it back.
+  const bodies = new WeakMap<object, string>();
+  const RealRequest = w.Request;
+  class VRequest extends RealRequest {
+    constructor(input: RequestInfo | URL, init?: RequestInit) {
+      super(input, init);
+      if (init && "body" in init && init.body !== undefined && init.body !== null) {
+        const b = init.body;
+        if (typeof b === "string" || b instanceof URLSearchParams || b instanceof ArrayBuffer || ArrayBuffer.isView(b) || (typeof FormData !== "undefined" && b instanceof FormData)) bodies.set(this, bodyToString(b));
+      } else if (input instanceof RealRequest && bodies.has(input)) bodies.set(this, bodies.get(input)!);
+    }
+    override clone(): Request {
+      const c = super.clone();
+      if (bodies.has(this)) bodies.set(c, bodies.get(this)!);
+      return c;
+    }
+  }
+  g.Request = VRequest;
+
   // ------------------------------------------------------------------------------------------------ fetch
   function mockFetch(this: unknown, input: unknown, init?: RequestInit): Promise<Response> {
     return new Promise<Response>((resolve, reject) => {
@@ -46,7 +66,10 @@ export function installNetApi(w: Window & typeof globalThis, net: Network): NetA
         url = input.url;
         input.headers.forEach((v, k) => (headers[k] = v));
         signal = input.signal;
-        if (!(init && "body" in init) && method !== "GET" && method !== "HEAD" && input.body) reqBody = input.clone().text();
+        if (!(init && "body" in init) && method !== "GET" && method !== "HEAD" && input.body) {
+          if (bodies.has(input)) raw = bodies.get(input)!;
+          else reqBody = input.clone().text();
+        }
       } else url = input instanceof URL ? input.href : String(input);
       if (init) {
         if (init.method) method = String(init.method);

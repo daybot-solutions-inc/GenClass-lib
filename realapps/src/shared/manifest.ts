@@ -33,6 +33,8 @@ export interface Affordance {
   waitMs?: number;
   /** Follow-up affordance ids performed right after this one (e.g. type then click Save). */
   then?: string[];
+  /** As a follow-up: act on the same row (same nth / text) as the chain's first step. */
+  sameNth?: boolean;
   /** Never chosen on its own (only as a follow-up). */
   followOnly?: boolean;
   /** Using this affordance makes these ones unavailable again for `after` (e.g. sign out resets sign in). */
@@ -52,6 +54,8 @@ export interface ExternalSpec {
   data?: Record<string, unknown>[];
   verb?: string;
   by?: number;
+  /** Only items whose fields match (e.g. { kind: "sensor" }). */
+  where?: Record<string, unknown>;
 }
 
 export interface Relation {

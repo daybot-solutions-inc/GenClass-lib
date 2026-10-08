@@ -404,7 +404,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       const passive = PASSIVE[req.trigger] ?? actions[0] ?? "";
       let chosen = o.forced?.get(idx);
       let explored = false;
-      const diagFrom = (req.trigger as string) === "delivery" ? (subject.how === "push" ? { push: subject.ref! } : subject.s.op ? { op: subject.s.op.id } : undefined) : undefined;
+      const diagFrom = req.trigger === "delivery" ? (subject.how === "push" ? { push: subject.ref! } : subject.s.op ? { op: subject.s.op.id } : undefined) : undefined;
       const fid = subject.s.write?.feature ?? subject.s.op?.feature ?? subject.s.chain?.[0]?.feature ?? (subject.s.error && typeof subject.s.error === "object" ? know.errors.get(subject.s.error as object)?.feature : undefined);
       const featureKind = scn.features.find((f) => f.id === fid)?.kind;
       const base = { k: idx, t, trigger: req.trigger, state: req.state, questions, actions, subject: { kind: subject.s.kind, how: subject.how, ...(subject.ref !== undefined ? { ref: subject.ref } : {}) }, ...(diag !== undefined ? { diagnosis: diag } : {}), ...(featureKind ? { feature: featureKind } : {}), ...(diagFrom ? { diagFrom } : {}) };
@@ -534,7 +534,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       }
       return { s: { kind: "unknown" }, how: "none" };
     }
-    if ((trig as string) === "delivery") {
+    if (trig === "delivery") {
       if (sub && typeof sub.op === "number") {
         const simId = know.rtOps.get(sub.op) ?? rtOpViaCause(sub.op);
         const op = know.getOp(simId);

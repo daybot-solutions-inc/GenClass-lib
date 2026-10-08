@@ -117,10 +117,26 @@ export class VirtualLoop {
     return this.nest;
   }
 
-  /** Yield real macrotasks until native work settles (at least `min` hops, at most 400). */
+  /** Real clock (captured before virtualisation) for the native-work bound. */
+  realNow: () => number = () => 0;
+
+  /**
+   * Yield real macrotasks until native work settles: at least `min` hops, then for as long as tracked native work
+   * (body/stream/blob/FileReader reads) is pending, bounded by REAL time (5 s), not hop count: under heavy machine
+   * load an IO-backed read (a Request body) can take many more hops. Hitting the bound marks the run broken.
+   */
   async settleNative(min = 2): Promise<void> {
     let hops = 0;
-    while (hops < min || (this.pendingNative > 0 && hops < 400)) {
+    let t0 = -1;
+    while (hops < min || this.pendingNative > 0) {
+      if (hops >= min) {
+        if (t0 < 0) t0 = this.realNow();
+        else if (this.realNow() - t0 > 5000) {
+          this.internalErrors.push(`native work did not settle within 5 s at t=${Math.round(this.now)}`);
+          this.stopped = true;
+          return;
+        }
+      }
       await this.realYield();
       hops++;
     }
@@ -189,6 +205,7 @@ export function installTime(w: Window & typeof globalThis, opts: { epoch: number
   const g = w as unknown as Record<string, unknown>;
   const RealMC = w.MessageChannel;
   const loop = new VirtualLoop(RealMC);
+  loop.realNow = w.performance.now.bind(w.performance);
 
   // ---------------------------------------------------------------------------------------------- timers
   const timers = new Map<number, Task>();

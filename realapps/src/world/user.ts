@@ -53,8 +53,11 @@ export function pinOf(el: Element): string[] {
     const h = (root as ShadowRoot).host;
     host = h ? h.closest(ITEM) ?? h : null;
   }
-  // controls outside any list item (a unique "Save" button) are not pinned: the selector identifies them
+  // controls outside any list item (a unique "Save" button) are not pinned: the selector identifies them; neither
+  // is a one-off container (a detail <article>): only hosts that repeat among their siblings are list items
   if (!host || host === el) return [];
+  const sibs = host.parentElement ? Array.from(host.parentElement.children).filter((c) => c.tagName === host!.tagName) : [];
+  if (sibs.length < 2) return [];
   const words = (s: string) => s.toLowerCase().replace(/[0-9]+/g, " ").split(/[^a-z\u00c0-\u024f]+/).filter((w) => w.length >= 3);
   const own = new Set(words(textOf(el)));
   const t = textOf(host);

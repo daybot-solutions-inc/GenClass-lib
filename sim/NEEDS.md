@@ -82,3 +82,37 @@ it needs:
 How the sim will label `delivery` rows: action labels exactly as today (K = 3 paired futures, costs vs the
 ideal run). Diagnosis = the label of the subject op's first data write in the passive branch (the writes the delivery
 would have caused, classified by the existing per-write rules), else `expected`; failures keep their failure rules.
+
+## Situation-v2 fact proposals from the separability analysis (ASK, 2026-10-08 02:50 UTC)
+
+CORE left room for "SIM's separability proposals" (STATUS.md, batch 4). Full evidence is in `sim/SEPARABILITY.md`
+§4 and §6, measured on 150k probe rows. The proposals, in order of measured effect, phrased for `delivery` as
+response content vs current state on the paths in P:
+- **F1 Cell-level revert of newer data.** Join response items to store items by id and say whether the response
+  puts back the value a newer op replaced, or touches a different item than the newer op did. Rows where the write
+  reverts a newer cell are clear 10.3 % of the time vs 2.6 % otherwise.
+- **F2 Overwrite of user input.** Say that the write would overwrite text the user typed after the request started
+  (and whether the user is still typing), with a **diff-centred preview**. Today both sides are truncated to the
+  same prefix ("Guild page sword shield…" → "Guild page sword shield…"). Clear rate 12.6 % vs 3.6 %.
+- **F3 No change.** "Response equals the current values of P": clear rate 0.6 % vs 4.2 %. This also makes the
+  delivery non-salient, which saves a model call.
+- **F9 Provenance of known-stale values.** Mark values written by a conflict that was delivered anyway, by a response
+  that took more than 5× its usual time, by a rollback after an ambiguous failure, or by a push received after the
+  channel had been down. State the mark when a later decision involves the path. This is the only computable route
+  to "the client is already wrong", which separates inconsistency/transition rows (0.4 % clear when the client is
+  right vs 12–16 % when it is diverged).
+- **F6 Learned refresh and save cadence of the source** ("refreshes every 5.0 s, next in 0.4 s"): clear rate 2.1 %
+  when the next refresh is ≤ 1 s away vs 12.4 % when it is 3–10 s away.
+- **F5 Failure scope** (failures across other endpoints of the origin in the last few seconds; offline) and commit
+  ambiguity (500 after the usual server time or network error after upload: "may have been applied").
+- **F7 Repeat evidence:** `MouseEvent.detail`, same element, busy indicator visible at the second click.
+- **F8 Relations:** no ∈/== relations between unrelated small integers or version counters; add count-by-group
+  relations.
+- **Read-your-writes:** the list response lacks, or duplicates, the item a recent create returned.
+
+## Lead: `scripts/vm.sh` deletes symlinked outputs (FYI, 2026-10-08)
+
+`sim/out` is now a symlink to `/data/sim-out` (train VM data disk). The sync's `--exclude '/sim/out/'` (trailing
+slash) matches directories only, so every `vm.sh sync/run sim` deletes the link; the data on `/data` is safe. SIM
+recreates the link after each sync (`ln -sfn /data/sim-out sim/out`). Changing the pattern to `--exclude '/sim/out'`
+would fix it for good (lead-owned file).

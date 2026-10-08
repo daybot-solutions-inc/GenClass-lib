@@ -1,6 +1,6 @@
 # Open tasks: @genclass/runtime
 
-Status as of 2026-10-07 23:30 UTC. Branch `runtime`. Spec: [docs/runtime/CONTRACT.md](docs/runtime/CONTRACT.md).
+Status as of 2026-10-08 04:00 UTC. Branch `runtime`. Spec: [docs/runtime/CONTRACT.md](docs/runtime/CONTRACT.md).
 The runtime decides through a trained local model; nothing here is hardcoded per bug pattern.
 
 ## Done
@@ -69,6 +69,24 @@ The runtime decides through a trained local model; nothing here is hardcoded per
 8. **Packaging**: publish the trained model as `@genclass/runtime-model@0.1.0` (the runtime's default CDN URL)
    and attach it to a GitHub release, then publish `@genclass/runtime@0.1.0` without the alpha tag;
    CI workflow (build, typecheck, unit tests); `npm pack` smoke test in a fresh Vite app.
+
+## Model quality: where it stands and why
+
+- **Round 1** (situation-v1, 448k simulated rows, R17 9.6 MB):
+  - guard false-intervention rate 0.05%, heal 0.24%, calibration error 0.009, diagnosis 90.5%;
+  - but it acts on only 7.7% of clear stale/duplicate cases;
+  - R32 (3× the compute) is no better.
+- **Separability analysis** (`sim/SEPARABILITY.md`):
+  - the ceiling is in the data: 62–82% of clear cases have a benign twin with identical visible facts;
+  - 24% of clear rows were mislabelled `expected`;
+  - labels were hindsight-certain about things a runtime cannot observe (the user's next action, how long an
+    outage lasts, whether a failed write committed).
+- **Fixes in progress:**
+  - generic facts measured to separate the cases: F1 put-back-a-replaced-value, F2 overwrites newer typing,
+    F3 response changes nothing, F9 known-stale provenance, F6 refresh/save cadence;
+  - the labelling fix (S1);
+  - futures that re-draw unobservable latents, so labels become expected cost given what is observable (S2);
+  - an expected-advantage training target (T1).
 
 ## Needs the user
 

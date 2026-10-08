@@ -51,6 +51,7 @@ const stats = {
   unlabeled: { train: 0, dev: 0, test: 0 } as Record<string, number>,
   skipped: {} as Record<string, number>,
   drops: {} as Record<string, number>,
+  notes: {} as Record<string, number>,
   runs: 0,
   runMs: 0,
   wallMs: 0,
@@ -86,6 +87,7 @@ function record(t: TrajectoryOut): void {
     if (k !== "test-subsample" && stats.errors.length < 50) stats.errors.push(`${t.seed} ${t.app}: ${t.skipped.slice(0, 300)}`);
   }
   for (const [k, v] of Object.entries(t.drops)) stats.drops[k] = (stats.drops[k] ?? 0) + v;
+  for (const [k, v] of Object.entries(t.notes ?? {})) stats.notes[k] = (stats.notes[k] ?? 0) + v;
   const a = (stats.byApp[t.app] ??= { trajectories: 0, rows: 0, decisions: 0 });
   a.trajectories++;
   a.rows += t.rows.filter((r) => !(r.meta as { unlabeled?: boolean }).unlabeled).length;

@@ -145,10 +145,11 @@ declare global {
       cfg.external.forEach((ev, i) => {
         let t = ev.t;
         if (cfg.future && t > cfg.future.t) t += (hashAll("ext-jitter", cfg.future.salt, i) / 4294967296) * 600;
-        loop.at(t, () => server.external(ev.kind, ev.target, ev.index, ev.data, ev.verb, ev.by), "ext");
+        loop.at(t, () => server.external(ev.kind, ev.target, ev.index, ev.data, ev.verb, ev.by, ev.where), "ext");
       });
       for (const d of cfg.net.wsDrops) if (!cfg.ideal) loop.at(d.t, () => net.dropSockets(d.downMs), "ws-drop");
       let driver: UserDriver;
+      const skipWhy: Record<string, number> = {};
       // developer-question probes (side-effect free: runtime.situation() consumes no ids)
       const asks: NonNullable<RunResult["asks"]> = [];
       if (cfg.record && !cfg.ideal)
@@ -183,6 +184,7 @@ declare global {
         inflight: () => net.inflight(),
         skipped: (_st, why) => {
           probe.stepsSkipped++;
+          skipWhy[why] = (skipWhy[why] ?? 0) + 1;
           if (why === "missing") probe.skippedAt.push(loop.now);
         },
         ran: (st) => {
@@ -223,6 +225,7 @@ declare global {
         userOps,
         stepsRun: probe.stepsRan.length,
         stepsSkipped: probe.stepsSkipped,
+        skipWhy,
         internalErrors: [...loop.internalErrors, ...(navAttempts ? [`nav-prevented:${navAttempts}`] : []), ...errLog],
         wsMessages: probe.wsMessages,
         ...(asks.length ? { asks } : {}),

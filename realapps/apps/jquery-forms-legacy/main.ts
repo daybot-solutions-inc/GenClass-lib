@@ -154,10 +154,16 @@ function showTeam(t: Team) {
 function loadTeam(id: number) {
   const mine = ++teamReq;
   $(".quota-usage").text("Loading quota…");
-  $.getJSON(`/api/teams/${id}`).done((t: Team) => {
-    if (TEAM_GUARD === "latest" && mine !== teamReq) return;
-    showTeam(t);
-  });
+  // option-style callbacks: they travel with the settings when the global handler re-sends the request
+  $.ajax({
+    url: `/api/teams/${id}`,
+    dataType: "json",
+    errorMessage: "The team's quota could not be loaded",
+    success: (t: Team) => {
+      if (TEAM_GUARD === "latest" && mine !== teamReq) return;
+      showTeam(t);
+    },
+  } as JQuery.AjaxSettings);
 }
 
 $("select[name=team]").on("change", function () {
@@ -188,10 +194,15 @@ $(".grow").on("click", function () {
 
 // --------------------------------------------------------------------------------------------- invites
 function loadInvites() {
-  $.getJSON("/api/invites").done((res: { data: Invite[] }) => {
-    const list = res.data ?? [];
-    $(".invite-list").html(list.map((i) => `<li data-id="${i.id}">${esc(i.email)} (${esc(i.role)}) <button type="button" class="revoke">Revoke</button></li>`).join("") || `<li class="muted">No pending invites.</li>`);
-  });
+  $.ajax({
+    url: "/api/invites",
+    dataType: "json",
+    errorMessage: "Pending invites could not be loaded",
+    success: (res: { data: Invite[] }) => {
+      const list = res.data ?? [];
+      $(".invite-list").html(list.map((i) => `<li data-id="${i.id}">${esc(i.email)} (${esc(i.role)}) <button type="button" class="revoke">Revoke</button></li>`).join("") || `<li class="muted">No pending invites.</li>`);
+    },
+  } as JQuery.AjaxSettings);
 }
 
 $(".invite-form").on("submit", function (e) {
@@ -233,22 +244,31 @@ $(".invite-list").on("click", "button.revoke", function () {
 let auditXhr: JQuery.jqXHR | null = null;
 function loadAudit() {
   if (auditXhr) return; // the previous refresh is still running
-  auditXhr = $.getJSON("/api/audit", { sort: "-createdAt", limit: 6 })
-    .done((res: { data: Audit[] }) => {
+  auditXhr = $.ajax({
+    url: "/api/audit",
+    data: { sort: "-createdAt", limit: 6 },
+    dataType: "json",
+    onGiveUp: () => undefined, // the activity feed fails quietly
+    success: (res: { data: Audit[] }) => {
       $(".audit-list").html((res.data ?? []).map((a) => `<li>${esc(a.actor)} ${esc(a.action)} <em>${esc(a.target)}</em></li>`).join(""));
-    })
-    .always(() => (auditXhr = null));
+    },
+  } as JQuery.AjaxSettings).always(() => (auditXhr = null));
 }
 
 $(() => {
   loadMembers();
   loadInvites();
   loadAudit();
-  $.getJSON("/api/teams").done((res: { data: Team[] }) => {
-    teams = res.data ?? [];
-    $("select[name=team]").html(teams.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join(""));
-    if (teams[0]) showTeam(teams[0]);
-  });
+  $.ajax({
+    url: "/api/teams",
+    dataType: "json",
+    errorMessage: "Teams could not be loaded",
+    success: (res: { data: Team[] }) => {
+      teams = res.data ?? [];
+      $("select[name=team]").html(teams.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join(""));
+      if (teams[0]) showTeam(teams[0]);
+    },
+  } as JQuery.AjaxSettings);
   setInterval(loadMembers, MEMBERS_MS);
   setInterval(loadAudit, AUDIT_MS);
 });

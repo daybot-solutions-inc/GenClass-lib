@@ -6,9 +6,61 @@
 //   - pending user operations = requests whose causal root is a scripted user step;
 //   - server items compare by content with timestamps ignored (the mock server stamps createdAt/updatedAt).
 
-import { W, valueDist } from "../../../sim/src/oracle/cost.js";
+import { W } from "../../../sim/src/oracle/cost.js";
 import type { AppManifest, Relation } from "../shared/manifest.js";
 import type { NetRec, RunResult, ServerSnap, SnapshotRec } from "../shared/types.js";
+
+// sim's valueDist (sim/src/oracle/cost.ts), with creation/update timestamps also treated as volatile: the mock
+// server stamps createdAt on every create, so the same intent created a little later must still compare equal.
+const VOL = new Set(["id", "version", "rev", "revision", "etag", "updatedAt", "updated_at", "createdAt", "created_at", "clientId", "client_id", "tempId", "pending", "seq"]);
+function canon(v: unknown): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "undefined";
+  if (Array.isArray(v)) return `[${v.map(canon).join(",")}]`;
+  const keys = Object.keys(v as object).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canon((v as Record<string, unknown>)[k])}`).join(",")}}`;
+}
+function ckey(x: unknown): string {
+  if (x && typeof x === "object" && !Array.isArray(x)) {
+    const o: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(x as object)) if (!VOL.has(k)) o[k] = v;
+    return canon(o);
+  }
+  return canon(x);
+}
+function multisetDist(a: unknown[], b: unknown[]): number {
+  if (a.length === 0 && b.length === 0) return 0;
+  const m = new Map<string, number>();
+  for (const x of a) {
+    const k = ckey(x);
+    m.set(k, (m.get(k) ?? 0) + 1);
+  }
+  let diff = 0;
+  for (const x of b) {
+    const k = ckey(x);
+    const n = m.get(k) ?? 0;
+    if (n > 0) m.set(k, n - 1);
+    else diff++;
+  }
+  for (const n of m.values()) diff += n;
+  return Math.min(1, diff / Math.max(a.length, b.length, 1));
+}
+export function valueDist(a: unknown, b: unknown, depth = 0): number {
+  if (a === b) return 0;
+  if (Array.isArray(a) && Array.isArray(b)) return multisetDist(a, b);
+  if (a && b && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b) && depth < 3) {
+    const keys = new Set([...Object.keys(a as object), ...Object.keys(b as object)]);
+    let n = 0;
+    let s = 0;
+    for (const k of keys) {
+      if (VOL.has(k)) continue;
+      n++;
+      s += valueDist((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], depth + 1);
+    }
+    return n ? s / n : 0;
+  }
+  if (typeof a === "number" && typeof b === "number") return Math.abs(a - b) < 1e-9 ? 0 : 1;
+  return canon(a) === canon(b) ? 0 : 1;
+}
 
 export interface State {
   t: number;

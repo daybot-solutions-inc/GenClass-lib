@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import { APPS } from "./apps.gen.js";
 import { Runner } from "./browser.js";
-import { states } from "./cost.js";
+import { serverDist, states } from "./cost.js";
 import { buildScenario } from "./scenario.js";
 import { generateTrajectory, runConfig } from "./trajectory.js";
 import { dirname, join } from "node:path";
@@ -66,7 +66,8 @@ if (arg("interference")) {
       const fo = so[so.length - 1]!;
       const fh = sh[sh.length - 1]!;
       const domDiff = JSON.stringify(fo.dom) !== JSON.stringify(fh.dom);
-      const srvDiff = JSON.stringify(obs.server) !== JSON.stringify(heal.server);
+      // content comparison (timestamps ignored): holds shift createdAt/updatedAt without changing what was stored
+      const srvDiff = serverDist(obs.server, heal.server) > 0;
       if (domDiff || srvDiff) {
         r.diff++;
         if (domDiff) r.dom++;
@@ -92,7 +93,7 @@ if (arg("steps")) for (const s of scn.steps) console.log(`  step ${s.i} t=${Math
 const hash = (x: unknown) => createHash("sha1").update(JSON.stringify(x)).digest("hex").slice(0, 12);
 if (arg("traj")) {
   const t = await generateTrajectory(seed, APPS, runner, { maxPoints: 6, futures: 3, adaptive: true, testKeep: 1, ...(appName ? { apps: [appName] } : {}), ...(arg("clean") ? { clean: true } : {}) });
-  console.log(`traj runs=${t.runs} realMs=${t.realMs} runMs=${t.runMs} decisions=${t.decisions} rows=${t.rows.length} drops=${JSON.stringify(t.drops)} skipped=${t.skipped ?? ""}`);
+  console.log(`traj runs=${t.runs} realMs=${t.realMs} runMs=${t.runMs} decisions=${t.decisions} rows=${t.rows.length} drops=${JSON.stringify(t.drops)} notes=${JSON.stringify(t.notes)} skipped=${t.skipped ?? ""}`);
   for (const p of t.points) console.log(`   ${p.trigger} diag=${p.diagnosis} best=${p.best} npm=${p.nonPassiveMass} harm=${JSON.stringify(p.harm)} gain=${p.gain} K=${p.futures}`);
   for (const r of t.rows.slice(0, Number(arg("show", "3")))) {
     console.log("----", r.id, JSON.stringify(r.labels), JSON.stringify((r.meta as Record<string, unknown>).costs), (r.meta as Record<string, unknown>).diag_why);
@@ -108,9 +109,9 @@ if (arg("traj")) {
     }
     for (const r of ideal.net.slice(0, 30)) console.log(`  net ${Math.round(r.t0)} ${r.method} ${r.url} -> ${r.status ?? r.outcome}`);
   }
-  console.log(`ideal ok=${ideal.ok} err=${ideal.error ?? ""} tasks=${ideal.tasks} realMs=${ideal.realMs} snaps=${ideal.snapshots.length} net=${ideal.net.length} steps=${ideal.stepsRun}/${ideal.stepsSkipped} internal=${ideal.internalErrors.slice(0, 3).join(" | ")}`);
+  console.log(`ideal ok=${ideal.ok} err=${ideal.error ?? ""} tasks=${ideal.tasks} realMs=${ideal.realMs} snaps=${ideal.snapshots.length} net=${ideal.net.length} steps=${ideal.stepsRun}/${ideal.stepsSkipped} ${JSON.stringify(ideal.skipWhy ?? {})} internal=${ideal.internalErrors.slice(0, 3).join(" | ")}`);
   const base = await runner.run(runConfig(scn, { runId: "base", record: true, explore: scn.explore, pins: ideal.pins ?? {}, ...(arg("mode") ? { mode: String(arg("mode")) } : {}) }));
-  console.log(`base ok=${base.ok} err=${base.error ?? ""} tasks=${base.tasks} realMs=${base.realMs} snaps=${base.snapshots.length} net=${base.net.length} decisions=${base.decisions.length} steps=${base.stepsRun}/${base.stepsSkipped} ws=${base.wsMessages} uncaught=${base.uncaught.length} errEp=${base.errorEpisodes.length} internal=${base.internalErrors.slice(0, 3).join(" | ")}`);
+  console.log(`base ok=${base.ok} err=${base.error ?? ""} tasks=${base.tasks} realMs=${base.realMs} snaps=${base.snapshots.length} net=${base.net.length} decisions=${base.decisions.length} steps=${base.stepsRun}/${base.stepsSkipped} ${JSON.stringify(base.skipWhy ?? {})} ws=${base.wsMessages} uncaught=${base.uncaught.length} errEp=${base.errorEpisodes.length} internal=${base.internalErrors.slice(0, 3).join(" | ")}`);
   const trig: Record<string, number> = {};
   const diag: Record<string, number> = {};
   for (const d of base.decisions) {

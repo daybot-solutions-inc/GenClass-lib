@@ -60,6 +60,7 @@ export interface Clock {
 export const PASSIVE: Record<string, string> = {
   mutation: "apply",
   request: "send",
+  delivery: "deliver",
   failure: "deliver",
   stall: "wait",
   inconsistency: "ignore",
