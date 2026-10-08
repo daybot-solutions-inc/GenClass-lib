@@ -327,26 +327,63 @@ def lowest_safe(T: Table, mode: str, tier: str, th: dict, sel: np.ndarray, trig:
     return best
 
 
+def certifiable(T: Table, sel: np.ndarray, tier: str) -> dict:
+    """Which constraint sets have enough dev rows to certify their limit (0 events → Wilson UB ≤ margin × limit)."""
+    L = LIMITS[tier]
+    sim, real = (T.kind == "sim") & sel, ((T.kind == "real") | (T.kind == "realc")) & sel
+    n = {"fir_sim": int((sim & T.fir_row).sum()), "harm_sim": int((sim & T.has_cost).sum()),
+         "fir_real": int(((T.kind == "real") & sel & T.fir_row).sum()), "harm_real": int((real & T.has_cost).sum())}
+    lim = {"fir_sim": L["fir"], "fir_real": L["fir"], "harm_sim": L["harm"], "harm_real": L["harm"]}
+    return {k: (v > 0 and wilson_upper(0, v) <= DEV_MARGIN * lim[k] + 1e-12, v) for k, v in n.items()}
+
+
 def fit(items: list[dict], min_passive: int, min_real: int) -> tuple[dict, dict]:
+    """Rule (coordinator, 10:15): a trigger gets its own threshold only when its dev evidence can certify every limit
+    (SIM and REAL sets that have rows for it); otherwise it uses the tier default — never a lower per-trigger value.
+    The default is fitted on all triggers pooled: SIM sets must certify (else the tier never fires: 1.0 / 99); a pooled
+    REAL set too small to certify is held to its point estimate (reported in notes)."""
     th = {"guard": {"default": GRID[-1], "byTrigger": {}}, "heal": {"default": GRID[-1], "byTrigger": {}}}
     notes: dict = {}
     for tier in ("guard", "heal"):
         mode = tier
         T = Table(items, mode)
         allrows = np.ones(T.n, bool)
+        cert = certifiable(T, allrows, tier)
+        if not (cert["fir_sim"][0] and cert["harm_sim"][0]):
+            notes[f"{tier}:default"] = f"SIM dev evidence cannot certify the limits ({cert}) → never"
+            continue
         th[tier]["default"] = lowest_safe(T, mode, tier, th, allrows, None, True)
+        unc = [k for k, (c, n) in cert.items() if n > 0 and not c]
+        notes[f"{tier}:default"] = (f"pooled; point estimate only for {unc} (n {[cert[k][1] for k in unc]})" if unc else "pooled, certified")
         per = {}
         for trig in sorted(set(T.trig)):
             sel = T.trig == trig
-            n_pb = int(((T.kind == "sim") & T.fir_row & sel).sum())
-            n_rb = int(((T.kind == "real") & T.fir_row & sel).sum())
             if not ((T.ctier == tier) & sel).any():
                 continue  # no candidate of this tier for this trigger: the threshold would be vacuous
-            if n_pb < min_passive:
-                notes[f"{tier}:{trig}"] = f"default (only {n_pb} SIM passive-best fit rows)"
-                continue
-            per[trig] = lowest_safe(T, mode, tier, th, sel, trig, n_rb >= min_real)
-            notes[f"{tier}:{trig}"] = f"fitted on {n_pb} SIM passive-best / {n_rb} REAL benign rows"
+            c = certifiable(T, sel, tier)
+            nn = dict((k, v[1]) for k, v in c.items())
+            bad = [k for k, (ok_, n) in c.items() if n > 0 and not ok_]
+            sim_ok = c["fir_sim"][0] and c["harm_sim"][0]
+            if not bad:
+                per[trig] = lowest_safe(T, mode, tier, th, sel, trig, True)
+                notes[f"{tier}:{trig}"] = f"fitted (certified: n {nn})"
+            elif sim_ok:  # REAL rows for this trigger too few to certify: SIM-certified value, never below the default
+                v = lowest_safe(T, mode, tier, th, sel, trig, False)
+                if v > th[tier]["default"]:
+                    per[trig] = v
+                notes[f"{tier}:{trig}"] = f"max(default, SIM-certified {v}) — REAL cannot certify {bad} (n {nn})"
+            else:  # too little evidence: the default if its point estimates hold on this trigger, else never
+                th2 = json.loads(json.dumps(th))
+                th2[tier]["byTrigger"] = {}
+                mt = metrics(T, T.fired(th2, mode), sel)
+                cnt = mt["_counts"]
+                L = LIMITS[tier]
+                pe_ok = all(n == 0 or k / n <= lim for (k, n), lim in ((cnt["fir_sim"], L["fir"]), (cnt["harm_sim"], L["harm"]),
+                                                                       (cnt["fir_real"], L["fir"]), (cnt["harm_real"], L["harm"])))
+                if not pe_ok:
+                    per[trig] = GRID[-1]
+                notes[f"{tier}:{trig}"] = (f"default (cannot certify {bad}; point estimates at the default hold, n {nn})" if pe_ok
+                                           else f"never (cannot certify {bad} and the default's point estimates fail, n {nn})")
         th[tier]["byTrigger"] = per
         if not ok(metrics(T, T.fired(th, mode), allrows), tier, True):
             th[tier]["byTrigger"] = {k: max(v, th[tier]["default"]) for k, v in per.items()}

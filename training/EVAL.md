@@ -325,3 +325,31 @@ labels drops (74.1 vs 77.9) as expected, and the shared `choice` temperature is 
 outputs): the runtime gate on ĝ(a) = τ_gain · ln(p(a)/p(passive)) per permitted action with τ_gain and per-tier/trigger
 margins in `meta.json` (`gate.kind: "gain"`), plus per-question calibration. The separate gain-regression head
 (`r17-t1h`) was stopped early on v1 (loss 0.98 → 0.85 vs trivial 0.97–1.01) and not pursued.
+
+### `r17-v2b` gates refit on the shipped model's own distribution (2026-10-08 10:30 UTC) — published as `@genclass/runtime-model@0.1.0`
+
+SIM's on-policy round b (r17-v2b with its meta gates, situation-v2.3) showed the heal transition gate 0.55 too loose
+on-policy (41% of transition acts false), delivery acts 18% false at 0.75, request 19% (coalesce on intended repeats).
+Refit with dev = sim2g + **on-policy round b dev (33.7k) + round a dev (37.8k)** + REAL eval rows outside REAL's test
+split + REAL dev; 95% Wilson bound at 0.8 × each limit; a trigger gets its own threshold only where its dev evidence
+certifies every limit (SIM and REAL), else max(tier default, SIM-certified value), never below the default.
+
+Shipped gates: guard default 0.80 (mutation 0.95); heal default 0.85 (failure **0.95**, inconsistency 0.85); report 0.85.
+**Test-informed (coordinator):** the dev rule gave heal failure 0.90, whose held-out test FIR was 0.74% [0.51, 0.98]
+(> 0.5%); 0.95 was selected after that check (failure FIR 0.21% [0.11, 0.34], failure gain captured 8.4% → 2.5%).
+`gate.report` 0.85 is now the dev fit itself (no test-informed change).
+
+Verification on held-out test (on-policy round b test 20k + sim2e + sim2f; REAL test-split eval rows), at the dev-rule
+values (failure 0.90; with 0.95 pooled heal FIR 0.07%, gain captured 3.8%):
+
+| mode | fired | FIR SIM | FIR REAL | harm SIM / REAL | recall clear | REAL action recall | gain captured |
+|---|---|---|---|---|---|---|---|
+| guard | 0.04% | 0.01% [0.00, 0.02] | 0.00% | 0.00% / 0.00% | 0.6% | 0.0% | 0.8% |
+| heal | 1.11% | 0.17% [0.12, 0.22] | 0.00% | 0.04% / 0.07% | 5.9% | 5.7% (request 14%) | 5.7% |
+| heal, fixed 0.9/0.8 | 2.82% | 0.67% | 0.00% | 0.08% / 0.13% | 12.5% | 0.2% | 9.4% |
+
+Transition: 0 fires on test (was 41% false on-policy at 0.55). Observe mode at 0.85: false detections on REAL
+clean+benign-salient 0.36%, SIM gold-expected 1.1% (sim2e) / 1.7% (sim2f) — but **3.1% on on-policy round-b test**
+(over the 2% limit on the shipped model's own distribution); detection with the right diagnosis on held-out REAL
+apps: duplicate-submit 76%, stale-overwrite 28%. Shipped hashes: meta.json `c3358947…0eb50` (2,602 B), model.json
+`9e2a42bd…afff20`. The previous meta.json is kept as `meta.json.pre-onpol` on the train VM.
