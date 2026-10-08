@@ -167,6 +167,7 @@ trained v2 model once it exists.
 | Curriculum (cur1–cur4) | ~1.9M | done |
 | Sim v1 phase A / phase B | 600k / 1.4M | done (v1, superseded) |
 | Sim v2 gold (S1+S2 labels, 46 features, 115 domains) | **10,423,855** (7.56M train / 318k dev / 2.55M test) | done, 20 nodes in ~31 min |
+| Sim v2.3 gold top-up (relation-learner fixes) | **2,107,824** (inconsistency rows 5.5% → 1.6%) | done |
 | Sim on-policy round a (model r17-v2a acting in the sim; DAgger) | **1,248,131** (448k at shipping gate, 672k at explore gate 0.5) | done |
 | Sim v2 unlabeled (for teacher labelling) | **51,272,078** | done (~21k rows/s per node) |
 | Real-browser v2 gold (158 apps, 40+ stacks) | **616,437** (+523k unlabeled) | done; determinism 3,030/3,030, interference 0/256 |

@@ -288,3 +288,40 @@ real2e — failing 0.96 / 0.64, slow 0.93 / 0.95, transient 0.87 / 0.84, duplica
 inconsistent 0.93 / 0.28, unusual 0.91 / 0.06. REAL eval set (held-out apps), detected with the right diagnosis:
 **duplicate-submit 76%**, **stale-overwrite 43%**, genuine-break 27%; clean-benign 0.5% / benign-salient 0.7% any
 detection. Full curves (r = 0.50–0.99): `out/gates/r17-v2b-report.json` (c03).
+
+## Teacher `t150-v2a` (ettin-150m, 1B tokens of v2 gold + REAL gold) — not used
+
+Evaluated across its 11 nodes (`teacher_eval.sh`, bf16): sim2e action 76.5 / diagnosis 81.8, sim2f 75.5 / 79.6, real2e
+78.1 / 82.0 — below `r17-v2b` (77.8 / 84.2, 77.0 / 80.6, 80.0 / 83.6) on every set; expected gain (heal) gate@0.5 27.9%
+vs 31.7%, gate@0.8 3.2% vs 8.8%; REAL eval argmax duplicate 38% vs 50%, stale 4.7% vs 13.6%. Teacher labelling would
+cost ≈ 1M rows/h on 20 nodes (bf16). Decision (with the coordinator's rule "only distil if it clearly beats v2b"): no
+labelling / distillation; nodes deallocated; the run is resumable (`runs/t150-v2a` on c12).
+
+## T1 on v2: `r17-v2t` (expected-advantage soft labels, τ = 1) vs `r17-v2a` (same recipe, SIM labels)
+
+Labels: action = softmax(gain/τ) with gain = mean-future cost(passive) − cost(a) − premium (clipped ±30), 4.87M of
+7.56M sim2 rows relabelled; everything else identical to r17-v2a (from r17-final1, 2B tokens, same mixture).
+
+Expected gain on sim2e (heal mode, oracle 1.11 / row; label-FIR = fired on rows whose SIM label is passive-best):
+
+| policy | fired | recall clear | harmful (gain < −1) | gain captured | label-FIR |
+|---|---|---|---|---|---|
+| v2a gate@0.8 (summed mass) | 2.5% | 12.3% | 0.13% | 9.3% | 0.49% |
+| v2a gate@0.9 | 0.7% | 4.5% | 0.06% | 2.7% | 0.10% |
+| v2t gate@0.8 (summed mass) | 4.0% | 19.9% | 0.32% | 18.3% | 1.18% |
+| v2t gate@0.9 | 0.8% | 6.5% | 0.05% | 5.9% | 0.06% |
+| **v2t per-action gain gate ĝ > 1** | 2.5% | 15.9% | 0.14% | **14.4%** | 0.57% |
+| v2t ĝ > 0.5 | 7.9% | 32.6% | 0.65% | 26.1% | 3.2% |
+
+(ĝ(a) = τ·(z_a − z_passive) on raw logits; fire the argmax ĝ over permitted actions.) At matched FIR/harm, T1 with a
+per-action gain gate captures ≈ 1.5× the gain of the SIM-label model (14.4% vs 9.3%), and ≈ 2× at gate 0.9. With the
+runtime's **summed-mass** gate T1 does not ship: the data-derived heal thresholds come out at 1.0 (never) because
+gain-shaped labels put summed mass on near-tie actions of passive-best rows (heal-mode FIR 0.97% at fixed 0.8).
+REAL eval set (no REAL training in either): T1 is far more willing on the clear cases — argmax duplicate 55% (v2a 25%),
+stale-overwrite 43% (11%), genuine-break 16% (8%); heal@0.8 recall duplicate 17% (35% on held-out apps), stale 4.8%,
+clean/benign fired 0.00% — but at gate 0.5 benign-salient fires 3.0% (v2a 0.35%). Action accuracy against SIM's
+labels drops (74.1 vs 77.9) as expected, and the shared `choice` temperature is distorted (ECE 0.21 vs SIM labels;
+`gate.report` fit = 1.0) — a T1 export would need per-question temperatures. **What shipping T1 needs** (no new ONNX
+outputs): the runtime gate on ĝ(a) = τ_gain · ln(p(a)/p(passive)) per permitted action with τ_gain and per-tier/trigger
+margins in `meta.json` (`gate.kind: "gain"`), plus per-question calibration. The separate gain-regression head
+(`r17-t1h`) was stopped early on v1 (loss 0.98 → 0.85 vs trivial 0.97–1.01) and not pursued.
