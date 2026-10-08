@@ -48,6 +48,34 @@ thresholds ship in the model's `meta.json` `gate`. Verified on held-out test (95
 The derived gates keep both tiers inside their safety limits on data never used for fitting. Recall is now
 limited by the model's discrimination, which is what the 150M teacher, distillation and DAgger rounds target.
 
+### Observe mode: detection quality (r17-v2b)
+
+A *detection* is GenClass reporting a problem, such as "this response overwrote newer state", without changing
+anything. This is the phase-1 product. Detections fire when the top diagnosis is not `expected` and its probability
+is ≥ `gate.report`.
+
+| Held-out test set | Report threshold | Detected | Precision | False detections on clean real-app traffic |
+|---|---|---|---|---|
+| Real apps never trained on (eval set) | 0.70 | duplicate submits **76%**, stale overwrites **43%**, broken state 27% | 0.96 | 0.62% |
+| Real apps never trained on (eval set) | **0.85 (shipped)** | duplicate ~76%, stale 28% | higher | **0.36%** |
+| Simulated apps (sim2e) | 0.70 | 50.9% of anomalies | 0.91 | gold-expected rows: 2.59% (over the 2% limit) |
+| Simulated apps (sim2e) | 0.85 | – | – | 1.11% |
+
+Per-class precision / recall at 0.70 on sim2e:
+
+| Class | Precision | Recall |
+|---|---|---|
+| failing | 0.95 | 0.78 |
+| slow | 0.94 | 0.91 |
+| transient | 0.88 | 0.81 |
+| stale | 0.87 | 0.57 |
+| duplicate | 0.80 | 0.49 |
+| inconsistent | 0.97 | 0.53 |
+| conflict | 0.89 | 0.54 |
+
+The shipped threshold, 0.85, was chosen after the dev-fitted 0.70 failed the simulated false-detection limit on
+test, so that one choice is test-informed. Future exports fit with a stricter dev margin.
+
 Targets: guard FIR ≤ 0.1% (met), heal FIR ≤ 0.5% (met), calibration error ≤ 0.02 (met: 0.009),
 diagnosis ≥ 95% (not yet), clear-case recall ≥ 80% (not yet).
 

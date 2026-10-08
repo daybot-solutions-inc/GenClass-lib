@@ -304,3 +304,18 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
 - `eval_real.py`, `eval_real_sets.sh`: REAL eval-set metrics per case (and per held-out test split) under the gate.
 - c09 restarted 06:40 as the gate/eval workbench (serves `sim2g.tar` on :8805).
 - Cost since 05:22: 20 nodes × ≈ 1.8 h ≈ $195. **Total ≈ $635.** Burn now 19 nodes ≈ $105/h.
+
+### 07:10–07:55 r17-v2b delivered (2.0.0-rc2); observe-mode detections; `gate.report`
+- `r17-v2b` eval (real2e action 80.0 / diagnosis 83.6 / ECE 0.021 vs v2a 78.7 / 77.8 / 0.059; SIM unchanged), gates
+  fitted; first export failed on c03 (no onnx — installed on c03/c06 with node_init's pins) → re-exported, delivered to
+  `train:~/gcl/train-out/v2b/r17/` and `packages/runtime-model/files/r17/` (replaces rc1).
+- `fit_report.py` (observe mode: per-class detection precision/recall, false detections, REAL eval categories over
+  r = 0.50–0.99) → `gate.report = 0.70` for v2b (fit on dev; on held-out test REAL clean+benign-salient 0.62% ✓, SIM
+  gold-expected 2.6% / 3.6% ✗ — 0.85 would pass; coordinator's call). SIM passive-best rows replaced by gold-expected
+  rows as the SIM false-detection set (≈ 45% of passive-best rows are real anomalies). `gates_for.sh` runs both fits.
+- Teacher labelling probe (intermediate t150-v2a on c09): 9.6 rows/s per node fp32, 14 rows/s with bf16 autocast
+  (`label_teacher.py --amp`, max |Δp| 0.008) → ≈ 1M rows/h on 20 nodes. `collect_gain.py --amp`, `collect_parts.sh`,
+  `teacher_eval.sh` (teacher eval spread over its nodes; tested with R17 on c09).
+- c03, c04, c05, c13 deallocated when idle. Runtime notes for the next round: v2.2 retry applicability (in all gate
+  metrics), v2.3 relation learner (down-weight inconsistency; v2.3 top-ups; v2.3 eval slice).
+- Running: teacher (11 nodes, ETA 08:30), r17-v2t (3 nodes, ETA 08:15), c09 workbench. ≈ $80/h. **Total ≈ $700.**

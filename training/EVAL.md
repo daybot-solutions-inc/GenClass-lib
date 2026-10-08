@@ -233,3 +233,54 @@ Full per-trigger tables: `out/gates/r17-v2a.json` on c09.
 
 Targets: guard FIR ≤ 0.1% met; heal FIR ≤ 0.5% met pooled (failure trigger 0.55% on held-out test); diagnosis ≥ 95%
 not met (84 / 81); clear stale/duplicate recall ≥ 80% far from met; ECE ≤ 0.02 met after calibration on SIM (REAL 0.059).
+
+## situation-v2: `r17-v2b` (current shipping candidate, 2.0.0-rc2; 2026-10-08 07:10 UTC)
+
+Recipe: `r17-v2a` + 1B tokens (`mix_v2b`: sim2 0.70, REAL gold `real2` 0.18 — v2c1–4 minus every REAL eval-set row —,
+cur5 0.10, cur1/gen 0.02), lr 1e-4, 4 nodes. Export q8 9.58 MB / fp16 13.57 MB, ORT-web 223/223, WASM 1 thread ≈ 176 /
+320 / 583 ms at 500 / 780 / 1,170 tokens; `train:~/gcl/train-out/v2b/r17/` and `packages/runtime-model/files/r17/`.
+
+| set | action acc | diagnosis acc | guard FIR @0.9 | heal FIR @0.8 | heal precision | heal recall | ECE action |
+|---|---|---|---|---|---|---|---|
+| sim2e | 77.8 | 84.2 | 0.01% | 0.50% | 74.1 | 7.1 | 0.023 |
+| sim2f (held-out features) | 77.0 | 80.6 | 0.00% | 0.70% | 72.9 | 7.0 | 0.022 |
+| real2e | **80.0** (v2a 78.7) | **83.6** (77.8) | 0.00% | 0.31% | 72.9 | 6.2 | **0.021** (0.059) |
+
+REAL eval set (fixed gates): argmax duplicate-submit 49.6% (v2a 24.8%), stale-overwrite 13.6%, genuine-break 2.7%
+(v2a 7.8%); heal@0.8 recall duplicate 8.2% (held-out-app rows 14%); clean-benign / benign-salient fired 0.00%.
+
+Data-derived action gates (in `meta.json`): guard default 0.80 (delivery 0.75, mutation 0.95, request 0.75); heal
+default 0.85 (failure 0.90, inconsistency 0.80, request 1.0, transition 0.55). Test verification (v2.2 retry
+applicability): guard FIR SIM 0.02% [0.00, 0.06], REAL 0.00%, recall clear 1.8%, gain captured 2.9%; heal FIR SIM 0.23%
+[0.14, 0.29], REAL 0.00%, harm 0.07% / 0.08%, recall clear 6.0%, REAL action-case recall 9.5%, gain captured 5.7%
+(fixed 0.8: FIR 0.67%, over the limit).
+
+### Observe-mode detections (`fit_report.py`; coordinator request of 07:50)
+
+Detection = top calibrated diagnosis ≠ expected with probability ≥ `gate.report`. Fitted on dev (SIM `sim2g` 104k,
+REAL eval-set rows outside REAL's test split): lowest r with false detections ≤ 1% on REAL clean-benign +
+benign-salient and ≤ 2% on SIM rows whose **gold diagnosis is `expected`** (95% Wilson upper bounds). SIM
+passive-best rows were not usable as "false": ≈ 45% of them carry a real anomaly (failing / slow / transient /
+overload networks where waiting is still best) and the detection is correct there (precision 0.91 at r = 0.7) — no
+threshold ≤ 0.99 brings "any detection on passive-best rows" under 2%. **`gate.report = 0.70`** (in `meta.json`).
+
+Verification on test, r = 0.70 (r = 0.85 in brackets):
+
+| set | detected | precision | false on REAL clean+benign-salient | false on gold-`expected` rows |
+|---|---|---|---|---|
+| sim2e | 50.9% | 0.91 | – | **2.59%** [1.11%] |
+| sim2f (held-out features) | 49.9% | 0.89 | – | **3.60%** [1.66%] |
+| real2e | 39.6% | 0.88 | – | 4.34% [3.16%] |
+| REAL eval set, test split | 14.0% | 0.96 | **0.62%** [0.36%] | 0.54% |
+
+The dev-fitted 0.70 meets the REAL limit on held-out apps but **not** the 2% SIM limit on held-out test (domains /
+features shift again); 0.85 meets both SIM test sets (stale-overwrite detection drops 43% → 28%). real2e's
+gold-`expected` rows are detected 2–4% at every r (REAL diagnosis labels for random rows; not a constraint set).
+
+Per-class detection at r = 0.70 (precision / recall): sim2e — failing 0.95 / 0.78, slow 0.94 / 0.91, transient 0.88 /
+0.81, duplicate 0.80 / 0.49, stale 0.87 / 0.57, inconsistent 0.97 / 0.53, conflict 0.89 / 0.54, overload 0.93 / 0.38,
+unusual 0.96 / 0.49; sim2f — duplicate 0.68 / 0.43, stale 0.82 / 0.44, inconsistent 0.98 / 0.28, overload 0.88 / 0.25;
+real2e — failing 0.96 / 0.64, slow 0.93 / 0.95, transient 0.87 / 0.84, duplicate 0.92 / 0.53, stale 0.67 / 0.51,
+inconsistent 0.93 / 0.28, unusual 0.91 / 0.06. REAL eval set (held-out apps), detected with the right diagnosis:
+**duplicate-submit 76%**, **stale-overwrite 43%**, genuine-break 27%; clean-benign 0.5% / benign-salient 0.7% any
+detection. Full curves (r = 0.50–0.99): `out/gates/r17-v2b-report.json` (c03).

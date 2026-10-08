@@ -1,6 +1,7 @@
 #!/bin/bash
 # Production top-up on a frozen runtime tag (Mac side; ssh/rsync/az only):
 #   realapps/scripts/topup.sh TAG BATCH SEED0 TRAJ_PER_NODE "nodes" "app,list"
+#   NODE_APPS="c01=a,b c10=a,b c11=c,d" ... overrides the app list per node (one process => serial az calls)
 # Starts each node (one az call at a time), syncs + builds against TAG, runs gen.js with the apps, then pulls each
 # batch to train:/data/real-out/<BATCH><n>/ and deallocates the node after a verified copy.
 set -uo pipefail
@@ -16,7 +17,9 @@ for h in $NODES; do (TAG=$TAG T=3000 "$ROOT/realapps/scripts/cluster.sh" setup $
 for h in $NODES; do until grep -qE "setup ok|rror" /tmp/rw-setup-$h.log 2>/dev/null; do sleep 15; done; tail -1 /tmp/rw-setup-$h.log; done
 for h in $NODES; do
   i=$((i+1))
-  "$ROOT/realapps/scripts/cluster.sh" run $h $BATCH$i $((SEED0 + i*1000000)) $N 70 --test-keep 0.5 --apps "$APPS"
+  A="$APPS"
+  for kv in ${NODE_APPS:-}; do [ "${kv%%=*}" = "$h" ] && A="${kv#*=}"; done
+  "$ROOT/realapps/scripts/cluster.sh" run $h $BATCH$i $((SEED0 + i*1000000)) $N 70 --test-keep 0.5 --apps "$A"
 done
 i=0
 left=""
