@@ -14,7 +14,22 @@ reports are in `training/EVAL.md`, `training/LOG.md`, `sim/SEPARABILITY.md`, `re
 | Stage 2 pilot, R17 | 224k pre-freeze sim rows, mushy labels | 91.1% | 78.3% | 0.00% | 0.08% | ~1% |
 | **Final round 1, R17** (format v1) | 448k sim rows (phase A) | **90.5%** | **81.9%** | **0.05%** | **0.24%** | **7.7%** |
 | Final round 1, R32 (format v1) | same | 89.7% | 81.8% | 0.05% | 0.22% | 5.9% |
-| Round 2 (format v2) | ~10M sim gold + ~50M unlabeled + ~0.5M real-browser rows | in progress | | | | |
+| **r17-v2a** (format v2, first round) | 2B tokens of v2 sim gold + v2 curriculum | 84.4% | 77.9% | **0.00%** | 0.46% | 3.1% (heal clear-case 11.3%) |
+| Round 2 continues (teacher, REAL gold, DAgger, data-derived gates) | 10.4M sim gold + 51M unlabeled + 616k real | in progress | | | | |
+
+### r17-v2a on held-out data (details)
+
+| Set | Diagnosis | Action | Guard FIR | Heal FIR | Recall at shipping gates | Recall at gate 0.5 |
+|---|---|---|---|---|---|---|
+| Sim test (`sim2e`) | 84.4% | 77.9% | 0.00% | 0.46% | heal 6.8% | heal 45% on clear cases (harm 1.8% of rows) |
+| Held-out app features (`sim2f`) | 81.0% | 77.4% | 0.00% | 0.75% | heal 6.8% | – |
+| **Real apps, eval set (16,600)** | – | – | **0.00%** | **0.00%** | duplicate 0.6%, stale 1.0% | **duplicate 35% (64% on held-out apps)**, broken state 10%, stale 9%, with FIR 0.05–0.35% |
+
+**Reading.** v2 kept v1's safety and made the model much better at ranking, but the fixed 0.9/0.8 gates were
+chosen before labels became expected costs and now block nearly every action. Next:
+- **Thresholds:** derive per-tier, per-trigger gate thresholds from held-out data (FIR ≤ 0.1% guard / 0.5% heal on
+  clean real-app and sim traffic; fit on dev, verify on test) and ship them in the model's meta.json.
+- **Training:** finish the 150M teacher (with real-app gold), distil, and run DAgger rounds.
 
 Targets: guard FIR ≤ 0.1% (met), heal FIR ≤ 0.5% (met), calibration error ≤ 0.02 (met: 0.009),
 diagnosis ≥ 95% (not yet), clear-case recall ≥ 80% (not yet).
