@@ -14,7 +14,8 @@ The runtime gate (CONTRACT §8, policy.ts `gate()`): A = permitted non-passive a
 guard + heal), candidate = argmax calibrated p over A, run iff Σ_A p ≥ threshold[tier(candidate)][trigger] and the top
 diagnosis ≠ expected. Probabilities use the shipped calibration (per-kind temperature, as `calibrateLogits`).
 
-Sources: `sim` = SIM gold rows; `real` = REAL's unambiguous-case eval set (meta.eval_case/eval_expect; `:notest` keeps
+Sources: `sim` = SIM gold rows; `realp` = REAL gold rows whose passive-best rows count as REAL FIR evidence (the
+certification dev set); `real` = REAL's unambiguous-case eval set (meta.eval_case/eval_expect; `:notest` keeps
 rows whose original split is not test, `:test` only test-split rows = held-out apps/framework); `realc` = random REAL
 gold rows (harm only).
 Constraints (per tier, on the fit data; each must hold for the one-sided 95% Wilson UPPER bound, because the test
@@ -115,10 +116,14 @@ def tau_of(cal: dict, rec: dict) -> float:
 def load(spec: str, cal: dict, v22: bool = True) -> list[dict]:
     """→ one item per decision row: per-mode gate inputs and outcome indicators."""
     kind, rest = spec.split("=", 1)
+    passive_fir = kind == "realp"  # REAL gold rows (e.g. the certification dev set): FIR rows = passive-best rows
+    if passive_fir:
+        kind = "real"
     parts = rest.split(":")
     rows_p, rec_p = parts[0], parts[1]
     filt = parts[2] if len(parts) > 2 else ""
     trig_in = trig_out = None  # optional 4th field: "only=t1,t2" or "not=t1,t2" (per-trigger source choice)
+    want_gate = parts[4].split("=", 1)[1] if len(parts) > 4 and parts[4].startswith("gate=") else None  # 5th: "gate=shipping"
     if len(parts) > 3 and parts[3]:
         k, _, v = parts[3].partition("=")
         if k == "only":
@@ -150,6 +155,8 @@ def load(spec: str, cal: dict, v22: bool = True) -> list[dict]:
             continue
         trg = m.get("trigger")
         if (trig_in is not None and trg not in trig_in) or (trig_out is not None and trg in trig_out):
+            continue
+        if want_gate is not None and m.get("gate") != want_gate:  # on-policy rows from the shipping-gate policy only
             continue
         tiers = m.get("tiers") or {}
         passive = m.get("passive") or next((a for a, t in tiers.items() if t == "passive"), None)
@@ -195,7 +202,7 @@ def load(spec: str, cal: dict, v22: bool = True) -> list[dict]:
             cb = clear_best(m, [passive] + A, passive) if kind == "sim" else None
             item["modes"][mode] = {
                 "mass": mass, "ghat": ghat, "ctier": ctier, "harm": harm, "gain": gain, "oracle": oracle,
-                "fir_row": (pb if kind == "sim" else (case in BENIGN) if kind == "real" else None),
+                "fir_row": (pb if (kind == "sim" or passive_fir) else (case in BENIGN) if kind == "real" else None),
                 "fir_bad": True,  # a fire on a FIR row is always a false intervention
                 "clear": cb is not None, "clear_hit": cb == cand if cb else False,
                 "act_case": kind == "real" and case is not None and case not in BENIGN,

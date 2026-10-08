@@ -11,7 +11,7 @@ import { askQuestions } from "../../../sim/src/ask/questions.js";
 import type { Runner } from "./browser.js";
 import { runCost, states, type CostBreakdown, type State } from "./cost.js";
 import { diagnosisFromOutcome, finishDiagnosis, S1_GAP } from "./labels.js";
-import { buildScenario, type Scenario } from "./scenario.js";
+import { buildScenario, scenarioOpts, type Scenario } from "./scenario.js";
 import type { AppManifest } from "../shared/manifest.js";
 import type { DecisionRec, RunConfig, RunResult } from "../shared/types.js";
 
@@ -85,6 +85,17 @@ export interface GenOptions {
   unlabeled?: number;
   /** Developer-question rows from ask probes (default true). */
   ask?: boolean;
+  /** Certification runs: "clean" (calm network, benign user, sampled flags) or "chaos" (the usual chaos mix, never a
+   * clean run); both without exploration, so the base run is the passive run. */
+  cert?: "clean" | "chaos";
+  /** Only scenarios of this split (gen.ts already filters seeds; this guards direct callers). */
+  split?: "train" | "dev" | "test";
+  /** Diagnosis-only rows (single-action decisions) per trajectory (default 3). */
+  diagOnly?: number;
+  /** Label every decision point, but at most this many per trigger per trajectory (uniform within the trigger; the
+   * rows carry meta.cert_weight = points of that trigger / labelled ones, so weighted counts are the natural mix).
+   * Replaces maxPoints' trigger-weighted sample. */
+  perTrigger?: number;
 }
 
 export function runConfig(scn: Scenario, o: Partial<RunConfig> & { runId: string }): RunConfig {
@@ -142,12 +153,16 @@ const r3 = (x: number) => Math.round(x * 1000) / 1000;
 export async function generateTrajectory(seed: number, apps: AppManifest[], runner: Runner, o: GenOptions): Promise<TrajectoryOut> {
   const t0 = Date.now();
   const pool = o.apps?.length ? apps.filter((a) => o.apps!.includes(a.name)) : apps;
-  const scn = buildScenario(seed, pool, o.clean ? { clean: true } : {});
+  const scn = buildScenario(seed, pool, scenarioOpts(o));
   const out: TrajectoryOut = { seed, app: scn.app.name, split: scn.split, rows: [], points: [], drops: {}, notes: {}, runs: 0, decisions: 0, realMs: 0, runMs: 0 };
   const drop = (k: string) => (out.drops[k] = (out.drops[k] ?? 0) + 1);
   /** Not drops: the row is kept (without a diagnosis label when the sampled vocabulary lacks it). */
   const note = (k: string) => (out.notes[k] = (out.notes[k] ?? 0) + 1);
   const R = new Rng(hashAll("realapps-traj", seed));
+  if (o.split && scn.split !== o.split) {
+    out.skipped = "split-filter";
+    return out;
+  }
   if (scn.split === "test" && R.fork("testkeep").next() >= o.testKeep) {
     out.skipped = "test-subsample";
     return out;
@@ -192,13 +207,26 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
     patterns: scn.patterns,
     chaos: scn.chaos,
     clean: scn.clean,
+    ...(o.cert ? { cert: o.cert, explore: scn.explore } : {}),
     budget: scn.budget,
     runtime: RUNTIME_TAG,
     browser: "chromium-headless",
     ...(scn.app.source ? { oss: scn.app.source.repo } : {}),
   };
   // ------------------------------------------------------------------------------------- decision rows
-  const points = pickPoints(base.decisions, o.maxPoints, R.fork("points"));
+  const certWeight = new Map<number, [number, number]>();
+  let points: DecisionRec[];
+  if (o.perTrigger) {
+    const byT = new Map<string, DecisionRec[]>();
+    for (const d of base.decisions) if (d.actions.length >= 2) (byT.get(d.trigger) ?? byT.set(d.trigger, []).get(d.trigger)!).push(d);
+    points = [];
+    for (const [t, ds] of byT) {
+      const pick = ds.length <= o.perTrigger ? ds : R.fork("points", t).sample(ds, o.perTrigger);
+      for (const d of pick) certWeight.set(d.k, [Math.round((ds.length / pick.length) * 1e4) / 1e4, ds.length]);
+      points.push(...pick);
+    }
+    points.sort((a, b) => a.k - b.k);
+  } else points = pickPoints(base.decisions, o.maxPoints, R.fork("points"));
   for (const p of points) {
     const passive = passiveOf(p.trigger, p.actions);
     const forcedPrefix: [number, string][] = base.decisions.filter((d) => d.k < p.k && d.explored).map((d) => [d.k, d.chosen]);
@@ -310,6 +338,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
         ...(diagS1 ? { diagnosis_s1: diagS1, diagnosis_subject: diagSubject ?? null } : {}),
         subject: p.subject,
         transform: tr.variant,
+        ...(o.perTrigger ? { cert_weight: certWeight.get(p.k)![0], trigger_points: certWeight.get(p.k)![1] } : {}),
       },
     });
     out.points.push({ trigger: p.trigger, ...(diag ? { diagnosis: diag } : {}), best: lab.best, passiveBest: lab.passiveBest, harm, nonPassiveMass: lab.nonPassiveMass, gain: Math.round((mean[passive]! - Math.min(...Object.values(mean))) * 1e3) / 1e3, futures: costs[passive]?.length ?? 1, split: scn.split, app: scn.app.name });
@@ -353,7 +382,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
   }
   // ------------------------------------------------------------------------------- diagnosis-only rows
   const single = base.decisions.filter((d) => d.actions.length < 2 && d.state);
-  for (const d of R.fork("single").sample(single, 3)) {
+  for (const d of R.fork("single").sample(single, o.diagOnly ?? 3)) {
     const diag = finishDiagnosis(d, scn.app, baseStates, null);
     const dq = (d.questions as Record<string, { type: string; criteria: Record<string, unknown> }> | undefined)?.diagnosis;
     if (!diag || !dq || dq.type !== "choice" || !(diag in dq.criteria)) continue;

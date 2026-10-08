@@ -111,7 +111,8 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 | c02–c09, c12–c23 (20 nodes) | SIM (done 04:05–05:00 UTC, **all deallocated**) | was: from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
 
 | **c09** | **TRAIN workbench (v2)** | from 06:40 UTC | data prep, gate dev sets, eval; serves tars on :8805 (sim2g, gatefix, v2c_data, v2d_sim3, v2d_real3) |
-| c14, c15 | REAL (v23e top-up) | REAL's claim | — |
+| c14, c15 | REAL (v23e top-up) | done 09:45 UTC, **deallocated**, locks released | — |
+| c12–c21 | REAL (v23-cert) | 11:56–12:50 UTC generation; all parts pulled, locks released, all ten **deallocated** (confirmed 14:56 UTC) | certification dev set → `train:/data/real-out/v23-cert/` |
 | c01–c08, c10–c13, c16–c23 | free (TRAIN deallocated by 11:50 UTC) | — | — |
 
 SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
@@ -246,4 +247,56 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
       duplicate-submit 4,000, stale-overwrite 940, clean-benign 827, genuine-break 635). Use it for the inconsistency
       categories (genuine-break, and inconsistency rows in benign-salient / clean-benign); `v2-eval` remains valid for
       request/mutation/delivery cases. Sweeps on v2.3: determinism 316/316, interference 0/158.
+    REAL holds no nodes now.
+19. **REAL certification dev set `v23-cert` (`situation-v2.3`) — LANDED 14:55 UTC** for per-trigger gate
+    certification. `train:/data/real-out/v23-cert/cert-{clean,chaos}-cNN/dev.jsonl` (10 parts, 1.9 GB), report
+    `v23-cert/cert_report.md` / `.json`.
+    - **Dev split only.** Seeds 40M–44M (clean) and 50M–54M (chaos) were scanned and kept only when
+      `splitOf(app, flags)` = dev, so there are no test or held-out apps. The seeds are disjoint from every earlier
+      batch (all < 25M), so no row overlaps `v2-eval` or `v23-eval`.
+    - **Two modes, 25k trajectories each.**
+      - `meta.cert = "clean"`: calm network, benign user, flags sampled as usual; `meta.clean` true.
+      - `meta.cert = "chaos"`: the usual chaos mix, never a clean run.
+      - Both use **no exploration** (`meta.explore` 0), so the base run is the passive run.
+    - **Every decision point is labelled with counterfactuals** (K = 3 adaptive futures), but at most 10 per trigger
+      per trajectory, sampled uniformly within the trigger.
+      - `meta.cert_weight` = (that trigger's points in the trajectory) / (points labelled). Weight by it to get the
+        natural per-trigger mix.
+      - `meta.trigger_points` gives the raw count.
+      - Every single-action decision point is a diagnosis-only row. There are no unlabeled rows and no ask rows.
+    - **Rows.** 427,576 in total (dev): 364,094 action-labelled plus 63,482 diagnosis-only.
+    - **Passive-best (benign) rows per trigger** (clean / chaos · distinct trajectories · apps):
+
+      | trigger | passive-best | clean / chaos | trajectories | apps |
+      |---|---|---|---|---|
+      | request | 147,471 | 73,160 / 74,311 | 35,988 | 90 |
+      | mutation | 64,967 | 24,916 / 40,051 | 17,023 | 70 |
+      | delivery | 45,396 | 16,514 / 28,882 | 16,645 | 76 |
+      | failure | 15,622 | 0 / 15,622 | 6,322 | 69 |
+      | inconsistency | 8,829 | 5,112 / 3,717 | 4,577 | 43 |
+      | transition | 8,716 | 3,459 / 5,257 | 4,555 | 71 |
+      | stall | 7,853 | 932 / 6,921 | 5,066 | 65 |
+      | **error** | **3,102** | 1,489 / 1,613 | 356 | 7 |
+
+      All triggers except `error` meet the 5,000 target.
+    - **`error` is too rare in real apps.** 3,026 of its 3,102 passive-best rows come from one app (`svelte-chat`,
+      bursts of up to 334 error decisions per trajectory), and only 356 trajectories contribute. Treat it as
+      uncertifiable from REAL data alone.
+    - **`failure` and `stall` come almost entirely from chaos runs.** Clean runs have 1 labelled failure row and
+      1,075 stall rows. Most failure and stall points offer a single action and appear as diagnosis-only rows
+      (43,306 and 14,181).
+    - **Action-best cases** (best action, both modes):
+      - request: 32,749 (coalesce 16,103, block 8,740, delay 5,797, serve_cached 2,109);
+      - failure: 11,071 (retry 6,888, serve_cached 4,183);
+      - delivery: 8,737 (discard 7,469, defer 1,268);
+      - mutation: 4,681 (discard 4,680);
+      - inconsistency: 2,304 (rollback 1,965, resync 339);
+      - stall: 1,880 (hedge 914, serve_cached 966);
+      - transition: 524;
+      - error: 192 (rollback).
+    - **Eval-style cases** (`evalset.py` rules): clean-benign 15,622, benign-salient 8,876, duplicate-submit 6,175,
+      stale-overwrite 1,931, genuine-break 2,962. The per trigger × mode × category breakdown (confident, salient,
+      best action, diagnoses, cases, top apps) is in `cert_report.md`.
+    - **Correlation caveat for Wilson bounds.** Rows from one trajectory are correlated. Use the trajectory counts
+      above, or cluster by `meta.seed`, if certification assumes independent rows.
     REAL holds no nodes now.

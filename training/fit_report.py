@@ -56,6 +56,7 @@ def load(spec: str, cal: dict) -> tuple[str, list[dict]]:
     parts = rest.split(":")
     filt = parts[2] if len(parts) > 2 else ""
     trig_in = trig_out = None
+    want_gate = parts[4].split("=", 1)[1] if len(parts) > 4 and parts[4].startswith("gate=") else None
     if len(parts) > 3 and parts[3]:
         k, _, v = parts[3].partition("=")
         trig_in, trig_out = (set(v.split(",")), None) if k == "only" else (None, set(v.split(",")))
@@ -80,11 +81,14 @@ def load(spec: str, cal: dict) -> tuple[str, list[dict]]:
             trg = m.get("trigger")
             if (trig_in is not None and trg not in trig_in) or (trig_out is not None and trg in trig_out):
                 continue
+            if want_gate is not None and m.get("gate") != want_gate:
+                continue
             bh = cal.get("by_header") or {}
             p = softmax(q["logits"], float(bh[q.get("header")]) if q.get("header") in bh else float(cal.get("choice", 1.0)))
             k = int(p.argmax())
             pb = m.get("passive_best")
-            out.append({"top": q["labels"][k], "p": float(p[k]), "gold": gold, "passive_best": bool(pb) if pb is not None else None,
+            out.append({"benign_gold": name.startswith("realp") and gold == "expected" and bool(pb),
+                        "top": q["labels"][k], "p": float(p[k]), "gold": gold, "passive_best": bool(pb) if pb is not None else None,
                         "case": m.get("eval_case"), "trigger": m.get("trigger")})
     return name, out
 
@@ -110,7 +114,7 @@ def table(items: list[dict], r: float, is_sim: bool) -> dict:
     if is_sim:
         pbr = [d for it, d in zip(items, det) if it["passive_best"]]
         res["false_on_sim_passive"] = [sum(pbr), len(pbr)]
-    ben = [d for it, d in zip(items, det) if it["case"] in BENIGN]
+    ben = [d for it, d in zip(items, det) if it["case"] in BENIGN or (it.get("benign_gold"))]
     if ben:
         res["false_on_real_benign"] = [sum(ben), len(ben)]
         cases = defaultdict(lambda: [0, 0, 0])
@@ -172,8 +176,10 @@ def main() -> None:
     ap.add_argument("--write-meta", type=Path, default=None)
     a = ap.parse_args()
     cal = json.loads(a.cal.read_text())
-    fit_sets = dict(load(s, cal) for s in a.fit)
-    test_sets = dict(load(s, cal) for s in a.test)
+    fit_sets = {f"{n}#{i}": it for i, (n, it) in enumerate(load(s, cal) for s in a.fit)}  # names may repeat
+    test_sets = {}
+    for n, it in (load(s, cal) for s in a.test):
+        test_sets[n if n not in test_sets else f"{n}#{len(test_sets)}"] = it
     r, curve = fit(fit_sets)
     res = {"report": r, "limits": LIM, "fit_curve": curve, "test": {}}
     for name, items in test_sets.items():

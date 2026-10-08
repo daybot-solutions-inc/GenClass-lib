@@ -41,7 +41,7 @@ case "$cmd" in
   run)
     name="${3:?name}"; seed="${4:?seed}"; n="${5:?trajectories}"; w="${6:-0}"; shift 6 2>/dev/null || shift $#
     extra="$*"
-    r "mkdir -p ~/gcl/real-out/${name} && cd ~/gcl/real/realapps && W=${w}; [ \"\$W\" -gt 0 ] || W=\$(( \$(nproc) * 3 / 4 )); nohup node dist/harness/gen.js --out ~/gcl/real-out/${name} --seed ${seed} --trajectories ${n} --workers \$W ${extra} > ~/gcl/real-out/${name}/gen.log 2>&1 < /dev/null & echo launched gen ${name} on ${H} pid \$! workers \$W"
+    r "mkdir -p ~/gcl/real-out/${name} && cd ~/gcl/real/realapps && W=${w}; [ \"\$W\" -gt 0 ] || W=\$(( \$(nproc) * 3 / 4 )); nohup node \$HOME/gcl/real/realapps/dist/harness/gen.js --out ~/gcl/real-out/${name} --seed ${seed} --trajectories ${n} --workers \$W ${extra} > ~/gcl/real-out/${name}/gen.log 2>&1 < /dev/null & echo launched gen ${name} on ${H} pid \$! workers \$W"
     ;;
   status)
     name="${3:-}"

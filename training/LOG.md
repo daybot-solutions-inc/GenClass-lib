@@ -375,3 +375,15 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
   conservative (REAL action recall 0.7% at the shipped margins); v2d is the safest; v2c's looser heal gate gives the
   highest shipped gain. All three delivered to `train:~/gcl/train-out/{v2dT,v2d,v2c-q8}/r17/`.
 - All TRAIN nodes deallocated except c09. **Total ≈ $1,000.**
+
+### 11:50–12:00 waiting for REAL's certification dev set; refit prepared
+- Coordinator: refit gates + gate.report for v2dT / v2d / v2c-q8 on q8 outputs with REAL's certification dev set
+  (`train:/data/real-out/v23-cert/`) added to dev, on-policy rows only from the shipping-gate policy (meta.gate ==
+  "shipping"; explore-gate rows excluded from fit and test), then pick 0.2.0 by shipped gain at the FIR limits
+  (detection quality as tiebreak) and stage it in `packages/runtime-model/files/r17-0.2.0/`.
+- `fit_gates.py`: 5th spec field `gate=shipping`; source kind `realp` (REAL gold rows whose passive-best rows are REAL
+  FIR evidence). `fit_report.py`: same filter; `realp` gold-`expected` passive-best rows count as REAL benign
+  evidence. **Bug fixed:** fit_report keyed fit sets by name, so two `--fit real=…` sets overwrote each other — the
+  10:55 report fits for v2c-q8 / v2d / v2dT used only v23-eval as REAL benign evidence; the refit corrects this.
+- `cert_refit.sh` (Mac-side): imports the cert set on c09 (eval-set ids removed), collects q8 logits on it per model
+  across R0 + helpers, refits, refreshes model.json, prints the h2h summary. All nodes deallocated while waiting.
