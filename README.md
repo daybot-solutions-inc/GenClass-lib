@@ -23,20 +23,22 @@ generic facts about each write, request and response, and asks a small GenClass 
 The model runs in the browser (WebGPU or WASM, in a Web Worker). It answers two questions: what is happening, and
 which available action is best. There is no list of known bugs in the code.
 
-> **Status: alpha. The runtime is built; its model is still in training.**
+> **Status: beta. `@genclass/runtime@0.1.0-beta.0` ships with its first trained model,
+> `@genclass/runtime-model@0.1.0`.**
 >
-> - **Runtime:** works and is unit-tested (situation format `situation-v2`, tag `situation-v2`).
-> - **Default mode** is `observe`. `guard` is opt-in; `heal` is experimental.
-> - **No model is published for this format yet.** `@genclass/runtime-model` is not on npm, so a default
->   `GenClass.init()` prints `[GenClass] Model unavailable (...); observing only.` and finds nothing.
-> - **Round 1 models** (format `situation-v1`) exist but do not match this runtime.
-> - **On npm:** `@genclass/runtime@0.1.0-alpha.1` (`latest`) is this runtime. `0.1.0-alpha.0` is the older v1
->   runtime: it defaults to guard, holds store writes, and has a `NaN` crash that alpha.1 fixes.
-> - **In this repository, not yet on npm:** the one-command install (`npx @genclass/runtime init`), the
->   `@genclass/runtime/auto` entries and the script tag; observe mode never holding or delaying a response; and
->   two redaction fixes. They ship in the next release: `0.1.0-beta.0` with the model, or `0.1.0-alpha.2` if a
->   release without the model goes out first ([RELEASE.md](RELEASE.md)). The install path still has known issues,
->   listed under the runtime README's known limitations.
+> - **Runtime:** works and is unit-tested (situation format tag `situation-v2.3`). Install with
+>   `npx @genclass/runtime init`, one import (`@genclass/runtime/auto`) or one script tag.
+> - **Default mode** is `observe`: the model diagnoses salient situations and the runtime reports likely problems,
+>   without changing what the app does. `guard` is opt-in; `heal` is experimental.
+> - **Model:** `genclass-runtime-r17` 2.0.0-rc2 (9.6 MB, WASM or WebGPU), loaded from jsDelivr by default.
+>   - On held-out data it diagnoses about 84% of decisions correctly (83.6% on real apps).
+>   - In observe mode it flags 1.4% (simulated) to 3.8% (real) of decisions where nothing was wrong.
+>   - When it acts, it is rarely wrong (0.02% guard, 0.23% heal on simulated apps; none seen on held-out real apps),
+>     but it acts on only 1–9% of the cases where acting would help.
+>
+>   See the [model card](packages/runtime-model/MODEL_CARD.md).
+> - **Older versions on npm:** `0.1.0-alpha.1` (the v2 runtime without the install commands or model gates) and
+>   `0.1.0-alpha.0` (the v1 runtime: guard by default, holds store writes, `NaN` crash). Use `0.1.0-beta.0`.
 >
 > What's next: [OPEN_TASKS.md](OPEN_TASKS.md). Picking up the work: [HANDOFF.md](HANDOFF.md). AI coding agents:
 > start at [AGENTS.md](AGENTS.md).
@@ -63,8 +65,11 @@ which available action is best. There is no list of known bugs in the code.
    | mode | behaviour |
    |---|---|
    | `observe` (default) | reports only |
-   | `guard` (opt-in) | `discard`, `defer`, `coalesce`, `delay`, only when the permitted actions' summed probability is ≥ 0.9 |
-   | `heal` (experimental) | also `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync` and custom actions (≥ 0.8) |
+   | `guard` (opt-in) | `discard`, `defer`, `coalesce`, `delay`, only when the permitted actions' summed probability reaches the model's fitted guard threshold for that trigger (0.75–0.95) |
+   | `heal` (experimental) | also `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync` and custom actions, at the heal threshold for that trigger (0.55–0.90; 1.0 on requests) |
+
+   Detections are reported when the top diagnosis is not `expected` with probability ≥ 0.85 (the model's report
+   threshold).
 
 6. **Explain.**
    - Every detection and intervention is logged in plain English, with the exact situation text the model read.
@@ -83,17 +88,19 @@ All numbers are on held-out data, with each recall reported next to its false-in
 |---|---|
 | Round 1 model, R17 (9.6 MB int8; **previous format** `situation-v1`), simulated apps | diagnosis 90.5%, action 81.9%, guard FIR 0.05%, heal FIR 0.24%, calibration error 0.009. Recall on clear stale/duplicate cases is only 7.7% (precise but timid). |
 | Why round 1 was timid ([sim/SEPARABILITY.md](sim/SEPARABILITY.md)) | Many clear cases had benign twins with identical visible facts; 24% of clear rows were mislabelled `expected`; labels assumed knowledge a runtime cannot have. v2 adds measured facts and fixes the labels. |
-| Round 2 (`situation-v2`, this runtime) | **in progress**: ~10M simulated gold rows, ~50M unlabeled rows for teacher labelling, ~0.5M rows from real apps in headless Chromium |
+| **r17-v2b** (`situation-v2`; shipped as `@genclass/runtime-model@0.1.0`) | Simulated apps: diagnosis 84.2%, action 77.8%. Real apps: diagnosis 83.6%, action 80.0%. Guard FIR 0.02% simulated, 0.00% on held-out real apps; heal FIR 0.23% / 0.00%. Recall: heal acts on 5.7% of clear simulated cases and 8.5% of actionable real-app cases; guard on 1.2%. |
+| Observe mode with r17-v2b (report threshold 0.85, fitted on dev data) | Held-out test: 1.41% of decisions where nothing was wrong flagged on simulated apps, 3.78% on real apps (1.05% without one app); 61–65% of problem decisions flagged, 89–94% of flags with the right diagnosis |
+| Training continues | teacher model, distillation, DAgger rounds; ~10M simulated gold rows, ~50M unlabeled rows, ~0.6M real-app rows |
 | Never make a correct app worse (always-passive model, heal vs observe, 66 real apps × 6 seeds) | 0/396 clean runs changed: final page text (inputs and alerts excluded) and server state. Request timing and store contents are not compared, nor is observe mode against no runtime. With chaos: 3/198 changed. |
 | Same check on the v1 runtime (store-write holds) | 4/198 clean runs changed; the React/Redux RealWorld app never rendered its home feed |
-| Demos | Baseline only, with the untrained GenClass 0.1 model: guard took 0 actions. Rerun when the v2 model exists. |
+| Demos | Baseline only, with the untrained GenClass 0.1 model: guard took 0 actions. Not yet re-run with r17-v2b. |
 
 ## What's in this repo
 
 | path | what |
 |---|---|
 | [`packages/runtime`](packages/runtime) | `@genclass/runtime`, the library. Observers, causality, stores and adapters, learned baselines/relations/profiles, facts, triage, policy gate, actions, model host (Web Worker, ONNX Runtime Web on WebGPU/WASM), devtools overlay. [README](packages/runtime/README.md) · [STATUS](packages/runtime/STATUS.md) |
-| [`packages/runtime-model`](packages/runtime-model) | Model card for the not-yet-published `@genclass/runtime-model` |
+| [`packages/runtime-model`](packages/runtime-model) | `@genclass/runtime-model`, the default model package (data only; `files/` is gitignored and filled at release time) and its [model card](packages/runtime-model/MODEL_CARD.md) |
 | [`sim`](sim) | Training-data simulator: random apps run on the real runtime in a deterministic virtual world, labelled by counterfactual outcomes |
 | [`realapps`](realapps) | 128 real apps (written for the corpus, plus open-source ones) run with the real runtime in headless Chromium, labelled the same way; the never-worse sweep covered the first 66. [README](realapps/README.md) |
 | [`training`](training) | Vocabulary pruning, curriculum (`curriculum/rt.py` mirrors the runtime's renderer), multi-node CPU training on Azure, int8 ONNX export, evaluation |
@@ -118,8 +125,8 @@ NODE_OPTIONS=--expose-gc npx vitest run test/review-perf.test.ts --retry=2   # t
 The same steps run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml), Node 22) on pushes to `main`,
 `runtime`, `mvp` and `mvp-v2`, on pull requests, and on manual dispatch.
 
-Last full local run (2026-10-08, branch `mvp-v2-merge` at f107013): 375 tests passed and 14 skipped, plus the 4
-perf tests run alone. The skips are model-parity tests, which need `GENCLASS_MODEL_DIR`. The perf tests time a
+Last full local run (2026-10-08, branch `mvp-v2-b6`, version `0.1.0-beta.0`): 419 tests passed and 14 skipped, plus
+the 4 perf tests run alone. The skips are model-parity tests, which need `GENCLASS_MODEL_DIR`. The perf tests time a
 5,000-item store and can fail under parallel load.
 
 Releasing: [RELEASE.md](RELEASE.md).
@@ -132,8 +139,9 @@ Not covered by CI:
 
 These are heavier or need Azure; see [AGENTS.md](AGENTS.md) before running them.
 
-**The training format is frozen** at tag `situation-v2`. Any change to `packages/runtime/src/situation/*` (or other
-text the model reads) changes the model's input and means a new tag and regenerated data. See
+**The training format is tagged.** The current tag is `situation-v2.3`; the shipped model was trained on data from
+`situation-v2`. Any change to `packages/runtime/src/situation/*` (or other text the model reads) changes the model's
+input and means a new tag and regenerated data. See
 [docs/agents/model-io-contract.md](docs/agents/model-io-contract.md).
 
 ## License
