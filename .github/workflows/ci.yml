@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, runtime, mvp, mvp-v2]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    name: "@genclass/runtime: typecheck, build, unit tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # onnxruntime-node (dev-only, for the model parity tests) would otherwise download CUDA binaries on Linux.
+      ONNXRUNTIME_NODE_INSTALL: skip
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck -w @genclass/runtime
+
+      - name: Build
+        run: npm run build -w @genclass/runtime
+
+      # Browser (Playwright) tests are excluded. Model parity tests skip without a model directory (GENCLASS_MODEL_DIR).
+      # The perf budgets run in their own step: they time a 5,000-item store and are noisy next to parallel test files.
+      - name: Unit tests
+        working-directory: packages/runtime
+        env:
+          NODE_OPTIONS: --expose-gc
+        run: npx vitest run --exclude "test/browser/**" --exclude test/review-perf.test.ts
+
+      - name: Perf budgets
+        working-directory: packages/runtime
+        env:
+          NODE_OPTIONS: --expose-gc
+        run: npx vitest run test/review-perf.test.ts --retry=2
