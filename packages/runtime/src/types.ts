@@ -94,18 +94,33 @@ export interface GateTier {
   byTrigger?: Partial<Record<TriggerKind, number>>;
 }
 
-/** The model's own gate thresholds (meta.json `gate`): the action probabilities are calibrated to these. */
+/**
+ * The model's own gate (meta.json `gate`). `kind: "mass"` (default): guard/heal are probability thresholds for the
+ * summed probability of the permitted actions. `kind: "gain"`: guard/heal are margins in cost units for the best
+ * action's estimated gain over the passive action, ĝ(a) = tauGain · ln(p(a) / p(passive)).
+ */
 export interface ModelGate {
+  kind?: GateKind;
+  /** gain kind: τ, the scale from log-probability ratios to cost units (default 1). */
+  tauGain?: number;
   report?: number;
   guard?: GateTier;
   heal?: GateTier;
 }
 
+export type GateKind = "mass" | "gain";
+
 /** Where an effective threshold comes from: the app's policy.thresholds, the model's meta gate, or the defaults. */
 export type GateSource = "policy" | "model" | "default";
 
-/** The thresholds the §8 gate uses (for one trigger kind, or the defaults when none is given). */
+/**
+ * The thresholds the §8 gate uses (for one trigger kind, or the defaults when none is given). `kind` "mass": guard/heal
+ * are probability thresholds; "gain": margins in cost units (and `tauGain`). `report` is always a probability.
+ */
 export interface EffectiveGates {
+  kind: GateKind;
+  /** gain kind only. */
+  tauGain?: number;
   trigger?: TriggerKind;
   report: number;
   guard: number;
@@ -307,8 +322,10 @@ export type ObserverName = "fetch" | "xhr" | "user" | "errors" | "nav" | "storag
 
 export interface PolicyOptions {
   /**
-   * Overrides of the gate thresholds. Unset tiers use the model's own thresholds (meta.json `gate`, per trigger kind
-   * then its default), else report 0.6, guard 0.9, heal 0.8.
+   * Overrides of the gate thresholds, in the active gate kind: with the default "mass" gate guard/heal are
+   * probabilities (defaults 0.9 / 0.8); when the model ships a "gain" gate they are margins in cost units (defaults
+   * 2 / 2). `report` is always a probability (default 0.6). Unset values use the model's own gate (meta.json `gate`,
+   * per trigger kind then its default), else the defaults.
    */
   thresholds?: { report?: number; guard?: number; heal?: number };
   /** Action names. When set, only these non-passive actions may run. */
@@ -537,8 +554,14 @@ export interface Decision {
   candidate?: string;
   /** Summed probability of the permitted actions (the gate compares it with the candidate's tier threshold). */
   mass?: number;
-  /** The threshold `mass` was compared with (the candidate's tier, for this trigger kind), and where it came from. */
+  /** The gate kind in force ("mass" or "gain", from the model's meta.json). */
+  gateKind?: GateKind;
+  /** mass kind: the threshold `mass` was compared with (the candidate's tier, for this trigger kind). */
   threshold?: number;
+  /** gain kind: ĝ of the candidate, tauGain · ln(p(candidate) / p(passive)), and the margin it was compared with. */
+  gain?: number;
+  margin?: number;
+  /** Where the threshold or margin came from. */
   thresholdSource?: GateSource;
   /** The action that actually ran. */
   ran: string;

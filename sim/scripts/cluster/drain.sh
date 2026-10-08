@@ -26,7 +26,7 @@ while [ "${#left[@]}" -gt 0 ]; do
         echo "$(date -u +%H:%M) $h done: $l"
         (cd "$ROOT" && TIMEOUT=1800 scripts/vm.sh exec sim "cd ~/gcl/sim && python3 sim/scripts/cluster/collect.py $RUN /data/sim-out/$OUT $ip 2>&1 | tail -1")
         timeout 400 bash "$HERE/orchestrate.sh" stop "$h"
-        echo "$(date -u +%H:%M) $h pulled + deallocated" ;;
+        echo "$(date -u +%H:%M) $h pulled (deallocation subject to the claim check above)" ;;
       *) next+=("$hp") ;;
     esac
   done

@@ -42,7 +42,11 @@ import numpy as np
 PREM = {"passive": 0.0, "guard": 0.25, "heal": 0.5}
 PERMIT = {"guard": ("guard",), "heal": ("guard", "heal")}
 LIMITS = {"guard": {"fir": 0.001, "harm": 0.002}, "heal": {"fir": 0.005, "harm": 0.01}}
-GRID = [round(0.30 + 0.05 * i, 2) for i in range(14)] + [0.97, 0.99, 1.0]
+GRID_MASS = [round(0.30 + 0.05 * i, 2) for i in range(14)] + [0.97, 0.99, 1.0]
+GRID_GAIN = [-1.0, -0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 99.0]  # 99 = never
+GRID = GRID_MASS
+KIND = "mass"  # "gain": fire argmax over A iff ĝ = TAU_GAIN·ln(p(cand)/p(passive)) ≥ margin[tier][trigger]
+TAU_GAIN = 1.0
 BENIGN = {"clean-benign", "benign-salient"}
 
 
@@ -101,7 +105,14 @@ def retry_unoffered_v22(state, m: dict) -> bool:
     return True
 
 
-def load(spec: str, tau: float, v22: bool = True) -> list[dict]:
+def tau_of(cal: dict, rec: dict) -> float:
+    """The runtime's choice temperature for one question: calibration.by_header[header], else the per-kind value."""
+    bh = cal.get("by_header") or {}
+    h = rec.get("header")
+    return float(bh[h]) if h in bh else float(cal.get("choice", 1.0))
+
+
+def load(spec: str, cal: dict, v22: bool = True) -> list[dict]:
     """→ one item per decision row: per-mode gate inputs and outcome indicators."""
     kind, rest = spec.split("=", 1)
     parts = rest.split(":")
@@ -141,12 +152,12 @@ def load(spec: str, tau: float, v22: bool = True) -> list[dict]:
         if drop_retry and "retry" in names:
             j = names.index("retry")
             names, logits, target = names[:j] + names[j + 1:], logits[:j] + logits[j + 1:], target[:j] + target[j + 1:]
-        p = softmax(logits, tau)
+        p = softmax(logits, tau_of(cal, ra))
         idx = {a: i for i, a in enumerate(names)}
         top_d = None
         if "diagnosis" in q:
             rd = q["diagnosis"]
-            top_d = list(rd["labels"])[int(softmax(rd["logits"], tau).argmax())]
+            top_d = list(rd["labels"])[int(softmax(rd["logits"], tau_of(cal, rd)).argmax())]
         costs = mean_costs(m)
         gold = names[int(np.asarray(target).argmax())]
         pb = m.get("passive_best")
@@ -162,6 +173,7 @@ def load(spec: str, tau: float, v22: bool = True) -> list[dict]:
                 continue
             mass = float(sum(p[idx[a]] for a in A))
             cand = max(A, key=lambda a: p[idx[a]])
+            ghat = TAU_GAIN * float(np.log(max(p[idx[cand]], 1e-12) / max(p[idx[passive]], 1e-12)))
             ctier = tiers.get(cand, "heal")
             harm = gain = None
             oracle = 0.0
@@ -172,7 +184,7 @@ def load(spec: str, tau: float, v22: bool = True) -> list[dict]:
                 oracle = max([0.0] + gs)
             cb = clear_best(m, [passive] + A, passive) if kind == "sim" else None
             item["modes"][mode] = {
-                "mass": mass, "ctier": ctier, "harm": harm, "gain": gain, "oracle": oracle,
+                "mass": mass, "ghat": ghat, "ctier": ctier, "harm": harm, "gain": gain, "oracle": oracle,
                 "fir_row": (pb if kind == "sim" else (case in BENIGN) if kind == "real" else None),
                 "fir_bad": True,  # a fire on a FIR row is always a false intervention
                 "clear": cb is not None, "clear_hit": cb == cand if cb else False,
@@ -192,7 +204,7 @@ class Table:
         g = lambda f, dt=float: np.array([f(it, x) for it, x in its], dtype=dt)
         self.kind = np.array([it["kind"] for it, _ in its])
         self.trig = np.array([it["trigger"] for it, _ in its])
-        self.mass = g(lambda it, x: x["mass"])
+        self.mass = g(lambda it, x: x["mass"] if KIND == "mass" else x["ghat"])
         self.ctier = np.array([x["ctier"] for _, x in its])
         self.diag = g(lambda it, x: it["diag_ok"], bool)
         self.fir_row = g(lambda it, x: bool(x["fir_row"]), bool)
@@ -289,7 +301,7 @@ def ok(mt: dict, tier: str, use_real: bool) -> bool:
 
 
 def lowest_safe(T: Table, mode: str, tier: str, th: dict, sel: np.ndarray, trig: str | None, use_real: bool) -> float:
-    best = 1.0
+    best = GRID[-1]
     for t in reversed(GRID):  # walk down while every value so far is safe
         th2 = json.loads(json.dumps(th))
         if trig is None:
@@ -304,7 +316,7 @@ def lowest_safe(T: Table, mode: str, tier: str, th: dict, sel: np.ndarray, trig:
 
 
 def fit(items: list[dict], min_passive: int, min_real: int) -> tuple[dict, dict]:
-    th = {"guard": {"default": 1.0, "byTrigger": {}}, "heal": {"default": 1.0, "byTrigger": {}}}
+    th = {"guard": {"default": GRID[-1], "byTrigger": {}}, "heal": {"default": GRID[-1], "byTrigger": {}}}
     notes: dict = {}
     for tier in ("guard", "heal"):
         mode = tier
@@ -338,8 +350,13 @@ def report(items: list[dict], th: dict, boot: int) -> dict:
         r = {"ALL": metrics(T, f, np.ones(T.n, bool), boot)}
         for trig in sorted(set(T.trig)):
             r[trig] = metrics(T, f, T.trig == trig, boot)
-        fixed = {"guard": {"default": 0.9, "byTrigger": {}}, "heal": {"default": 0.8, "byTrigger": {}}}
-        r["ALL@fixed-0.9/0.8"] = metrics(T, T.fired(fixed, mode), np.ones(T.n, bool), boot)
+        if KIND == "mass":
+            fixed = {"guard": {"default": 0.9, "byTrigger": {}}, "heal": {"default": 0.8, "byTrigger": {}}}
+            r["ALL@fixed-0.9/0.8"] = metrics(T, T.fired(fixed, mode), np.ones(T.n, bool), boot)
+        else:
+            for mg in (0.5, 1.0, 2.0):
+                fixed = {"guard": {"default": mg, "byTrigger": {}}, "heal": {"default": mg, "byTrigger": {}}}
+                r[f"ALL@fixed-gain>{mg}"] = metrics(T, T.fired(fixed, mode), np.ones(T.n, bool), boot)
         out[mode] = r
     return out
 
@@ -347,7 +364,10 @@ def report(items: list[dict], th: dict, boot: int) -> dict:
 def write_meta(export: Path, th: dict, fit_info: dict) -> None:
     meta_p = export / "meta.json"
     meta = json.loads(meta_p.read_text())
-    meta["gate"] = th
+    report = (meta.get("gate") or {}).get("report")
+    meta["gate"] = ({"kind": "gain", "tauGain": TAU_GAIN} if KIND == "gain" else {}) | th
+    if report is not None:
+        meta["gate"]["report"] = report
     meta["gate_fit"] = fit_info
     meta_p.write_text(json.dumps(meta, indent=2) + "\n")
     card_p = export / "model.json"
@@ -375,12 +395,16 @@ def main() -> None:
     ap.add_argument("--min-real", type=int, default=300)
     ap.add_argument("--boot", type=int, default=300)
     ap.add_argument("--write-meta", type=Path, default=None)
+    ap.add_argument("--kind", choices=["mass", "gain"], default="mass")
+    ap.add_argument("--tau-gain", type=float, default=1.0)
     a = ap.parse_args()
-    tau = float(json.loads(a.cal.read_text()).get("choice", 1.0))
-    fit_items = [x for s in a.fit for x in load(s, tau)]
-    test_items = [x for s in a.test for x in load(s, tau)]
+    global KIND, TAU_GAIN, GRID
+    KIND, TAU_GAIN, GRID = a.kind, a.tau_gain, (GRID_GAIN if a.kind == "gain" else GRID_MASS)
+    cal = json.loads(a.cal.read_text())
+    fit_items = [x for s in a.fit for x in load(s, cal)]
+    test_items = [x for s in a.test for x in load(s, cal)]
     th, notes = fit(fit_items, a.min_passive, a.min_real)
-    res = {"gate": th, "notes": notes, "limits": LIMITS, "grid": GRID, "fit_sets": a.fit, "test_sets": a.test,
+    res = {"kind": KIND, "tau_gain": TAU_GAIN, "gate": th, "notes": notes, "limits": LIMITS, "grid": GRID, "fit_sets": a.fit, "test_sets": a.test,
            "fit": report(fit_items, th, 0), "test": report(test_items, th, a.boot)}
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(res, indent=1))

@@ -304,12 +304,20 @@ interface PolicyOptions {
 }
 ```
 
-Thresholds: the model's action probabilities are calibrated against the thresholds it ships with (`gate` in its
-meta.json: `{ report?, guard: { default, byTrigger? }, heal: { default, byTrigger? } }`, visible as
-`runtime.status.gate`). For each trigger kind the effective threshold is your `policy.thresholds` value when set,
-else the model's value for that trigger kind, else its tier default, else 0.6 / 0.9 / 0.8. `runtime.gates(trigger?)`
-returns the thresholds in force and where each comes from (`policy`, `model`, `default`); every decision records the
-threshold it was compared with (`threshold`, `thresholdSource`) and `explain(id).gates` the full set.
+Thresholds: the model's action probabilities are calibrated against the gate it ships with (`gate` in its
+meta.json, visible as `runtime.status.gate`). Two gate kinds exist:
+- `kind: "mass"` (the default, also when meta.json has no kind): the most probable permitted action runs when the
+  summed probability of the permitted actions reaches its tier's threshold (`{ report?, guard: { default,
+  byTrigger? }, heal: {...} }`, probabilities; defaults 0.9 / 0.8).
+- `kind: "gain"` (`{ kind: "gain", tauGain, guard: { default, byTrigger? }, heal: {...}, report? }`): for the most
+  probable permitted action a, ĝ(a) = tauGain · ln(p(a) / p(passive)) estimates its gain over the passive action in
+  cost units; a runs when ĝ(a) is above its tier's margin (defaults 2 / 2; tauGain default 1). Probabilities are
+  clamped to ≥ 1e-6; when the model gives no probability for the passive action, the mass it left over is used.
+For each trigger kind the effective value is your `policy.thresholds` value when set, read in the active kind
+(probabilities for "mass", margins for "gain"; `report` is always a probability), else the model's value for that
+trigger kind, else its tier default, else the defaults. `runtime.gates(trigger?)` returns the kind, values and where
+each comes from (`policy`, `model`, `default`); every decision records `gateKind`, and `threshold` (mass) or `gain`
+and `margin` (gain), with `thresholdSource`; `explain(id).gates` has the full set.
 
 The permitted actions are the applicable non-passive actions the mode allows (observe: none; guard: guard tier;
 heal: both), minus denied ones (only allowed ones when `allow` is set). GenClass runs the most probable permitted
@@ -448,13 +456,14 @@ interface Decision {
   probabilities: Record<string, number>; executed: boolean; reason?: string; facts: string[];
   tier: "passive" | "guard" | "heal"; ran: string; answers: Record<string, Answer>; subjectRef?: SubjectRef;
   candidate?: string /* most probable permitted action */; mass?: number /* summed probability of the permitted actions */;
-  threshold?: number /* what mass was compared with */; thresholdSource?: "policy" | "model" | "default";
+  gateKind?: "mass" | "gain"; threshold?: number /* mass gate: what mass was compared with */;
+  gain?: number; margin?: number /* gain gate: ĝ of the candidate and its tier margin */; thresholdSource?: "policy" | "model" | "default";
 }
 type Detection = Decision;
 interface ActionRecord { id: string; decisionId: string; action: string; tier; trigger; subject: string; at: number; ok: boolean; error?: string; changed: string; undo?: () => void; late?: boolean; dropped?: string[] /* delivery discard: fields dropped */ }
 type SubjectRef = { kind: "delivery"; op: number; paths?: string[]; store?: string } | { kind: "mutation"; ... } | ...
 interface Explanation { message: string; decision: Decision; situationText: string; facts: string[]; timeline: string[]; answers: Record<string, Answer>; action?: ActionRecord; changed?: string; gates?: EffectiveGates }
-interface EffectiveGates { trigger?: TriggerKind; report: number; guard: number; heal: number; source: { report: "policy" | "model" | "default"; guard: …; heal: … } }
+interface EffectiveGates { kind: "mass" | "gain"; tauGain?: number; trigger?: TriggerKind; report: number; guard: number; heal: number; source: { report: "policy" | "model" | "default"; guard: …; heal: … } }
 interface RtEvent { seq: number; t: number; kind: "user"|"op.start"|"op.end"|"state"|"error"|"nav"|"perf"|"storage"|"custom"|"decision"|"action"; name: string; op?: number; cause?: number; data?: Record<string, unknown> }
 interface Op { id: number; kind: "user"|"fetch"|"xhr"|"ws"|"task"|"timer"|"genclass"; name: string /* e.g. "GET /api/x", "WS message /live", "SSE update /stream" */; detail?: string; start: number; end?: number; status?: "ok"|"error"|"aborted"|"blocked"; code?: number | string; cause?: number; root?: number; attempt: number; reads: Map<string, number>; identity?: string }
 ```

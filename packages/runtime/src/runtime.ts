@@ -593,7 +593,18 @@ export class RuntimeImpl implements Runtime {
     const now = this.clock.now();
     const offered = built.actions.map((a) => ({ name: a.name, tier: a.tier }));
     const gates = this.gates(trigger);
-    const g = gate(this.policy, this.rate, { actions: offered, probabilities, top, diagnosis, mode: this._mode, paused: this.paused, now, thresholds: { guard: gates.guard, heal: gates.heal } });
+    const g = gate(this.policy, this.rate, {
+      actions: offered,
+      probabilities,
+      top,
+      diagnosis,
+      mode: this._mode,
+      paused: this.paused,
+      now,
+      thresholds: { guard: gates.guard, heal: gates.heal },
+      kind: gates.kind,
+      ...(gates.tauGain !== undefined ? { tauGain: gates.tauGain } : {}),
+    });
     let reason: string | null = g.reason;
     let run: string | null = g.run;
     let late = false;
@@ -646,8 +657,12 @@ export class RuntimeImpl implements Runtime {
       mass: g.mass,
     };
     if (g.candidate) decision.candidate = g.candidate;
+    decision.gateKind = gates.kind;
     if (g.threshold !== undefined && g.thresholdTier) {
-      decision.threshold = g.threshold;
+      if (gates.kind === "gain") {
+        decision.margin = g.threshold;
+        if (g.gain !== undefined) decision.gain = g.gain;
+      } else decision.threshold = g.threshold;
       decision.thresholdSource = gates.source[g.thresholdTier];
     }
     if (reason) decision.reason = reason;

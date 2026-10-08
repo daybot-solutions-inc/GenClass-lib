@@ -51,7 +51,7 @@ def softmax(z, tau):
     return e / e.sum()
 
 
-def load(spec: str, tau: float) -> tuple[str, list[dict]]:
+def load(spec: str, cal: dict) -> tuple[str, list[dict]]:
     name, rest = spec.split("=", 1)
     parts = rest.split(":")
     filt = parts[2] if len(parts) > 2 else ""
@@ -73,7 +73,8 @@ def load(spec: str, tau: float) -> tuple[str, list[dict]]:
             split, m, gold = rows[q["id"]]
             if (filt == "test" and split != "test") or (filt == "notest" and split == "test"):
                 continue
-            p = softmax(q["logits"], tau)
+            bh = cal.get("by_header") or {}
+            p = softmax(q["logits"], float(bh[q.get("header")]) if q.get("header") in bh else float(cal.get("choice", 1.0)))
             k = int(p.argmax())
             pb = m.get("passive_best")
             out.append({"top": q["labels"][k], "p": float(p[k]), "gold": gold, "passive_best": bool(pb) if pb is not None else None,
@@ -163,9 +164,9 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--write-meta", type=Path, default=None)
     a = ap.parse_args()
-    tau = float(json.loads(a.cal.read_text()).get("choice", 1.0))
-    fit_sets = dict(load(s, tau) for s in a.fit)
-    test_sets = dict(load(s, tau) for s in a.test)
+    cal = json.loads(a.cal.read_text())
+    fit_sets = dict(load(s, cal) for s in a.fit)
+    test_sets = dict(load(s, cal) for s in a.test)
     r, curve = fit(fit_sets)
     res = {"report": r, "limits": LIM, "fit_curve": curve, "test": {}}
     for name, items in test_sets.items():

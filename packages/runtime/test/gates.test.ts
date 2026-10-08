@@ -36,7 +36,7 @@ describe("gate thresholds", () => {
 
   it("precedence: policy override, then the model's per-trigger value, then its default, then the defaults", () => {
     const none = policyConfig(undefined);
-    expect(effectiveGates(none, undefined, "delivery")).toEqual({ trigger: "delivery", report: 0.6, guard: 0.9, heal: 0.8, source: { report: "default", guard: "default", heal: "default" } });
+    expect(effectiveGates(none, undefined, "delivery")).toEqual({ kind: "mass", trigger: "delivery", report: 0.6, guard: 0.9, heal: 0.8, source: { report: "default", guard: "default", heal: "default" } });
     expect(effectiveGates(none, GATE, "delivery")).toMatchObject({ guard: 0.5, heal: 0.55, report: 0.4, source: { guard: "model", heal: "model", report: "model" } });
     expect(effectiveGates(none, GATE, "mutation")).toMatchObject({ guard: 0.6, heal: 0.55 });
     expect(effectiveGates(none, GATE)).toMatchObject({ guard: 0.6, heal: 0.55 });
@@ -113,5 +113,88 @@ describe("stall without a latency baseline", () => {
     expect(facts).toMatch(/^The request #\d+ has been in flight for 10\.0s\./);
     expect(facts).toMatch(/POST \/api\/upload has no latency baseline yet \(0 completed requests\); requests without one are checked after 10\.0s in flight\./);
     await s.clock.advance(60_000);
+  });
+});
+
+describe("gain gate (meta.json gate.kind = \"gain\")", () => {
+  const GAIN: ModelGate = { kind: "gain", tauGain: 2, guard: { default: 1, byTrigger: { request: 3 } }, heal: { default: 2 } };
+
+  /** Answer every trigger with fixed action probabilities (diagnosis stale unless given). */
+  const probs = (p: Record<string, number>, diagnosis = "stale") => (req: EvaluateRequest): Record<string, Answer> => {
+    const out: Record<string, Answer> = {};
+    const dq = req.questions.diagnosis;
+    if (dq && dq.type === "choice") out.diagnosis = choice(diagnosis, Object.keys(dq.criteria), 0.7);
+    const aq = req.questions.action;
+    if (aq && aq.type === "choice") {
+      const labels = Object.keys(aq.criteria);
+      const probabilities: Record<string, number> = {};
+      for (const l of labels) if (p[l] !== undefined) probabilities[l] = p[l];
+      const top = Object.entries(probabilities).sort((a, b) => b[1] - a[1])[0][0];
+      out.action = { type: "choice", choice: top, confidence: 0.5, probabilities };
+    }
+    return out;
+  };
+
+  async function write(script: (req: EvaluateRequest) => Record<string, Answer>, gate: ModelGate | undefined, extra: Record<string, unknown> = {}) {
+    const s = setup({ mode: "heal", triage: "always", script, policy: { holdWrites: true, ...(extra.policy as object) } });
+    s.decider.status = { state: "ready", model: "m", ...(gate ? { gate } : {}) } as ModelStatus;
+    const a = s.rt.atom("a", 0);
+    void s.rt.op("w", () => a.set(1));
+    await s.clock.flush();
+    return { s, a, d: s.rt.decisions().find((x) => x.trigger === "mutation")! };
+  }
+
+  it("parses kind, τ and margins (any finite number); mass stays the default when meta has no kind", () => {
+    expect(parseGate(GAIN)).toEqual(GAIN);
+    expect(parseGate({ kind: "gain", tauGain: -1, guard: 4.5 })).toEqual({ kind: "gain", guard: { default: 4.5 } });
+    expect(parseGate({ guard: 4.5 })).toBeUndefined(); // a mass gate ignores margins outside [0, 1]
+    const c = policyConfig(undefined);
+    expect(effectiveGates(c, { guard: { default: 0.6 } }, "mutation")).toMatchObject({ kind: "mass", guard: 0.6 });
+    expect(effectiveGates(c, undefined)).toMatchObject({ kind: "mass", guard: 0.9, heal: 0.8 });
+    expect(effectiveGates(c, GAIN, "request")).toMatchObject({ kind: "gain", tauGain: 2, guard: 3, heal: 2, source: { guard: "model" } });
+    expect(effectiveGates(c, { kind: "gain" }, "mutation")).toMatchObject({ kind: "gain", tauGain: 1, guard: 2, heal: 2, source: { guard: "default" } });
+    // the app's overrides are read in the active kind
+    expect(effectiveGates(policyConfig({ thresholds: { guard: 0.5 } }), GAIN, "request")).toMatchObject({ kind: "gain", guard: 0.5, source: { guard: "policy" } });
+  });
+
+  it("acts when the best permitted action's gain clears its tier margin; records gateKind, gain and margin", async () => {
+    // discard 0.5 vs apply 0.25: ĝ = 2 · ln 2 ≈ 1.39 > guard margin 1 → discard runs (the mass gate would need 0.9)
+    const r = await write(probs({ apply: 0.25, discard: 0.5, defer: 0.25 }), GAIN);
+    expect(r.d).toMatchObject({ gateKind: "gain", action: "discard", executed: true, margin: 1, thresholdSource: "model" });
+    expect(r.d.gain).toBeCloseTo(2 * Math.log(2), 6);
+    expect(r.d.threshold).toBeUndefined();
+    expect(r.a.get()).toBe(0);
+    expect(r.s.rt.explain(r.d.id)!.gates).toMatchObject({ kind: "gain", tauGain: 2, guard: 1 });
+    // a smaller lead: ĝ = 2 · ln(0.4 / 0.35) ≈ 0.27 ≤ 1 → passive, with the reason
+    const low = await write(probs({ apply: 0.35, discard: 0.4, defer: 0.25 }), GAIN);
+    expect(low.d).toMatchObject({ gateKind: "gain", executed: false, ran: "apply", margin: 1 });
+    expect(low.d.reason).toMatch(/^gain 0\.27 of discard over apply is not above the guard margin 1$/);
+    expect(low.a.get()).toBe(1);
+  });
+
+  it("the default mass gate is unchanged when meta has no kind", async () => {
+    const r = await write(probs({ apply: 0.25, discard: 0.5, defer: 0.25 }), { guard: { default: 0.9 } });
+    expect(r.d).toMatchObject({ gateKind: "mass", executed: false, threshold: 0.9 }); // mass 0.75 < 0.9
+    expect(r.d.gain).toBeUndefined();
+    const none = await write(probs({ apply: 0.25, discard: 0.5, defer: 0.25 }), undefined);
+    expect(none.d).toMatchObject({ gateKind: "mass", threshold: 0.9, thresholdSource: "default" });
+  });
+
+  it("an app override wins and is read as a margin under the gain gate", async () => {
+    const r = await write(probs({ apply: 0.25, discard: 0.5, defer: 0.25 }), GAIN, { policy: { thresholds: { guard: 1.5 } } });
+    expect(r.d).toMatchObject({ gateKind: "gain", executed: false, margin: 1.5, thresholdSource: "policy" }); // 1.39 ≤ 1.5
+  });
+
+  it("missing passive probability: the mass the model left over (clamped to ≥ 1e-6); still needs a non-expected diagnosis", async () => {
+    // no probability for apply: p(apply) = 1 − 0.6 − 0.3 = 0.1 → ĝ = 2 · ln 6 ≈ 3.58
+    const r = await write(probs({ discard: 0.6, defer: 0.3 }), GAIN);
+    expect(r.d).toMatchObject({ gateKind: "gain", executed: true, action: "discard" });
+    expect(r.d.gain).toBeCloseTo(2 * Math.log(6), 6);
+    // everything on non-passive actions: p(apply) clamps to 1e-6 (finite gain)
+    const all = await write(probs({ discard: 0.7, defer: 0.3 }), GAIN);
+    expect(Number.isFinite(all.d.gain)).toBe(true);
+    // a large gain with the diagnosis "expected" does not act (requireDiagnosis)
+    const exp = await write(probs({ discard: 0.6, defer: 0.3 }, "expected"), GAIN);
+    expect(exp.d).toMatchObject({ executed: false, reason: "the model's diagnosis is expected" });
   });
 });

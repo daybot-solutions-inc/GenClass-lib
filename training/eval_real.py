@@ -45,12 +45,13 @@ def evaluate(rows: dict, recs: dict, cal: dict) -> dict:
             ra = q["action"]
             names = list(ra["labels"])
             passive = m.get("passive") or next((a for a, t in tiers.items() if t == "passive"), None)
-            p = softmax(ra["logits"], tau)
+            bh = cal.get("by_header") or {}
+            p = softmax(ra["logits"], float(bh.get(ra.get("header"), tau)))
             top = names[int(p.argmax())]
             top_d = None
             if "diagnosis" in q:
                 rd = q["diagnosis"]
-                top_d = list(rd["labels"])[int(softmax(rd["logits"], tau).argmax())]
+                top_d = list(rd["labels"])[int(softmax(rd["logits"], float(bh.get(rd.get("header"), tau))).argmax())]
             A = [a for a in names if a != passive and tiers.get(a, "heal") in PERMIT[mode]]
             keys = [case, "ALL"] + ([f"{case} [test split]"] if m.get("_split") == "test" else [])
             idx = {a: i for i, a in enumerate(names)}

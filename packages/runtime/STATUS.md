@@ -1,6 +1,6 @@
 # @genclass/runtime: status (CORE)
 
-Updated: 2026-10-08 (batch 9: EvaluateRequest.notOffered; batch 8: relation learner precision; batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
+Updated: 2026-10-08 (batch 10: gain gate kind; batch 9: EvaluateRequest.notOffered; batch 8: relation learner precision; batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
 MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
 
 ## State
@@ -38,6 +38,29 @@ observe mode on the same scenario (`debug.js --interference`):
 | situation | `src/situation/*.ts` | facts, version conflicts (`conflicts.ts`), response content vs store (`content.ts`), evidence facts (`evidence.ts`), budget-shaped serializer, compact questions, triage, subject refs |
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
+
+## Batch 10 (done): gain gate kind (selected by the model's meta.json)
+
+- TRAIN's T1 models are trained on expected-advantage labels and need a per-action gain gate. meta.json `gate.kind`
+  selects it: `"mass"` (default, also when `kind` is absent: today's rule, the permitted actions' summed probability
+  vs the candidate tier's threshold) or `"gain"`: for the most probable permitted action a,
+  ĝ(a) = tauGain · ln(p(a) / p(passive)), with the trigger's passive action, probabilities clamped to ≥ 1e-6, and, when
+  the model gave no probability for the passive action, the mass it left over (1 − Σ others). a runs iff ĝ(a) > the
+  margin of a's tier for that trigger kind, the top diagnosis is not `expected` (unless `requireDiagnosis: false`),
+  and the usual mode / allow / deny / rate-limit / hold-budget rules pass.
+- Meta shape: `gate: { kind: "gain", tauGain, guard: { default, byTrigger }, heal: { default, byTrigger }, report }`;
+  guard/heal are margins in cost units (any finite number; defaults 2 / 2 when absent; tauGain default 1, must be
+  > 0). `parseGate` validates per kind (mass: probabilities in [0, 1]).
+- `policy.thresholds` overrides still win and are read in the active kind (margins under "gain"); `report` is always
+  a probability.
+- Exposed: `runtime.gates()` → `{ kind, tauGain?, guard, heal, report, source }`; `Decision.gateKind`, `threshold`
+  (mass) or `gain` + `margin` (gain), `thresholdSource`; `explain(id).gates`; the devtools Now view's Gates section
+  shows the kind and τ ("kind: gain (per-action gain over the passive action, τ 1.5)", "guard margin 3 (model)").
+  Gain reasons read "gain 0.27 of discard over apply is not above the guard margin 1".
+- Tests (`test/gates.test.ts`, `test/gates-devtools.test.ts`): parsing per kind; mass stays the default without a
+  kind; the gain gate acts where the mass gate would not and records gain/margin; below the margin with the reason; an
+  app override read as a margin; a missing passive probability (left-over mass; clamped); `expected` diagnosis still
+  blocks; the Now view. All suites on the VM: 47 files, 394 tests, passing; tsc and tsup clean.
 
 ## Batch 9 (done): `EvaluateRequest.notOffered` (SIM seam)
 

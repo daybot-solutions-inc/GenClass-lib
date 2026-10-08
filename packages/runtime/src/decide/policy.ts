@@ -5,9 +5,14 @@
 // top diagnosis is not `expected` (unless requireDiagnosis is false), it is under the rate limit and the decision
 // arrived within the hold budget. Otherwise the passive action runs and `reason` says why. Precision first.
 
-import type { EffectiveGates, GateSource, GateTier, Mode, ModelGate, PolicyOptions, Tier, TriggerKind } from "../types.js";
+import type { EffectiveGates, GateKind, GateSource, GateTier, Mode, ModelGate, PolicyOptions, Tier, TriggerKind } from "../types.js";
 
 export const DEFAULT_THRESHOLDS = { report: 0.6, guard: 0.9, heal: 0.8 } as const;
+/** gain gate: margins in cost units when neither the app nor the model sets them, and the default τ. */
+export const DEFAULT_GAIN_MARGINS = { guard: 2, heal: 2 } as const;
+export const DEFAULT_TAU_GAIN = 1;
+/** Probabilities are clamped to at least this before taking log ratios. */
+export const MIN_PROB = 1e-6;
 
 export interface PolicyConfig {
   /** policy.thresholds with the defaults filled in (what applies when the model ships no gate). */
@@ -49,17 +54,20 @@ export function policyConfig(p: PolicyOptions | undefined): PolicyConfig {
 const TRIGGERS: TriggerKind[] = ["mutation", "request", "delivery", "failure", "stall", "inconsistency", "transition", "error", "ask"];
 const isProb = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= 1;
 
-function parseTier(raw: unknown): GateTier | undefined {
-  if (isProb(raw)) return { default: raw };
+const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+
+/** A tier's values: probabilities in [0, 1] for the mass gate, any finite margin (cost units) for the gain gate. */
+function parseTier(raw: unknown, ok: (x: unknown) => x is number): GateTier | undefined {
+  if (ok(raw)) return { default: raw };
   if (!raw || typeof raw !== "object") return undefined;
   const r = raw as { default?: unknown; byTrigger?: unknown };
   const out: GateTier = {};
-  if (isProb(r.default)) out.default = r.default;
+  if (ok(r.default)) out.default = r.default;
   if (r.byTrigger && typeof r.byTrigger === "object") {
     const by: Partial<Record<TriggerKind, number>> = {};
     for (const k of TRIGGERS) {
       const v = (r.byTrigger as Record<string, unknown>)[k];
-      if (isProb(v)) by[k] = v;
+      if (ok(v)) by[k] = v;
     }
     if (Object.keys(by).length) out.byTrigger = by;
   }
@@ -67,17 +75,21 @@ function parseTier(raw: unknown): GateTier | undefined {
 }
 
 /**
- * The model's gate from meta.json `gate` (`{ report?, guard: { default, byTrigger? }, heal: {...} }`; a bare number
- * for a tier means its default). Values outside [0, 1] and unknown trigger kinds are ignored. Undefined when nothing
- * valid is left.
+ * The model's gate from meta.json `gate` (`{ kind?, tauGain?, report?, guard: { default, byTrigger? }, heal: {...} }`;
+ * a bare number for a tier means its default). kind "mass" (default): tier values are probabilities in [0, 1];
+ * kind "gain": tier values are margins (any finite number) and tauGain > 0. Invalid values and unknown trigger kinds
+ * are ignored. Undefined when nothing valid is left.
  */
 export function parseGate(raw: unknown): ModelGate | undefined {
   if (!raw || typeof raw !== "object") return undefined;
-  const r = raw as { report?: unknown; guard?: unknown; heal?: unknown };
+  const r = raw as { kind?: unknown; tauGain?: unknown; report?: unknown; guard?: unknown; heal?: unknown };
   const g: ModelGate = {};
+  const gain = r.kind === "gain";
+  if (gain) g.kind = "gain";
+  if (gain && isNum(r.tauGain) && r.tauGain > 0) g.tauGain = r.tauGain;
   if (isProb(r.report)) g.report = r.report;
-  const guard = parseTier(r.guard);
-  const heal = parseTier(r.heal);
+  const guard = parseTier(r.guard, gain ? isNum : isProb);
+  const heal = parseTier(r.heal, gain ? isNum : isProb);
   if (guard) g.guard = guard;
   if (heal) g.heal = heal;
   return Object.keys(g).length ? g : undefined;
@@ -88,18 +100,22 @@ export function parseGate(raw: unknown): ModelGate | undefined {
  * trigger's own value, then the tier default), else the defaults (report 0.6, guard 0.9, heal 0.8).
  */
 export function effectiveGates(c: PolicyConfig, model: ModelGate | undefined, trigger?: TriggerKind): EffectiveGates {
+  const kind: GateKind = model?.kind === "gain" ? "gain" : "mass";
+  const defaults = kind === "gain" ? DEFAULT_GAIN_MARGINS : DEFAULT_THRESHOLDS;
+  // the app's overrides are read in the active gate kind (probabilities for "mass", margins for "gain")
   const tier = (k: "guard" | "heal"): [number, GateSource] => {
     const o = c.overrides[k];
     if (o !== undefined) return [o, "policy"];
     const m = model?.[k];
     const v = (trigger ? m?.byTrigger?.[trigger] : undefined) ?? m?.default;
     if (v !== undefined) return [v, "model"];
-    return [DEFAULT_THRESHOLDS[k], "default"];
+    return [defaults[k], "default"];
   };
   const [guard, gs] = tier("guard");
   const [heal, hs] = tier("heal");
   const [report, rs]: [number, GateSource] = c.overrides.report !== undefined ? [c.overrides.report, "policy"] : model?.report !== undefined ? [model.report, "model"] : [DEFAULT_THRESHOLDS.report, "default"];
-  const out: EffectiveGates = { report, guard, heal, source: { report: rs, guard: gs, heal: hs } };
+  const out: EffectiveGates = { kind, report, guard, heal, source: { report: rs, guard: gs, heal: hs } };
+  if (kind === "gain") out.tauGain = model?.tauGain ?? DEFAULT_TAU_GAIN;
   if (trigger) out.trigger = trigger;
   return out;
 }
@@ -154,6 +170,9 @@ export interface GateInput {
   now: number;
   /** The tier thresholds in force for this trigger (default: policy.thresholds with defaults). */
   thresholds?: { guard: number; heal: number };
+  /** The gate kind (default "mass"); "gain" reads `thresholds` as margins in cost units and needs `tauGain`. */
+  kind?: GateKind;
+  tauGain?: number;
 }
 
 export interface GateOutcome {
@@ -165,12 +184,33 @@ export interface GateOutcome {
   mass: number;
   /** Why the passive action runs when the model preferred acting (null when it chose passive or the action runs). */
   reason: string | null;
-  /** The threshold the mass was compared with (the candidate's tier), when there was a candidate. */
+  /** The threshold (mass) or margin (gain) the candidate was compared with (its tier), when there was a candidate. */
   threshold?: number;
   thresholdTier?: "guard" | "heal";
+  kind: GateKind;
+  /** gain kind: ĝ of the candidate. */
+  gain?: number;
+}
+
+/**
+ * The passive action's probability: as given, else the mass the model left over (probabilities sum to 1), clamped to
+ * at least MIN_PROB.
+ */
+export function passiveProb(probabilities: Record<string, number>, passive: string | undefined): number {
+  const given = passive !== undefined ? probabilities[passive] : undefined;
+  if (typeof given === "number" && Number.isFinite(given)) return Math.max(MIN_PROB, given);
+  let rest = 1;
+  for (const [k, v] of Object.entries(probabilities)) if (k !== passive && Number.isFinite(v)) rest -= v;
+  return Math.max(MIN_PROB, rest);
+}
+
+/** ĝ(a) = τ · ln(p(a) / p(passive)), probabilities clamped to ≥ MIN_PROB. */
+export function gainOf(tau: number, pa: number, pPassive: number): number {
+  return tau * Math.log(Math.max(MIN_PROB, pa) / Math.max(MIN_PROB, pPassive));
 }
 
 export function gate(c: PolicyConfig, rate: RateLimiter, g: GateInput): GateOutcome {
+  const kind: GateKind = g.kind ?? "mass";
   const A = permittedActions(c, g.mode, g.actions);
   const p = (name: string) => g.probabilities[name] ?? 0;
   let candidate: string | null = null;
@@ -178,7 +218,7 @@ export function gate(c: PolicyConfig, rate: RateLimiter, g: GateInput): GateOutc
   const mass = A.reduce((s, a) => s + p(a.name), 0);
   const topTier = g.actions.find((a) => a.name === g.top)?.tier ?? "passive";
   const wanted = topTier !== "passive"; // a reason is only given when the model's own choice does not run
-  const no = (reason: string | null): GateOutcome => ({ run: null, candidate, mass, reason: wanted ? reason : null });
+  const no = (reason: string | null): GateOutcome => ({ run: null, candidate, mass, reason: wanted ? reason : null, kind });
   if (g.paused) return no("GenClass is paused");
   if (!candidate) {
     const top = g.actions.find((a) => a.name === g.top);
@@ -187,15 +227,23 @@ export function gate(c: PolicyConfig, rate: RateLimiter, g: GateInput): GateOutc
   const tier = g.actions.find((a) => a.name === candidate)!.tier as "guard" | "heal";
   const T = g.thresholds ?? c.thresholds;
   const th = tier === "guard" ? T.guard : T.heal;
-  const at = { threshold: th, thresholdTier: tier };
-  if (!(mass >= th)) {
-    const top = g.actions.find((a) => a.name === g.top);
-    const r = top && top.tier !== "passive" ? restriction(c, g.mode, top) : null;
-    return { ...no(r ?? `probability ${mass.toFixed(2)} for the permitted actions (${A.map((a) => a.name).join(", ")}) is below the ${tier} threshold ${round2(th)}`), ...at };
+  const top = g.actions.find((a) => a.name === g.top);
+  const topRestriction = top && top.tier !== "passive" ? restriction(c, g.mode, top) : null;
+  let at: { threshold: number; thresholdTier: "guard" | "heal"; gain?: number };
+  if (kind === "gain") {
+    // per-action gain over the passive action, in cost units; the best permitted action must clear its tier's margin
+    const passive = g.actions.find((a) => a.tier === "passive")?.name;
+    const pp = passiveProb(g.probabilities, passive);
+    const gain = gainOf(g.tauGain ?? 1, p(candidate), pp);
+    at = { threshold: th, thresholdTier: tier, gain };
+    if (!(gain > th)) return { ...no(topRestriction ?? `gain ${round2(gain)} of ${candidate} over ${passive ?? "the passive action"} is not above the ${tier} margin ${round2(th)}`), ...at };
+  } else {
+    at = { threshold: th, thresholdTier: tier };
+    if (!(mass >= th)) return { ...no(topRestriction ?? `probability ${mass.toFixed(2)} for the permitted actions (${A.map((a) => a.name).join(", ")}) is below the ${tier} threshold ${round2(th)}`), ...at };
   }
   if (c.requireDiagnosis && g.diagnosis === "expected") return { ...no("the model's diagnosis is expected"), reason: "the model's diagnosis is expected", ...at };
   if (rate.full(g.now)) return { ...no(null), reason: `rate limit: ${c.maxActionsPerMinute} actions in the last minute`, ...at };
-  return { run: candidate, candidate, mass, reason: null, ...at };
+  return { run: candidate, candidate, mass, reason: null, kind, ...at };
 }
 
 function round2(x: number): string {

@@ -1099,10 +1099,14 @@ class Devtools {
   private gateLines(): string[] {
     const gates = (this.rt as { gates?: (t?: TriggerKind) => EffectiveGates }).gates;
     if (typeof gates !== "function") return [];
-    const fmt = (g: EffectiveGates) => `guard ${g.guard} (${g.source.guard}) · heal ${g.heal} (${g.source.heal}) · report ${g.report} (${g.source.report})`;
+    const what = (g: EffectiveGates) => (g.kind === "gain" ? "margin " : "");
+    const fmt = (g: EffectiveGates) => `guard ${what(g)}${g.guard} (${g.source.guard}) · heal ${what(g)}${g.heal} (${g.source.heal}) · report ${g.report} (${g.source.report})`;
     const lines: string[] = [];
     const all = safe(() => gates.call(this.rt), null as EffectiveGates | null);
-    if (all) lines.push(`default: ${fmt(all)}`);
+    if (all) {
+      lines.push(all.kind === "gain" ? `kind: gain (per-action gain over the passive action, τ ${all.tauGain ?? 1})` : "kind: mass (summed probability of the permitted actions)");
+      lines.push(`default: ${fmt(all)}`);
+    }
     const by = safe(() => this.rt.status.gate, undefined);
     const kinds = new Set<TriggerKind>([...Object.keys(by?.guard?.byTrigger ?? {}), ...Object.keys(by?.heal?.byTrigger ?? {})] as TriggerKind[]);
     for (const k of kinds) {

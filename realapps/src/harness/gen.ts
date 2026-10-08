@@ -64,6 +64,10 @@ const statsFile = join(out, "stats.json");
 if (existsSync(statsFile) && done.size) {
   try {
     Object.assign(stats, JSON.parse(readFileSync(statsFile, "utf8")));
+    // stats.json stores mean harms; a resumed run starts fresh harm samples
+    for (const b of Object.values(stats.byTrigger)) for (const a of Object.keys(b.harm ?? {})) if (!Array.isArray(b.harm[a])) b.harm[a] = [];
+    stats.notes ??= {};
+    stats.unlabeled ??= { train: 0, dev: 0, test: 0 };
   } catch {
     /* fresh stats */
   }

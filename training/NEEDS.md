@@ -228,3 +228,10 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     Lit, every SWR app (`TEST_LIBS`), apps `swr-status`, `alpine-tasks`, `xhr-autocomplete`, `oss-rtk-conduit`, and
     `TEST_PATTERNS`. Next: a top-up for waves 4–5 (62 apps) on `situation-v2.3` once tagged
     (`realapps/scripts/topup.sh`), landing in `train:/data/real-out/v23e<n>/`. REAL holds no nodes now.
+18. **REAL v2.3 top-up (`situation-v2.3`, b107f20), 2026-10-08.** Started on c01/c10/c11/data at 08:30 UTC; the
+    generators were killed ~08:40–08:45 when SIM's on-policy round b took those nodes (REAL's waiter stopped; REAL does
+    not touch SIM's jobs). Partial batches were pulled to `train:/data/real-out/v23e{1..4}/` and are being **resumed on
+    the `train` VM** (resumable via `done.txt`; train claimed with `~/.gcl-claim/owner` = REAL, released by the job
+    when it ends). Batches: `v23e1`/`v23e2` = the 62 wave-4+5 apps (10k trajectories each, seeds 21M/22M+),
+    `v23e3`/`v23e4` = the 96 earlier apps (6k each, seeds 23M/24M+). Sweeps on v2.3: determinism 316/316,
+    interference 0/158. Final counts and the v2.3 eval set (`train:/data/real-out/v23-eval/`) follow here when done.

@@ -319,3 +319,22 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
 - c03, c04, c05, c13 deallocated when idle. Runtime notes for the next round: v2.2 retry applicability (in all gate
   metrics), v2.3 relation learner (down-weight inconsistency; v2.3 top-ups; v2.3 eval slice).
 - Running: teacher (11 nodes, ETA 08:30), r17-v2t (3 nodes, ETA 08:15), c09 workbench. ≈ $80/h. **Total ≈ $700.**
+
+### 07:55–09:10 v2b gate.report 0.85; teacher evaluated (not used); T1 on v2; v2c launched; v2.3 prep
+- Coordinator: `gate.report = 0.85` for v2b (test-informed choice, recorded); dev fits from now on at 0.8 × each limit
+  (`DEV_MARGIN` in fit_gates/fit_report). v2b re-delivered: meta.json sha256 59d4b608…, model.json 64f12f2a….
+- Teacher `t150-v2a` finished 08:30 (525 steps); `teacher_eval.sh` across its 11 nodes in ≈ 12 min (bf16
+  `collect_parts.sh`): below r17-v2b everywhere (EVAL.md) → no labelling/distillation; c12, c14–c23 deallocated 08:52.
+- `r17-v2t` (T1 on v2): per-action gain gate captures ≈ 1.5× v2a's gain at matched FIR on sim2e; summed-mass gates
+  never fire for heal → shipping T1 needs the runtime's gain gate (CORE adding `gate.kind: "gain"`). EVAL.md.
+- SIM on-policy round a → `prep_v2c.py`: `sim2r` (v2 gold from raw gz with the v2.2 retry rule: 464k rows changed;
+  inconsistency rows kept at 60%), `onpa` 814k / `onpax` 92.6k flagged (false_intervention, ran_harm > 1, miss), eval
+  `onpae` (20k test / 8k dev). `r17-v2c` launched 08:34 on c07 c08 c02 c03 c04 c05 c13 (from v2b, 1.5B tokens,
+  `mix_v2c`), ETA ≈ 09:45; a ≈ 13-min slowdown early on (c02 load — coordinator reports a SIM collision there).
+- Node claim protocol adopted (`claim.sh claim|release|show`: other agents' processes check + `~/.gcl-claim` lock);
+  all current TRAIN nodes claimed. Port 8810 on `train` is SIM's bundle server — TRAIN uses 8803/8804/8806/8809/8812.
+- Next round prepared: `fit_gates.py --kind gain` (margins on ĝ = τ_gain·ln(p(cand)/p(passive)), grid −1…8, 99 =
+  never; meta `gate.kind/tauGain`), per-header temperatures (`HEADER_CAL=1` in eval_sim.sh; `tau_of` in fit_gates /
+  fit_report / eval_gain / eval_real; collect_gain records now carry the header key), v2.3 gold (`sim3`: 1.53M train,
+  eval `sim3e` 20k / 8k, held-out features `sim3f` 18.9k) prepared on c09.
+- Running: v2c (7 nodes) + c09. ≈ $45/h. **Total ≈ $790.**

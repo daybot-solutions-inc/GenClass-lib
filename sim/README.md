@@ -295,6 +295,13 @@ no accidental clicks, correct guards; any non-passive answer there is a false po
    it, then builds the merged shards and `scripts/onpolicy_report.py` (acts, false interventions, harm, misses by
    gate and trigger, with the worst row ids).
 
+   **Node claim protocol (lead, 2026-10-08; all agents).** Before using a node, check for other agents' processes
+   and take the on-node lock `~/.gcl-claim/owner` ("<agent> <job> <UTC>"); a node whose lock belongs to another
+   agent is taken only if that agent's processes are gone; remove the lock before deallocating; keep recording
+   claims in `training/NEEDS.md`. `claim.sh` (claim / release / check, run on the node) implements it;
+   `orchestrate.sh run` claims each node and skips busy ones, `orchestrate.sh stop` (and so `drain.sh`) deallocates
+   only nodes whose check passes (no other agent's lock or processes; `FORCE=1` overrides) after releasing SIM's lock.
+
    Collect on the train VM into `/data/sim-out/<run>` (1 TB disk). Measured on one F80 (c12, batch-4 runtime):
    gold about 200–250 rows/s, unlabeled about 11k rows/s.
 
