@@ -6,6 +6,11 @@ import { board } from "./board.js";
 import { bulk } from "./bulk.js";
 import { cart } from "./cart.js";
 import { cascade } from "./cascade.js";
+import { cdn } from "./cdn.js";
+import { countdown } from "./countdown.js";
+import { flags } from "./flags.js";
+import { money } from "./money.js";
+import { permissions } from "./permissions.js";
 import { chat } from "./chat.js";
 import { clockskew } from "./clockskew.js";
 import { counter } from "./counter.js";
@@ -30,6 +35,9 @@ import { presence } from "./presence.js";
 import { querycache } from "./querycache.js";
 import { reorder } from "./reorder.js";
 import { saga } from "./saga.js";
+import { ratelimit } from "./ratelimit.js";
+import { schemadrift } from "./schemadrift.js";
+import { swcache } from "./swcache.js";
 import { search } from "./search.js";
 import { settings } from "./settings.js";
 import { toggle } from "./toggle.js";
@@ -46,6 +54,7 @@ export const FEATURES: Record<string, FeatureDef<any>> = {
   infinite, upload, offline, wsreconnect, undo, reorder, querycache,
   graphql, saga, wizard, etag, presence, badge, facets, masterdetail,
   clockskew, longtask, cascade, exportjob, payment, inventory, prefetch, multitab,
+  ratelimit, cdn, swcache, countdown, money, permissions, flags, schemadrift,
 };
 
 /** Relative frequency of each feature kind in generated programs. */
@@ -54,4 +63,5 @@ export const FEATURE_WEIGHTS: Record<string, number> = {
   infinite: 5, upload: 4, offline: 5, wsreconnect: 5, undo: 5, reorder: 5, querycache: 6,
   graphql: 4, saga: 4, wizard: 5, etag: 5, presence: 4, badge: 5, facets: 5, masterdetail: 6,
   clockskew: 4, longtask: 4, cascade: 5, exportjob: 4, payment: 5, inventory: 5, prefetch: 4, multitab: 5,
+  ratelimit: 4, cdn: 4, swcache: 5, countdown: 4, money: 5, permissions: 3, flags: 3, schemadrift: 4,
 };

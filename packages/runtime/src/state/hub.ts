@@ -135,6 +135,12 @@ export interface StoreRec {
 
 export interface HubHooks {
   gate(m: MutationRec): GateResult;
+  /** Not holding writes: called before a write that could have been held applies (decide in the background). */
+  observeWrite?(m: MutationRec): void;
+  /** Paths of this write to drop (delivery `discard`: writes over newer data), or null. */
+  filter?(m: MutationRec): Set<string> | null;
+  /** Some (or all) changes of a write were dropped by `filter`. */
+  dropped?(m: MutationRec, dropped: FieldChange[], applied: boolean): void;
   /** Whether a write to this store could be held right now (decides whether live state must be protected). */
   mayHold(s: StoreRec): boolean;
   /** Resolves when the in-flight ops related to a deferred write have settled. */
@@ -155,6 +161,8 @@ export class StoreHub {
   readonly mutations = new Map<number, MutationRec>();
   hooks!: HubHooks;
   holdUserWrites = false;
+  /** Opt-in store-write holds (policy.holdWrites). Default false: writes always apply in the caller's stack. */
+  holdWrites = false;
   /** When false (paused / destroyed) every write applies immediately. */
   gating = true;
   private snapCache = new Map<string, { version: number; ref: unknown; seq: number; clone: unknown }>();
@@ -243,8 +251,23 @@ export class StoreHub {
     if (w.commit) m.commit = w.commit;
     if (pv.unholdable) m.unholdable = pv.unholdable;
     this.hooks.proposed?.(m);
-    if (changes.length === 0 || bypass || pv.unholdable) {
-      // never waits: applied now, in the caller's stack (app errors propagate to the caller, as without GenClass)
+    // delivery `discard`: drop exactly the changes this write would make over newer data
+    if (changes.length && !genclass && this.hooks.filter && !this.applyFilter(s, m, base)) return m;
+    if (m.changes.length === 0 || bypass || pv.unholdable) {
+      // never waits: applied now, in the caller's stack (app errors propagate to the caller, as without GenClass);
+      // earlier held writes of this store apply first, in order (a hold never reorders the app's writes)
+      if (this.holdWrites && s.queue.length) this.flushQueue(s);
+      this.commit(s, m, true);
+      return m;
+    }
+    if (!this.holdWrites) {
+      // no store holds: the situation is built now (as of this proposal), the write applies now, the model decides
+      // in the background (detection; a late revert under the strict rules)
+      try {
+        this.hooks.observeWrite?.(m);
+      } catch {
+        /* observation never blocks a write */
+      }
       this.commit(s, m, true);
       return m;
     }
@@ -322,6 +345,72 @@ export class StoreHub {
       } else parent[key] = old.value;
     }
     return diffLeaves(s.leaves, flatten(s.name, base, s.leaves)).length === 0;
+  }
+
+  /** Drop the changes `filter` names. Returns false when nothing is left to apply (the write is dropped). */
+  private applyFilter(s: StoreRec, m: MutationRec, base: unknown): boolean {
+    const drop = this.hooks.filter!(m);
+    if (!drop || !drop.size) return true;
+    const dropped = m.changes.filter((c) => drop.has(c.path));
+    if (!dropped.length) return true;
+    const keep = m.changes.filter((c) => !drop.has(c.path));
+    if (!keep.length) {
+      m.state = "done";
+      m.outcome = "discarded";
+      this.hooks.dropped?.(m, dropped, false);
+      return false;
+    }
+    if (m.commit) {
+      // a library commit (redux dispatch) cannot be applied in part: apply it whole (fail-open)
+      return true;
+    }
+    const p = patchValue(
+      s.name,
+      base,
+      keep.map((c) => ({ path: c.path, after: c.after, removed: c.afterLeaf === undefined })),
+    );
+    if (!p.ok) return true;
+    m.base = base;
+    m.preview = p.value;
+    m.leaves = flatten(s.name, p.value, s.leaves);
+    m.changes = diffLeaves(s.leaves, m.leaves);
+    delete m.fn;
+    this.hooks.dropped?.(m, dropped, true);
+    return true;
+  }
+
+  /** Apply every queued or held write of a store now, in proposal order (their decisions may still revert them). */
+  flushQueue(s: StoreRec): void {
+    for (const q of s.queue) {
+      if (q.state !== "resolved") {
+        q.state = "resolved";
+        q.verdict = "apply";
+      }
+    }
+    this.drain(s);
+  }
+
+  /**
+   * Read-your-writes while holding (holdWrites): the store value as the chain `root` sees it, with its own pending
+   * writes applied on top. Undefined when the chain has no pending write.
+   */
+  pendingView(s: StoreRec, root: number | null | undefined): unknown {
+    if (!this.holdWrites || !s.queue.length || root === null || root === undefined) return undefined;
+    let v = this.read(s);
+    let any = false;
+    for (const m of s.queue) {
+      if (m.root !== root || m.state === "done") continue;
+      const p = patchValue(
+        s.name,
+        v,
+        m.changes.map((c) => ({ path: c.path, after: c.after, removed: c.afterLeaf === undefined })),
+      );
+      if (p.ok) {
+        v = p.value;
+        any = true;
+      }
+    }
+    return any ? v : undefined;
   }
 
   private gateAndQueue(s: StoreRec, m: MutationRec): void {

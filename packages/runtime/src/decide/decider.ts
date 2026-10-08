@@ -19,6 +19,8 @@ interface QueueItem {
   req: EvaluateRequest;
   /** Absolute clock time after which the answer is useless. */
   deadline?: number;
+  /** The subject was superseded (already delivered, overwritten, aborted): drop instead of computing. */
+  stale?: () => boolean;
   resolve: (r: DecideResult | null) => void;
   seq: number;
   t0: number;
@@ -37,6 +39,8 @@ export class DeciderQueue {
   private seq = 0;
   private cache = new Map<string, { t: number; answers: Record<string, Answer> }>();
   private lat: number[] = [];
+  private since = 0;
+  private overdue = false;
   disposed = false;
 
   constructor(
@@ -49,15 +53,35 @@ export class DeciderQueue {
     return this.q.length;
   }
 
+  /** Items waiting (not counting the one being computed). */
+  get waiting(): number {
+    return this.q.length;
+  }
+
+  get computing(): boolean {
+    return this.busy;
+  }
+
+  /** Clock time the evaluation being computed was dispatched (meaningful while `computing`). */
+  get computingSince(): number {
+    return this.since;
+  }
+
+  /** The provider's last evaluation was abandoned (timed out) and none has answered since. */
+  get stuck(): boolean {
+    return this.overdue;
+  }
+
   /** Provider latencies of the last 20 computed evaluations (oldest first). */
   latencies(): number[] {
     return [...this.lat];
   }
 
-  submit(req: EvaluateRequest, deadline?: number): Promise<DecideResult | null> {
+  submit(req: EvaluateRequest, deadline?: number, stale?: () => boolean): Promise<DecideResult | null> {
     return new Promise((resolve) => {
       const item: QueueItem = { req, resolve, seq: ++this.seq, t0: this.clock.now() };
       if (deadline !== undefined) item.deadline = deadline;
+      if (stale) item.stale = stale;
       this.q.push(item);
       if (this.q.length > MAX_QUEUE) {
         // drop the lowest-priority, oldest item
@@ -94,6 +118,16 @@ export class DeciderQueue {
         item.resolve(null);
         continue;
       }
+      let superseded = false;
+      try {
+        superseded = !!item.stale?.();
+      } catch {
+        superseded = false;
+      }
+      if (superseded) {
+        item.resolve(null);
+        continue;
+      }
       const p = this.provider();
       if (!p || p.status.state !== "ready") {
         item.resolve(null);
@@ -111,10 +145,12 @@ export class DeciderQueue {
 
   private dispatch(p: DecisionProvider, item: QueueItem, key: string, t1: number): void {
     this.busy = true;
+    this.since = t1;
     let settled = false;
     // runtime-side timeout: a provider that never answers must not block every later decision
     const limit = item.deadline !== undefined ? Math.max(1, item.deadline - t1) : PROVIDER_TIMEOUT_MS;
     const timer = this.clock.setTimeout(() => {
+      this.overdue = true;
       this.onError?.(Object.assign(new Error("the decision provider did not answer in time"), { code: "timeout" }));
       done(null);
     }, limit);
@@ -138,6 +174,7 @@ export class DeciderQueue {
     Promise.resolve(pr).then(
       (answers) => {
         if (answers && typeof answers === "object") {
+          this.overdue = false;
           const t2 = this.clock.now();
           this.cache.set(key, { t: t2, answers });
           if (this.cache.size > CACHE_MAX) {

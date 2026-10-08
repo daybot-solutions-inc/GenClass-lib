@@ -38,6 +38,10 @@ export interface OpRec extends Op {
   genclass?: boolean;
   /** Children count (diagnostic). */
   children: number;
+  /** Delivery gate result for this op's response/message (coverage of its chain's writes). */
+  delivery?: { patterns: Set<string>; known: boolean; salient: boolean; decided: boolean };
+  /** delivery `discard`: this op's chain's writes over newer data are dropped until `until`. */
+  discardMark?: { protect: Set<string>; until: number; dropped: { path: string; after: unknown; removed: boolean }[]; onDrop?: (paths: string[]) => void };
 }
 
 export interface StartOpts {

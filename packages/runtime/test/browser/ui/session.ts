@@ -184,6 +184,10 @@ function judge(req: EvaluateRequest): Verdict {
       if (/An identical change[^\n]*applied (0\.\d+|1\.\d+)s ago/.test(f)) return ["duplicate", 0.94, "discard", 0.95];
       if (/by other operations since/.test(f) && /later user action/.test(f)) return ["stale", 0.97, "discard", 0.98];
       return ["expected", 0.96, null, 0.97];
+    case "delivery":
+      // situation v2: a stale response is decided at the network boundary (deliver, dropping its stale writes)
+      if (/by other operations since/.test(f) && /later user action/.test(f)) return ["stale", 0.97, "discard", 0.98];
+      return ["expected", 0.96, null, 0.97];
     case "request":
       if (/identical [^\n]* request[^\n]*in flight/.test(f) && !/failed in a row/.test(f)) return ["duplicate", 0.95, "coalesce", 0.96];
       if (/The last ([4-9]|\d\d) [^\n]* failed in a row/.test(f)) return ["failing", 0.91, "delay", 0.93];

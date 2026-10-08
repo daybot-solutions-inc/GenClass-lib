@@ -52,7 +52,8 @@ interface InitOptions {
   } | false;
   decider?: DecisionProvider | null;                   // bring your own decision provider instead of the model
   report?: "console" | "silent" | ((r: Report) => void); // default "console"
-  observe?: Partial<Record<"fetch"|"xhr"|"user"|"errors"|"nav"|"storage"|"perf"|"websocket"|"timers", boolean>>;
+  observe?: Partial<Record<"fetch"|"xhr"|"user"|"errors"|"nav"|"storage"|"perf"|"websocket"|"eventsource"|"timers"|"untrustedEvents", boolean>>;
+                                                        // untrustedEvents (default false): record synthetic DOM events (isTrusted false) as user actions (test harnesses)
   triage?: "salient" | "always";                        // default "salient"
   policy?: PolicyOptions;                               // see Policy
   redact?: (path: string, value: unknown) => unknown;   // default redacts fields that name a secret (password, token, card number, cvv, ssn, iban, ...)
@@ -67,11 +68,12 @@ interface InitOptions {
 ```
 
 Performance: GenClass computes cheap facts for every write and request, and asks the model only about salient ones.
-The situation the model reads is sized to the device (`situation.budget: "auto"`): 3,200 characters on WebGPU,
-2,000 on 4-thread WASM (crossOriginIsolated pages), 1,000 on single-thread WASM; at 1,400 characters or less the
-questions are compact (bare diagnosis labels and action names). Held writes and requests wait at
-most the hold budget (`policy.holdBudgetMs: "auto"`: 1.5 × the model's recent median latency, 150 to 800 ms), then
-proceed unchanged. Serving your page with `Cross-Origin-Opener-Policy: same-origin` and
+The situation the model reads is sized to the device (`situation.budget: "auto"`): 2,400 characters (about 1,000
+tokens) on WebGPU, 2,000 on 4-thread WASM (crossOriginIsolated pages), 1,000 on single-thread WASM; at 1,400
+characters or less the questions are compact (bare diagnosis labels and action names). State writes are never held
+by default. Held responses, messages and requests wait at most the hold budget (`policy.holdBudgetMs: "auto"`: 1.5 ×
+the model's recent median latency, 150 to 800 ms), then proceed unchanged; nothing is held when the model is not
+expected to answer within that budget. Serving your page with `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp` enables WASM threads (about 3× faster without WebGPU).
 
 Self-hosting the model: `npx genclass-runtime fetch-model public/genclass-model` then
@@ -106,20 +108,32 @@ const search = rt.atom("search", { query: "", results: [] as Item[] }, {
   resync: async () => search.set({ ...search.get(), results: await api.search(search.get().query) }),
 });
 input.oninput = () => search.set((s) => ({ ...s, query: input.value }));   // user write: applied at once
-const res = await fetch(`/api/search?q=${q}`);
-search.set((s) => ({ ...s, results: data }));                           // async write: may be held briefly
+const res = await fetch(`/api/search?q=${q}`);                          // a stale response may be held briefly
+search.set((s) => ({ ...s, results: data }));                           // applied at once (stale fields may be dropped)
 ```
 
-How writes flow: `set` proposes a mutation. Writes made while handling a user action (in the same task) and writes
-made by GenClass itself apply immediately. Other writes are checked: if nothing about them is unusual they apply
-immediately; otherwise they are held until the model answers (at most the hold budget, then they apply:
-fail-open). If the model answers `discard` within 2 s after such a write applied, nothing has overwritten it and
-the same operation made no other write since, GenClass reverts exactly that write (a "late revert", reported as
-such and undoable). An updater that changes the stored value in place (`s.set(v => { v.items.push(x); return v; })`)
-never changes live state before the decision: GenClass works on a detached copy (or, when it cannot restore the
-live value exactly, applies the write at once). Every `set()` notifies subscribers. Writes to one store apply in the order they were proposed. A functional update runs again
-on the value at apply time; a held value write is re-applied as a patch of the fields it changed, so newer user
-input to other fields of the same store is kept. Reading `get()` while a write is held returns the current value.
+How writes flow: GenClass decides at the network boundary and enforces synchronously at the store. A response
+(fetch or XHR) or a pushed message (WebSocket, EventSource) is checked before the app sees it: GenClass predicts
+which fields it will write (from what the same operation wrote before) and consults the model only when one of those
+fields has newer data (an operation that started later already wrote it) or an unconfirmed local change (a user
+action's optimistic write whose own request is still in flight). The model may let it through (`deliver`), let it
+through but drop the writes it makes over newer data (`discard`: each later `set()` of that response's chain applies
+its other fields and skips those), or hold it until the related requests finish and decide again (`defer`). Holding
+only adds latency; messages of one socket or stream keep their order.
+
+`set()` always applies at once (`set(x); get()` returns x) and notifies subscribers; writes to one store apply in the
+order they were made. A write that looks wrong on its own (not covered by a delivery decision) is decided in the
+background: if the model answers `discard` within 2 s after the write applied, nothing has overwritten it and the
+same operation made no other write since, GenClass reverts exactly that write (a "late revert", reported as such and
+undoable).
+
+`policy.holdWrites: true` (opt-in) holds salient writes until the model answers (at most the hold budget): a later
+write to the same store first applies the earlier held ones in order, and `get()` inside the writing operation
+returns the pending value. An updater that changes the stored value in place never changes live state before the
+decision (GenClass works on a detached copy, or applies at once when it cannot restore the live value exactly); a
+functional update runs again on the value at apply time; a held value write is re-applied as a patch of the fields
+it changed. Reads that bypass GenClass (a Redux middleware's `store.getState()`) do not see held writes: keep
+`holdWrites` off for such stores or pass `hold: false`.
 
 GenClass also learns, at *settled* points (no requests in flight, `settleMs` of quiet), generic relations between
 your fields (`a == b`, `a == len(B)`, `a == sum(B[*].f)`, `a == sum(B[*].f * B[*].g)`, `a >= 0`, `a ∈ B[*].k`,
@@ -216,7 +230,8 @@ every observer and restores the globals it wrapped.
 
 | trigger | when | actions (passive first) |
 |---|---|---|
-| `mutation` | a state write is about to apply | `apply`, `discard`, `defer` |
+| `delivery` | a response (fetch/XHR) or a WebSocket/EventSource message is about to reach the app, and a field it usually writes has newer data or an unconfirmed local change | `deliver`, `discard`, `defer` |
+| `mutation` | a salient state write not covered by a delivery decision (decided in the background unless `holdWrites`) | `apply`, `discard`, `defer` |
 | `request` | a fetch/XHR is about to be sent | `send`, `coalesce`, `delay`, `block`, `serve_cached` |
 | `failure` | a request failed (network, timeout, 5xx, 429, 408) before the app sees it | `deliver`, `retry`, `serve_cached` |
 | `stall` | a request is far past its usual latency | `wait`, `hedge`, `serve_cached` |
@@ -226,8 +241,8 @@ every observer and restores the globals it wrapped.
 
 | action | tier | effect |
 |---|---|---|
-| `discard` | guard | drop the write (undo: apply it now); decided ≤ 2 s after the write applied (hold budget expired): revert exactly that write if nothing overwrote it and its operation wrote nothing else since (undo: re-apply) |
-| `defer` | guard | hold the write until related requests finish, then decide again (twice at most) |
+| `discard` | guard | delivery: deliver it, but drop the state changes its operation makes over newer data (`ActionRecord.dropped` lists them; undo: apply them now). mutation: revert exactly that write if decided ≤ 2 s after it applied, nothing overwrote it and its operation wrote nothing else since (undo: re-apply); with `holdWrites`, drop the held write |
+| `defer` | guard | hold the response/message (or held write) until related requests finish, then decide again (twice at most) |
 | `coalesce` | guard | do not send; reuse the response of the identical request in flight or just finished (`x-genclass: coalesced`) |
 | `delay` | guard | wait min(250 ms · 2^failure streak, 8 s), then send |
 | `block` | heal | do not send; answer 503 (`x-genclass: blocked`) |
@@ -247,7 +262,11 @@ tried again).
 Actions are offered only when they apply (an identical request exists, a cached response exists, the body can be
 replayed, a consistent snapshot exists, a `resync` handler exists, the failing operation wrote state). Responses
 are always cloned before the app reads them. GenClass's own requests and writes are never gated; `keepalive`
-requests and synchronous XHRs are never held; nothing is held when the mode and policy permit no action for it.
+requests and synchronous XHRs are never held; nothing is held when the mode and policy permit no action for it or
+when the model is not expected to answer within the hold budget. A queued decision whose subject was superseded (the
+response was released, the write overwritten, the request aborted) is dropped before the model computes it. XHR:
+the app's completion listeners (`readystatechange`, `progress`, `load`, `loadend`, and the matching `on*`
+handlers) are wrapped so a held response reaches them, in order, once delivered; `on*` getters return that wrapper.
 
 Two requests are "identical" when method, URL, headers (tracing ids such as `traceparent` or `x-request-id`
 excluded) and body content match. Bodies GenClass cannot read cheaply (streams, files, bodies over 64 KB) never
@@ -262,6 +281,7 @@ interface PolicyOptions {
   deny?: string[];                  // these never run
   holdBudgetMs?: number | "auto";   // default "auto": clamp(1.5 × median recent model latency, 150, 800) ms
   holdUserWrites?: boolean;         // default false
+  holdWrites?: boolean;             // default false: state writes apply at once (decided at the network boundary)
   maxActionsPerMinute?: number;     // default 60
   requireDiagnosis?: boolean;       // default true
 }
@@ -284,13 +304,14 @@ printed when the minute ends ("×N more in the last minute"). A detection that d
 have done and why not.
 
 ```
-[GenClass] Prevented a stale write: search.results was written once by other operations since this write's cause (#6) started (v0 → v1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7). Dropped the write to search.results from GET /api/search?q=rea (#6); search stays at version 2. (stale, 0.97; discard 0.96)
+[GenClass] Prevented a stale response: search.results was written twice by other operations since its operation (#6) started (version 1 → 3), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7). Delivered the response to GET /api/search?q=rea (#6) and dropped the state changes it makes over newer data (search.results). (stale, 0.97; discard 0.97)
 ```
 
 ```ts
 const a = rt.interventions().at(-1)!;
-a.changed;          // "Dropped the write to search.results from GET /api/search?q=rea (#6); search stays at version 2."
-a.undo?.();         // discard: applies the dropped write now; rollback: restores the values it replaced
+a.changed;          // "Delivered the response to GET /api/search?q=rea (#6) and dropped the state changes it makes over newer data (search.results)."
+a.dropped;          // ["search.results"]
+a.undo?.();         // discard: applies the dropped values now; late revert: re-applies the write; rollback: restores the values it replaced
 rt.explain(a.id);   // { decision, situationText, facts, timeline, answers, action, changed }
 ```
 
@@ -405,10 +426,11 @@ interface Decision {
   candidate?: string /* most probable permitted action */; mass?: number /* summed probability of the permitted actions */;
 }
 type Detection = Decision;
-interface ActionRecord { id: string; decisionId: string; action: string; tier; trigger; subject: string; at: number; ok: boolean; error?: string; changed: string; undo?: () => void; late?: boolean }
+interface ActionRecord { id: string; decisionId: string; action: string; tier; trigger; subject: string; at: number; ok: boolean; error?: string; changed: string; undo?: () => void; late?: boolean; dropped?: string[] /* delivery discard: fields dropped */ }
+type SubjectRef = { kind: "delivery"; op: number; paths?: string[]; store?: string } | { kind: "mutation"; ... } | ...
 interface Explanation { message: string; decision: Decision; situationText: string; facts: string[]; timeline: string[]; answers: Record<string, Answer>; action?: ActionRecord; changed?: string }
 interface RtEvent { seq: number; t: number; kind: "user"|"op.start"|"op.end"|"state"|"error"|"nav"|"perf"|"storage"|"custom"|"decision"|"action"; name: string; op?: number; cause?: number; data?: Record<string, unknown> }
-interface Op { id: number; kind: "user"|"fetch"|"xhr"|"ws"|"task"|"timer"|"genclass"; name: string; detail?: string; start: number; end?: number; status?: "ok"|"error"|"aborted"|"blocked"; code?: number | string; cause?: number; root?: number; attempt: number; reads: Map<string, number>; identity?: string }
+interface Op { id: number; kind: "user"|"fetch"|"xhr"|"ws"|"task"|"timer"|"genclass"; name: string /* e.g. "GET /api/x", "WS message /live", "SSE update /stream" */; detail?: string; start: number; end?: number; status?: "ok"|"error"|"aborted"|"blocked"; code?: number | string; cause?: number; root?: number; attempt: number; reads: Map<string, number>; identity?: string }
 ```
 
 Privacy: values are summarised and redacted before they reach a situation: fields, query parameters and body keys

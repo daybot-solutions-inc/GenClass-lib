@@ -27,6 +27,17 @@ declare global {
   const realNow = performance.now.bind(performance);
   const realStart = realNow();
   const loop = installTime(w, { epoch: cfg.epoch, randomSeed: hashAll(cfg.seed, "page-random") });
+  // a fresh browser profile per run: storage and (script-visible) cookies cleared, then the app's preloads
+  try {
+    for (const c of w.document.cookie.split(";")) {
+      const name = c.split("=")[0]!.trim();
+      if (name) w.document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+    }
+    const ck = cfg.variant.__cookies as Record<string, string> | undefined;
+    if (ck) for (const [k, v] of Object.entries(ck)) w.document.cookie = `${k}=${encodeURIComponent(v)}; path=/`;
+  } catch {
+    /* cookies unavailable */
+  }
   try {
     w.localStorage.clear();
     w.sessionStorage.clear();
@@ -52,7 +63,7 @@ declare global {
   w.__GENCLASS_INIT__ = cfg.ideal
     ? { mode: "observe", model: false, decider: null, report: "silent", observe: ALL_OFF, hooks: probe.hooks(), plugins: [probe.plugin()] }
     : {
-        mode: "heal",
+        mode: cfg.mode ?? "heal",
         decider: probe.decider(),
         report: "silent",
         triage: "salient",
@@ -114,6 +125,18 @@ declare global {
     probe.mo.observe(w.document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden", "class", "style", "open", "disabled", "value"] });
   };
   if (w.document.documentElement) startObserver();
+  // shadow roots (Lit, Stencil, ...): observe their mutations too, and make text snapshots walk into them
+  const attach = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function (this: Element, init: ShadowRootInit): ShadowRoot {
+    const sr = attach.call(this, init);
+    probe.hasShadow = true;
+    probe.domDirty = true;
+    const obs = new MutationObserver(() => {
+      probe.domDirty = true;
+    });
+    obs.observe(sr, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden", "class", "style", "open", "disabled", "value"] });
+    return sr;
+  };
 
   w.__RW = {
     probe,
@@ -125,6 +148,7 @@ declare global {
         loop.at(t, () => server.external(ev.kind, ev.target, ev.index, ev.data, ev.verb, ev.by), "ext");
       });
       for (const d of cfg.net.wsDrops) if (!cfg.ideal) loop.at(d.t, () => net.dropSockets(d.downMs), "ws-drop");
+      let driver: UserDriver;
       // developer-question probes (side-effect free: runtime.situation() consumes no ids)
       const asks: NonNullable<RunResult["asks"]> = [];
       if (cfg.record && !cfg.ideal)
@@ -147,7 +171,7 @@ declare global {
               loop.internalErrors.push(`ask probe: ${String((e as Error)?.message ?? e).slice(0, 200)}`);
             }
           }, "ask");
-      const driver = new UserDriver(w, loop, cfg.steps, cfg.ideal, {
+      driver = new UserDriver(w, loop, cfg.steps, cfg.ideal, {
         begin: (st, sub) => {
           probe.current = { step: st, sub };
           probe.subTimes.set(`${st.i}:${sub}`, loop.now);
@@ -165,6 +189,7 @@ declare global {
           probe.stepsRan.push({ i: st.i, t: loop.now });
         },
       });
+      driver.pins = cfg.pins;
       driver.start();
       probe.markAllDirty();
       let error: string | undefined;
@@ -201,6 +226,7 @@ declare global {
         internalErrors: [...loop.internalErrors, ...(navAttempts ? [`nav-prevented:${navAttempts}`] : []), ...errLog],
         wsMessages: probe.wsMessages,
         ...(asks.length ? { asks } : {}),
+        ...(cfg.ideal ? { pins: driver.recorded } : {}),
       };
       return JSON.stringify(res);
     },

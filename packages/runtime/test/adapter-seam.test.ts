@@ -26,7 +26,7 @@ function miniStore(initial: S) {
 describe("runtime.adapter (seam for redux/zustand adapters)", () => {
   it("previews with the reducer, holds async writes, commits through the library", async () => {
     const manual = new ManualDecider();
-    const { rt, clock } = setup({ decider: manual, triage: "always" });
+    const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdWrites: true } });
     const store = miniStore({ count: 0, items: [] });
     const h = rt.adapter("shop", { get: store.getState, subscribe: store.subscribe });
     const dispatch = (a: A) => h.propose({ fn: (prev) => store.reducer(prev, a), commit: () => store.dispatch(a) });
@@ -45,7 +45,7 @@ describe("runtime.adapter (seam for redux/zustand adapters)", () => {
   });
 
   it("a discarded write is never committed", async () => {
-    const { rt, clock } = setup({ triage: "always", script: defaultScript({ mutation: { diagnosis: "duplicate", action: "discard" } }) });
+    const { rt, clock } = setup({ triage: "always", policy: { holdWrites: true }, script: defaultScript({ mutation: { diagnosis: "duplicate", action: "discard" } }) });
     const store = miniStore({ count: 0, items: [] });
     const h = rt.adapter("shop", { get: store.getState, subscribe: store.subscribe });
     let commits = 0;
@@ -65,7 +65,7 @@ describe("runtime.adapter (seam for redux/zustand adapters)", () => {
 
   it("changes made directly on the library store are recorded, never held", async () => {
     const manual = new ManualDecider();
-    const { rt, clock } = setup({ decider: manual, triage: "always" });
+    const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdWrites: true } });
     const store = miniStore({ count: 0, items: [] });
     rt.adapter("shop", { get: store.getState, subscribe: store.subscribe });
     store.dispatch({ type: "add", item: "z" });

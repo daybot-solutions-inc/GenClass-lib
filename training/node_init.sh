@@ -7,5 +7,6 @@ URL="${1:?kit url}"
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rsync zstd pigz >/dev/null 2>&1 || true
 cd ~ && curl -sS --fail "$URL" | tar x
 mkdir -p ~/gcl-train/logs ~/gcl-train/out ~/gcl-train/runs ~/jev/runs
+~/jev/.venv/bin/pip install -q onnx==1.23.1 onnxruntime==1.30.0 onnxscript==0.7.2 onnxconverter_common==1.16.0 >/dev/null 2>&1 || true
 ~/jev/.venv/bin/python -c "import torch, transformers, tokenizers; print('ok', torch.__version__, transformers.__version__, torch.get_num_threads())"
 touch ~/.node_init_ok

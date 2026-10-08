@@ -261,6 +261,12 @@ function stateAt(snaps: Snapshot[], t: number, init: Record<string, unknown>): R
   return best >= 0 ? snaps[best]!.state : init;
 }
 
+/** Client divergence from the ideal run at time t (analysis probes: how wrong the client already is). */
+export function clientDivergenceAt(real: RunResult, ideal: RunResult, t: number): number {
+  const init = real.snapshots.length ? real.snapshots[0]!.state : real.final;
+  return clientDist(stateAt(real.snapshots, t, init), stateAt(ideal.snapshots, t, init), real.weights, real.relations);
+}
+
 /** Ideal server state at time t (from the ideal run's server timeline). */
 function serverAt(ideal: RunResult, t: number): ServerSnapshot {
   const tl = ideal.serverTimeline;

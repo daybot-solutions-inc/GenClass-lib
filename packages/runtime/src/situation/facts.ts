@@ -10,7 +10,8 @@ import type { OpRec } from "../trace/ops.js";
 import { outcomeLabel } from "../learn/baselines.js";
 import { describe, fmtNum, ordinal, plural, ratio, secs, truncate } from "../util.js";
 import { opLabel, opPhrase, statusText } from "./describe.js";
-import type { FailureInfo, ReqMeta, SitEnv, SubjectSpec, Violation } from "./env.js";
+import type { DeliverySpec, FailureInfo, ReqMeta, SitEnv, SubjectSpec, Violation } from "./env.js";
+import { newerConflict, pendingConflict } from "./conflicts.js";
 import type { Unusual } from "../learn/profiles.js";
 
 export const MAX_FACTS = 12;
@@ -108,6 +109,107 @@ function additive(delta: string): boolean {
 
 // ---------------------------------------------------------------------------------------------- mutation
 
+/**
+ * Version facts for the fields an operation X (the cause of a write, or a delivered response's operation) writes:
+ * non-neutral only for a newer-data conflict (a newer operation wrote the field since X started and its value
+ * changed) or a pending local change (an unconfirmed optimistic write of a user action); writes by older
+ * operations, by X's own chain, or by user actions alone are neutral.
+ */
+function versionFacts(env: SitEnv, X: OpRec, paths: string[], ref: string, now: number): Fact[] {
+  const out: Fact[] = [];
+  for (const path of paths) {
+    const vStart = env.hub.versionAt(path, X.startSeq);
+    X.reads.set(path, vStart);
+    const vNow = env.hub.field(path)?.v ?? 0;
+    const log = env.hub.logSince(path, X.startSeq);
+    const others = log.filter((e) => !sameChain(env, X, e.writer));
+    const pending = pendingConflict(env, X, path, now);
+    if (pending) {
+      out.push(
+        fact(
+          `${path} has a pending local change: ${opLabel(pending.writer)} wrote it ${secs(now - pending.t)} ago and its ${opLabel(pending.pendingOp)} is still in flight; ${ref} ${X.start > pending.writer!.start ? "started after that user action" : "started before that user action"}.`,
+          "versions",
+          false,
+        ),
+      );
+    }
+    if (others.length) {
+      const last = others[others.length - 1];
+      const conflict = newerConflict(env, X, path) !== null;
+      out.push(
+        fact(
+          `${path} was written ${times(others.length)} by other operations since ${ref} started (version ${vStart} → ${vNow}), last ${secs(now - last.t)} ago by ${writerOpText(env, X, env.ops.get(last.writer), last.user)}.`,
+          "versions",
+          !conflict,
+        ),
+      );
+    } else if (log.length) {
+      out.push(fact(`${path} was written ${times(log.length)} by ${ref}'s own chain since it started (version ${vStart} → ${vNow}).`, "versions", true));
+    } else if (!pending) {
+      out.push(fact(`${path} has not changed since ${ref} started (version ${vNow}).`, "versions", true));
+    }
+  }
+  return out;
+}
+
+/** Other fields of the given stores that changed since X started, by other chains (always neutral). */
+function movedFacts(env: SitEnv, X: OpRec, exclude: string[], stores: string[], ref: string): Fact[] {
+  const out: Fact[] = [];
+  const moved = env.hub
+    .changedSince(X.startSeq)
+    .filter((x) => !exclude.includes(x.path) && env.hub.leaf(x.path) !== undefined)
+    .map((x) => {
+      const log = env.hub.logSince(x.path, X.startSeq).filter((e) => !sameChain(env, X, e.writer));
+      return { ...x, log, hist: x.hist.filter((h) => !sameChain(env, X, h.writer)) };
+    })
+    .filter((x) => x.log.length > 0)
+    .map((x) => ({ ...x, same: stores.includes(x.path.split(".")[0]), user: x.log.some((e) => e.user) }))
+    .sort((a, b) => Number(b.same) - Number(a.same) || Number(b.user) - Number(a.user) || b.log[b.log.length - 1].seq - a.log[a.log.length - 1].seq);
+  for (const x of moved.slice(0, 2)) {
+    const last = x.log[x.log.length - 1];
+    const cur = env.hub.valueAt(x.path);
+    const w = env.ops.get(last.writer);
+    const by = w ? `${opLabel(w)} ${secs(Math.max(0, last.t - X.start))} after #${X.id} started` : "an untracked writer";
+    const n = x.log.length;
+    const curText = describe(cur, x.path, env.redact, 40);
+    const firstH = x.hist.length && x.hist[0].seq === x.log[0].seq ? x.hist[0] : undefined;
+    let what: string;
+    if (!firstH) what = `${x.path} changed ${times(n)} since ${ref} started (now ${curText})`;
+    else {
+      const beforeText = describe(firstH.before, x.path, env.redact, 40);
+      what = beforeText === curText ? `${x.path} changed ${times(n)} since ${ref} started and is back to ${curText}` : `${x.path} changed since ${ref} started: ${beforeText} → ${curText}${n > 1 ? ` (${n} writes)` : ""}`;
+    }
+    out.push(fact(`${what}, last by ${by}.`, "inputs", true));
+  }
+  return out;
+}
+
+/** In-flight ops with X's signature or that usually write these stores (always neutral). */
+function concurrencyFacts(env: SitEnv, X: OpRec, stores: string[], ref: string): Fact[] {
+  const out: Fact[] = [];
+  const chainIds = new Set([X.id, ...env.ops.ancestors(X).map((a) => a.id)]);
+  const others = [...env.ops.inFlight].filter((o) => !chainIds.has(o.id) && !env.ops.isAncestorOrSelf(X, o) && o.kind !== "user");
+  const same = others.filter((o) => o.name === X.name && o.kind === X.kind);
+  if (same.length) {
+    const newer = same.filter((o) => o.start > X.start);
+    const items = same.slice(0, 3).map((o) => `#${o.id} ${truncate(o.detail ?? "", 30)} ${startedRel(o, X)}`.replace(/\s+/g, " "));
+    out.push(fact(`${plural(same.length, `other ${X.name} operation`)} ${same.length === 1 ? "is" : "are"} in flight (${newer.length} newer than ${ref}): ${items.join("; ")}.`, "concurrency", true));
+  }
+  for (const store of stores.slice(0, 2)) {
+    const writers = others.filter((o) => !same.includes(o) && (env.storeWriters.get(o.name)?.get(store) ?? 0) > 0);
+    if (!writers.length) continue;
+    const o = writers[0];
+    out.push(
+      fact(
+        `${opLabel(o)} is in flight and its chain wrote ${store} ${times(env.storeWriters.get(o.name)!.get(store)!)} before${writers.length > 1 ? ` (${writers.length - 1} more such ops in flight)` : ""}.`,
+        "concurrency",
+        true,
+      ),
+    );
+  }
+  return out;
+}
+
 function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
   const out: Fact[] = [];
   const C = m.cause;
@@ -116,81 +218,9 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
   if (C) {
     const ref = `this write's cause (#${C.id})`;
     const Ref = `This write's cause (#${C.id})`;
-    for (const path of written.slice(0, 3)) {
-      const vStart = env.hub.versionAt(path, C.startSeq);
-      C.reads.set(path, vStart);
-      const vNow = env.hub.field(path)?.v ?? 0;
-      const log = env.hub.logSince(path, C.startSeq);
-      const others = log.filter((e) => !sameChain(env, C, e.writer));
-      if (others.length) {
-        const last = others[others.length - 1];
-        out.push(
-          fact(
-            `${path} was written ${times(others.length)} by other operations since ${ref} started (version ${vStart} → ${vNow}), last ${secs(now - last.t)} ago by ${writerOpText(env, C, env.ops.get(last.writer), last.user)}.`,
-            "versions",
-            false,
-          ),
-        );
-      } else if (log.length) {
-        out.push(fact(`${path} was written ${times(log.length)} by this write's own chain since ${ref} started (version ${vStart} → ${vNow}).`, "versions", true));
-      } else {
-        out.push(fact(`${path} has not changed since ${ref} started (version ${vNow}).`, "versions", true));
-      }
-    }
-    // inputs moved: other fields changed since the cause started, by other chains
-    const moved = env.hub
-      .changedSince(C.startSeq)
-      .filter((x) => !written.includes(x.path) && env.hub.leaf(x.path) !== undefined)
-      .map((x) => {
-        const log = env.hub.logSince(x.path, C.startSeq).filter((e) => !sameChain(env, C, e.writer));
-        return { ...x, log, hist: x.hist.filter((h) => !sameChain(env, C, h.writer)) };
-      })
-      .filter((x) => x.log.length > 0)
-      .map((x) => ({ ...x, same: x.path.split(".")[0] === m.store, user: x.log.some((e) => e.user) }))
-      .sort((a, b) => Number(b.same) - Number(a.same) || Number(b.user) - Number(a.user) || b.log[b.log.length - 1].seq - a.log[a.log.length - 1].seq);
-    for (const x of moved.slice(0, 2)) {
-      const last = x.log[x.log.length - 1];
-      const cur = env.hub.valueAt(x.path);
-      const w = env.ops.get(last.writer);
-      const by = w ? `${opLabel(w)} ${secs(Math.max(0, last.t - C.start))} after #${C.id} started` : "an untracked writer";
-      const n = x.log.length;
-      const curText = describe(cur, x.path, env.redact, 40);
-      // the value before the first of these writes, when it is still in the rich history
-      const firstH = x.hist.length && x.hist[0].seq === x.log[0].seq ? x.hist[0] : undefined;
-      let what: string;
-      if (!firstH) what = `${x.path} changed ${times(n)} since ${ref} started (now ${curText})`;
-      else {
-        const beforeText = describe(firstH.before, x.path, env.redact, 40);
-        what = beforeText === curText ? `${x.path} changed ${times(n)} since ${ref} started and is back to ${curText}` : `${x.path} changed since ${ref} started: ${beforeText} → ${curText}${n > 1 ? ` (${n} writes)` : ""}`;
-      }
-      out.push(fact(`${what}, last by ${by}.`, "inputs", !x.same));
-    }
-    // concurrency: other in-flight ops with the same signature, or that usually write this store
-    const chainIds = new Set([C.id, ...env.ops.ancestors(C).map((a) => a.id)]);
-    const others = [...env.ops.inFlight].filter((o) => !chainIds.has(o.id) && !env.ops.isAncestorOrSelf(C, o));
-    const same = others.filter((o) => o.name === C.name && o.kind === C.kind);
-    if (same.length) {
-      const newer = same.filter((o) => o.start > C.start);
-      const items = same.slice(0, 3).map((o) => `#${o.id} ${truncate(o.detail ?? "", 30)} ${startedRel(o, C)}`.replace(/\s+/g, " "));
-      out.push(
-        fact(
-          `${plural(same.length, `other ${C.name} operation`)} ${same.length === 1 ? "is" : "are"} in flight (${newer.length} newer than ${ref}): ${items.join("; ")}.`,
-          "concurrency",
-          newer.length === 0,
-        ),
-      );
-    }
-    const writers = others.filter((o) => !same.includes(o) && (env.storeWriters.get(o.name)?.get(m.store) ?? 0) > 0);
-    if (writers.length) {
-      const o = writers[0];
-      out.push(
-        fact(
-          `${opLabel(o)} is in flight and its chain wrote ${m.store} ${times(env.storeWriters.get(o.name)!.get(m.store)!)} before${writers.length > 1 ? ` (${writers.length - 1} more such ops in flight)` : ""}.`,
-          "concurrency",
-          true,
-        ),
-      );
-    }
+    out.push(...versionFacts(env, C, written.slice(0, 3), ref, now));
+    out.push(...movedFacts(env, C, written, [m.store], ref));
+    out.push(...concurrencyFacts(env, C, [m.store], ref));
     // baseline: latency of the cause
     if ((C.kind === "fetch" || C.kind === "xhr") && C.end !== undefined) {
       const lat = C.end - C.start;
@@ -201,28 +231,12 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
       }
       if (C.status === "error") out.push(fact(`${Ref} failed (${statusText(C)}) before this write.`, "outcome", true));
     }
-  }
-  // a pending local change: a user action wrote this field recently and an op of that action is still in flight
-  const myRoot = C ? C.root ?? C.id : null;
-  for (const path of written.slice(0, 3)) {
-    const f = env.hub.field(path);
-    if (!f) continue;
-    for (let i = f.hist.length - 1; i >= 0; i--) {
-      const h = f.hist[i];
-      if (now - h.t > WINDOW) break;
-      if (h.root === null || h.root === myRoot) continue;
-      const rootOp = env.ops.get(h.root);
-      if (!rootOp || rootOp.kind !== "user") continue;
-      const pending = [...env.ops.inFlight].find((o) => o.root === h.root && o.kind !== "user");
-      if (!pending) continue;
-      out.push(
-        fact(
-          `${path} has a pending local change: ${opLabel(rootOp)} wrote it ${secs(now - h.t)} ago and its ${opLabel(pending)} is still in flight; this write ${C ? `comes from ${opLabel(C)}, ${C.start > rootOp.start ? "which started after that user action" : "which started before that user action"}` : "has no known cause"}.`,
-          "versions",
-          false,
-        ),
-      );
-      break;
+  } else {
+    // no cause: an unconfirmed optimistic change of a user action is the only version fact
+    for (const path of written.slice(0, 3)) {
+      const pending = pendingConflict(env, null, path, now);
+      if (pending)
+        out.push(fact(`${path} has a pending local change: ${opLabel(pending.writer)} wrote it ${secs(now - pending.t)} ago and its ${opLabel(pending.pendingOp)} is still in flight; this write has no known cause.`, "versions", false));
     }
   }
   if (m.unholdable) out.push(fact(`This write could not be held: ${m.unholdable}.`, "outcome", true));
@@ -259,6 +273,58 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
   // value delta
   for (const c of m.changes.slice(0, 3)) out.push(fact(`This write would change ${c.path}: ${changeText(c, env.redact)}.`, "delta", true));
   if (m.defers) out.push(fact(`This write was already deferred ${times(m.defers)}.`, "outcome", true));
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------- delivery
+
+function fieldListText(fs: string[]): string {
+  if (!fs.length) return "nothing";
+  const shown = fs.slice(0, 4);
+  const rest = fs.length - shown.length;
+  const list = shown.length === 1 ? shown[0] : `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
+  return rest > 0 ? `${list} (+${rest} more)` : list;
+}
+
+/** "its operation usually writes …" / "messages like it usually write …" / unknown. */
+export function predictedText(s: DeliverySpec): string {
+  const p = s.predicted;
+  const who = s.channel === "response" ? "its operation" : "messages like it";
+  const verb = s.channel === "response" ? "writes" : "write";
+  if (p.source === "profile") return `${who} usually ${verb} ${fieldListText(p.patterns)}`;
+  if (p.source === "last") return `${who} last wrote ${fieldListText(p.patterns)}`;
+  return s.channel === "response" ? "no earlier completion shows which state it writes" : "no earlier message shows which state it writes";
+}
+
+function deliveryFacts(env: SitEnv, s: DeliverySpec, now: number): Fact[] {
+  const out: Fact[] = [];
+  const X = s.op;
+  const ref = s.channel === "response" ? `its operation (#${X.id})` : `this message (#${X.id})`;
+  if (s.channel === "response") {
+    const dur = X.end !== undefined ? X.end - X.start : now - X.start;
+    out.push(fact(`The response to ${opLabel(X)} arrived after ${secs(dur)}${s.status !== undefined ? ` (${s.status})` : ""}${s.defers ? ` and was held ${times(s.defers)} already` : ""}; the app has not seen it yet.`, "provenance", true));
+    const cause = env.ops.get(X.cause);
+    if (cause) out.push(provenance(env, "This request", cause, now));
+  } else {
+    out.push(fact(`A ${s.channel === "websocket" ? "WebSocket" : "server-sent"} message (#${X.id}) ${s.message?.summary ?? ""} arrived on ${s.message?.path ?? "a stream"}${s.defers ? ` and was held ${times(s.defers)} already` : ""}; the app has not seen it yet.`.replace(/\s+/g, " "), "provenance", true));
+    if (s.queuedAhead) out.push(fact(`${plural(s.queuedAhead, "earlier message")} of this channel ${s.queuedAhead === 1 ? "is" : "are"} held ahead of it (order is kept).`, "concurrency", true));
+  }
+  // the predicted write set is in the trigger sentence; the profile's counts are the only extra information
+  const p = s.predicted;
+  if (p.source === "profile") out.push(fact(`In ${p.of} earlier completions of ${X.name} its chain wrote ${fieldListText(p.patterns)} (${p.seen} of ${p.of} wrote state).`, "transition", true));
+  // version facts over the predicted fields: conflicts first
+  const conflicted = s.conflicts.map((c) => c.path);
+  const rest = s.matched.filter((f) => !conflicted.includes(f) && env.hub.logSince(f, X.startSeq).length > 0);
+  out.push(...versionFacts(env, X, [...conflicted, ...rest].slice(0, 3), ref, now));
+  const stores = [...new Set(s.matched.map((f) => f.split(".")[0]))];
+  out.push(...movedFacts(env, X, s.matched, stores, ref));
+  out.push(...concurrencyFacts(env, X, stores, ref));
+  if (s.req) {
+    const st = env.base.stats(s.req.signature);
+    const lat = env.base.latency(s.req.signature);
+    if (lat && X.end !== undefined) out.push(fact(`${s.req.signature} usually answers in ${secs(lat.median)} (p95 ${secs(lat.p95)}).`, "baseline", true));
+    if (st && st.failStreak > 0) out.push(fact(`The ${plural(st.failStreak, `${s.req.signature} request`)} before this one failed in a row.`, "outcome", true));
+  }
   return out;
 }
 
@@ -552,6 +618,8 @@ export function computeFacts(env: SitEnv, s: SubjectSpec): Fact[] {
       return mutationFacts(env, s.m, now);
     case "request":
       return requestCommon(env, "request", s.op, s.req, now);
+    case "delivery":
+      return deliveryFacts(env, s, now);
     case "failure":
       return failureFacts(env, s.op, s.req, s.failure, now);
     case "stall":

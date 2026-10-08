@@ -110,7 +110,7 @@ describe("genclass zustand middleware (scripted runtime)", () => {
 describe("genclass zustand middleware + the real runtime", () => {
   it("holds a salient async set for the model; apply and discard behave like Zustand would", async () => {
     const decider = new ManualDecider();
-    const S = setup({ decider, triage: "always" });
+    const S = setup({ decider, triage: "always", policy: { holdWrites: true } });
     const store = makeStore(S.rt);
     const listener = vi.fn();
     store.subscribe(listener);

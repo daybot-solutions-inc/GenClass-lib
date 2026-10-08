@@ -724,7 +724,7 @@ class Devtools {
     const msg = isAct ? this.msgs.get(e.id) ?? (a ? this.msgs.get(a.decisionId) : undefined) : d ? this.msgs.get(d.id) : undefined;
     let { title, body } = splitReport(msg, a?.changed);
     if (!isAct) title = diagTitle(d?.diagnosis, trigger);
-    else if (!title) title = actTitle(a?.action ?? "", d?.diagnosis, trigger);
+    else if (!title) title = actTitle(a?.action ?? "", d?.diagnosis, trigger, !!a?.late);
     if (!body) body = topFact(d?.facts) || a?.subject || d?.subject || "";
     const evId = `gc-ev-${e.kind}-${e.id}`;
     const dp = d ? diagP(d) : NaN;

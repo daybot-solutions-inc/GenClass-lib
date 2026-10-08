@@ -16,8 +16,8 @@ realapps/
   src/world/              in-page world (one IIFE, injected before any page script): loop.ts (virtual time),
                           server.ts + ext/conduit.ts (mock backend), net.ts + netapi.ts (fetch/XHR/WebSocket + chaos),
                           user.ts (scripted user), probe.ts (recording decider, hooks, snapshots), diagnose.ts
-  src/harness/            Node side: scenario.ts, trajectory.ts, cost.ts, labels.ts, browser.ts, serve.ts,
-                          gen.ts (worker pool), worker.ts, debug.ts
+  src/harness/            Node side: scenario.ts, trajectory.ts, cost.ts, labels.ts, browser.ts, gen.ts (worker
+                          pool), worker.ts, debug.ts (inspection, determinism and interference sweeps)
   scripts/                analyze.py (stats + sim comparison), evalset.py, node_setup.sh, cluster.sh
   build.mjs               bundles the world, the harness and every app (esbuild; Vite apps via corpus/)
   EXAMPLES.md             audited example rows (situation, labels, per-action costs)
@@ -40,14 +40,27 @@ apps. None is written for a particular trigger rule.
   typing, overlapping autosaves, optimistic updates without rollback, relative toggles, non-atomic derived counts and
   totals, cache/echo races, WebSocket reconnects without resync, response+push duplicates, concurrent token
   refreshes with rotating refresh tokens, assume-all-succeeded bulk operations, overlapping polls and retry storms.
-- **Open source** (`corpus/oss.json`, licences in `corpus/LICENSES.md`, all MIT). Four RealWorld "Conduit"
-  front-ends run unmodified against a mock of the RealWorld API (`src/world/ext/conduit.ts`): gothinkster
-  react-redux (React 16, Redux 3, superagent/XHR), khaledosman RTK (React 18, Redux Toolkit), mutoe vue3 (Vue SFC,
-  Pinia, generated fetch client; built with Vite) and solidjs solid-realworld (Solid JSX; built with Vite). The only
-  change is the GenClass integration a developer would add (`corpus/patch_oss.py`). Redux apps get
-  `genclassEnhancer` on their store. The Vue and Solid apps get one init import (observe-only). These apps bring
-  their own real bugs. For example, gothinkster's promise middleware reads `error.response.body`, so one transient
-  5xx on the feed throws in a reducer and leaves the home page empty.
+- **Open source** (`corpus/oss.json`, licences in `corpus/LICENSES.md`, all MIT). Fourteen RealWorld "Conduit"
+  front-ends run against a mock of the RealWorld API (`src/world/ext/conduit.ts`), each built with its own
+  toolchain:
+  - React 16 + Redux 3 + superagent;
+  - React 18 + Redux Toolkit;
+  - React + MobX 3 (decorators);
+  - Vue 3 SFC + Pinia, and Vue 2 + Vuex;
+  - Angular 21 (zoneless, signals) and AngularJS 1.5;
+  - Svelte 3 + axios, and Solid;
+  - native web components;
+  - Elm 0.19, PureScript Halogen, ReScript React;
+  - Ember Octane + Ember Data.
+
+  The only change is the GenClass integration a developer would add (`corpus/patch_oss.py`), plus build
+  configuration where an old toolchain no longer runs. Redux apps get `genclassEnhancer` on their store. The others
+  get one init import (observe-only). These apps bring their own real bugs, for example:
+  - gothinkster's promise middleware reads `error.response.body`, so one transient 5xx on the feed throws in a
+    reducer and leaves the home page empty;
+  - Vue 2's initial-feed 500 becomes an uncaught error;
+  - the web-components app fetches tags twice and calls `.forEach` on error bodies;
+  - ReScript's article dates are off by a month.
 
 ## Integration (the way a developer would do it)
 
@@ -65,8 +78,18 @@ uses exactly the sim's seams:
 - `hooks.opCreated` / `hooks.mutationProposed` and `EvaluateRequest.subject` to correlate decisions;
 - `vocabulary` for wording randomisation and `situation.budget` (40% 3,200 / 30% 2,000 / 30% 1,000 chars).
 
-The real observers stay on (fetch, XHR, DOM user events, errors, navigation, storage, WebSocket, timers). The only
-exception is `perf`: long-task timing is real time, so it cannot be deterministic.
+The real observers stay on (fetch, XHR, DOM user events, errors, navigation, storage, WebSocket, timers), plus
+`untrustedEvents` (the scripted user's events are synthetic). The only exception is `perf`: long-task timing is real
+time, so it cannot be deterministic.
+
+**Runtime version.** Apps bundle the runtime from source. Builds pin that source to a frozen git tag:
+`RW_RUNTIME_SRC` is a `git archive <tag> packages/runtime/src` export and `RW_RUNTIME_TAG` is the tag. The tag is
+recorded as `meta.runtime` in every row, so CORE's work in progress never leaks into data. The harness is
+format-agnostic:
+- it records whatever the runtime hands the decider;
+- it forces actions only through the decider;
+- it reads passive actions from the runtime's own `PASSIVE` map (a new trigger falls back to its first offered action);
+- it has diagnosis rules for situation-v2's `delivery` trigger.
 
 ## Determinism: virtual time inside a real browser
 
@@ -110,6 +133,16 @@ These events are untrusted, and the runtime's DOM observer records them as user 
 ambient when they run. Steps wait up to 2 s for their element. Clicks and submits that would navigate the page away
 are prevented.
 
+**Intents are pinned to the ideal run.** A scripted click targets a selector plus an index. When latency or stale data
+reorders a list, the same index would hit a different item in the real run than in the ideal run, and the labels
+would then reward blocking a legitimate request. So the ideal run records the identity of the list item each step
+acted on: the words of its row, card or list item. Every other run clicks the visible element whose item matches
+best (score ≥ 0.6). If that item never appears, the step is skipped and charged as a blocked intent.
+- Accidental repeats (double clicks, impatient re-clicks) hit the same element again.
+- Manifests can add runtime preconditions (`requires`) and chains (`then`). A follow-up is skipped at once when its
+  chain head was skipped.
+Snapshots read text inside open shadow roots (web components).
+
 **Prefix check.** Every counterfactual run reproduces the base run's decisions `0..k` byte for byte. The hash of
 `JSON([trigger, state, questions])` must match, or the row is dropped and counted (`drops.prefix-mismatch`).
 `debug.js --twice` checks the whole run: decisions, snapshots, network log and server state.
@@ -131,33 +164,67 @@ are prevented.
   server damage, app relations, user-visible error episodes, uncaught errors, wasted requests and pending user time.
   The client state is the registered stores (per-field weights from the manifest: error text 0, loading 0.1,
   inputs 0.3) **plus the visible DOM text** (multiset of `innerText` lines; weight 1, or 2 for observe-only apps).
-  Error episodes are appearances of the app's error UI (`[role=alert]` by default). Server items compare by content
-  with timestamps ignored.
+  Server items compare by content, with timestamps ignored. Shown errors count differently by integration:
+  - **store apps:** proposed writes that put an error message into a store, counted at proposal time, so a branch
+    never wins by dropping the message (the sim's rule);
+  - **observe-only apps:** appearances of the app's error UI (`[role=alert]` by default).
+  Error UI text is excluded from the DOM term.
+
+  One term is a realapps addition: **blocked intents**, at 1.0 per user step whose element never appeared (beyond
+  the ideal run's). The sim's users act on intents directly; here a broken or stale UI that stops the user from
+  doing what they meant is a real cost. Without it, a blank page could look closer to the ideal than a working page
+  showing different data.
 - **Action label.** The sim's `actionLabel`: tier premiums, tie pinning, `p ∝ exp(−gap/τ)`, `τ = 0.1 + SE`. Then the
   sim's question transform (option shuffles and drops) and its wording randomisation (diagnosis and action
   paraphrases, mirrored from `sim/src/world/scenario.ts`).
 - **Diagnosis** (`src/world/diagnose.ts`, `src/harness/labels.ts`) comes from harness knowledge at decision time.
   It never comes from the runtime's text.
-  - The scripted intents: accidental steps, and steps superseded by a newer step or keystroke on the same intent key.
-  - The mock server's record of why a request failed or was slow: outage, transient, spike, slow period, rate limit,
-    capacity, replica lag, server bug, committed-then-failed.
-  - WebSocket messages versus pending local requests on the same entity (conflict).
-  - The app's declared relations (genuine `inconsistent`) and a structural check that finds the same entity twice in
-    a list (`duplicate`).
+  - **The scripted intents.** Accidental steps → `duplicate`. Steps superseded by a newer step or keystroke on the
+    same intent key → `stale`.
+  - **The mock server's record** of why a request failed or was slow: outage, transient, spike, slow period, rate
+    limit, capacity, replica lag, server bug, committed-then-failed.
+  - **User writes, element by element.** An async write is `stale` when it changes the same list elements (by id)
+    or scalar fields that the user changed after its operation started. It is also `stale` when its read reached the
+    server before the user's still-pending write. A push over a pending local write is `conflict`. Busy and loading
+    flags (weight ≤ 0.1) are ignored.
+  - **Retries.** A retry of a failed request is `duplicate` only if the earlier attempt committed a non-idempotent
+    write without an `Idempotency-Key`.
+  - **The app's declared relations.** `inconsistent` only when a relation is broken and the flagged invariant names
+    its derived field. A structural check that finds the same entity twice in a list gives `duplicate` (for writes,
+    broken uniqueness and render errors such as Svelte's `each_key_duplicate`).
   The runtime's causal chains are used only to connect a write or request to its step, message or request.
+  `meta.diag_why` and `meta.diag_trace` record which rule fired.
+
+**Row kinds** (all CONTRACT-D):
+- **gold decision rows:** soft action label + diagnosis;
+- **diagnosis-only rows:** single-action decisions, up to 3 per trajectory;
+- **ask rows:** 1–3 developer questions at 1–3 probes per base run (`runtime.situation("ask")`), generated by the
+  sim's generators with exact answers from harness facts;
+- **unlabeled rows:** in `unlabeled-<split>.jsonl`, up to 40 other base-run decisions per trajectory with the gold
+  diagnosis and `meta.unlabeled: true`. They need no counterfactuals and are meant for teacher labelling, as in
+  SIM's batches.
 
 Rows are CONTRACT-D `{id, split, family, state, questions, labels, meta}`. They are exactly what the runtime handed
 the decider, so the format matches sim rows. Splits are per trajectory:
-- **test**: framework `lit`, apps marked `heldOut`, and the held-out flag patterns in `TEST_PATTERNS`. Only
-  `--test-keep` of test trajectories are kept.
+- **test**:
+  - framework `lit`;
+  - the apps in `TEST_APPS` (SWR, Alpine and raw-XHR apps that appear nowhere in train);
+  - apps marked `heldOut` (`oss-rtk-conduit`);
+  - the held-out flag patterns in `TEST_PATTERNS`.
+  Only `--test-keep` of test trajectories are kept. `manifest.json` lists all of these.
 - **dev**: 4% of the remaining app and flag combinations.
 - **train**: everything else.
 
 ## Run it (on a VM)
 
 ```bash
-# once per slot / VM
+# once per slot / VM; pin the runtime (export it on the Mac: git archive situation-vN packages/runtime/src)
+export RW_RUNTIME_SRC=~/gcl/real-cache/runtime/situation-v1/src RW_RUNTIME_TAG=situation-v1
 scripts/vm.sh run real 'cd realapps && npm install --no-audit --no-fund --ignore-scripts && bash corpus/prepare_oss.sh && node build.mjs'
+# quality checks
+scripts/vm.sh exec real 'cd realapps && node dist/harness/debug.js --det 1-5 --app a,b'                  # base run twice: identical?
+scripts/vm.sh exec real 'cd realapps && node dist/harness/debug.js --interference 1-3 --clean'          # GenClass with a do-nothing model must not change the app
+scripts/vm.sh exec real 'cd realapps && node dist/harness/debug.js --app a --seed 3 --force 4:discard'  # DOM over time: ideal vs base vs forced
 # inspect one scenario (determinism, situations, labels)
 scripts/vm.sh exec real 'cd realapps && node dist/harness/debug.js --app react-search --seed 3 --twice --show 2'
 scripts/vm.sh exec real 'cd realapps && node dist/harness/debug.js --app vue-editor --seed 2 --traj --show 3'
@@ -170,7 +237,106 @@ realapps/scripts/cluster.sh setup c10 && realapps/scripts/cluster.sh run c10 b1 
 realapps/scripts/cluster.sh status c10 && realapps/scripts/cluster.sh stop c10
 ```
 
-`gen.js` flags: `--out`, `--seed` (first scenario seed), `--trajectories`, `--workers` (one Chromium each),
-`--apps a,b`, `--max-points 6`, `--futures 3`, `--test-keep 0.5`, `--clean` (clean trajectories only), `--port`.
-Outputs are `{train,dev,test}.jsonl`, `stats.json` (per trigger: passive-best share, best actions, diagnoses, harm;
-per app; drops; runs) and `done.txt`. Outputs never go under `~/gcl/<slot>`, which `vm.sh` syncs with `--delete`.
+`gen.js` flags:
+- `--out`, `--seed` (first scenario seed), `--trajectories`, `--workers` (one Chromium each), `--apps a,b`;
+- `--max-points 6`, `--futures 3`, `--test-keep 0.5`, `--clean` (clean trajectories only), `--unlabeled 40`.
+
+Outputs per batch:
+- `{train,dev,test}.jsonl` and `unlabeled-{train,dev,test}.jsonl`;
+- `stats.json`: per trigger (passive-best share, best actions, diagnoses, harm), per app, drops, runs;
+- `manifest.json`: for TRAIN, with the held-out lists, apps, runtime tag and seeds;
+- `done.txt`.
+
+Outputs never go under `~/gcl/<slot>`, which `vm.sh` syncs with `--delete`. On the train VM, `~/gcl/real-out`,
+`~/gcl/real-cache` and the `real` slot live on the `/data` disk (symlinks).
+
+## Pilot (runtime `situation-v1`, 2026-10-08)
+
+The pilot is at `train:/data/real-out/pilot4`: 230 trajectories over 26 apps, built against `situation-v1`. Every
+held-out app was kept (`--test-keep 1`).
+
+- **Gold rows:** 1,654 (train 1,210 / dev 47 / test 397). They include 439 ask rows and 171 diagnosis-only rows.
+- **Unlabeled rows:** 2,325.
+- **Quality checks:**
+  - 0 prefix mismatches, 0 failed trajectories;
+  - determinism sweeps of 78/78 and 52/52 identical runs (all 26 apps);
+  - every network request correlated with its runtime op.
+- **Audit:** `EXAMPLES.md` (13 rows, each traced). Real-app eval set: `pilot4/eval/real_eval.jsonl`, 213 rows.
+
+Comparison with SIM final-A (`scripts/analyze.py`):
+
+| trigger | share real / sim | passive-best real / sim | notes |
+|---|---|---|---|
+| mutation | 40% / 31% | 87% / 88% | diagnosis: stale 29%, duplicate 7% (sim 19%, 13%); conflict and inconsistent are rarer in real apps |
+| request | 23% / 23% | 75% / 74% | duplicate 23% (accidental double clicks reach real handlers; buttons that only change their label do not stop them) |
+| failure | 13% / 19% | 58% / 70% | retry is best on 37% (sim 21%): real apps rarely retry on their own |
+| stall | 2% / 12% | 90% / 64% | fewer repeated identical GETs to learn baselines from in 20–60 s sessions |
+| inconsistency | 16% / 7% | 88% / 84% | mostly coincidental learned invariants, labelled `expected`; rollback on those costs +16 on average |
+| transition | 4% / 4% | 100% / 86% | |
+| error | 3% / 5% | 96% / 99% | includes real framework errors (Svelte `each_key_duplicate`) labelled `duplicate` |
+
+Label sharpness:
+- **Passive-best rows:** 789 of 852 have passive ≥ 0.9.
+- **Rows where an action gains ≥ 2:** 95 of 114 have non-passive mass ≥ 0.9.
+- Rows whose futures disagree stay soft.
+
+Clean runs: passive is best on 96% of them. The rest are actions that genuinely help even on a clean network, such as
+`coalesce` on an identical in-flight GET.
+
+**Runtime findings** (`debug.js --interference`, observe mode vs heal mode with an all-passive model, clean runs):
+6 of 78 runs differ under v1 write holds.
+- The open-source gothinkster react-redux Conduit never renders its feed when writes are held (3 of 3 runs).
+- pinia-cart and svelte-inventory end with a different server state because held requests shift timing.
+- This was reported for situation-v2, which drops write holds by default.
+
+## Throughput
+
+Measured on `train` (64 vCPU), short batches including browser start-up:
+
+| workers | rate | per trajectory |
+|---|---|---|
+| 28 | 3.3 trajectories/s, about 20 gold + 25 unlabeled rows/s | |
+| 56 (CPU saturated) | 4.6 trajectories/s, about 29 gold + 37 unlabeled rows/s | ≈ 20 browser runs, ≈ 0.45 s of in-page time each; page creation and load are ≈ 25% |
+
+Expected on an F80 (80 vCPU, about 70 workers): about 35–40 gold rows/s, or about 130k gold plus 170k unlabeled rows
+per node-hour.
+
+## Scaling plan
+
+1. **Wait for the frozen `situation-v2`** (lead's instruction: no mass production before it). Then:
+   - export it with `git archive`;
+   - rebuild every app against it;
+   - rerun the determinism and interference sweeps and a 230-trajectory pilot;
+   - re-audit `EXAMPLES.md`.
+2. **Grow the corpus in parallel** (it does not depend on the runtime version). Wave 2 adds about 30 apps on new
+   libraries:
+   - RTK Query, Jotai, Valtio, XState, effector, redux-saga;
+   - React Router 7 loaders/actions, and React 19 actions with `useOptimistic`;
+   - RxJS, vue-router, svelte-query, solid-query, Mithril, Hyperapp, petite-vue, nanostores;
+   - Backbone, Knockout, native custom elements, and ky / ofetch / wretch / superagent.
+
+   More RealWorld front-ends (Angular, Elm, Vue 2, React + MobX, …) are being added under `corpus/`. The target is
+   ≥ 150 apps: keep adding about 30 per wave, holding out whole libraries and frameworks for test.
+3. **Generate on F80 nodes** (`scripts/cluster.sh setup|run|status|stop`). One batch per node gets a disjoint seed
+   range of 1,000,000 seeds. Run with `--workers ≈ 70` and `--test-keep 0.5`, plus a `--clean` batch of about 20k
+   rows for false-intervention reporting.
+   - ≥ 500k gold rows ≈ 4 node-hours, e.g. 4 F80 nodes for 1 hour, plus about 650k unlabeled rows.
+   - Every run is resumable (`done.txt`). Deallocate each node as soon as its batch ends.
+   - Batches land in `/data/real-out/<batch>` on the generating VM, or are pulled to `train:/data`. Locations are
+     listed in `training/NEEDS.md`.
+
+## Known limitations
+
+- **Untrusted events.** Input is synthetic (user-event style). Trusted Playwright input would add per-step IPC and
+  real-time focus and selection events; untrusted events are what the runtime's `untrustedEvents` option is for.
+- **Unobservable diagnoses.** Some diagnoses rest on information that is not in the situation, as in the sim: an
+  outage behind a first network error (EXAMPLES #2), or a list that turned outdated between read and delivery
+  (EXAMPLES #12, `expected` with a sharp `defer`). TRAIN may down-weight rows whose diagnosis is `expected` but
+  whose label is a sharp non-passive action (about 4% of mutation rows).
+- **Stalls are rare.** Stalls need ≥ 5 latency samples per endpoint. Longer sessions (10% are 90–150 s) and
+  poll-heavy apps raise their share.
+- **The DOM term is coarse.** It compares line multisets, so a page showing different data and an empty page can
+  look alike. Store weights and the blocked-intent term carry most of the signal for store apps; observe-only apps
+  rely on the DOM (weight 2).
+- **Hosts in WebSocket URLs.** Every app is served from `https://app.example.com`, so WebSocket URLs (and therefore
+  WS op names) contain that host. That is realistic but constant.

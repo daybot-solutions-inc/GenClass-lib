@@ -6,7 +6,7 @@ import { defaultScript, setup } from "./helpers.js";
 describe("reporting, explain, undo (CONTRACT §0.5, §8)", () => {
   it("one plain-English line per intervention, built from the facts; explain(id) returns the evidence", async () => {
     const reports: Report[] = [];
-    const { rt, clock } = setup({ triage: "always", report: (r) => reports.push(r), script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
+    const { rt, clock } = setup({ triage: "always", policy: { holdWrites: true }, report: (r) => reports.push(r), script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
     const a = rt.atom("profile", { name: "Ada" });
     void rt.op("load", () => a.set({ name: "Bob" }));
     await clock.flush();
@@ -24,6 +24,19 @@ describe("reporting, explain, undo (CONTRACT §0.5, §8)", () => {
     expect(rt.explain("nope")).toBeNull();
   });
 
+  it("without store holds (the default) a discarded write is reverted late and reported as such", async () => {
+    const reports: Report[] = [];
+    const { rt, clock } = setup({ triage: "always", report: (r) => reports.push(r), script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
+    const a = rt.atom("profile", { name: "Ada" });
+    void rt.op("load", () => a.set({ name: "Bob" }));
+    expect(a.get()).toEqual({ name: "Bob" }); // applied at once
+    await clock.flush();
+    expect(a.get()).toEqual({ name: "Ada" });
+    expect(reports.map((r) => r.kind)).toEqual(["intervene"]);
+    expect(reports[0].message).toMatch(/^\[GenClass\] Reverted a stale write: .* Reverted the write to profile\.name from task load \(#\d+\) \(decided 0\.00s after it applied\); profile\.name is back to "Ada"\. \(stale, 0\.97; discard 0\.97\)$/);
+    expect(rt.interventions()[0].late).toBe(true);
+  });
+
   it("detections that did not act say why", async () => {
     const reports: Report[] = [];
     const { rt, clock } = setup({ mode: "guard", triage: "always", report: (r) => reports.push(r), script: defaultScript({ mutation: { diagnosis: "stale", action: "discard", p: 0.7 } }) });
@@ -39,7 +52,7 @@ describe("reporting, explain, undo (CONTRACT §0.5, §8)", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const end = vi.spyOn(console, "groupEnd").mockImplementation(() => undefined);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const { rt, clock } = setup({ triage: "always", report: "console", script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
+    const { rt, clock } = setup({ triage: "always", policy: { holdWrites: true }, report: "console", script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
     const a = rt.atom("a", 1);
     for (let i = 0; i < 3; i++) {
       void rt.op("w", () => a.set(i + 10));

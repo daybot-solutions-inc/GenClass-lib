@@ -27,11 +27,12 @@ const password = ref("");
 let idemKey = "";
 
 const norm = (v: string) => v.trim().toLowerCase();
+class HttpError extends Error {}
 const json = { "content-type": "application/json" };
 
 async function lookup(field: "username" | "email", value: string, signal?: AbortSignal): Promise<boolean> {
   const r = await fetch(`/api/users?${field}=${encodeURIComponent(value)}&limit=1`, signal ? { signal } : {});
-  if (!r.ok) throw new Error(String(r.status));
+  if (!r.ok) throw new HttpError(`Couldn't verify the username (HTTP ${r.status})`);
   const data = (await r.json()) as { items?: User[]; total?: number };
   return Number(data.total ?? data.items?.length ?? 0) > 0;
 }
@@ -44,7 +45,7 @@ let checkTimer: ReturnType<typeof setTimeout> | null = null;
 function onUsername(v: string) {
   const name = norm(v);
   const status: Status = !name ? "" : name.length < 3 ? "short" : USERNAME_RE.test(name) ? "checking" : "invalid";
-  form.update((f) => ({ ...f, username: v, usernameStatus: status, hint: "" }));
+  form.update((f) => ({ ...f, username: v, usernameStatus: status, hint: "", step: 1 }));
   if (checkTimer) clearTimeout(checkTimer);
   if (status !== "checking") {
     if (CHECK === "debounce-abort") checkCtl?.abort();
@@ -118,7 +119,8 @@ function another() {
 async function submit() {
   if (SUBMIT_LOCK && submitting.value) return;
   const f = form.get();
-  const body = { username: norm(f.username), email: norm(f.email), displayName: f.displayName.trim(), role: f.role };
+  if (f.step !== 3 || !f.username.trim()) return;
+  const body = { username: norm(f.username), email: norm(f.email), displayName: f.displayName.trim(), role: f.role, password: password.value };
   submitting.value = true;
   form.update((x) => ({ ...x, error: "" }));
   try {
@@ -129,25 +131,27 @@ async function submit() {
     }
     const r = await fetch("/api/users", { method: "POST", headers: { ...json, ...(IDEM && idemKey ? { "Idempotency-Key": idemKey } : {}) }, body: JSON.stringify(body) });
     const data = (await r.json().catch(() => ({}))) as User & { error?: string };
-    if (!r.ok) throw new Error(`${data.error ?? "The account could not be created"} (HTTP ${r.status})`);
+    if (!r.ok) throw new HttpError(`${data.error ?? "The account could not be created"} (HTTP ${r.status})`);
     team.update((t) => ({ ...t, members: t.members.some((m) => m.id === data.id) ? t.members : [...t.members, data] }));
     password.value = "";
     form.set({ ...blank(), notice: `Added @${data.username} to the team.` });
   } catch (e) {
-    form.update((x) => ({ ...x, error: (e as Error).message.startsWith("The") || /HTTP/.test((e as Error).message) ? (e as Error).message : "Network error: the account was not created." }));
+    const msg = e instanceof HttpError ? e.message : "Network error: the account may not have been created.";
+    form.update((x) => ({ ...x, error: msg }));
   } finally {
     submitting.value = false;
   }
 }
 
-async function loadTeam() {
+async function loadTeam(attempt = 0) {
   try {
     const r = await fetch("/api/users?limit=50");
     if (!r.ok) throw new Error(String(r.status));
     const data = (await r.json()) as { items: User[] };
-    team.set({ members: data.items ?? [], loading: false });
+    team.update((t) => ({ members: [...(data.items ?? []), ...t.members.filter((m) => !(data.items ?? []).some((x) => x.id === m.id))], loading: false }));
   } catch {
-    team.update((t) => ({ ...t, loading: false }));
+    if (attempt < 3) setTimeout(() => void loadTeam(attempt + 1), 3000);
+    else team.update((t) => ({ ...t, loading: false }));
   }
 }
 
@@ -161,8 +165,12 @@ const App = defineComponent({
     const t = useAtom(team);
     const statusText = computed(() => STATUS_TEXT[f.value.usernameStatus] ?? "");
     const emailText = computed(() => EMAIL_TEXT[f.value.emailStatus] ?? "");
-    const set = (k: "email" | "displayName" | "role", v: string) => form.update((x) => ({ ...x, [k]: v, ...(k === "email" ? { emailStatus: "" as const } : {}), hint: "" }));
-    return { f, t, statusText, emailText, password, submitting, onUsername, onEmailBlur, set, next1, next2, back, another, submit, LOCK: SUBMIT_LOCK };
+    const set = (k: "email" | "displayName" | "role", v: string) => form.update((x) => ({ ...x, [k]: v, ...(k === "email" ? { emailStatus: "" as const, step: 1 } : {}), hint: "" }));
+    const setPassword = (v: string) => {
+      password.value = v;
+      if (form.get().step > 1) form.update((x) => ({ ...x, step: 1 }));
+    };
+    return { f, t, statusText, emailText, password, submitting, onUsername, onEmailBlur, set, setPassword, next1, next2, back, another, submit, LOCK: SUBMIT_LOCK };
   },
   template: `
     <div class="onboarding">
@@ -175,26 +183,26 @@ const App = defineComponent({
         <h1>Add a teammate</h1>
         <p class="steps">Step {{ f.step }} of 3</p>
         <p v-if="f.notice" class="notice" role="status">{{ f.notice }}</p>
-        <form v-if="f.step === 1" @submit.prevent="next1">
-          <label>Username <input name="username" autocomplete="off" :value="f.username" @input="onUsername($event.target.value)" /></label>
-          <span class="status">{{ statusText }}</span>
-          <label>Email <input name="email" type="email" :value="f.email" @input="set('email', $event.target.value)" @change="onEmailBlur" /></label>
-          <span class="status">{{ emailText }}</span>
-          <label>Password <input name="password" type="password" autocomplete="new-password" v-model="password" /></label>
-          <button class="next1" type="submit">Continue</button>
+        <form class="account" @submit.prevent="next1">
+          <h2>1. Account</h2>
+          <p><label>Username <input name="username" autocomplete="off" :value="f.username" @input="onUsername($event.target.value)" /></label> <span class="status">{{ statusText }}</span></p>
+          <p><label>Email <input name="email" type="email" :value="f.email" @input="set('email', $event.target.value)" @change="onEmailBlur" /></label> <span class="status">{{ emailText }}</span></p>
+          <p><label>Temporary password <input name="password" type="password" autocomplete="new-password" :value="password" @input="setPassword($event.target.value)" /></label></p>
+          <button v-if="f.step === 1" class="next1" type="submit">Continue</button>
         </form>
-        <form v-else-if="f.step === 2" @submit.prevent="next2">
-          <label>Display name <input name="displayName" :value="f.displayName" @input="set('displayName', $event.target.value)" /></label>
-          <label>Role
+        <form v-if="f.step >= 2" class="profile" @submit.prevent="next2">
+          <h2>2. Profile</h2>
+          <p><label>Display name <input name="displayName" :value="f.displayName" @input="set('displayName', $event.target.value)" /></label></p>
+          <p><label>Role
             <select name="role" :value="f.role" @change="set('role', $event.target.value)">
               <option value="member">Member</option><option value="admin">Admin</option><option value="viewer">Viewer</option>
             </select>
-          </label>
-          <button class="back" type="button" @click="back">Back</button> <button class="next2" type="submit">Review</button>
+          </label></p>
+          <p v-if="f.step === 2"><button class="back" type="button" @click="back">Back</button> <button class="next2" type="submit">Review</button></p>
         </form>
-        <section v-else class="review">
-          <p>@{{ f.username.trim().toLowerCase() }} · {{ f.email.trim().toLowerCase() }}</p>
-          <p>{{ f.displayName }} · {{ f.role }}</p>
+        <section v-if="f.step === 3" class="review">
+          <h2>3. Review</h2>
+          <p>@{{ f.username.trim().toLowerCase() }} · {{ f.email.trim().toLowerCase() }} · {{ f.displayName }} · {{ f.role }}</p>
           <button class="back" type="button" @click="back">Back</button> <button class="submit" :disabled="LOCK && submitting" @click="submit">{{ submitting ? "Creating…" : "Create account" }}</button>
         </section>
         <p v-if="f.hint" class="hint">{{ f.hint }}</p>

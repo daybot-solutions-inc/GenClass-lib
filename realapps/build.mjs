@@ -11,7 +11,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const RT = resolve(ROOT, "../packages/runtime/src");
+// The runtime source bundled into apps. Pin it to a frozen tag for data generation (RW_RUNTIME_SRC = an exported
+// `git archive <tag> packages/runtime/src`, RW_RUNTIME_TAG = the tag); default: the working tree.
+const RT = process.env.RW_RUNTIME_SRC ?? resolve(ROOT, "../packages/runtime/src");
+const RT_TAG = process.env.RW_RUNTIME_TAG ?? "working-tree";
 const DIST = join(ROOT, "dist");
 const OSS = process.env.RW_OSS_DIR ?? resolve(process.env.HOME ?? "/tmp", "gcl/real-cache/oss");
 const only = process.argv[2]?.split(",").filter(Boolean);
@@ -27,8 +30,12 @@ const gen = [
 ].join("\n");
 writeFileSync(join(ROOT, "src/harness/apps.gen.ts"), gen);
 
+mkdirSync(DIST, { recursive: true });
+writeFileSync(join(DIST, "runtime-tag.txt"), RT_TAG);
+const rtAlias = { "@rt/questions": join(RT, "situation/questions.ts") };
+
 // 2. world (IIFE injected as an init script)
-await esbuild.build({ entryPoints: [join(ROOT, "src/world/index.ts")], bundle: true, format: "iife", platform: "browser", target: "es2022", outfile: join(DIST, "world.js"), logLevel: "warning" });
+await esbuild.build({ entryPoints: [join(ROOT, "src/world/index.ts")], bundle: true, format: "iife", platform: "browser", target: "es2022", outfile: join(DIST, "world.js"), alias: rtAlias, logLevel: "warning" });
 
 // 3. harness (node)
 await esbuild.build({
@@ -40,6 +47,7 @@ await esbuild.build({
   outdir: join(DIST, "harness"),
   splitting: true,
   external: ["playwright", "playwright-core"],
+  alias: rtAlias,
   banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
   logLevel: "warning",
 });
@@ -52,8 +60,8 @@ const results = [];
 for (const m of APPS) {
   if (only && !only.includes(m.name)) continue;
   const b = m.build ?? {};
-  if (b.vite) {
-    results.push(`${m.name}: built by corpus/prepare_oss.sh (vite)${existsSync(join(DIST, "apps", m.name, "index.html")) ? "" : " — NOT BUILT YET"}`);
+  if (b.vite || b.prebuilt) {
+    results.push(`${m.name}: built by corpus/prepare_oss.sh (${b.prebuilt ? "own toolchain" : "vite"})${existsSync(join(DIST, "apps", m.name, "index.html")) ? "" : " — NOT BUILT YET"}`);
     continue;
   }
   const srcDir = m.source?.dir ? join(OSS, m.source.dir) : join(ROOT, "apps", m.name);
@@ -116,4 +124,4 @@ for (const m of APPS) {
   }
 }
 console.log(results.join("\n"));
-console.log(`built world, harness and ${results.length} apps`);
+console.log(`built world, harness and ${results.length} apps (runtime: ${RT_TAG} from ${RT})`);

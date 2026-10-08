@@ -83,7 +83,7 @@ describe("SIM f: a remote write over a pending local change is salient", () => {
     await clock.flush();
     const req = decider.calls.find((c) => c.trigger === "mutation")!;
     expect(req).toBeDefined();
-    expect((req.state.facts as string[])[0]).toMatch(/^board\.card7 has a pending local change: user clicked button "Move to done" \(#\d+\) wrote it 0\.10s ago and its PATCH \/api\/cards\/:id \{column: "done"\} \(#\d+\) is still in flight; this write comes from task ws message \(#\d+\), which started after that user action\.$/);
+    expect((req.state.facts as string[])[0]).toMatch(/^board\.card7 has a pending local change: user clicked button "Move to done" \(#\d+\) wrote it 0\.10s ago and its PATCH \/api\/cards\/:id \{column: "done"\} \(#\d+\) is still in flight; this write's cause \(#\d+\) started after that user action\.$/);
     await clock.advance(2000);
   });
 });
@@ -94,7 +94,7 @@ describe("plugins: built-in actions go through the policy gate", () => {
     const { rt, clock } = setup({
       triage: "always",
       mode: "heal",
-      policy: { deny: ["discard"] },
+      policy: { deny: ["discard"], holdWrites: true },
       script: (req) => ({
         diagnosis: choice("stale", Object.keys((req.questions.diagnosis as { criteria: object }).criteria)),
         action: choice("custom", Object.keys((req.questions.action as { criteria: object }).criteria)),

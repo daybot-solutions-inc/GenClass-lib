@@ -48,16 +48,19 @@ describe("smoke", () => {
     expect(root.kind).toBe("user");
   });
 
-  it("holds a stale write, asks the model and discards it in guard mode", async () => {
-    const { rt, clock, server, fetch, decider } = setup(defaultScript({ mutation: { diagnosis: "stale", action: "discard", p: 0.97 } }));
+  it("holds a stale response, asks the model and drops its stale writes in guard mode", async () => {
+    const { rt, clock, server, fetch, decider } = setup(defaultScript({ delivery: { diagnosis: "stale", action: "discard", p: 0.97 } }));
     server.on("GET", "/api/search", ({ url }) => ({ body: { q: url.searchParams.get("q") }, latency: url.searchParams.get("q") === "r" ? 400 : 100 }));
     const results = rt.atom("search", { query: "", results: "" });
+    let loading = 0;
     const type = (q: string) =>
       rt.user({ kind: "type", target: 'input "Search"', value: q }, () => {
         results.set((s) => ({ ...s, query: q }));
+        loading++;
         void (async () => {
           const res = await fetch(`/api/search?q=${q}`);
           const data = (await res.json()) as { q: string };
+          loading--;
           results.set((s) => ({ ...s, results: data.q }));
         })();
       });
@@ -65,14 +68,17 @@ describe("smoke", () => {
     await clock.advance(50);
     type("re");
     await clock.advance(1000);
-    expect(results.get().results).toBe("re");
-    expect(decider.calls.length).toBeGreaterThan(0);
-    const d = rt.decisions().find((x) => x.trigger === "mutation")!;
+    expect(results.get()).toEqual({ query: "re", results: "re" });
+    expect(loading).toBe(0); // the app saw the response (only its stale write was dropped)
+    const d = rt.decisions().find((x) => x.trigger === "delivery" && x.action !== "deliver")!;
     expect(d.action).toBe("discard");
     expect(d.executed).toBe(true);
     expect(rt.interventions().length).toBe(1);
-    const call = decider.calls.find((c) => c.trigger === "mutation")!;
-    console.log("---- mutation situation ----\n" + stateText(call.state));
-    expect(call.subject?.kind).toBe("mutation");
+    expect(rt.interventions()[0].dropped).toEqual(["search.results"]);
+    const calls = decider.calls.filter((c) => c.trigger === "delivery");
+    expect(calls).toHaveLength(1); // the in-order response ("re") never asked
+    const call = calls[0];
+    console.log("---- delivery situation ----\n" + stateText(call.state));
+    expect(call.subject?.kind).toBe("delivery");
   });
 });

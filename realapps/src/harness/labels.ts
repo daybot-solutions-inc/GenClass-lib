@@ -58,7 +58,7 @@ export function finishDiagnosis(d: DecisionRec, app: AppManifest, base: State[],
     return d.diagnosis;
   }
   if (d.diagWhy !== "rel-check") return d.diagnosis;
-  if (d.trigger === "mutation") {
+  if (d.trigger === "mutation" || d.trigger === "delivery") {
     if (!passive) return "expected";
     const before = stateAt(base, d.t - 0.001);
     if (newDuplicates(before, stateAt(passive, d.t + 50)) && newDuplicates(before, stateAt(passive, d.t + 1000))) return "duplicate";
@@ -76,8 +76,11 @@ export function finishDiagnosis(d: DecisionRec, app: AppManifest, base: State[],
     // a broken uniqueness relation over a list that now holds the same entity twice
     const dups = [...duplicateKeys(now.stores)].map((k) => k.split("#")[0]!);
     if (/unique/.test(String(d.subject.invariant ?? "")) && dups.some((f) => refs.some((x) => x === f || x.startsWith(f + "[") || f.startsWith(x)))) return "duplicate";
+    // genuine only when a declared relation is broken AND the flagged relation names its derived field (fields[0]):
+    // an unrelated learned coincidence over the same list is not this break
     const broken = rels.filter((r) => relationBroken(r, now.stores));
-    const overlap = broken.some((r) => refs.some((x) => r.fields.some((f) => f === x || f.startsWith(x + ".") || x.startsWith(f + ".") || x.startsWith(f + "["))));
+    const same = (f: string, x: string) => f === x || f.startsWith(x + ".") || x.startsWith(f + ".") || x.startsWith(f + "[");
+    const overlap = broken.some((r) => refs.some((x) => same(r.fields[0]!, x)));
     return overlap ? "inconsistent" : "expected";
   }
   if (d.trigger === "transition") {

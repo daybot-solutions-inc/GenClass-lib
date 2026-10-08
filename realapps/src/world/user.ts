@@ -42,6 +42,33 @@ function textOf(el: Element): string {
   return (he.innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
+const ITEM = "li, tr, article, [data-id], [data-key], .card, .item, .row, .result, .product, .todo, .message, .post, .entry, .line, .slot";
+
+/** Identity tokens of the item an element belongs to: words of its list item / card / row (numbers dropped, since
+ * counts and prices change), plus its own label. Used to pin a step to the same entity across runs. */
+export function pinOf(el: Element): string[] {
+  let host: Element | null = el.closest(ITEM);
+  if (!host) {
+    const root = el.getRootNode();
+    const h = (root as ShadowRoot).host;
+    host = h ? h.closest(ITEM) ?? h : null;
+  }
+  // controls outside any list item (a unique "Save" button) are not pinned: the selector identifies them
+  if (!host || host === el) return [];
+  const words = (s: string) => s.toLowerCase().replace(/[0-9]+/g, " ").split(/[^a-z\u00c0-\u024f]+/).filter((w) => w.length >= 3);
+  const own = new Set(words(textOf(el)));
+  const t = textOf(host);
+  return t.length <= 400 ? [...new Set(words(t).filter((w) => !own.has(w)))].slice(0, 24) : [];
+}
+
+function pinScore(pin: string[], el: Element): number {
+  if (!pin.length) return 0;
+  const have = new Set(pinOf(el));
+  let n = 0;
+  for (const w of pin) if (have.has(w)) n++;
+  return n / pin.length;
+}
+
 export class UserDriver {
   private i = 0;
   private busyUntil = 0;
@@ -72,10 +99,53 @@ export class UserDriver {
     let els = deepQueryAll(this.w.document, st.sel).filter(visible);
     if (st.text) els = els.filter((e) => textOf(e).toLowerCase().includes(st.text!.toLowerCase()));
     if (!els.length) return null;
+    // an accidental repeat (double click, impatient re-click) hits the same element again if it is still there
+    if (st.repeatOf !== undefined) {
+      const prev = this.usedEl.get(st.repeatOf);
+      if (prev && visible(prev)) return prev;
+    }
+    // the same intent as the ideal run's user: the element whose list item matches the pinned item best
+    const pin = this.pins?.[st.i] ?? (st.repeatOf !== undefined ? this.pins?.[st.repeatOf] : undefined);
+    if (pin && pin.length) {
+      let best: Element | null = null;
+      let bestScore = -1;
+      for (const e of els) {
+        const sc = pinScore(pin, e);
+        if (sc > bestScore + 1e-9) {
+          best = e;
+          bestScore = sc;
+        }
+      }
+      return bestScore >= 0.6 ? best : null;
+    }
     return els[(st.nth ?? 0) % els.length]!;
   }
 
+  private usedEl = new Map<number, Element>();
+  /** Ideal run: what each step acted on (exported as RunResult.pins). */
+  recorded: Record<number, string[]> = {};
+  pins: Record<number, string[]> | undefined;
+
+  private skippedSteps = new Set<number>();
+
+  private skip(st: Step, why: string): void {
+    this.skippedSteps.add(st.i);
+    this.hooks.skipped(st, why);
+    this.busyUntil = this.loop.now;
+    this.next();
+  }
+
   private run(st: Step, waited: number): void {
+    if (waited === 0 && st.head !== undefined && st.head !== st.i && this.skippedSteps.has(st.head)) return this.skip(st, "chain");
+    if (waited === 0 && st.requires) {
+      let ok = false;
+      try {
+        ok = deepQueryAll(this.w.document, st.requires).some((e) => visible(e) && (!st.requiresText || textOf(e).toLowerCase().includes(st.requiresText.toLowerCase())));
+      } catch {
+        ok = false;
+      }
+      if (!ok) return this.skip(st, "precondition");
+    }
     if (st.when === "inflight" && this.hooks.inflight() === 0) {
       this.hooks.skipped(st, "not-inflight");
       this.busyUntil = this.loop.now;
@@ -85,16 +155,16 @@ export class UserDriver {
     const el = this.find(st);
     if (!el) {
       const limit = st.waitMs ?? 2000;
-      if (waited >= limit) {
-        this.hooks.skipped(st, "missing");
-        this.busyUntil = this.loop.now;
-        this.next();
-        return;
-      }
+      if (waited >= limit) return this.skip(st, "missing");
       this.loop.schedule(100, () => this.run(st, waited + 100), "user-wait", USER_PHASE);
       return;
     }
     this.hooks.ran(st);
+    this.usedEl.set(st.i, el);
+    if (this.ideal && st.kind !== "type" && st.kind !== "key") {
+      const pin = pinOf(el);
+      if (pin.length) this.recorded[st.i] = pin;
+    }
     switch (st.kind) {
       case "type":
         this.typeInto(st, el);
@@ -213,7 +283,7 @@ export class UserDriver {
       }
       case "key": {
         const target = this.w.document.activeElement && this.w.document.activeElement !== this.w.document.body ? this.w.document.activeElement : el;
-        const k = st.key ?? "Enter";
+        const k = st.key ?? st.value ?? "Enter";
         const ok = this.key(target, k);
         if (ok && k === "Enter") this.implicitSubmit(target);
         this.keyUp(target, k);

@@ -7,6 +7,7 @@ import type { Baselines } from "../learn/baselines.js";
 import type { FieldHist, MutationRec, StoreHub } from "../state/hub.js";
 import type { EventLog } from "../trace/events.js";
 import type { OpRec, OpRegistry } from "../trace/ops.js";
+import type { Conflict, Predicted } from "./conflicts.js";
 import type { Redactor } from "../util.js";
 
 export interface ReqMeta {
@@ -46,9 +47,30 @@ export interface ErrorInfo {
   key: string;
 }
 
+export interface DeliverySpec {
+  trigger: "delivery";
+  /** The fetch op whose response arrived, or the message op. */
+  op: OpRec;
+  channel: "response" | "websocket" | "eventsource";
+  req?: ReqMeta;
+  /** Response status (responses). */
+  status?: number;
+  /** Message summary and channel path (messages). */
+  message?: { path: string; summary: string };
+  predicted: Predicted;
+  /** Concrete fields matching the prediction. */
+  matched: string[];
+  conflicts: Conflict[];
+  /** Times this delivery was already deferred. */
+  defers: number;
+  /** Messages of the same channel already held ahead of this one. */
+  queuedAhead: number;
+}
+
 export type SubjectSpec =
   | { trigger: "mutation"; m: MutationRec }
   | { trigger: "request"; op: OpRec; req: ReqMeta }
+  | DeliverySpec
   | { trigger: "failure"; op: OpRec; req: ReqMeta; failure: FailureInfo }
   | { trigger: "stall"; op: OpRec; req: ReqMeta }
   | { trigger: "inconsistency"; violations: Violation[] }
@@ -96,6 +118,8 @@ export interface SitEnv {
   writable(store: string): boolean;
   /** Fields written by an op's causal chain (its root's chain) since the root started. */
   chainWrites(op: OpRec): ChainWriteInfo[];
+  /** Normalised fields the last completed op of this signature (its chain) wrote, if any. */
+  lastChain(sig: string): string[] | undefined;
 }
 
 export interface ChainWriteInfo {

@@ -7,6 +7,7 @@ import type { ActionRecord, Clock, Decision, Explanation, Report, TriggerKind } 
 const NOUN: Record<TriggerKind, string> = {
   mutation: "write",
   request: "request",
+  delivery: "response",
   failure: "request failure",
   stall: "slow request",
   inconsistency: "state",
@@ -37,7 +38,7 @@ function p2(x: number | undefined): string {
 }
 
 function noun(d: Decision): string {
-  const n = NOUN[d.trigger];
+  const n = d.trigger === "delivery" && !d.subject.startsWith("response") ? "message" : NOUN[d.trigger];
   if (d.diagnosis === "expected") return an(n);
   if (d.trigger === "inconsistency" && d.diagnosis === "inconsistent") return "inconsistent state";
   return an(`${d.diagnosis} ${n}`);

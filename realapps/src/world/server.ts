@@ -391,6 +391,10 @@ export class MockServer {
       // create
       const fresh: Item = { ...body };
       delete fresh.id;
+      const missing = (c.required ?? []).filter((f) => fresh[f] === undefined || fresh[f] === null || fresh[f] === "");
+      if (missing.length) return { status: 422, body: { error: "validation failed", errors: Object.fromEntries(missing.map((f) => [f, "is required"])) }, wrote: false };
+      const clash = (c.unique ?? []).find((f) => fresh[f] !== undefined && coll.list().some((it) => String(it[f]).toLowerCase() === String(fresh[f]).toLowerCase()));
+      if (clash) return { status: 409, body: { error: `${clash} is already taken`, errors: { [clash]: "is already taken" } }, wrote: false };
       const nid = this.newId(c, fresh);
       const item: Item = { ...fresh, id: this.idValue(c, nid), createdAt: this.iso(t) };
       if (c.versioned) item.version = 1;
@@ -464,6 +468,8 @@ export class MockServer {
     const patch = { ...body };
     delete patch.id;
     delete patch.version;
+    const clash2 = (c.unique ?? []).find((f) => patch[f] !== undefined && coll.list().some((it) => it.id !== cur.id && String(it[f]).toLowerCase() === String(patch[f]).toLowerCase()));
+    if (clash2) return { status: 409, body: { error: `${clash2} is already taken`, errors: { [clash2]: "is already taken" } }, wrote: false };
     const next: Item = req.method === "PUT" ? { ...patch, id: cur.id, createdAt: cur.createdAt } : { ...cur, ...patch };
     if (c.versioned) next.version = Number(cur.version ?? 0) + 1;
     next.updatedAt = this.iso(t);
@@ -505,6 +511,17 @@ export class MockServer {
     const items = coll.list();
     if (kind === "create") {
       const fresh: Item = { ...(data ?? {}) };
+      if (this.spec.cart?.collection === (c.path ?? c.name) && fresh.productId !== undefined) {
+        const existing = items.find((it) => it.productId === fresh.productId);
+        if (existing) {
+          const merged = { ...existing, qty: Number(existing.qty ?? 1) + Number(fresh.qty ?? 1), updatedAt: this.iso(t) };
+          coll.put(String(existing.id), merged, t);
+          if (c.live) this.publish(c.name, { type: "updated", collection: c.name, id: existing.id, item: merged, by: "other" });
+          this.writes++;
+          return;
+        }
+      }
+      if ((c.unique ?? []).some((f) => fresh[f] !== undefined && items.some((it) => String(it[f]).toLowerCase() === String(fresh[f]).toLowerCase()))) return;
       const nid = this.newId(c, fresh);
       const item: Item = { ...fresh, id: this.idValue(c, nid), createdAt: this.iso(t) };
       if (c.versioned) item.version = 1;
@@ -525,6 +542,7 @@ export class MockServer {
         const a = c.actions[verb]!;
         if (a.inc) next[a.inc] = Number(cur[a.inc] ?? 0) + (a.by ?? by ?? 1);
         if (a.toggle) next[a.toggle] = !cur[a.toggle];
+        if (a.set) Object.assign(next, a.set);
       }
       if (c.versioned) next.version = Number(cur.version ?? 0) + 1;
       next.updatedAt = this.iso(t);

@@ -50,6 +50,15 @@ def main() -> None:
               f"{pct(h['recall'])} | {q.get('action', {}).get('ece', '–')} | {q.get('diagnosis', {}).get('ece', '–')} | "
               f"{pct(q['all']['acc'])} |")
     print()
+    print("Recall on clear cases (gold puts ≥ 0.9 on one permitted non-passive action): all / stale+duplicate\n")
+    print("| model | guard: clear | guard: clear stale/dup | heal: clear | heal: clear stale/dup |")
+    print("|---|---|---|---|---|")
+    for name, r in reps:
+        g, h = dec(r)["modes"]["guard"], dec(r)["modes"]["heal"]
+        print(f"| {name} | {pct(g.get('recall_clear'))} ({g.get('clear_rows')}) | {pct(g.get('recall_clear_stale_dup'))} "
+              f"({g.get('clear_stale_dup_rows')}) | {pct(h.get('recall_clear'))} ({h.get('clear_rows')}) | "
+              f"{pct(h.get('recall_clear_stale_dup'))} ({h.get('clear_stale_dup_rows')}) |")
+    print()
     costs = [(n, dec(r)["modes"]) for n, r in reps if dec(r)["modes"]["heal"].get("mean_cost")]
     if costs:
         print("Counterfactual cost per decision (SIM rows; lower is better): gated policy vs always-passive vs oracle\n")

@@ -1,6 +1,6 @@
 // Situation serializer (CONTRACT §6): the Jev state object with keys in a fixed order, arrays of strings
 // rendered one per line, within a character budget. The budget sets every section's size (compact at 1,100
-// chars: top facts, ≤ 2 in-flight, ≤ 3 timeline lines, ≤ 3 state fields, 1 stats line; full at 3,200 chars: 12
+// chars: top facts, ≤ 2 in-flight, ≤ 3 timeline lines, ≤ 3 state fields, 1 stats line; full at 2,400 chars: 12
 // facts, 6 in-flight, 16 timeline lines, 8 state fields, 4 stats lines; linear in between). If the shaped state is
 // still over budget: drop timeline lines (oldest first), then state lines, then facts (least informative first),
 // then in-flight and stats lines, then shorten facts. Deterministic.
@@ -8,8 +8,8 @@
 import type { JevState } from "../types.js";
 import { truncate } from "../util.js";
 
-/** Full budget ≈ 1,000 tokens of the GenClass tokenizer for this kind of text (≈ 3.2 chars per token). */
-export const STATE_CHAR_BUDGET = 3200;
+/** Full budget ≈ 1,000 tokens of the GenClass tokenizer for this kind of text (≈ 2.4 chars per token, measured). */
+export const STATE_CHAR_BUDGET = 2400;
 export const COMPACT_BUDGET = 1100;
 /** Smallest budget honoured (a trigger sentence and one fact). */
 export const MIN_BUDGET = 500;
@@ -36,7 +36,7 @@ export interface SectionLimits {
 /** Full-budget limits (CONTRACT §6). */
 export const LIMITS = { facts: 12, in_flight: 6, timeline: 16, state: 8, stats: 4 } as const;
 
-/** Section sizes for a budget: compact at ≤ 1,100 chars, full at ≥ 3,200, linear in between. */
+/** Section sizes for a budget: compact at ≤ 1,100 chars, full at ≥ 2,400, linear in between. */
 export function sectionLimits(budget: number = STATE_CHAR_BUDGET): SectionLimits {
   const r = Math.min(1, Math.max(0, (budget - COMPACT_BUDGET) / (STATE_CHAR_BUDGET - COMPACT_BUDGET)));
   const lerp = (a: number, b: number) => Math.round(a + (b - a) * r);

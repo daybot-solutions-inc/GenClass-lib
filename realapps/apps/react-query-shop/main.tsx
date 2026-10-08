@@ -63,7 +63,7 @@ function optimisticAdd(p: Product) {
   return (s: CartState): Partial<CartState> => {
     const has = s.items.some((l) => l.productId === p.id);
     const items = has ? s.items.map((l) => (l.productId === p.id ? { ...l, qty: l.qty + 1 } : l)) : [...s.items, { productId: p.id, name: p.name, price: p.price, qty: 1, pending: true }];
-    return { ...totals(items), checkoutKey: "", error: "" };
+    return { ...totals(items), checkoutKey: "", error: "", status: s.status === "placed" ? "idle" : s.status };
   };
 }
 

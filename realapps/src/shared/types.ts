@@ -26,8 +26,10 @@ export interface CollectionSpec {
   live?: boolean;
   /** Requests need a valid bearer token (spec.auth). */
   protected?: boolean;
-  /** Field holding a creation sequence number (stable ordering). */
-  seqField?: string;
+  /** Fields whose value must be unique across items: a create/update that collides answers 409. */
+  unique?: string[];
+  /** Fields a create must carry (non-empty): otherwise 422. */
+  required?: string[];
 }
 
 export interface ServerSpec {
@@ -115,6 +117,11 @@ export interface Step {
   when?: "inflight";
   /** Wait up to this long (ms) for the element to appear. Default 2000. */
   waitMs?: number;
+  /** Visible-element precondition checked when the step runs (skip at once when absent). */
+  requires?: string;
+  requiresText?: string;
+  /** Index of the first step of this follow-up chain: when that step was skipped, this one is skipped too. */
+  head?: number;
 }
 
 export interface ExternalEvent {
@@ -164,6 +171,13 @@ export interface RunConfig {
   integration: string;
   /** Run the initial load at this time (ms). */
   loadAt: number;
+  /** Runtime mode for non-ideal runs (default "heal"; debugging only). */
+  mode?: string;
+  /** Divergence weights from the manifest ("store" or "store.field"); diagnosis ignores fields weighted <= 0.1. */
+  weights?: Record<string, number>;
+  /** Intent pins from the ideal run: step index -> identity tokens of the item the ideal user acted on. Other runs
+   * act on the visible element whose item matches best (the same intent), not on the same list position. */
+  pins?: Record<number, string[]>;
   /** Base run: probe runtime.situation("ask") at these times (developer-question rows). */
   askTimes?: number[];
 }
@@ -216,6 +230,8 @@ export interface NetRec {
   step?: number;
   bodyKey: string;
   dedupedOf?: number;
+  /** The request carried an Idempotency-Key header. */
+  idem?: boolean;
 }
 
 export interface DecisionRec {
@@ -227,6 +243,7 @@ export interface DecisionRec {
   explored: boolean;
   diagnosis?: string;
   diagWhy?: string;
+  diagTrace?: string;
   /** Hash of JSON([trigger, state, questions]). */
   fp: string;
   state?: Record<string, unknown>;
@@ -260,6 +277,8 @@ export interface RunResult {
   internalErrors: string[];
   wsMessages: number;
   asks?: { t: number; state: Record<string, unknown>; facts: AskFacts }[];
+  /** Ideal run: identity tokens of the item each step acted on (see RunConfig.pins). */
+  pins?: Record<number, string[]>;
 }
 
 export interface ServerSnap {

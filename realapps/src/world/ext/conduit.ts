@@ -92,7 +92,8 @@ export class ConduitState {
     };
   }
   userView(u: User): Item {
-    return { email: u.email, token: u.token, username: u.username, bio: u.bio, image: u.image || null };
+    // `id` is not in the spec but several front-ends (Ember Data) need a stable one
+    return { id: [...this.users.keys()].indexOf(u.username) + 1, email: u.email, token: u.token, username: u.username, bio: u.bio, image: u.image || null };
   }
   snapshot(): Record<string, Record<string, unknown>> {
     const articles: Record<string, unknown> = {};

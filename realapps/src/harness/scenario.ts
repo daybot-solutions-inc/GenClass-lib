@@ -181,16 +181,18 @@ export function buildSession(app: AppManifest, rng: Rng, p: Persona, t0: number,
     steps.push(st);
     return st;
   };
+  let chainHead: number | undefined;
   const one = (aid: string, r: Rng): number => {
     const a = byId.get(aid);
     if (!a) return 0;
     used.add(a.id);
+    for (const x of a.resets ?? []) used.delete(x);
     const text = a.text?.length ? r.pick(a.text) : undefined;
     const nth = a.nth ? r.int(0, a.nth - 1) : undefined;
     const value = a.values?.length ? r.pick(a.values) : undefined;
     const key = `${a.key ?? a.id}${a.intent === "text" && text ? `:${text}` : a.intent === "nth" && nth !== undefined ? `:${nth}` : a.intent === "value" && value ? `:${value}` : ""}`;
     const intent = { key, mode: a.mode, affordance: a.id };
-    const base = { kind: a.kind, sel: a.sel, intent, ...(text ? { text } : {}), ...(nth !== undefined ? { nth } : {}), ...(a.waitMs ? { waitMs: a.waitMs } : {}) };
+    const base = { kind: a.kind, sel: a.sel, intent, ...(text ? { text } : {}), ...(nth !== undefined ? { nth } : {}), ...(a.waitMs ? { waitMs: a.waitMs } : {}), ...(a.requires ? { requires: a.requires } : {}), ...(a.requiresText ? { requiresText: a.requiresText } : {}), ...(chainHead !== undefined ? { head: chainHead } : {}), ...(a.kind === "key" && value !== undefined ? { key: value } : {}) };
     if (a.kind === "type") {
       const v = value ?? "";
       let typed = "";
@@ -232,11 +234,15 @@ export function buildSession(app: AppManifest, rng: Rng, p: Persona, t0: number,
     if (!cands.length) break;
     const a = rng.weighted(cands.map((c) => [c, c.weight] as const));
     const r = rng.fork("step", steps.length);
+    chainHead = undefined;
+    const headIndex = steps.length;
     t += one(a.id, r);
+    chainHead = a.then?.length ? headIndex : undefined;
     for (const f of a.then ?? []) {
       t += r.lognormal(Math.min(900, p.thinkMs * 0.5), 0.5);
       t += one(f, r.fork(f));
     }
+    chainHead = undefined;
     t += rng.lognormal(p.thinkMs, 0.6);
     if (rng.bool(p.idleP)) t += rng.float(3000, 10000);
   }
@@ -278,6 +284,7 @@ export function buildScenario(seed: number, apps: AppManifest[], opts: { app?: s
     patterns.push(`${app.name}/${k}:${v}`);
   }
   if (app.localStorage) variant.__localStorage = app.localStorage;
+  if (app.cookies) variant.__cookies = app.cookies;
   const rT = R.fork("timing");
   const [lo, hi] = app.sessionMs ?? [20000, 60000];
   const tUser = rT.bool(0.1) ? rT.float(Math.max(hi, 90000), Math.max(hi, 90000) + 60000) : rT.float(lo, hi);

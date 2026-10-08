@@ -170,7 +170,7 @@ describe("genclassEnhancer (scripted runtime)", () => {
 describe("genclassEnhancer + the real runtime", () => {
   function make() {
     const decider = new ManualDecider();
-    const S = setup({ decider, triage: "always" });
+    const S = setup({ decider, triage: "always", policy: { holdWrites: true } });
     const { reducer } = makeReducer();
     const store = createStore(reducer, genclassEnhancer(S.rt, { name: "app" }));
     return { S, decider, store };

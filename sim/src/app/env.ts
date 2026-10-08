@@ -131,7 +131,18 @@ export class AppEnv {
       return;
     }
     const ws = new WS(`wss://${this.G.location.host}/ws/${path.split("/").map(encodeURIComponent).join("/")}`);
-    ws.addEventListener("message", (e) => fn(JSON.parse(String((e as MessageEvent).data))));
+    const know = this.know;
+    ws.addEventListener("message", (e) => {
+      // Tag writes made by this handler with the push message they come from (delivery-decision diagnosis).
+      const id = pushIds.get(e) ?? pushIdsByData.get(String((e as MessageEvent).data)) ?? null;
+      const prev = know.currentPush;
+      know.currentPush = id;
+      try {
+        fn(JSON.parse(String((e as MessageEvent).data)));
+      } finally {
+        know.currentPush = prev;
+      }
+    });
   }
 
   store<T>(name: string, feature: string, initial: T, opts: StoreOpts = {}): Store<T> {
@@ -157,9 +168,11 @@ export class AppEnv {
         if (anomaly) w.anomaly = anomaly;
         if (meta.classify) w.classify = meta.classify;
         // Top-level fields this write changes relative to the current value (updaters are pure).
+        let cur: unknown;
+        let nv: unknown;
         try {
-          const cur = atom.get() as unknown;
-          const nv = (typeof next === "function" ? (next as (p: T) => T)(atom.get()) : next) as unknown;
+          cur = atom.get() as unknown;
+          nv = (typeof next === "function" ? (next as (p: T) => T)(atom.get()) : next) as unknown;
           if (cur && nv && typeof cur === "object" && typeof nv === "object" && !Array.isArray(cur)) {
             const f: string[] = [];
             for (const k of new Set([...Object.keys(cur as object), ...Object.keys(nv as object)])) {
@@ -171,7 +184,15 @@ export class AppEnv {
           /* ignore */
         }
         const rec = know.write(w);
+        if (know.probe) {
+          try {
+            know.probe.onWrite(rec, cur, nv);
+          } catch {
+            /* analysis only */
+          }
+        }
         if (meta.role === "input" && rec.fields) for (const f of rec.fields) know.userFieldTime.set(`${name}.${f}`, know.now());
+        if (know.onWrite) know.onWrite(rec);
         know.writing = rec;
         try {
           atom.set(next);
@@ -256,3 +277,7 @@ export class PlainBackend implements StoreBackend {
     };
   }
 }
+
+/** Push ids of message events dispatched by the virtual socket (by event object, and by payload as a fallback). */
+export const pushIds = new WeakMap<object, number>();
+export const pushIdsByData = new Map<string, number>();

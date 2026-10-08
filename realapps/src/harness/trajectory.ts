@@ -15,9 +15,19 @@ import { buildScenario, type Scenario } from "./scenario.js";
 import type { AppManifest } from "../shared/manifest.js";
 import type { DecisionRec, RunConfig, RunResult } from "../shared/types.js";
 
-export const PASSIVE: Record<string, string> = { mutation: "apply", request: "send", failure: "deliver", stall: "wait", inconsistency: "ignore", transition: "ignore", error: "ignore" };
+import { PASSIVE as RT_PASSIVE } from "@rt/questions";
+import { readFileSync, existsSync } from "node:fs";
+import { DIST } from "./browser.js";
+import { join } from "node:path";
+
+/** Passive action per trigger from the runtime build in use; unknown triggers: the first offered action. */
+export const PASSIVE: Record<string, string> = { ...(RT_PASSIVE as Record<string, string>) };
+const passiveOf = (t: string, actions: string[]) => PASSIVE[t] || actions[0]!;
+/** Runtime tag the apps were built with (build.mjs: RW_RUNTIME_TAG). */
+export const RUNTIME_TAG = existsSync(join(DIST, "runtime-tag.txt")) ? readFileSync(join(DIST, "runtime-tag.txt"), "utf8").trim() : "unknown";
 const TRIGGER_W: Record<string, number> = { mutation: 1, request: 1, failure: 1.6, stall: 2.2, inconsistency: 3, transition: 3, error: 2.2 };
-export const OBSERVE = { fetch: true, xhr: true, user: true, errors: true, nav: true, storage: true, perf: false, websocket: true, timers: true };
+// real observers (perf off: long-task timing is real time); the harness's input events are synthetic
+export const OBSERVE = { fetch: true, xhr: true, user: true, errors: true, nav: true, storage: true, perf: false, websocket: true, timers: true, untrustedEvents: true };
 
 export interface Row {
   id: string;
@@ -93,6 +103,7 @@ export function runConfig(scn: Scenario, o: Partial<RunConfig> & { runId: string
     errorSelector: scn.app.errorSelector ?? "[role=alert]",
     epoch: scn.epoch,
     observe: OBSERVE,
+    ...(scn.app.weights ? { weights: scn.app.weights } : {}),
     integration: scn.app.integration,
     loadAt: 0,
     ...o,
@@ -145,7 +156,9 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
     return out;
   }
   const idealStates = states(ideal);
-  const base = await run(runConfig(scn, { runId: `${seed}-base`, record: true, explore: scn.explore, ...(o.ask === false ? {} : { askTimes: scn.askTimes }) }));
+  // the ideal run defines the user's intents: every other run acts on the same items (RunConfig.pins)
+  const pins = ideal.pins ?? {};
+  const base = await run(runConfig(scn, { runId: `${seed}-base`, record: true, explore: scn.explore, pins, ...(o.ask === false ? {} : { askTimes: scn.askTimes }) }));
   out.decisions = base.decisions.length;
   if (!base.ok) {
     drop("base-error");
@@ -168,14 +181,14 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
     chaos: scn.chaos,
     clean: scn.clean,
     budget: scn.budget,
-    runtime: "situation-v1",
+    runtime: RUNTIME_TAG,
     browser: "chromium-headless",
     ...(scn.app.source ? { oss: scn.app.source.repo } : {}),
   };
   // ------------------------------------------------------------------------------------- decision rows
   const points = pickPoints(base.decisions, o.maxPoints, R.fork("points"));
   for (const p of points) {
-    const passive = PASSIVE[p.trigger] ?? p.actions[0]!;
+    const passive = passiveOf(p.trigger, p.actions);
     const forcedPrefix: [number, string][] = base.decisions.filter((d) => d.k < p.k && d.explored).map((d) => [d.k, d.chosen]);
     const laterExplored = base.decisions.some((d) => d.k >= p.k && d.explored);
     const costs: Record<string, number[]> = {};
@@ -192,7 +205,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
       let idealJ = ideal;
       let idealJStates = idealStates;
       if (future && scn.external.some((e) => e.t > p.t)) {
-        idealJ = await run(runConfig(scn, { runId: `${seed}-ideal-f${j}-${p.k}`, ideal: true, future: { k: -1, salt: future.salt, t: p.t } }));
+        idealJ = await run(runConfig(scn, { runId: `${seed}-ideal-f${j}-${p.k}`, ideal: true, pins, future: { k: -1, salt: future.salt, t: p.t } }));
         if (!idealJ.ok) {
           dropped = "ideal-future-error";
           break;
@@ -208,7 +221,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
           cfStates = baseStates;
         } else {
           const forced: [number, string][] = [...forcedPrefix, [p.k, a]];
-          cf = await run(runConfig(scn, { runId: `${seed}-cf-${p.k}-${a}-${j}`, forced, fpUpTo: p.k, tStop: Math.min(scn.tEnd, p.t + W.finalMs), snapFrom: Math.max(0, p.t - 1), ...(future ? { future } : {}) }));
+          cf = await run(runConfig(scn, { runId: `${seed}-cf-${p.k}-${a}-${j}`, forced, fpUpTo: p.k, pins, tStop: Math.min(scn.tEnd, p.t + W.finalMs), snapFrom: Math.max(0, p.t - 1), ...(future ? { future } : {}) }));
           if (!cf.ok) {
             dropped = "cf-error";
             break;
@@ -271,6 +284,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
         tiers: Object.fromEntries(p.actions.map((a) => [a, TIER[a] ?? "heal"])),
         diagnosis: diag ?? null,
         diag_why: p.diagWhy,
+        ...(p.diagTrace ? { diag_trace: p.diagTrace } : {}),
         subject: p.subject,
         transform: tr.variant,
       },
@@ -298,7 +312,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
     const used = new Set(points.map((p) => p.k));
     const pool = base.decisions.filter((d) => d.state && d.actions.length >= 2 && !used.has(d.k));
     for (const d of R.fork("unlabeled").sample(pool, o.unlabeled ?? 40).sort((a, b) => a.k - b.k)) {
-      const passive = PASSIVE[d.trigger] ?? d.actions[0]!;
+      const passive = passiveOf(d.trigger, d.actions);
       const diag = finishDiagnosis(d, scn.app, baseStates, d.chosen === passive && !base.decisions.some((x) => x.k >= d.k && x.explored) ? baseStates : null);
       const dq = (d.questions as Record<string, { type: string; criteria: Record<string, unknown> }> | undefined)?.diagnosis;
       const labels: Record<string, unknown> = {};

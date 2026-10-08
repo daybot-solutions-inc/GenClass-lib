@@ -313,6 +313,12 @@ def decision_metrics(recs: list[dict], rows: dict[str, dict], taus: dict | None,
                 c[f"{m}_fires_correct"] += int(fire and cand == gold_a)
                 c[f"{m}_false_fires"] += int(fire and passive_best)
                 c[f"{m}_recall_hits"] += int(fire and not passive_best and cand == gold_a and gold_permitted)
+                clear = (not passive_best) and gold_permitted and float(ra["target"].max()) >= 0.9
+                c[f"{m}_clear_active"] += int(clear)
+                c[f"{m}_clear_hits"] += int(clear and fire and cand == gold_a)
+                if gold_d in ("stale", "duplicate"):
+                    c[f"{m}_sd_active"] += int(clear)
+                    c[f"{m}_sd_hits"] += int(clear and fire and cand == gold_a)
                 if costs and passive in costs:
                     done = cand if fire else passive
                     c[f"{m}_cost_rows"] += 1
@@ -341,7 +347,11 @@ def decision_metrics(recs: list[dict], rows: dict[str, dict], taus: dict | None,
             o[m] = {"false_intervention_rate": round(c[f"{m}_false_fires"] / rp, 5) if rp else None,
                     "false_fires": c[f"{m}_false_fires"], "passive_rows": rp,
                     "precision": round(fc / f, 4) if f else None, "fires": f,
-                    "recall": round(c[f"{m}_recall_hits"] / ra_, 4) if ra_ else None, "active_rows": ra_}
+                    "recall": round(c[f"{m}_recall_hits"] / ra_, 4) if ra_ else None, "active_rows": ra_,
+                    "recall_clear": round(c[f"{m}_clear_hits"] / c[f"{m}_clear_active"], 4) if c[f"{m}_clear_active"] else None,
+                    "clear_rows": c[f"{m}_clear_active"],
+                    "recall_clear_stale_dup": round(c[f"{m}_sd_hits"] / c[f"{m}_sd_active"], 4) if c[f"{m}_sd_active"] else None,
+                    "clear_stale_dup_rows": c[f"{m}_sd_active"]}
             n_c = c[f"{m}_cost_rows"]
             if n_c:  # SIM rows: mean counterfactual cost of running the gate vs always-passive vs the oracle
                 o[m]["mean_cost"] = {"policy": round(c[f"{m}_cost_policy_x1e3"] / 1000 / n_c, 4),

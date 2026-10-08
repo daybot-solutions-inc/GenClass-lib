@@ -333,7 +333,7 @@ export class MockRuntime implements Runtime {
   }
 
   situationBudget(): number {
-    return 3200;
+    return 2400;
   }
 
   setMode(m: Mode): void {

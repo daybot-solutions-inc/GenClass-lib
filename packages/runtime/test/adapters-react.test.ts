@@ -186,7 +186,7 @@ describe("useAtom, useGenClass and the live feeds", () => {
 describe("react + the real runtime", () => {
   it("holds a salient async write until the model answers; discard keeps the screen as it was", async () => {
     const decider = new ManualDecider();
-    const S = setup({ decider, triage: "always", observe: { fetch: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, timers: false } });
+    const S = setup({ decider, triage: "always", policy: { holdWrites: true }, observe: { fetch: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, timers: false } });
     S.server.on("GET", "/api/search", ({ url }) => ({ body: { items: [`${url.searchParams.get("q")} results`] }, latency: 80 }));
     let set!: (v: string[]) => void;
     function Results() {
@@ -208,6 +208,11 @@ describe("react + the real runtime", () => {
     expect(decider.pending.map((p) => p.req.trigger)).toEqual(["request"]);
     decider.answer(); // send
     await act(async () => S.clock.advance(100));
+    expect(decider.pending.map((p) => p.req.trigger)).toEqual(["delivery"]); // the response (triage "always")
+    await act(async () => {
+      decider.answer(); // deliver
+      await S.clock.flush();
+    });
     expect(decider.pending.map((p) => p.req.trigger)).toEqual(["mutation"]);
     expect(text("#r")).toBe(""); // held
     await act(async () => {
@@ -223,6 +228,10 @@ describe("react + the real runtime", () => {
     });
     decider.answer();
     await act(async () => S.clock.advance(100));
+    await act(async () => {
+      decider.answer(); // deliver
+      await S.clock.flush();
+    });
     await act(async () => {
       decider.answer(defaultScript({ mutation: { diagnosis: "stale", action: "discard", p: 0.97 } }));
       await S.clock.flush();
@@ -241,7 +250,7 @@ describe("react + the real runtime", () => {
 
   it("never holds writes made synchronously in a user handler", async () => {
     const decider = new ManualDecider();
-    const S = setup({ decider, triage: "always" });
+    const S = setup({ decider, triage: "always", policy: { holdWrites: true } });
     let set!: (v: string) => void;
     function Q() {
       const [q, s] = useGenClassState("query", "");

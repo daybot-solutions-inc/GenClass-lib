@@ -104,6 +104,7 @@ export class Network {
     const n = (this.occ.get(identity) ?? 0) + 1;
     this.occ.set(identity, n);
     const rec: NetRec = { id: this.log.length, method, url: url.pathname + url.search, sig, t0, outcome: "pending", idempotent, transport, bodyKey: raw.length <= 200 ? raw : `${raw.length}b:${hashAll(raw)}` };
+    if (Object.keys(headers).some((k) => k.toLowerCase() === "idempotency-key")) rec.idem = true;
     this.log.push(rec);
     this.onSend?.(rec, ctx);
     let done = false;

@@ -7,14 +7,23 @@
 // relations, so they are finished in Node (src/harness/labels.ts) and flagged here with `why`.
 
 import type { NetRec } from "../shared/types.js";
-import type { Probe, UserOpInfo } from "./probe.js";
+import { keysOverlap, type Probe, type UserOpInfo } from "./probe.js";
 
 export interface Diag {
   label?: string;
   why: string;
+  /** Diagnostic detail of the rules that were checked (kept in meta.diag_trace). */
+  trace?: string;
 }
 
 const NOISE = /ResizeObserver loop|Script error\.|Non-Error promise rejection captured|AbortError|The operation was aborted|signal is aborted/i;
+
+/** Manifest weight of a "store.field..." path (top-level field, else store, else 1). */
+function weightOf(p: Probe, path: string): number {
+  const w = p.cfg.weights ?? {};
+  const [store, field] = path.split(".");
+  return w[`${store}.${field}`] ?? w[store!] ?? 1;
+}
 
 function superseded(p: Probe, u: UserOpInfo, now: number): boolean {
   const st = p.stepOf(u.step);
@@ -86,12 +95,30 @@ export function diagnose(p: Probe, trigger: string, subject: Record<string, unkn
       const ws = p.rootWs(cause);
       const fromAsync = nets.length > 0 || !!ws;
       if (u && fromAsync && superseded(p, u, now)) return { label: "stale", why: "superseded-intent" };
+      let trace = "";
       if (fromAsync && w) {
         const chain = p.chain(cause);
         const start = Math.min(...chain.map((o) => o.start));
+        const reads = nets.filter((r) => r.method === "GET");
         for (const path of w.paths) {
-          const tu = p.userFieldTime.get(path);
-          if (tu !== undefined && tu > start) return { label: "stale", why: `user-changed ${path}` };
+          if (weightOf(p, path) <= 0.1) continue; // busy/loading flags written by both the click and the completion
+          const mine = w.keys?.[path] ?? "*";
+          // user writes to the same elements of this field (a list edit elsewhere in the list does not count)
+          const all = p.userWrites.get(path) ?? [];
+          const uws = all.filter((u) => keysOverlap(u.keys, mine));
+          trace += `${path}:u${all.length}/${uws.length}`;
+          if (!uws.length) continue;
+          if (uws.some((u) => u.t > start)) return { label: "stale", why: `user-changed ${path}` };
+          const tu = uws[uws.length - 1]!.t;
+          // a pending local change: the user's write to these elements is still being sent (a non-GET request rooted
+          // in a user step, sent at or after that change, not answered yet)
+          const pending = p.net.log.find((r) => r.td === undefined && r.method !== "GET" && r.step !== undefined && r.t0 >= tu - 1 && r.t0 <= now);
+          trace += pending ? `:p${pending.ta === undefined ? "-" : Math.round(pending.ta)}${pending.committed ? "c" : ""}:r${reads.map((g) => Math.round(g.ta ?? -1)).join("/")} ` : ":np ";
+          if (pending) {
+            if (ws && !reads.length) return { label: "conflict", why: `push-over-pending ${path}` };
+            // data read before that write reached the server would put the old value back
+            if (reads.some((g) => g.ta !== undefined && (pending.ta === undefined || g.ta < pending.ta || !pending.committed))) return { label: "stale", why: `read-before-pending-write ${path}` };
+          }
         }
       }
       if (ws) {
@@ -103,7 +130,7 @@ export function diagnose(p: Probe, trigger: string, subject: Record<string, unkn
           }
         }
       }
-      return { label: "expected", why: "rel-check" };
+      return { label: "expected", why: "rel-check", ...(trace ? { trace: trace.trim() } : {}) };
     }
     case "request": {
       const opId = subject.op as number | undefined;
@@ -135,9 +162,13 @@ export function diagnose(p: Probe, trigger: string, subject: Record<string, unkn
         const r = p.net.log[i]!;
         if (r.t0 < now - 10000) break;
         if (r.method !== method || r.url !== url || r.rtOp === op.id) continue;
+        const failed = r.td !== undefined && r.outcome !== "ok";
+        const nonIdem = method !== "GET" && method !== "PUT" && method !== "DELETE";
+        // a retry of a write the server already committed, without an idempotency key: the effect happens twice
+        if (failed && nonIdem && r.committed && !r.idem) return { label: "duplicate", why: "retry-after-commit" };
+        if (failed) continue; // a retry of a failed request is not a duplicate (keyed, idempotent or not committed)
         const sameRoot = u !== undefined && r.step === u.step && (r.td === undefined || now - r.td < 1000);
         if (sameRoot && (method !== "GET" || r.td === undefined)) return { label: "duplicate", why: "same-root-identical" };
-        if (method !== "GET" && method !== "PUT" && method !== "DELETE" && r.committed && r.outcome !== "ok" && r.td !== undefined) return { label: "duplicate", why: "retry-after-commit" };
       }
       if (clientRate(p, sig, now) >= 6) return { label: "overload", why: "rate" };
       if (u && superseded(p, u, now)) return { label: "stale", why: "superseded-intent" };
@@ -184,7 +215,30 @@ export function diagnose(p: Probe, trigger: string, subject: Record<string, unkn
       if (/JSON|Unexpected token|is not valid JSON/i.test(msg)) return { label: "unusual", why: "parse" };
       return { label: "failing", why: "handler-threw" };
     }
-    default:
-      return { why: "unknown-trigger" };
+    case "delivery":
+    default: {
+      // situation-v2 `delivery` (a response or message about to reach the app) and any trigger whose subject is an
+      // op: the request's own fate, then the intent behind it, then push-vs-pending-local
+      const opId = (subject.op as number | undefined) ?? (subject.cause as number | undefined);
+      if (opId === undefined) return trigger === "delivery" ? { label: "expected", why: "rel-check" } : { why: "unknown-trigger" };
+      const nets = p.netsOfChain(opId);
+      const own = p.netOfOp.get(opId) ?? nets[0];
+      if (nets.some((r) => r.cause === "bug" || (r.cause === "outage" && (r.status ?? 0) < 400))) return { label: "unusual", why: "bug-or-empty" };
+      if (own && own.td !== undefined && own.outcome !== "ok" && own.outcome !== "aborted") return { label: failureOf(p, own, now), why: `failure ${own.cause ?? own.outcome}` };
+      const u = p.rootUser(opId);
+      const st = u ? p.stepOf(u.step) : undefined;
+      if (st?.accidental) return { label: "duplicate", why: "accidental-step" };
+      if (nets.some((r) => r.cause === "replica-lag")) return { label: "stale", why: "replica-lag" };
+      if (u && superseded(p, u, now)) return { label: "stale", why: "superseded-intent" };
+      const ws = p.rootWs(opId);
+      if (ws) {
+        const ids = msgEntity(ws.msg);
+        for (const r of p.net.log) {
+          if (r.td !== undefined || r.method === "GET" || r.step === undefined) continue;
+          if (ids.some((id) => r.url.split("?")[0]!.split("/").includes(id))) return { label: "conflict", why: "push-vs-pending-local" };
+        }
+      }
+      return { label: "expected", why: "rel-check" };
+    }
   }
 }

@@ -3,7 +3,7 @@
 // decision index. Records client-state snapshots (for time-integrated divergence), the final client and server
 // state, decisions (state + questions exactly as handed to the decider), ask probes and the sim's knowledge.
 
-import { AppEnv, PlainBackend, type SimGlobal, type StoreBackend } from "../app/env.js";
+import { AppEnv, PlainBackend, pushIds, pushIdsByData, type SimGlobal, type StoreBackend } from "../app/env.js";
 import { FEATURES } from "../app/features/index.js";
 import type { FeatureClient, Relation, WorldCtx } from "../app/feature.js";
 import { Kit } from "../app/kit.js";
@@ -12,6 +12,7 @@ import { BASE_URL, IDEAL_PROFILE, Network, type NetEntry } from "../net/network.
 import { API_STYLES, Db, VirtualServer, type ServerSnapshot } from "../net/server.js";
 import { diagnose, type Subject } from "../oracle/diagnose.js";
 import { Knowledge, type SimOp, type SimWrite } from "../oracle/knowledge.js";
+import { PROBE, ProbeState, probeAfter, probeDecision, type Probe } from "../oracle/probe.js";
 import { hashAll, Rng } from "../rng.js";
 import { PASSIVE, type Answer, type DecisionProvider, type EvaluateRequest, type JevState, type Question } from "../types.js";
 import type { Scenario } from "../world/scenario.js";
@@ -44,6 +45,11 @@ export interface DecisionRec {
   subjKey?: string;
   /** Feature kind the subject belongs to (sim knowledge), for per-feature stats. */
   feature?: string;
+  /** `delivery` decisions: diagnosis = verdict of the first write this op / push caused (filled after the run). */
+  diagFrom?: { op?: number; push?: number };
+  /** SIM_PROBE=1: separability probes (oracle/probe.ts). */
+  probe?: Probe;
+  probeSubj?: { op?: number; write?: number };
 }
 
 export interface AskRec {
@@ -123,6 +129,9 @@ export interface RunResult {
   storeFeature: Map<string, string>;
 }
 
+/** The run's knowledge, for push-id bookkeeping inside the virtual socket. */
+const knowRef: { current: Knowledge | null } = { current: null };
+
 /** A WebSocket over the network's push channel (`wss://host/ws/<topic path>`); instrumentable by the runtime. */
 function makeWebSocketClass(loop: VirtualLoop, net: Network, ideal: boolean): unknown {
   class VirtualWebSocket extends EventTarget {
@@ -177,9 +186,20 @@ function makeWebSocketClass(loop: VirtualLoop, net: Network, ideal: boolean): un
         this.readyState = 1;
         this.unsub = net.subscribe(topic, (msg) => {
           if (this.readyState !== 1) return;
-          const ev = new MessageEvent("message", { data: JSON.stringify(msg) });
-          this.dispatchEvent(ev);
-          this.onmessage?.(ev);
+          const data = JSON.stringify(msg);
+          const ev = new MessageEvent("message", { data });
+          const k = knowRef.current;
+          const id = k ? k.nextPush++ : 0;
+          pushIds.set(ev, id);
+          pushIdsByData.set(data, id);
+          if (pushIdsByData.size > 2000) pushIdsByData.delete(pushIdsByData.keys().next().value!);
+          if (k) k.deliveringPush = id;
+          try {
+            this.dispatchEvent(ev);
+            this.onmessage?.(ev);
+          } finally {
+            if (k) k.deliveringPush = null;
+          }
         });
         const ev = new Event("open");
         this.dispatchEvent(ev);
@@ -335,6 +355,18 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
   const storage = G.localStorage as unknown as MemStorage;
   const know = new Knowledge();
   know.now = () => loop.now();
+  knowRef.current = know;
+  const probeState = PROBE && o.record && !o.ideal ? new ProbeState(know, (store) => env.stores.find((x) => x.name === store)?.weights ?? {}) : null;
+  if (probeState) know.probe = probeState;
+  // Every write gets its diagnosis at proposal time (the mutation rules); delivery decisions reuse it.
+  know.onWrite = (w) => {
+    try {
+      const d = diagnose("mutation", { kind: "write", write: w }, { know, network, relations, now: loop.now(), stores: () => env.snapshot() });
+      if (d) w.diag = d;
+    } catch {
+      /* ignore */
+    }
+  };
   network.onSend = (e) => {
     if (e.simOp !== undefined) {
       const op = know.getOp(e.simOp);
@@ -372,9 +404,10 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       const passive = PASSIVE[req.trigger] ?? actions[0] ?? "";
       let chosen = o.forced?.get(idx);
       let explored = false;
+      const diagFrom = (req.trigger as string) === "delivery" ? (subject.how === "push" ? { push: subject.ref! } : subject.s.op ? { op: subject.s.op.id } : undefined) : undefined;
       const fid = subject.s.write?.feature ?? subject.s.op?.feature ?? subject.s.chain?.[0]?.feature ?? (subject.s.error && typeof subject.s.error === "object" ? know.errors.get(subject.s.error as object)?.feature : undefined);
       const featureKind = scn.features.find((f) => f.id === fid)?.kind;
-      const base = { k: idx, t, trigger: req.trigger, state: req.state, questions, actions, subject: { kind: subject.s.kind, how: subject.how, ...(subject.ref !== undefined ? { ref: subject.ref } : {}) }, ...(diag !== undefined ? { diagnosis: diag } : {}), ...(featureKind ? { feature: featureKind } : {}) };
+      const base = { k: idx, t, trigger: req.trigger, state: req.state, questions, actions, subject: { kind: subject.s.kind, how: subject.how, ...(subject.ref !== undefined ? { ref: subject.ref } : {}) }, ...(diag !== undefined ? { diagnosis: diag } : {}), ...(featureKind ? { feature: featureKind } : {}), ...(diagFrom ? { diagFrom } : {}) };
       if (chosen === undefined && o.explore) {
         const c = o.explore.choose(base, exploreRng.fork(idx));
         if (c && actions.includes(c) && c !== passive) {
@@ -402,6 +435,14 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       }
       if (o.record || (o.fpUpTo !== undefined && idx <= o.fpUpTo)) {
         const rec: DecisionRec = { ...base, chosen, explored, fp: o.fpUpTo !== undefined || o.record ? JSON.stringify([req.trigger, req.state, questions]) : "" };
+        if (probeState) {
+          try {
+            rec.probe = probeDecision(req.trigger, subject.s, know, network, probeState, t);
+            rec.probeSubj = { ...(subject.s.op ? { op: subject.s.op.id } : {}), ...(subject.s.write ? { write: subject.s.write.id } : {}) };
+          } catch {
+            /* analysis only */
+          }
+        }
         if (fake) rec.fakeDiagnosis = true;
         if (!o.record) {
           rec.state = {};
@@ -493,6 +534,16 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       }
       return { s: { kind: "unknown" }, how: "none" };
     }
+    if ((trig as string) === "delivery") {
+      if (sub && typeof sub.op === "number") {
+        const simId = know.rtOps.get(sub.op) ?? rtOpViaCause(sub.op);
+        const op = know.getOp(simId);
+        if (op) return { s: { kind: "op", op }, how: "subject", ref: op.id };
+        const push = know.rtPushOps.get(sub.op);
+        if (push !== undefined) return { s: { kind: "push" as Subject["kind"] }, how: "push", ref: push };
+      }
+      return { s: { kind: "unknown" }, how: "none" };
+    }
     if (trig === "error") {
       const err = sub && "error" in sub ? sub.error : lastError;
       return { s: { kind: "error", error: err }, how: sub && "error" in sub ? "subject" : "last" };
@@ -522,6 +573,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       // mutation synchronously inside atom.set, while the sim's ambient tag (callingOp / writing) is set.
       hooks: {
         opCreated(op) {
+          if (know.deliveringPush !== null && op.kind === "ws") know.rtPushOps.set(op.id, know.deliveringPush);
           if (op.cause !== undefined) {
             rtParents.set(op.id, op.cause);
             know.rtParents.set(op.id, op.cause);
@@ -702,6 +754,13 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
   const tStop = Math.min(scn.tEnd, o.tStop ?? scn.tEnd);
   await loop.settle();
   await loop.runUntil(tStop);
+  // Delivery decisions: the diagnosis is the verdict of the first write the delivered op / push caused.
+  for (const d of decisions) {
+    if (!d.diagFrom) continue;
+    const w = know.writes.find((x) => (d.diagFrom!.op !== undefined && x.op === d.diagFrom!.op) || (d.diagFrom!.push !== undefined && x.push === d.diagFrom!.push));
+    d.diagnosis = w?.diag ?? d.diagnosis ?? "expected";
+  }
+  if (probeState) for (const d of decisions) if (d.probe && d.probeSubj) probeAfter(d.trigger, d.t, d.probe, d.probeSubj, know, probeState);
   // Final state.
   const final = env.snapshot();
   const userOpMs = know.ops.filter((op) => !op.background).reduce((a, op) => a + ((op.tEnd ?? tStop) - op.t0), 0);

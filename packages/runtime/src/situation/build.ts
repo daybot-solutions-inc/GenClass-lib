@@ -18,7 +18,7 @@ import type { OpRec } from "../trace/ops.js";
 import { describe, fmtNum, secs, truncate } from "../util.js";
 import { eventLine, opLabel, opPhrase } from "./describe.js";
 import type { SitEnv, SubjectSpec } from "./env.js";
-import { computeFacts, MAX_FACTS, orderFacts } from "./facts.js";
+import { computeFacts, MAX_FACTS, orderFacts, predictedText } from "./facts.js";
 import { actionDescription, BUILTIN_ACTIONS, buildQuestions, COMPACT_QUESTIONS_BUDGET, TRIGGER_ACTIONS } from "./questions.js";
 import { sectionLimits, STATE_CHAR_BUDGET, toJevState, type SectionLimits, type SituationParts } from "./serialize.js";
 
@@ -29,7 +29,7 @@ export interface BuildOptions {
   questions: StandingQuestion[];
   pluginFacts: { name: string; fn: (d: SituationDraft) => string[] }[];
   triage: "salient" | "always";
-  /** Situation size in characters (default 3,200). */
+  /** Situation size in characters (default 2,400). */
   budget?: number;
 }
 
@@ -72,6 +72,12 @@ export function subjectOf(env: SitEnv, s: SubjectSpec): { sentence: string; subj
     }
     case "request":
       return { sentence: `${opLabel(s.op)} is about to be sent.`, subject: opLabel(s.op) };
+    case "delivery": {
+      if (s.channel === "response")
+        return { sentence: `The response to ${opLabel(s.op)} arrived and is about to be delivered; ${predictedText(s)}.`, subject: `response to ${opLabel(s.op)}` };
+      const what = `${s.channel === "websocket" ? "WebSocket" : "server-sent"} message ${s.message?.path ?? ""} (#${s.op.id})`.replace(/\s+/g, " ");
+      return { sentence: `A ${what} arrived and is about to be delivered; ${predictedText(s)}.`, subject: `${what} ${s.message?.summary ?? ""}`.trim() };
+    }
     case "failure":
       return { sentence: `${opLabel(s.op)} failed (${failureShort(s.failure)}) and the app has not seen the failure yet.`, subject: `${opLabel(s.op)} (${failureShort(s.failure)})` };
     case "stall":
@@ -101,6 +107,7 @@ function subjectOp(env: SitEnv, s: SubjectSpec): OpRec | undefined {
     case "mutation":
       return s.m.cause ?? undefined;
     case "request":
+    case "delivery":
     case "failure":
     case "stall":
     case "transition":
@@ -127,6 +134,9 @@ function involvedStores(env: SitEnv, s: SubjectSpec): string[] {
     case "transition":
       for (const f of s.op.chain?.keys() ?? []) add(f);
       break;
+    case "delivery":
+      for (const f of s.predicted.patterns) add(f);
+      break;
     case "error":
       if (s.op) for (const x of env.hub.changedSince(s.op.startSeq)) add(x.path);
       break;
@@ -146,6 +156,8 @@ function involvedFields(s: SubjectSpec): string[] {
   switch (s.trigger) {
     case "mutation":
       return s.m.changes.map((c) => c.path);
+    case "delivery":
+      return [...s.conflicts.map((c) => c.path), ...s.matched];
     case "inconsistency":
       return s.violations.flatMap((v) => v.fields);
     case "transition":
@@ -276,6 +288,10 @@ function builtinApplicable(env: SitEnv, s: SubjectSpec, name: string): boolean {
   switch (s.trigger) {
     case "mutation":
       return name === "defer" ? s.m.defers < 2 : true;
+    case "delivery":
+      // defer only helps when related work is in flight; a delivery is deferred twice at most
+      if (name === "defer") return s.defers < 2 && relatedInFlight(env, s.op, s.matched).length > 0;
+      return true;
     case "request":
       if (name === "coalesce") return s.req.transport === "fetch" && env.canCoalesce(s.req.identity, s.op.id);
       if (name === "serve_cached") return s.req.method === "GET" && !!env.cached(s.req.identity);
@@ -309,6 +325,17 @@ function builtinApplicable(env: SitEnv, s: SubjectSpec, name: string): boolean {
   }
 }
 
+/** In-flight ops (outside x's chain) with x's signature, or whose chains wrote one of these fields' stores. */
+export function relatedInFlight(env: SitEnv, x: OpRec, fields: string[]): OpRec[] {
+  const stores = new Set(fields.map((f) => f.split(".")[0]));
+  const out: OpRec[] = [];
+  for (const o of env.ops.inFlight) {
+    if (o === x || o.kind === "user" || env.ops.isAncestorOrSelf(o, x) || env.ops.isAncestorOrSelf(x, o)) continue;
+    if (o.name === x.name || [...stores].some((st) => (env.storeWriters.get(o.name)?.get(st) ?? 0) > 0)) out.push(o);
+  }
+  return out;
+}
+
 /** The op's chain wrote fields that nobody overwrote since and whose earlier value is known. */
 function revertableChain(env: SitEnv, op: OpRec): boolean {
   return env.chainWrites(op).some((w) => w.lastIsChain && w.before !== undefined && env.writable(w.path.split(".")[0]));
@@ -339,16 +366,18 @@ export function buildSituation(env: SitEnv, s: SubjectSpec, o: BuildOptions, pre
     if (root) draft.root = root;
   }
   if (s.trigger === "mutation") draft.mutation = { id: s.m.id, store: s.m.store, changes: toChanges(s.m.changes) };
-  if (s.trigger === "request" || s.trigger === "failure" || s.trigger === "stall") {
+  if (s.trigger === "delivery") draft.delivery = { channel: s.channel, predicted: s.predicted.patterns, conflicts: s.conflicts.map((c) => c.path) };
+  if (s.trigger === "request" || s.trigger === "failure" || s.trigger === "stall" || (s.trigger === "delivery" && s.req)) {
+    const req = s.trigger === "delivery" ? s.req! : s.req;
     draft.request = {
-      method: s.req.method,
-      url: s.req.url,
-      signature: s.req.signature,
-      identity: s.req.identity,
-      idempotent: s.req.idempotent,
-      replayable: s.req.replayable,
-      identicalInFlight: env.identical(s.req.identity).filter((x) => x.end === undefined && x.id !== s.op.id).map((x) => x.id),
-      cached: !!env.cached(s.req.identity),
+      method: req.method,
+      url: req.url,
+      signature: req.signature,
+      identity: req.identity,
+      idempotent: req.idempotent,
+      replayable: req.replayable,
+      identicalInFlight: env.identical(req.identity).filter((x) => x.end === undefined && x.id !== s.op.id).map((x) => x.id),
+      cached: !!env.cached(req.identity),
     };
   }
   if (s.trigger === "failure") draft.failure = { kind: s.failure.kind, ...(s.failure.status !== undefined ? { status: s.failure.status } : {}), ...(s.failure.message ? { message: s.failure.message } : {}) };
@@ -370,7 +399,7 @@ export function buildSituation(env: SitEnv, s: SubjectSpec, o: BuildOptions, pre
   for (const name of TRIGGER_ACTIONS[s.trigger]) {
     if (!builtinApplicable(env, s, name)) continue;
     const b = BUILTIN_ACTIONS[name];
-    actions.push({ name, tier: b.tier, description: actionDescription(name, o.vocab) });
+    actions.push({ name, tier: b.tier, description: actionDescription(name, o.vocab, undefined, s.trigger) });
   }
   for (const def of o.customActions) {
     if (!def.on.includes(s.trigger) || actions.some((a) => a.name === def.name)) continue;
@@ -438,6 +467,15 @@ export function subjectRef(s: SubjectSpec): SubjectRef {
     case "failure":
     case "stall":
       return { kind: s.trigger, op: s.op.id };
+    case "delivery": {
+      const r: SubjectRef = { kind: "delivery", op: s.op.id };
+      const paths = s.conflicts.length ? s.conflicts.map((c) => c.path) : s.matched;
+      if (paths.length) {
+        r.paths = paths;
+        r.store = paths[0].split(".")[0];
+      }
+      return r;
+    }
     case "transition": {
       const paths = [...(s.op.chain?.keys() ?? [])];
       const r: SubjectRef = { kind: "transition", op: s.op.id, paths };

@@ -1,7 +1,9 @@
 # GenClass runtime model — model card
 
-Status: **stage 1c final, stage 2 piloted on pre-freeze SIM data**; the shipping stage-2 model is trained once the
-runtime and SIM are frozen.
+Status: **final round 1 on the frozen runtime (situation-v1)** delivered (`files/r17/` here; R17 and R32 in
+`~/gcl/train-out/final1/` on the train VM): on SIM's held-out test R17 reaches 81.9% action / 90.5% diagnosis accuracy
+with a 0.05% guard-mode and 0.24% heal-mode false-intervention rate and ECE ≈ 0.01, but it intervenes rarely (recall on
+clear actionable cases ≈ 5%). The runtime is moving to situation-v2; the next rounds retrain on v2 data.
 Numbers below are filled from `training/EVAL.md`; see it for definitions and the full tables.
 
 ## What it is

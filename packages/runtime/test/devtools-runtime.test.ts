@@ -36,14 +36,15 @@ afterAll(() => {
 
 describe("devtools on the real runtime", () => {
   it("lists the runtime's interventions, newest first, with exactly what GenClass changed", () => {
-    expect(titles("interventions")).toEqual(["Prevented a stale write", "Prevented a duplicate write", "Prevented a duplicate request", "Slowed down a failing request"]);
+    // situation v2: the stale typeahead response is decided at the network boundary (a delivery decision)
+    expect(titles("interventions")).toEqual(["Prevented a stale response", "Reverted a duplicate write", "Prevented a duplicate request", "Slowed down a failing request"]);
     const acts = S.rt.interventions();
     for (const a of acts) {
       const el = $(`[data-pane="interventions"] [data-id="${a.id}"]`) as HTMLElement;
       expect(el.querySelector(".chg")?.textContent).toBe(a.changed);
     }
-    const stale = card("interventions", "Prevented a stale write");
-    expect(stale.querySelector(".cx")?.textContent).toMatch(/^search\.results was written once by other operations since this write's cause/);
+    const stale = card("interventions", "Prevented a stale response");
+    expect(stale.querySelector(".cx")?.textContent).toMatch(/^search\.results was written \w+ by other operations since its operation/);
     expect(stale.querySelector(".chip.t-brand")?.textContent).toBe("stale97%");
     expect(stale.querySelector('[data-act="undo"]')).toBeTruthy(); // discard is reversible
     expect(card("interventions", "Prevented a duplicate request").querySelector('[data-act="undo"]')).toBeNull();
@@ -69,7 +70,7 @@ describe("devtools on the real runtime", () => {
     const ex = S.rt.explain(a.id)!;
     const ev = $(`[data-id="${a.id}"] .evd`) as HTMLElement;
     expect(ev.querySelector('[data-part="situation"]')?.textContent).toBe(ex.situationText);
-    expect(ex.situationText).toContain("trigger: A write to search.results");
+    expect(ex.situationText).toContain("trigger: The response to GET /api/search?q=rea");
     expect([...ev.querySelectorAll(".facts li")].map((li) => li.textContent)).toEqual(ex.facts);
     expect(ev.querySelector('.ans[data-q="diagnosis"] .bl.top')?.textContent).toBe("stale");
     expect(ev.querySelector('.ans[data-q="action"] .bl.top')?.textContent).toBe("discard");
@@ -122,7 +123,7 @@ describe("devtools on the real runtime", () => {
     await frame();
     off();
     const r = reports.find((x) => x.kind === "intervene");
-    expect(r?.message).toMatch(/^\[GenClass\] Prevented a stale write: /);
+    expect(r?.message).toMatch(/^\[GenClass\] Prevented a stale response: /);
     const first = $$('[data-pane="interventions"] article.card')[0];
     expect(first.dataset.id).toBe(r?.action?.id);
     const body = first.querySelector(".cx")?.textContent ?? "";

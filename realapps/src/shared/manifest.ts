@@ -35,6 +35,13 @@ export interface Affordance {
   then?: string[];
   /** Never chosen on its own (only as a follow-up). */
   followOnly?: boolean;
+  /** Using this affordance makes these ones unavailable again for `after` (e.g. sign out resets sign in). */
+  resets?: string[];
+  /** CSS selector that must match a visible element when the step runs; otherwise the step is skipped at once
+   * (a precondition the user checks by looking, e.g. "the wizard is on step 2"). Not a blocked intent. */
+  requires?: string;
+  /** With `requires`: a matching element must also contain this text. */
+  requiresText?: string;
 }
 
 export interface ExternalSpec {
@@ -82,6 +89,8 @@ export interface AppManifest {
   /** Open-source origin. */
   source?: { repo: string; commit?: string; license: string; dir?: string };
   localStorage?: Record<string, string>;
+  /** Cookies set before the app loads (e.g. a session token), path "/". */
+  cookies?: Record<string, string>;
   /** Session length range (ms). */
   sessionMs?: [number, number];
   /** Build options. */
@@ -95,6 +104,8 @@ export interface AppManifest {
     vueCompiler?: boolean;
     /** Built by realapps/corpus/prepare_oss.sh with Vite (not by build.mjs). */
     vite?: boolean;
+    /** Built by realapps/corpus/prepare_oss.sh with the app's own toolchain (not by build.mjs). */
+    prebuilt?: boolean;
     loader?: Record<string, string>;
     define?: Record<string, string>;
     alias?: Record<string, string>;

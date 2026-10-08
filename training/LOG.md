@@ -207,3 +207,26 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
   ETA ≈ 03:40.
 - Cost so far ≈ $330 (c01 ≈ $65; c02–c11 ≈ 41 node-hours ≈ $225; c12–c23 ≈ 3 node-hours ≈ $20 incl. setup). Running
   burn now: 22 nodes ≈ $135/h.
+
+### 01:13–01:56 Final round 1 done; v1 teacher stopped (situation-v2 coming); everything deallocated
+- Lead (01:30): CORE is moving to situation-v2 (a `delivery` trigger at the network boundary, non-blocking
+  mutations, no store-write holds); v1 data stays a baseline → no teacher / big distillation on v1. `t150-g1`
+  stopped cleanly at step 69 (checkpoint kept on c12's disk as a possible warm start); c08, c10–c23 deallocated 01:35,
+  c03–c07 01:36 (R68 benchmark not started).
+- `r17-final1` 2,168 steps (finished 01:20), `r32-final1` 771 steps (01:36). Eval on 20k SIM phase-A test rows
+  (dev-fitted temperatures): R17 action 81.9% / diagnosis 90.5%, guard FIR 0.05%, heal FIR 0.24%, heal precision
+  79%, recall 4.5% (clear cases 6.1%), ECE 0.009 / 0.010; R32 81.8 / 89.7, same gate behaviour → **R17 is the
+  default**. Clear actionable cases overlap with benign look-alikes for both students (argmax 41% on clear rows) — see
+  EVAL.md.
+- Exports (fp16-free q8): R17 9.58 / 13.57 MB, R32 22.47 / 34.79 MB; q8 vs PyTorch argmax 100%, gate agreement
+  ≥ 99.5%; onnxruntime-web 1.30 WASM 1 thread: R17 ≈ 177 / 323 / 589 ms, R32 ≈ 569 / 954 / 1,580 ms at 500 / 780 /
+  1,170 tokens. Delivered: train VM `~/gcl/train-out/final1/{r17,r32}/` (sha256 verified, ORT-web/node 233/233
+  decisions) and `packages/runtime-model/files/r17/` on the Mac (25 MB; R32 + R17 would exceed 60 MB).
+- Fixes on the way: ONNX tooling was only on c01 (installed on c02/c09; `node_init.sh` now installs it); the
+  first R17 post-processing served an empty tar after the failed export (re-pulled manually).
+- Pipeline prepared for situation-v2 (untested pieces marked): `launch_student.sh` (generic r17/r32/r68/t150
+  launcher), `label_cluster.sh` (teacher soft-labelling across nodes; untested), `label_teacher.py` (tested),
+  `import_final.sh` (workbench/port/files parameters), `eval_sim.sh` + clear-case recall, `final_post.sh`,
+  `pull_on_train.sh`, `cluster_expand.sh` + `node_init.sh`.
+- All TRAIN nodes (c01–c23) deallocated at 01:56; only `train` (SIM/lead) runs.
+- **Cost estimate to date ≈ $390**: c01 ≈ 10.7 node-h ($58); c02–c11 ≈ 49.5 node-h ($270); c12–c23 ≈ 9 node-h ($60).

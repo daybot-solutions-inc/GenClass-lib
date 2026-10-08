@@ -136,6 +136,7 @@ const LEAD: Record<string, string> = {
 };
 const NOUN: Record<string, string> = {
   mutation: "write",
+  delivery: "response",
   request: "request",
   failure: "failed request",
   stall: "slow request",
@@ -158,8 +159,8 @@ export function phrase(diagnosis: string | undefined, trigger: string | undefine
 const article = (p: string): string => (/(^|\s)state$/.test(p) ? p : `${/^[aeiou]/i.test(p) ? "an" : "a"} ${p}`);
 
 /** Intervention headline, e.g. "Prevented a stale write", "Slowed down a failing request". */
-export function actTitle(action: string, diagnosis?: string, trigger?: string): string {
-  const lead = LEAD[action];
+export function actTitle(action: string, diagnosis?: string, trigger?: string, late = false): string {
+  const lead = late ? "Reverted" : LEAD[action];
   if (!lead) return `Ran ${action.replace(/_/g, " ")}`;
   return `${lead} ${article(phrase(diagnosis, trigger))}`;
 }

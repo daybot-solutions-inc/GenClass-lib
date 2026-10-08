@@ -17,8 +17,33 @@ const show = opt("--show", "");
 const fake = args.includes("--fake");
 const cf = args.includes("--cf");
 
+async function profile(factory: RuntimeFactory): Promise<void> {
+  const { FEATURES } = await import("../app/features/index.js");
+  const rows: [string, number, number, number, number][] = [];
+  for (const kind of Object.keys(FEATURES)) {
+    let ms = 0;
+    let tasks = 0;
+    let decs = 0;
+    let snaps = 0;
+    const n = Number(opt("--per", "4"));
+    for (let i = 0; i < n; i++) {
+      const scn = buildScenario(9100000 + i, { kinds: [kind] });
+      const t0 = performance.now();
+      const r = await runScenario(scn, { ideal: false, factory, record: true });
+      ms += performance.now() - t0;
+      tasks += r.tasks;
+      decs += r.decisions.length;
+      snaps += r.snapshots.length;
+    }
+    rows.push([kind, ms / n, tasks / n, decs / n, snaps / n]);
+  }
+  rows.sort((a, b) => b[1] - a[1]);
+  for (const [k, ms, t, d, sn] of rows) console.log(`${k.padEnd(14)} ${ms.toFixed(0).padStart(6)} ms/run  ${t.toFixed(0).padStart(7)} tasks  ${d.toFixed(0).padStart(5)} decisions  ${sn.toFixed(0).padStart(6)} snapshots`);
+}
+
 async function main(): Promise<void> {
   const factory: RuntimeFactory = fake ? createFakeRuntime : await realRuntimeFactory();
+  if (args.includes("--profile")) return profile(factory);
   const byTrig: Record<string, number> = {};
   const how: Record<string, number> = {};
   const diag: Record<string, number> = {};
@@ -68,16 +93,26 @@ async function main(): Promise<void> {
   if (errs.length) console.log("internal errors:\n" + errs.join("\n---\n"));
   if (cf) {
     const t0 = performance.now();
+    const tj = await import("../gen/trajectory.js");
+    const times: [number, number, string][] = [];
+    tj.resetCostMs();
     let rows = 0;
     const drops: Record<string, number> = {};
-    for (let seed = from; seed < from + Math.min(seeds, 20); seed++) {
-      const out = await generateTrajectory(seed, { factory, runtimeName: fake ? "fake" : "real", maxPoints: 4, askRows: true, testKeep: 1, exploreScale: 1 });
+    for (let seed = from; seed < from + seeds; seed++) {
+      const ts = performance.now();
+      const out = await generateTrajectory(seed, { factory, runtimeName: fake ? "fake" : "real", maxPoints: 6, askRows: true, testKeep: 1, exploreScale: 1 });
+      const sc = buildScenario(seed);
+      times.push([performance.now() - ts, seed, `${sc.features.map((f) => f.kind).join("+")} ${(sc.tUser / 1000).toFixed(0)}s runs=${out.runs} rows=${out.rows.length} decisions=${out.decisions}`]);
       rows += out.rows.length;
       for (const [k, v] of Object.entries(out.drops)) drops[k] = (drops[k] ?? 0) + v;
       if (out.skipped) console.log(`seed ${seed} skipped: ${out.skipped}`);
     }
     const s = (performance.now() - t0) / 1000;
-    console.log(`trajectories: rows=${rows} in ${s.toFixed(1)} s (${(rows / s).toFixed(1)} rows/s single thread) drops=${JSON.stringify(drops)}`);
+    times.sort((a, b) => b[0] - a[0]);
+    for (const [ms, sd, d] of times.slice(0, 8)) console.log(`slow seed ${sd}: ${(ms / 1000).toFixed(1)} s ${d}`);
+    const tot = times.reduce((a, b) => a + b[0], 0);
+    console.log(`top 10% of seeds = ${((times.slice(0, Math.ceil(times.length / 10)).reduce((a, b) => a + b[0], 0) / tot) * 100).toFixed(0)}% of time`);
+    console.log(`trajectories: rows=${rows} in ${s.toFixed(1)} s (${(rows / s).toFixed(1)} rows/s single thread), runCost ${(tj.costMs / 1000).toFixed(1)} s, drops=${JSON.stringify(drops)}`);
   }
 }
 main().catch((e) => {

@@ -97,10 +97,7 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 
 | node(s) | claimed by | until | for |
 |---|---|---|---|
-| c02, c09 | TRAIN | ≈ 02:10 | final round 1 eval + export (then free) |
-| c03–c08, c10, c11 | TRAIN | ≈ 03:10 | R68 student benchmark on phase A |
-| c12–c23 | TRAIN | open-ended | teacher T150 on gold (A+B, then scaled SIM) |
-| c01 | TRAIN | on demand | workbench (deallocated when idle) |
+| c01–c23 | free (all deallocated 01:56) | — | TRAIN restarts its claim when situation-v2 data lands (teacher on c12–c23, students on c02–c11, workbench c01) |
 | train, data | SIM / REAL | — | generation |
 | data | SIM | from 00:55 UTC, open-ended | scaled generation (gold / unlabeled / on-policy); deallocated when idle |
 | train | SIM | until phase B ends (≈ 01:45 UTC), then shared with REAL | phase B + bundle server (10.0.0.4:8810) |
@@ -119,8 +116,17 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
   model's own decision points; generating export named in the batch manifest). Clean runs: `meta.clean: true`.
 - Held out (test only): domains `sim/src/world/scenario.ts` `TEST_DOMAINS` (19/115), families by hash (17%),
   patterns `TEST_PATTERNS`, **features** `TEST_FEATURES` = swcache, presence, cascade, saga, prefetch, permissions.
-- Phase A: `train:~/gcl/sim/sim/out/final-a/` (600,676 rows). Phase B: `train:~/gcl/sim/sim/out/final-b/parts/`
-  (1.4M rows when done; finished `part-NNNNNN.<split>.jsonl` files are usable as they land).
+- **Moved 02:01 UTC to the 1 TB data disk:** all SIM outputs now live in `train:/data/sim-out/` (the old path
+  `~/gcl/sim/sim/out` is a symlink to it). New SIM runs write under `/data/sim-out/` only.
+- Phase A: `train:/data/sim-out/final-a/` (600,676 rows: train 448,420 / dev 14,613 / test 137,643).
+- Phase B: DONE 01:45 UTC, `train:/data/sim-out/final-b/parts/` (2,454 parts, 1,415,344 rows: train 1,056,383 /
+  dev 35,269 / test 323,692; 5.0 GB; `cat parts/*.train.jsonl` etc., or `bash sim/scripts/final.sh merge-b`, which
+  now has room on `/data`). Stats: `/data/sim-out/final-b.analysis.txt`. Same code/runtime as phase A.
+- Separability analysis (02:05 UTC →): `train:/data/sim-out/sep/` and probe rows `train:/data/sim-out/probe-150k/`
+  (analysis only, not training data: `meta.probe` carries sim-only hidden facts). Findings: `sim/SEPARABILITY.md`.
+- gold-r1x (v1, situation-v1, 115 domains + round-2 personas/regimes/clean runs, original 15 features; stopped when
+  bulk v1 was paused): `data:~/simdata/gold-r1x/` (832,279 rows: train 625,847 / dev 20,620 / test 185,812; gz shards
+  + manifest; `data` is deallocated, start it to pull).
 - Distributed batches (gz shards + `manifest.json`, deduped, test-first): collected per run under
   `data:~/simdata/<run>/` — locations listed here as they land.
 
@@ -140,3 +146,13 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     Real-app eval set (unambiguous cases: stale-overwrite, duplicate-submit, clean-benign, benign-salient,
     genuine-break): `realapps/scripts/evalset.py` → `<dir>/real_eval.jsonl` with `meta.eval_case`/`eval_expect`.
     Locations are listed below as batches land.
+15. **REAL pilot (runtime `situation-v1`; audit data, superseded by v2 batches).** `train:/data/real-out/pilot4/`
+    (= `~/gcl/real-out/pilot4`): 230 trajectories, 26 apps (22 written + 4 open-source Conduit front-ends),
+    gold `{train 1,210, dev 47, test 397}` (incl. 439 ask rows, 171 diagnosis-only), unlabeled 2,325
+    (`unlabeled-<split>.jsonl`), `stats.json`, `manifest.json` (held-out lists), `analysis.json` (comparison with SIM
+    final-A). Real-app eval set: `train:/data/real-out/pilot4/eval/real_eval.jsonl` (213 rows: benign-salient 137,
+    clean-benign 37, stale-overwrite 18, duplicate-submit 17, genuine-break 4) + `manifest.json`. Audit:
+    `realapps/EXAMPLES.md`. **REAL will not mass-produce until CORE freezes `situation-v2`** (lead's instruction); the
+    harness is format-agnostic (records whatever the runtime hands the decider; passive actions come from the
+    runtime's own `PASSIVE`; `delivery` diagnosed). Builds pin the runtime source to a git tag
+    (`RW_RUNTIME_SRC`/`RW_RUNTIME_TAG`; `meta.runtime` in every row).

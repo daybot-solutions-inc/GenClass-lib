@@ -1,5 +1,14 @@
 # TRAIN plan v1 — scaled training on errors (teacher → students → DAgger)
 
+**Status 02:00 UTC:** final round 1 (situation-v1) is done and is the baseline (EVAL.md): R17 = R32 at 82% action /
+90% diagnosis accuracy, guard FIR 0.05%, heal FIR 0.24%, ECE 0.01, but recall on clear actionable cases only ≈ 5%:
+students cannot separate clear actionable situations from benign look-alikes (argmax 41% on clear rows), and 3× more
+student compute (R32) does not help. CORE is moving to **situation-v2** (`delivery` trigger, non-blocking mutations);
+everything below starts on v2 data, with these extra checks: (a) the teacher's separation on clear cases is the
+first gate (P2) — if a 150M teacher is also near 40% argmax on clear rows, the bottleneck is the situation
+information, and the fix is in SIM/CORE (what the situation shows), not in model size; (b) DAgger rows and REAL rows
+are evaluated for clear-case recall separately.
+
 Mandate (user, 2026-10-08): "Find a lot of data, so much data to train on errors that it'll be insane. We want this
 model to be crazy. Use Azure, I don't care." Final round 1 (frozen runtime, SIM phase A) is the baseline; this plan
 scales from it. Licensing rule unchanged: MIT ettin bases + our synthetic/simulated/real-app data only; never

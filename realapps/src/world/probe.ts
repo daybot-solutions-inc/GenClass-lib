@@ -10,7 +10,13 @@ import type { Network } from "./net.js";
 import type { NetApi } from "./netapi.js";
 import { hashAll, type MockServer } from "./server.js";
 
-export const PASSIVE: Record<string, string> = { mutation: "apply", request: "send", failure: "deliver", stall: "wait", inconsistency: "ignore", transition: "ignore", error: "ignore" };
+import { PASSIVE as RT_PASSIVE } from "@rt/questions";
+
+/** Passive action per trigger, from the runtime build in use (new triggers: the first offered action). */
+export const PASSIVE: Record<string, string> = { ...(RT_PASSIVE as Record<string, string>) };
+export function passiveOf(trigger: string, actions: string[]): string {
+  return PASSIVE[trigger] || actions[0] || "";
+}
 
 export interface OpLite {
   id: number;
@@ -47,6 +53,50 @@ export interface WriteInfo {
   paths: string[];
   cause?: number;
   t: number;
+  /** Per path: ids of the list elements this write changes (added/removed/changed), or "*" (the whole field). */
+  keys?: Record<string, string[] | "*">;
+}
+
+/** Which elements of a list field a change touches, by element identity; "*" when not a keyed list. */
+export function changedKeys(before: unknown, after: unknown): string[] | "*" {
+  const isObj = (x: unknown) => !!x && typeof x === "object" && !Array.isArray(x);
+  if (isObj(before) && isObj(after)) {
+    // a keyed collection (normalised byId map): the keys whose values differ
+    const a = before as Record<string, unknown>;
+    const b = after as Record<string, unknown>;
+    const out: string[] = [];
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) out.push(k);
+    return out;
+  }
+  if (!Array.isArray(before) || !Array.isArray(after)) return "*";
+  const idOf = (x: unknown): string | undefined => {
+    if (!x || typeof x !== "object") return undefined;
+    const o = x as Record<string, unknown>;
+    const k = o.id ?? o.key ?? o.slug ?? o.clientId ?? o._id ?? o.uuid;
+    return k === undefined || k === null ? undefined : String(k);
+  };
+  const m = new Map<string, string>();
+  for (const x of before) {
+    const k = idOf(x);
+    if (k === undefined) return "*";
+    m.set(k, JSON.stringify(x));
+  }
+  const out = new Set<string>();
+  const seen = new Set<string>();
+  for (const x of after) {
+    const k = idOf(x);
+    if (k === undefined) return "*";
+    seen.add(k);
+    if (m.get(k) !== JSON.stringify(x)) out.add(k);
+  }
+  for (const k of m.keys()) if (!seen.has(k)) out.add(k);
+  return [...out];
+}
+
+export function keysOverlap(a: string[] | "*" | undefined, b: string[] | "*" | undefined): boolean {
+  if (a === undefined || b === undefined || a === "*" || b === "*") return true;
+  const s = new Set(a);
+  return b.some((k) => s.has(k));
 }
 
 function safeJson(v: unknown): string {
@@ -69,6 +119,9 @@ function safeJson(v: unknown): string {
     return "null";
   }
 }
+
+/** Elements whose text starts and ends a line in DOM snapshots. */
+const BLOCK = /^(DIV|P|LI|TR|TD|TH|H[1-6]|SECTION|ARTICLE|HEADER|FOOTER|NAV|MAIN|ASIDE|UL|OL|TABLE|FORM|LABEL|BUTTON|A|OPTION|DT|DD|FIGCAPTION|SUMMARY|DETAILS|DIALOG)$/;
 
 /** Store fields that hold an error message for the user (by name). */
 const ERROR_FIELD = /(^|[._])(errors?|err|errorMessage|errorMsg|alert|failure|failed|problem)$/i;
@@ -94,6 +147,16 @@ export class Probe {
   private xhrUnbound: number[] = [];
   writes = new Map<number, WriteInfo>();
   userFieldTime = new Map<string, number>();
+  /** User writes per path: time and the elements they changed (most recent last, bounded). */
+  userWrites = new Map<string, { t: number; keys: string[] | "*" }[]>();
+  private userMutations = new Set<number>();
+  addUserWrite(path: string, t: number, keys: string[] | "*"): void {
+    this.userFieldTime.set(path, t);
+    const l = this.userWrites.get(path) ?? [];
+    l.push({ t, keys });
+    if (l.length > 40) l.splice(0, l.length - 40);
+    this.userWrites.set(path, l);
+  }
   /** Actual dispatch time per (step, sub). */
   subTimes = new Map<string, number>();
   stepsRan: { i: number; t: number }[] = [];
@@ -221,13 +284,24 @@ export class Probe {
             break;
           }
         }
-        const wi: WriteInfo = { id: m.id, store: m.store, paths: m.paths.slice(0, 16), t: this.loop.now, ...(m.cause !== undefined ? { cause: m.cause } : {}) };
+        const keys: Record<string, string[] | "*"> = {};
+        for (const c of m.changes ?? []) {
+          try {
+            keys[c.path] = changedKeys(c.before, c.after);
+          } catch {
+            keys[c.path] = "*";
+          }
+        }
+        const wi: WriteInfo = { id: m.id, store: m.store, paths: m.paths.slice(0, 16), t: this.loop.now, keys, ...(m.cause !== undefined ? { cause: m.cause } : {}) };
+        if (m.cause !== undefined && this.ops.get(m.cause)?.kind === "user") {
+          this.userMutations.add(m.id);
+          for (const p of m.paths) this.addUserWrite(p, this.loop.now, keys[p] ?? "*");
+        }
         this.writes.set(m.id, wi);
         if (this.writes.size > 4000) {
           const first = this.writes.keys().next().value;
           if (first !== undefined) this.writes.delete(first);
         }
-        if (m.cause !== undefined && this.ops.get(m.cause)?.kind === "user") for (const p of m.paths) this.userFieldTime.set(p, this.loop.now);
       },
     };
   }
@@ -284,7 +358,7 @@ export class Probe {
     const t = this.loop.now;
     const aq = req.questions.action;
     const actions = aq && aq.type === "choice" ? Object.keys(aq.criteria as object) : [];
-    const passive = PASSIVE[req.trigger] ?? actions[0] ?? "";
+    const passive = passiveOf(req.trigger, actions);
     let diag: { label?: string; why: string } = { why: "error" };
     try {
       diag = diagnose(this, req.trigger, req.subject ?? {}, t);
@@ -309,7 +383,7 @@ export class Probe {
       const s: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(subj)) if (k !== "error") s[k] = v;
       if (subj.error) s.error = String((subj.error as Error)?.message ?? subj.error).slice(0, 200);
-      const rec: DecisionRec = { k: idx, t, trigger: req.trigger, actions, chosen, explored, fp, subject: s, ...(diag.label ? { diagnosis: diag.label } : {}), diagWhy: diag.why };
+      const rec: DecisionRec = { k: idx, t, trigger: req.trigger, actions, chosen, explored, fp, subject: s, ...(diag.label ? { diagnosis: diag.label } : {}), diagWhy: diag.why, ...(diag.trace ? { diagTrace: diag.trace } : {}) };
       if (this.cfg.record) {
         rec.state = req.state;
         rec.questions = req.questions as Record<string, unknown>;
@@ -343,20 +417,86 @@ export class Probe {
         self.api = api;
         self.rt = (api.runtime as Probe["rt"]) ?? null;
         api.on("event", (e) => {
-          if (e.kind === "state") self.dirtyStores.add(String(e.data?.store ?? e.name));
+          if (e.kind !== "state") return;
+          self.dirtyStores.add(String(e.data?.store ?? e.name));
+          // a write made by a user action (directly on a guarded/adapter store too): the user changed these fields
+          // writes made outside the pipeline (guarded/adapter stores mutated directly) only show up here
+          const op = (e as { op?: number }).op;
+          const mid = e.data?.mutation as number | undefined;
+          if ((e.data?.user || (op !== undefined && self.ops.get(op)?.kind === "user")) && !(mid !== undefined && self.userMutations.has(mid)))
+            for (const p of (e.data?.paths as string[] | undefined) ?? []) self.addUserWrite(p, self.loop.now, "*");
         });
       },
     };
   }
 
+  /** Elements matching `sel` in the document and inside every open shadow root. */
+  deepAll(sel: string): Element[] {
+    const out: Element[] = [];
+    const visit = (root: ParentNode) => {
+      try {
+        out.push(...Array.from(root.querySelectorAll(sel)));
+      } catch {
+        return;
+      }
+      for (const el of Array.from(root.querySelectorAll("*"))) {
+        const sr = (el as Element & { shadowRoot: ShadowRoot | null }).shadowRoot;
+        if (sr) visit(sr);
+      }
+    };
+    visit(this.w.document);
+    return out;
+  }
+
+  /** Visible text of an element including open shadow roots (innerText skips shadow content). */
+  private deepText(root: Element): string {
+    const sr = (root as Element & { shadowRoot: ShadowRoot | null }).shadowRoot;
+    const parts: string[] = [];
+    const walk = (n: Node) => {
+      if (n.nodeType === 3) {
+        const t = (n.textContent ?? "").trim();
+        if (t) parts.push(t);
+        return;
+      }
+      if (n.nodeType !== 1 && n.nodeType !== 11) return;
+      const el = n as HTMLElement;
+      if (n.nodeType === 1) {
+        const tag = el.tagName;
+        if (tag === "SCRIPT" || tag === "STYLE" || tag === "TEMPLATE") return;
+        if (el.hidden) return;
+        if (el.getClientRects().length === 0 && tag !== "SLOT" && this.w.getComputedStyle(el).display === "none") return;
+        const shadow = (el as Element & { shadowRoot: ShadowRoot | null }).shadowRoot;
+        if (shadow) {
+          walk(shadow);
+          return;
+        }
+        if (tag === "SELECT") {
+          // a closed select shows its selected option only
+          const o = (el as HTMLSelectElement).selectedOptions?.[0];
+          if (o) parts.push("\n", (o.textContent ?? "").trim(), "\n");
+          return;
+        }
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        if (BLOCK.test(tag)) parts.push("\n");
+      }
+      for (const c of Array.from(n.childNodes)) walk(c);
+      if (n.nodeType === 1 && BLOCK.test(el.tagName)) parts.push("\n");
+    };
+    walk(sr ?? root);
+    return parts.join(" ").replace(/ *\n */g, "\n");
+  }
+
+  /** Set once any shadow root was attached (then text walks into shadow roots). */
+  hasShadow = false;
+
   private domLines(): string[] {
     const root = this.w.document.querySelector(this.cfg.domRoot) ?? this.w.document.body;
     if (!root) return [];
-    const txt = (root as HTMLElement).innerText ?? root.textContent ?? "";
+    const txt = this.deepText(root);
     const errText = new Set<string>();
     try {
-      for (const e of Array.from(this.w.document.querySelectorAll(this.cfg.errorSelector)))
-        for (const l of ((e as HTMLElement).innerText ?? "").split("\n")) {
+      for (const e of this.hasShadow ? this.deepAll(this.cfg.errorSelector) : Array.from(this.w.document.querySelectorAll(this.cfg.errorSelector)))
+        for (const l of this.deepText(e).split("\n")) {
           const x = l.replace(/\s+/g, " ").trim();
           if (x) errText.add(x);
         }
@@ -409,7 +549,9 @@ export class Probe {
       }
       let e = 0;
       try {
-        e = this.w.document.querySelectorAll(this.cfg.errorSelector).length;
+        const els = this.hasShadow ? this.deepAll(this.cfg.errorSelector) : Array.from(this.w.document.querySelectorAll(this.cfg.errorSelector));
+        // shown errors only: hidden placeholders and empty alert regions do not count
+        e = els.filter((x) => !(x as HTMLElement).hidden && x.getClientRects().length > 0 && (x.textContent ?? "").trim() !== "").length;
       } catch {
         e = 0;
       }

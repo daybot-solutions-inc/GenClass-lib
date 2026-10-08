@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ManualDecider, defaultScript, setup } from "./helpers.js";
+import { ManualDecider, defaultScript, setup as baseSetup } from "./helpers.js";
+
+// Store-write holds are opt-in (policy.holdWrites); these tests cover that mode. Default-mode behaviour (no holds,
+// background decisions, delivery decisions) is in delivery.test.ts.
+const setup = (o: Parameters<typeof baseSetup>[0] = {}) => baseSetup({ ...o, policy: { holdWrites: true, ...(o?.policy ?? {}) } });
 
 const discard = defaultScript({ mutation: { diagnosis: "stale", action: "discard" } });
 const apply = defaultScript({ mutation: { diagnosis: "expected", action: "apply" } });
@@ -68,14 +72,16 @@ describe("atoms and the mutation pipeline (CONTRACT §4)", () => {
     expect(a.get()).toBe(2);
     expect(rt.decisions()[0].executed).toBe(false);
     expect(rt.decisions()[0].reason).toMatch(/^superseded: v changed again after the write applied/);
-    // too late: the runtime stops waiting for the answer 2 s after the hold budget (no decision is recorded)
+    // too late: the model now takes longer than the hold budget (150 ms vs 100 ms), so the write is not held at
+    // all; the decision arrives 2.5 s after it applied: no revert
     const b = rt.atom("b", 0);
     void rt.op("w2", () => b.set(1));
+    expect(b.get()).toBe(1);
     await clock.advance(2500);
     manual.answer(discard);
     await clock.flush();
     expect(b.get()).toBe(1);
-    expect(rt.decisions()).toHaveLength(1);
+    expect(rt.decisions()[1].reason).toMatch(/too late to revert/);
   });
 
   it("a late discard does not revert a write when the same chain wrote again after it", async () => {
@@ -139,17 +145,47 @@ describe("atoms and the mutation pipeline (CONTRACT §4)", () => {
     expect(a.get()).toEqual([1, 1, 2]);
   });
 
-  it("functional updates re-run against the value at apply time", async () => {
+  it("a user write never overtakes an earlier held write of the same store (DEMOS regression): the user's value wins", async () => {
+    const manual = new ManualDecider();
+    const { rt, clock } = setup({ decider: manual, triage: "always" });
+    const s = rt.atom("s", { x: 0 });
+    void rt.op("event", () => s.update((v) => ({ ...v, x: 1 }))); // a held functional write to s.x
+    expect(s.get().x).toBe(0);
+    rt.user({ kind: "click", target: "button" }, () => s.update((v) => ({ ...v, x: 2 }))); // newer user write
+    expect(s.get().x).toBe(2); // the held write applied first, in order; then the user's
+    manual.answer(apply); // release the hold with apply
+    await clock.flush();
+    expect(s.get().x).toBe(2);
+  });
+
+  it("functional updates queued behind a held write re-run against the value at apply time", async () => {
     const manual = new ManualDecider();
     const { rt, clock } = setup({ decider: manual, triage: "always" });
     const n = rt.atom("n", 0);
     void rt.op("inc", () => n.update((x) => x + 1));
+    void rt.op("inc", () => n.update((x) => x + 10));
     expect(n.get()).toBe(0);
-    rt.user({ kind: "click", target: "button" }, () => n.set(10)); // user write goes first
-    expect(n.get()).toBe(10);
+    manual.answer(apply);
+    await clock.flush();
     manual.answer(apply);
     await clock.flush();
     expect(n.get()).toBe(11);
+  });
+
+  it("read-your-writes: inside the writing chain get() returns the pending value; elsewhere the applied one", async () => {
+    const manual = new ManualDecider();
+    const { rt, clock } = setup({ decider: manual, triage: "always" });
+    const a = rt.atom("a", { v: 0 });
+    let inside: number | undefined;
+    void rt.op("w", () => {
+      a.set({ v: 5 });
+      inside = a.get().v; // read after write in the same chain
+    });
+    expect(inside).toBe(5);
+    expect(a.get().v).toBe(0); // other code sees the applied state
+    manual.answer(apply);
+    await clock.flush();
+    expect(a.get().v).toBe(5);
   });
 
   it("held value writes are re-applied as patches over newer user input", async () => {
@@ -183,25 +219,19 @@ describe("atoms and the mutation pipeline (CONTRACT §4)", () => {
   });
 
   it("defer re-decides after the related in-flight operations settle (max 2 defers)", async () => {
-    const { rt, clock, server, fetch, decider } = setup({ triage: "always", script: defaultScript({ mutation: { diagnosis: "conflict", action: "defer" } }) });
-    server.on("GET", "/api/x", ({ n }) => ({ body: n, latency: n === 1 ? 300 : 50 }));
+    const { rt, clock, decider } = setup({ triage: "always", script: defaultScript({ mutation: { diagnosis: "conflict", action: "defer" } }) });
     const a = rt.atom("x", 0);
-    const load = () =>
-      rt.user({ kind: "click", target: "button" }, () => {
-        void (async () => {
-          const v = (await (await fetch("/api/x")).json()) as number;
-          a.set(v);
-        })();
-      });
-    load();
-    await clock.advance(10);
-    load();
-    await clock.advance(2000);
-    // writes were deferred up to twice, then applied
+    let finish!: () => void;
+    void rt.op("load", () => new Promise<void>((r) => (finish = r))); // a related op of the same signature, in flight
+    void rt.op("load", () => a.set(1)); // held: defer until the other "load" settles
+    await clock.flush();
+    expect(a.get()).toBe(0);
+    finish();
+    await clock.advance(100);
     const muts = decider.calls.filter((c) => c.trigger === "mutation");
     expect(muts.length).toBeGreaterThanOrEqual(2);
     expect(rt.interventions().every((r) => r.action === "defer")).toBe(true);
-    expect([1, 2]).toContain(a.get());
+    expect(a.get()).toBe(1);
     const last = muts[muts.length - 1];
     expect(Object.keys((last.questions.action as { criteria: object }).criteria)).not.toContain("defer");
   });

@@ -47,6 +47,7 @@ describe("plugins, custom actions and standing questions (CONTRACT §9)", () => 
   it("a custom action can run a built-in action through ctx.builtin", async () => {
     const { rt, clock } = setup({
       triage: "always",
+      policy: { holdWrites: true },
       script: (req) => ({
         diagnosis: choice("stale", Object.keys((req.questions.diagnosis as { criteria: object }).criteria)),
         action: choice("drop_and_log", Object.keys((req.questions.action as { criteria: object }).criteria)),

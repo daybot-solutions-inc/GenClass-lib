@@ -72,7 +72,7 @@ describe("review: in-place mutation", () => {
 describe("review: in-place updater while held", () => {
   it("a held in-place update is not visible before it applies, and discard really drops it", async () => {
     const manual = new ManualDecider();
-    const { rt, clock } = setup({ decider: manual, triage: "always" });
+    const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdWrites: true } });
     const cart = rt.atom("cart", { items: [1] as number[] });
     cart.set((c) => {
       c.items.push(2); // mutable update inside the updater

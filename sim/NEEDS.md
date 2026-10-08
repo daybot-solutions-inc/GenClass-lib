@@ -56,3 +56,29 @@ f. **A remote write that conflicts with a pending local change is never salient.
 - `transient` (CONTRACT §6) is not yet in `src/situation/questions.ts` `DEFAULT_DIAGNOSES`. Until it is, the sim
   passes the contract's default vocabulary explicitly (same wording, `transient` last) on default-vocabulary
   trajectories, and switches back automatically once the runtime's defaults contain every contract label.
+
+## Batch 4 / situation-v2 (`delivery` at the network boundary): what the sim needs (OPEN, 2026-10-08 01:35 UTC)
+
+The sim forces each applicable action at a decision and measures its counterfactual cost, and labels the diagnosis
+from its own knowledge of the subject. For `delivery` (a fetch response or WebSocket message about to reach the app)
+it needs:
+
+1. **SubjectRef for `delivery`**: `{ kind: "delivery", op }`, where `op` is the fetch op (same id as `opCreated` gave)
+   or the WebSocket *message* op. Optionally `paths` the op's chain is known to write (from profiles); not required.
+2. **`hooks.opCreated` stays synchronous for WebSocket message ops**, fired inside the socket's `message` dispatch before
+   any app listener runs (the sim sets an ambient tag around its own dispatch to map message op → which simulated
+   push it was). Same for fetch ops (already the case).
+3. **Deterministic holds**: a held delivery waits only on the injected clock/decider (no real timers, no
+   `queueMicrotask` loops that depend on real time), and the app sees nothing of the response before the decision.
+   `defer`/`delay`-like re-decisions must re-enter the decider (new decision index) so forced futures stay replayable.
+4. **Action names, tiers and passive action per trigger** for `delivery` and the non-blocking `mutation` (late revert)
+   listed in STATUS.md, and the same forcing semantics as today: with `thresholds` 0.5 and `requireDiagnosis: false`,
+   probability 1 on an action runs exactly that action (passive with mass 0 runs passive).
+5. **Observable effect of `discard` at delivery**: `ActionRecord.changed` (or a `data` field on the action event) naming
+   the store paths whose writes were dropped, so sim tests can assert "dropped the stale write" vs "dropped nothing".
+6. Keep `hooks.mutationProposed` synchronous (write correlation), `situation()` side-effect free, `vocabulary`,
+   `situation.budget`, and `policy.requireDiagnosis` — all used by the generator.
+
+How the sim will label `delivery` rows: action labels exactly as today (K = 3 paired futures, costs vs the
+ideal run). Diagnosis = the label of the subject op's first data write in the passive branch (the writes the delivery
+would have caused, classified by the existing per-write rules), else `expected`; failures keep their failure rules.

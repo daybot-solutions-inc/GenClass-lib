@@ -32,18 +32,19 @@ function count(v: unknown): number {
 }
 
 describe("situation budget (latency)", () => {
-  it("section limits: compact at 1,100, full at 3,200, linear in between", () => {
+  it("section limits: compact at 1,100, full at 2,400, linear in between", () => {
     expect(sectionLimits(1100)).toMatchObject({ facts: 6, in_flight: 2, timeline: 3, state: 3, stats: 1 });
-    expect(sectionLimits(2000)).toMatchObject({ facts: 9, in_flight: 4, timeline: 9, state: 5, stats: 2 });
-    expect(sectionLimits(3200)).toMatchObject({ facts: 12, in_flight: 6, timeline: 16, state: 8, stats: 4 });
+    expect(sectionLimits(1750)).toMatchObject({ facts: 9, in_flight: 4, timeline: 10, state: 6, stats: 3 });
+    expect(sectionLimits(2400)).toMatchObject({ facts: 12, in_flight: 6, timeline: 16, state: 8, stats: 4 });
+    expect(sectionLimits(3200)).toEqual(sectionLimits(2400));
     expect(sectionLimits(500)).toEqual(sectionLimits(1100));
   });
 
   for (const budget of [1000, 1100, 2000]) {
     it(`a ${budget}-char budget shapes every section and keeps the most informative facts`, async () => {
-      const s = setup({ situation: { budget }, script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
+      const s = setup({ situation: { budget }, script: defaultScript({ delivery: { diagnosis: "stale", action: "discard" } }) });
       await typeahead(s);
-      const req = s.decider.calls.filter((c) => c.trigger === "mutation").pop()!;
+      const req = s.decider.calls.filter((c) => c.trigger === "delivery").pop()!;
       const L = sectionLimits(budget);
       expect(stateChars(req.state)).toBeLessThanOrEqual(budget);
       expect(count(req.state.facts)).toBeGreaterThanOrEqual(1);
@@ -52,7 +53,7 @@ describe("situation budget (latency)", () => {
       expect(count(req.state.timeline)).toBeLessThanOrEqual(L.timeline);
       expect(count(req.state.state)).toBeLessThanOrEqual(L.state);
       expect(count(req.state.stats)).toBeLessThanOrEqual(L.stats);
-      expect((req.state.facts as string[])[0]).toMatch(/^search\.results was written once by other operations since this write's cause \(#\d+\) started/);
+      expect((req.state.facts as string[]).join("\n")).toMatch(/search\.results was written twice by other operations since its operation \(#\d+\) started/);
       // compact questions at ≤ 1,400 chars: bare diagnosis labels and action names, same instructions
       const dq = req.questions.diagnosis as { criteria: Record<string, string | null>; instructions: string };
       const aq = req.questions.action as { criteria: Record<string, string | null> };
@@ -66,7 +67,7 @@ describe("situation budget (latency)", () => {
       const qs = Object.entries(req.questions)
         .map(([k, q]) => `${k}: ${q.instructions} ${q.type === "choice" ? Object.entries(q.criteria).map(([l, d]) => (d ? `${l}: ${d}` : l)).join(" | ") : ""}`)
         .join("\n  ");
-      console.log(`==== mutation at ${budget} chars (${stateChars(req.state)}) ====\n${stateText(req.state)}\nquestions:\n  ${qs}\n`);
+      console.log(`==== delivery at ${budget} chars (${stateChars(req.state)}) ====\n${stateText(req.state)}\nquestions:\n  ${qs}\n`);
     });
   }
 
@@ -90,10 +91,10 @@ describe("situation budget (latency)", () => {
     expect(await run()).toBe(await run());
   });
 
-  it('"auto" picks the budget from the model status: webgpu 3,200; wasm 1,000 (1 thread) to 2,000 (4 threads)', () => {
+  it('"auto" picks the budget from the model status: webgpu 2,400; wasm 1,000 (1 thread) to 2,000 (4 threads)', () => {
     const s = setup();
     s.decider.status = { state: "ready", device: "webgpu" };
-    expect(s.rt.situationBudget()).toBe(3200);
+    expect(s.rt.situationBudget()).toBe(2400);
     s.decider.status = { state: "ready", device: "wasm", threads: 1 };
     expect(s.rt.situationBudget()).toBe(1000);
     s.decider.status = { state: "ready", device: "wasm", threads: 2 };
@@ -103,7 +104,7 @@ describe("situation budget (latency)", () => {
     s.decider.status = { state: "ready", device: "wasm", threads: 16 };
     expect(s.rt.situationBudget()).toBe(2000);
     s.decider.status = { state: "ready" };
-    expect(s.rt.situationBudget()).toBe(3200);
+    expect(s.rt.situationBudget()).toBe(2400);
     const fixed = setup({ situation: { budget: 1500 } });
     fixed.decider.status = { state: "ready", device: "webgpu" };
     expect(fixed.rt.situationBudget()).toBe(1500);
@@ -118,7 +119,7 @@ describe("situation budget (latency)", () => {
     const a = s.rt.atom("a", 0);
     void s.rt.op("w", () => a.set(1));
     await s.clock.flush();
-    expect(s.rt.situationBudget()).toBe(2560);
+    expect(s.rt.situationBudget()).toBe(1920);
   });
 });
 
@@ -150,7 +151,7 @@ describe("hold budget", () => {
 
   it("held requests carry timeoutMs = the time left in the hold budget; expired queued requests are never computed", async () => {
     const manual = new ManualDecider();
-    const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdBudgetMs: 200 } });
+    const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdBudgetMs: 200, holdWrites: true } });
     const a = rt.atom("a", 0);
     const b = rt.atom("b", 0);
     void rt.op("w1", () => a.set(1));

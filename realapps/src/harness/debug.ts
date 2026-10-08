@@ -9,7 +9,6 @@ import { APPS } from "./apps.gen.js";
 import { Runner } from "./browser.js";
 import { states } from "./cost.js";
 import { buildScenario } from "./scenario.js";
-import { serveApps } from "./serve.js";
 import { generateTrajectory, runConfig } from "./trajectory.js";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,9 +20,7 @@ const arg = (n: string, d?: string) => {
 };
 const appName = arg("app");
 const seed = Number(arg("seed", "1"));
-const port = Number(arg("port", String(8700 + (process.pid % 90))));
-const server = await serveApps(join(HERE, "..", "apps"), port);
-const runner = new Runner(port);
+const runner = new Runner(0);
 await runner.start();
 if (arg("det")) {
   // determinism sweep: base run twice per seed, every app (or --app), report any difference
@@ -35,8 +32,9 @@ if (arg("det")) {
   for (let sd = a0!; sd <= b0!; sd++) {
     for (const app of pool) {
       const sc = buildScenario(sd, [app]);
-      const r1 = await runner.run(runConfig(sc, { runId: "d1", record: true, explore: sc.explore }));
-      const r2 = await runner.run(runConfig(sc, { runId: "d2", record: true, explore: sc.explore }));
+      const id0 = await runner.run(runConfig(sc, { runId: "d0", ideal: true }));
+      const r1 = await runner.run(runConfig(sc, { runId: "d1", record: true, explore: sc.explore, pins: id0.pins ?? {} }));
+      const r2 = await runner.run(runConfig(sc, { runId: "d2", record: true, explore: sc.explore, pins: id0.pins ?? {} }));
       n++;
       const same = r1.ok && r2.ok && hash2(r1.decisions.map((d) => d.fp)) === hash2(r2.decisions.map((d) => d.fp)) && hash2(r1.snapshots) === hash2(r2.snapshots) && hash2(r1.net) === hash2(r2.net) && hash2(r1.server) === hash2(r2.server);
       if (!same) {
@@ -47,7 +45,45 @@ if (arg("det")) {
   }
   console.log(`determinism: ${n - bad}/${n} identical`);
   await runner.close();
-  server.close();
+  process.exit(0);
+}
+if (arg("interference")) {
+  // GenClass must not change an app when its model always picks the passive action: compare the same scenario with
+  // the runtime in observe mode (never changes execution) and in heal mode with an all-passive decider.
+  const [a0, b0] = String(arg("interference")).split("-").map(Number);
+  const pool = appName ? APPS.filter((a) => appName.split(",").includes(a.name)) : APPS;
+  const per: Record<string, { n: number; diff: number; dom: number; server: number; note: string[] }> = {};
+  for (let sd = a0!; sd <= b0!; sd++) {
+    for (const app of pool) {
+      const sc = buildScenario(sd, [app], arg("clean") ? { clean: true } : {});
+      const id0 = await runner.run(runConfig(sc, { runId: "i0", ideal: true }));
+      const obs = await runner.run(runConfig(sc, { runId: "obs", mode: "observe", pins: id0.pins ?? {} }));
+      const heal = await runner.run(runConfig(sc, { runId: "heal", mode: "heal", pins: id0.pins ?? {} }));
+      const r = (per[app.name] ??= { n: 0, diff: 0, dom: 0, server: 0, note: [] });
+      r.n++;
+      const so = states(obs);
+      const sh = states(heal);
+      const fo = so[so.length - 1]!;
+      const fh = sh[sh.length - 1]!;
+      const domDiff = JSON.stringify(fo.dom) !== JSON.stringify(fh.dom);
+      const srvDiff = JSON.stringify(obs.server) !== JSON.stringify(heal.server);
+      if (domDiff || srvDiff) {
+        r.diff++;
+        if (domDiff) r.dom++;
+        if (srvDiff) r.server++;
+        if (r.note.length < 2) r.note.push(`seed ${sd}: steps ${obs.stepsRun}/${obs.stepsSkipped} vs ${heal.stepsRun}/${heal.stepsSkipped}; dom ${fo.dom.length} vs ${fh.dom.length} lines`);
+      }
+    }
+  }
+  let tot = 0;
+  let bad = 0;
+  for (const [a, r] of Object.entries(per)) {
+    tot += r.n;
+    bad += r.diff;
+    console.log(`${a.padEnd(28)} ${r.diff}/${r.n} changed (dom ${r.dom}, server ${r.server}) ${r.note.join(" | ")}`);
+  }
+  console.log(`interference: ${bad}/${tot} runs changed by GenClass with an all-passive model`);
+  await runner.close();
   process.exit(0);
 }
 const scn = buildScenario(seed, appName ? APPS.filter((a) => a.name === appName) : APPS, arg("clean") ? { clean: true } : {});
@@ -73,7 +109,7 @@ if (arg("traj")) {
     for (const r of ideal.net.slice(0, 30)) console.log(`  net ${Math.round(r.t0)} ${r.method} ${r.url} -> ${r.status ?? r.outcome}`);
   }
   console.log(`ideal ok=${ideal.ok} err=${ideal.error ?? ""} tasks=${ideal.tasks} realMs=${ideal.realMs} snaps=${ideal.snapshots.length} net=${ideal.net.length} steps=${ideal.stepsRun}/${ideal.stepsSkipped} internal=${ideal.internalErrors.slice(0, 3).join(" | ")}`);
-  const base = await runner.run(runConfig(scn, { runId: "base", record: true, explore: scn.explore }));
+  const base = await runner.run(runConfig(scn, { runId: "base", record: true, explore: scn.explore, pins: ideal.pins ?? {}, ...(arg("mode") ? { mode: String(arg("mode")) } : {}) }));
   console.log(`base ok=${base.ok} err=${base.error ?? ""} tasks=${base.tasks} realMs=${base.realMs} snaps=${base.snapshots.length} net=${base.net.length} decisions=${base.decisions.length} steps=${base.stepsRun}/${base.stepsSkipped} ws=${base.wsMessages} uncaught=${base.uncaught.length} errEp=${base.errorEpisodes.length} internal=${base.internalErrors.slice(0, 3).join(" | ")}`);
   const trig: Record<string, number> = {};
   const diag: Record<string, number> = {};
@@ -89,11 +125,28 @@ if (arg("traj")) {
   console.log(`final stores: ${JSON.stringify(st[st.length - 1]!.stores).slice(0, 600)}`);
   console.log(`final dom: ${st[st.length - 1]!.dom.slice(0, 12).join(" | ")}`);
   for (const d of base.decisions.slice(0, Number(arg("show", "2")))) {
-    console.log(`---- #${d.k} t=${Math.round(d.t)} ${d.trigger} actions=${d.actions.join(",")} chosen=${d.chosen} diag=${d.diagnosis} (${d.diagWhy}) subject=${JSON.stringify(d.subject)}`);
+    console.log(`---- #${d.k} t=${Math.round(d.t)} ${d.trigger} actions=${d.actions.join(",")} chosen=${d.chosen} diag=${d.diagnosis} (${d.diagWhy}${d.diagTrace ? ` ${d.diagTrace}` : ""}) subject=${JSON.stringify(d.subject)}`);
     console.log(JSON.stringify(d.state, null, 1).slice(0, 2500));
   }
+  if (arg("force")) {
+    // run the counterfactual with action A forced at decision K (--force K:A) and print its DOM over time
+    const [k, a] = String(arg("force")).split(":");
+    const d = base.decisions[Number(k)]!;
+    const forced: [number, string][] = [...base.decisions.filter((x) => x.k < Number(k) && x.explored).map((x) => [x.k, x.chosen] as [number, string]), [Number(k), a!]];
+    const cf = await runner.run(runConfig(scn, { runId: "cf", forced, fpUpTo: Number(k), pins: ideal.pins ?? {}, tStop: Math.min(scn.tEnd, d.t + 15000) }));
+    const cst = states(cf);
+    const ist = states(ideal);
+    const bst = states(base);
+    for (const t of [d.t + 1000, d.t + 5000, d.t + 14000]) {
+      const pick = (ss: typeof cst) => ss.filter((x) => x.t <= t).pop()?.dom.slice(0, 14).join(" | ");
+      console.log(`@${Math.round(t)} ideal: ${pick(ist)}`);
+      console.log(`@${Math.round(t)} base : ${pick(bst)}`);
+      console.log(`@${Math.round(t)} ${a}: ${pick(cst)}`);
+    }
+    console.log(`cf steps ${cf.stepsRun}/${cf.stepsSkipped} skippedAt ${JSON.stringify(cf.skippedAt)}; base skippedAt ${JSON.stringify(base.skippedAt)}; ideal skippedAt ${JSON.stringify(ideal.skippedAt)}`);
+  }
   if (arg("twice")) {
-    const again = await runner.run(runConfig(scn, { runId: "base2", record: true, explore: scn.explore }));
+    const again = await runner.run(runConfig(scn, { runId: "base2", record: true, explore: scn.explore, pins: ideal.pins ?? {} }));
     const a = base.decisions.map((d) => d.fp);
     const b = again.decisions.map((d) => d.fp);
     let firstDiff = -1;
@@ -111,5 +164,4 @@ if (arg("traj")) {
 }
 console.log(`runner: ${runner.totalRuns} runs, ${runner.realMs} ms, phases ${JSON.stringify(runner.phases)}`);
 await runner.close();
-server.close();
 process.exit(0);

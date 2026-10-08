@@ -446,6 +446,34 @@ export function installTime(w: Window & typeof globalThis, opts: { epoch: number
   track(w.Blob?.prototype, ["text", "arrayBuffer", "bytes"]);
   track((w as unknown as { ReadableStreamDefaultReader?: { prototype: object } }).ReadableStreamDefaultReader?.prototype, ["read"]);
 
+  // FileReader completes on real time: count each read as native work until its loadend
+  const FR = (w as unknown as { FileReader?: { prototype: Record<string, unknown> } }).FileReader;
+  if (FR) {
+    for (const n of ["readAsText", "readAsArrayBuffer", "readAsDataURL", "readAsBinaryString"]) {
+      const orig = FR.prototype[n] as AnyFn | undefined;
+      if (typeof orig !== "function") continue;
+      FR.prototype[n] = function (this: EventTarget, ...a: unknown[]) {
+        loop.pendingNative++;
+        let done = false;
+        this.addEventListener("loadend", () => {
+          if (!done) {
+            done = true;
+            loop.pendingNative--;
+          }
+        }, { once: true });
+        try {
+          return orig.apply(this, a);
+        } catch (e) {
+          if (!done) {
+            done = true;
+            loop.pendingNative--;
+          }
+          throw e;
+        }
+      };
+    }
+  }
+
   // ----------------------------------------------------------- observers that depend on real layout timing
   class VObserver {
     constructor(_cb: unknown) {}

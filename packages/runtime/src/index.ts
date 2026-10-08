@@ -68,7 +68,7 @@ export function createRuntime(options: CreateOptions = {}): Runtime {
 }
 
 const MODES: readonly Mode[] = ["observe", "guard", "heal"];
-const ALL_OFF: Record<ObserverName, boolean> = { fetch: false, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, timers: false };
+const ALL_OFF: Record<ObserverName, boolean> = { fetch: false, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, eventsource: false, timers: false };
 
 /** `?genclass=off|observe|guard|heal` in the URL, or localStorage.genclass. */
 function killSwitch(g: Record<string, unknown>): string | null {

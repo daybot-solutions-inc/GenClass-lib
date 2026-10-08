@@ -57,6 +57,10 @@ export interface SimWrite {
   store: string;
   /** Top-level fields the write changes (relative to the value at proposal time). */
   fields?: string[];
+  /** Diagnosis of this write, computed at proposal time (the `mutation` rules); used for `delivery` decisions. */
+  diag?: string;
+  /** Push message (live channel) whose handler made this write. */
+  push?: number;
   feature: string;
   role: string;
   op?: number;
@@ -87,6 +91,17 @@ export class Knowledge {
   rtMutations = new Map<number, number>();
   /** Ambient sim op while the app synchronously calls fetch (for runtime op correlation). */
   callingOp: SimOp | null = null;
+  /** Separability probes (SIM_PROBE=1 only): cell-level provenance of writes. */
+  probe: { onWrite(w: SimWrite, cur: unknown, nv: unknown): void } | null = null;
+  /** Called for every recorded write (the runner computes its diagnosis). */
+  onWrite: ((w: SimWrite) => void) | null = null;
+  /** Push message whose app handler is running (writes get `push`). */
+  currentPush: number | null = null;
+  /** Push message being dispatched by the virtual socket (runtime ws-message op -> push id via opCreated). */
+  deliveringPush: number | null = null;
+  /** runtime ws message op id -> push id */
+  rtPushOps = new Map<number, number>();
+  nextPush = 1;
   /** Ambient intent while the runner calls runtime.user (runtime user op -> intent). */
   callingIntent: number | null = null;
   /** runtime user op id -> intent id */
@@ -159,6 +174,7 @@ export class Knowledge {
 
   write(p: Omit<SimWrite, "id" | "t">): SimWrite {
     const w: SimWrite = { ...p, id: this.writes.length + 1, t: this.now() };
+    if (this.currentPush !== null && w.push === undefined) w.push = this.currentPush;
     this.writes.push(w);
     return w;
   }

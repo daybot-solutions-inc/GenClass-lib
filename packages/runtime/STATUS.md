@@ -1,28 +1,139 @@
 # @genclass/runtime: status (CORE)
 
-Updated: 2026-10-07 (batch 3: REVIEW fixes, SIM a–f, §8 gate, compact questions). Owner: CORE. SIM, DEMOS, UI and
-MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
+Updated: 2026-10-08 (batch 4: situation v2, "never make a correct app worse"). Owner: CORE. SIM, DEMOS, UI, REAL
+and MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
 
 ## State
 
 On the VM (`npm install` at the repo root; in packages/runtime with `GENCLASS_MODEL_DIR=~/gcl/model/.cache-model`
-and `NODE_OPTIONS=--expose-gc`): `tsc --noEmit` clean, `tsup` build OK, `vitest run --exclude "test/browser/**"`:
-**37 files, 300 tests, all passing**, including every `test/review-*.test.ts` (no review test was modified), UI's
-53 and MODEL's 62. Measured on the shared VM (REVIEW's perf tests): keystroke write on a store with a 5,000-item
-array 0.14 ms; gated async write 0.19 ms; redux-style dispatch on 5,000 entities 0.68 ms (user) / 0.58 ms (async);
-settled point 0.2 ms (+1.4 ms with an unchanged 5,000-item adapter store).
+and `NODE_OPTIONS=--expose-gc`): `tsc --noEmit` clean, `tsup` build OK, `vitest run`: **40 files, 326 tests, 325
+passing**. The one failure is UI's `test/devtools-runtime.test.ts` "lists the runtime's interventions": the overlay
+titles a delivery intervention "Prevented a stale delivery" because `src/devtools/ui.ts` `NOUN` has no `delivery`
+entry (UI-owned; one line: `delivery: "response"`, and "message" for WebSocket/EventSource subjects, as
+`src/decide/report.ts` does). Every `test/review-*.test.ts` passes unchanged; MODEL's 62 pass. Perf (REVIEW's tests,
+shared VM): keystroke write with a 5,000-item array 0.30 ms; async write 0.15 ms; redux-style dispatch on 5,000
+entities 0.69 ms (user) / 0.66 ms (async); settled point 0.2 ms (+1.8 ms with an unchanged 5,000-item adapter store).
+
+**Never worse (REAL's harness, `realapps/`, built from this tree):** an all-passive model in heal mode against
+observe mode on the same scenario (`debug.js --interference`):
+- `oss-react-redux-conduit` (the app that never rendered under situation v1): 0/30 runs changed (clean) and 0/30
+  (with chaos); `--seed 3 --clean --mode guard|heal` renders the home page exactly as `--mode observe`.
+- All 64 apps, seeds 1–6 (384 runs), clean: 26 differ; 23 only in server-side `updatedAt` timestamps (requests held
+  by request-time decisions arrive a few ms later: same requests, same order, same bodies, same DOM). 3 differ in the
+  DOM, all from a held delivery landing a few ms later relative to a scripted user step (latency only; the app is
+  correct under either timing): saga-chat seed 4 (a pushed customer message held while the agent's own reply was in
+  flight lands after the agent switched conversation, so it counts as unread: "3 unread" vs "2"), valtio-ledger seed 2
+  (entries are appended in response order; a later scripted delete hits a different row), rtkq-helpdesk seed 5
+  (not reproducible on rerun). With chaos: 64/384 differ, 3 in the DOM (mobx-portfolio, preact-likes, saga-chat:
+  quote polls and chaos draws at shifted times). An earlier sweep (37 apps, before the XHR delivery gate; saga-chat
+  and valtio-ledger did not exist yet) had no DOM diffs in clean runs.
+- New regression test `test/no-reorder.test.ts`: realworld's promise middleware (drops a result when
+  `viewChangeCounter` changed between dispatch and resolution) through `genclassEnhancer`, with an always-passive
+  model answering after 10 ms: guard and heal, triage salient and always, give the same dispatches in the same order
+  and the same final state as observe mode.
 
 | area | files | notes |
 |---|---|---|
 | public facade | `src/index.ts`, `src/types.ts`, `src/errors.ts` | `GenClass` (init never throws), `createRuntime`, all public types, model host + errors re-exported |
 | clock | `src/clock.ts` | `browserClock` |
 | trace | `src/trace/{events,ops,context}.ts` | ring buffer, ops registry, ambient-op propagation; lazy timer ops never chain |
-| state | `src/state/{hub,fields,invariants}.ts` | incremental flattening, mutation pipeline, in-place-update protection, late revert, write logs, invariant miner |
-| observers | `src/observe/*.ts` | fetch, XHR, DOM user actions, errors, nav, storage, perf, websocket, timers, response cache; all pass through after destroy |
+| state | `src/state/{hub,fields,invariants}.ts` | incremental flattening, mutation pipeline (no holds by default), drop filter, write logs, late revert, invariant miner |
+| observers | `src/observe/*.ts` | fetch, XHR, DOM user actions, errors, nav, storage, perf, WebSocket, EventSource, timers, response cache; message gate (`messages.ts`) |
 | learn | `src/learn/{baselines,profiles}.ts` | baselines with real failure counts, transition profiles (bounded) |
-| situation | `src/situation/*.ts` | facts, budget-shaped serializer, compact questions, triage, subject refs (shared with the sim) |
-| decide | `src/decide/*.ts` | queue (deadlines, runtime-side timeout, cache, latency samples), §8 gate, reports |
-| runtime | `src/runtime.ts` | wiring, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
+| situation | `src/situation/*.ts` | facts, version conflicts (`conflicts.ts`), budget-shaped serializer, compact questions, triage, subject refs |
+| decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
+| runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
+
+## Batch 4 (done): situation v2
+
+**1. Decide at the network boundary, enforce synchronously at the store.** New trigger `delivery`: a fetch or XHR
+response is about to reach the app (before the app's promise resolves / before `load` fires), or a WebSocket or
+EventSource message is about to be dispatched (before any app listener runs).
+- Predicted write set P of the delivering op: the store fields its signature's causal chain wrote in past
+  completions (transition profile), else what the last completed op of that signature wrote, else unknown (never
+  salient on version grounds). Paths are normalised (`board.cards.:id`) and matched against current fields.
+- Salient iff a field in P has a **newer-data conflict** (its value now differs from when the op started and an op
+  that started later, outside this op's chain and not a user action itself, wrote it since) or a **pending local
+  change** (a user action's chain wrote it in the last 10 s and an op of that chain with a different signature is
+  still in flight: an unconfirmed optimistic update). Inputs that moved, a newer same-signature request in flight, and
+  user keystrokes that started newer requests of the same signature are never conflicts: in-order typeahead and
+  autosave make zero model calls (tested with the DEMOS search app: input + loading written per keystroke, 150 ms
+  debounce).
+- Actions (passive first): `deliver` (passive); `discard` (guard): deliver, but drop the writes this op's chain makes
+  over newer data, synchronously inside each write (other fields of the same write apply: loading flags, totals);
+  `defer` (guard, offered when related ops are in flight, at most 2): hold until the related in-flight ops finish,
+  then decide again. A dropped write is an event ("dropped the write of search.results by GET … over newer data (its
+  other changes applied)") and the `ActionRecord.dropped` list (paths, updated as later writes of the chain are
+  dropped; the mark lasts 10 s). Undo restores the dropped values.
+- XHR: the app's completion listeners (`readystatechange`, `progress`, `load`, `loadend`, added with
+  `addEventListener` before or after `open()`, or set as `on*` handlers) run through a thin wrapper; the first
+  completion event of a successful response asks the gate synchronously, and while it holds the app's completion
+  listeners are queued in order and run (op ambient) once delivered. `abort()` during the hold drops the response
+  and fires `abort` + `loadend`. `on*` getters return the wrapper. Failures (status 0, 5xx/429/408) are not gated.
+- Holding is only latency: the response object/event is unchanged; WebSocket/EventSource keep per-channel order
+  (later messages and close/error events queue behind a held one; each held message gets its own decision when it
+  reaches the head). Message ops are created synchronously inside the dispatch (`hooks.opCreated` fires before app
+  listeners) and are ambient while the app's handlers run.
+- Writes covered by a delivery decision (P known and covering the written fields, and the delivery was not salient or
+  was decided in time) raise no `mutation` decision, except with `triage: "always"`.
+
+**2. No store-write holds by default** (`policy.holdWrites: false`). A salient write not covered by a delivery
+decision raises `mutation`, triaged when proposed and decided in the background after the write applies (never
+blocks the app; `set(x); get()` returns x). A gate-passing `discard` becomes a late revert under the strict rules
+(≤ 2 s, fields unchanged since, no later write in the same chain). Background decisions have a 5 s deadline.
+`holdWrites: true` (opt-in) restores held writes with: (a) a later write to a store first applies that store's
+earlier held writes, in order (a hold never reorders a store's writes); (b) inside the writing op's chain `get()`
+returns the pending value (read-your-writes), elsewhere the applied one. Note: held writes are invisible to reads that
+bypass the runtime (a redux middleware's `store.getState()`); keep `holdWrites` off for such stores, or pass
+`hold: false` per store.
+
+**3. Hold only when it can help.** A trigger holds only if the expected model latency fits the hold budget: expected
+= usual provider latency × (1 + decisions queued ahead) + the decision being computed (at least as long as it has run
+so far); infinite while the provider is not answering (its last evaluation timed out and none answered since). Queued
+decisions whose subject was superseded (response already released, write overwritten, request aborted) are dropped
+before they reach the model.
+
+**4. `observe.untrustedEvents`** (default false): synthetic DOM events (`isTrusted === false`) are recorded as user
+actions only when this is on (test harnesses; REAL already passes it). Events dispatched while an app operation's code
+runs are never user actions.
+
+**5. Request-time decisions** unchanged.
+
+**Add-ons.** WebGPU (and unknown-device) situation budget 2,400 chars (TRAIN measured 2.4 chars/token: ≈ 1,000
+tokens); 4-thread WASM 2,000, 1-thread 1,000 (linear between). Section limits are now full at 2,400 (12 facts, 6
+in-flight, 16 timeline, 8 state, 4 stats) and compact at 1,100. The predicted write set is stated in the trigger
+sentence; a separate fact is added only for a transition profile (its counts). Room is left in the fact set for
+SIM's separability proposals (≤ 12 facts at full budget; delivery situations use 4–6 today).
+
+**Tests.** `test/delivery.test.ts` (14): typeahead zero calls; stale out-of-order response → delivery `discard` drops
+only `search.items` (the field with newer data) while the same write's other change (`search.loaded.a`) applies; holding is only latency; no hold when the model cannot
+answer in time; read-after-write; late revert path; slow model (released at budget, writes decided in background);
+superseded queued decision dropped; WebSocket order under a held message + discard; push messages touching nothing
+pending deliver at once with no model call; EventSource custom event types; XHR: a stale response held before any completion listener (pre-`open()`
+listener, `onload`, `loadend`; order kept), discard drops only the stale field; XHR hold = latency, op ambient,
+`removeEventListener` of a wrapped listener, `abort()` during the hold; forced actions with probability 1.
+`test/atoms.test.ts` runs with `holdWrites: true` and adds: user write never overtakes an earlier held write (DEMOS
+regression), read-your-writes. `test/no-reorder.test.ts` (6, above). `test/dom.test.ts`: untrustedEvents.
+Existing tests that assumed store holds now pass `policy: { holdWrites: true }` or were rewritten for `delivery`
+(smoke, situation, budget, report, plugins, batch3). Touched outside my files (minimal, for the record):
+`test/adapters-{react,redux,zustand}.test.ts` (`holdWrites: true` on real-runtime setups; react: answer the
+delivery decision before the mutation one), `test/devtools-runtime.test.ts` (titles/regexes for the delivery
+intervention), `test/browser/ui/session.ts` (its rule-based judge answers `delivery` like a stale `mutation`).
+
+**Contract deltas (batch 4)**
+- §5 triggers: new `delivery` (above). `mutation` is non-blocking by default; held only with `policy.holdWrites`.
+- §5 salience: a version conflict is "newer data" (net change + a writer that started after X, outside X's chain,
+  that is not itself a user action) or a "pending local change" (user-rooted write whose request of another
+  signature is in flight). A plain user action that changed the field is NOT salient by itself (the batch-4 brief
+  said "by a newer op or a user action"; counting every user write made DEMOS-style typeahead ask the model on
+  every response, because keystrokes write `loading`).
+- §6 budgets: full = 2,400 chars (was 3,200).
+- §8: holds require expected latency ≤ hold budget; superseded queued decisions are dropped; late revert is the only
+  enforcement path for writes when `holdWrites` is off.
+- §2 observers: `eventsource` observer; `observe.untrustedEvents`.
+- Types: `TriggerKind` + `delivery`; `SubjectRef {kind:"delivery", op, paths?, store?}` (paths = conflicting fields, else the matched predicted ones); `ActionRecord.dropped?: string[]`;
+  `SituationDraft.delivery?: {channel, predicted, conflicts}`; `PolicyOptions.holdWrites?`; `ObserverName` +
+  `eventsource`.
 
 ## Batch 3 (done)
 
@@ -114,7 +225,7 @@ settled point 0.2 ms (+1.4 ms with an unchanged 5,000-item adapter store).
   options bare names (null descriptions), same instructions; a vocabulary override description is kept only if ≤ 24
   chars. `Situation.compact` and `Situation.budget` are recorded.
 - Auto situation budget: webgpu 3,200; wasm 1,000 at 1 thread to 2,000 at 4 threads (1,333 at 2, 1,667 at 3);
-  unknown device 3,200.
+  unknown device 3,200. (Batch 4: webgpu and unknown device 2,400.)
 
 ## How to drive it headless (SIM, tests)
 
@@ -122,143 +233,171 @@ settled point 0.2 ms (+1.4 ms with an unchanged 5,000-item adapter store).
 import { createRuntime } from "@genclass/runtime";
 const rt = createRuntime({
   clock,                       // { now, setTimeout, clearTimeout, afterTask }
-  global,                      // object whose fetch (and optionally XMLHttpRequest/WebSocket/document/...) is instrumented
+  global,                      // object whose fetch (and optionally XMLHttpRequest/WebSocket/EventSource/document/...) is instrumented
   decider,                     // DecisionProvider; consulted only while status.state === "ready"
-  observe: { fetch: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, timers: false },
+  observe: { fetch: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, eventsource: false, timers: false },
   mode: "heal", triage: "salient", report: "silent",
-  policy: { thresholds: { report: 0, guard: 0, heal: 0 }, holdBudgetMs: 1e9, maxActionsPerMinute: 1e9, requireDiagnosis: false },
-  situation: { budget: 1000 },                        // sample budgets (e.g. 1000 / 1333 / 2000 / 3200); ≤ 1400 = compact questions
+  policy: { thresholds: { report: 0, guard: 0.5, heal: 0.5 }, holdBudgetMs: 1e9, maxActionsPerMinute: 1e9, requireDiagnosis: false },
+  situation: { budget: 1000 },                        // sample budgets (1000 / 1333 / 2000 / 2400); ≤ 1400 = compact questions
   hooks: { opCreated(op) {}, mutationProposed(m) {} },
   vocabulary: { diagnoses: {...}, actions: {...} },   // optional wording overrides
 });
 ```
 
-- `global.fetch` is replaced at construction; `rt.destroy()` restores it (and every other wrapped global).
-- `observe` defaults: every observer on, except `timers`, on only when `global.document` exists.
+- `global.fetch` (and WebSocket, EventSource, …) are replaced at construction; `rt.destroy()` restores them.
+- `observe` defaults: every observer on, except `timers`, on only when `global.document` exists. Synthetic DOM events
+  are user actions only with `observe.untrustedEvents: true`.
+- Holds are fully deterministic under the injected clock: a held response/message/request is released only by the
+  decision (clock-timed provider), the hold budget timer, or `defer`'s wait (which re-enters the decider). Only the
+  injected clock is used; same inputs → byte-identical situations at any budget (tested).
+- Forcing (the sim's semantics, kept): thresholds 0.5, `requireDiagnosis: false`, an answer with probability 1 on an
+  action runs exactly that action when the mode permits it (tested for `delivery` too).
+- Observable effect of a delivery `discard`: `ActionRecord.dropped` (paths), plus an `action`/`dropped` event per
+  dropped write (`data.paths`, `data.mutation`, `data.op`).
 - `createRuntime` has no model unless you pass `decider` or `model: {...}`. Outside a browser `GenClass.init()` returns
   an inert runtime.
-- With `thresholds: 0` every permitted candidate runs when the model's top diagnosis is not `expected` (or with
-  `requireDiagnosis: false`). In guard mode only guard-tier actions are permitted; triggers with no permitted action
-  are not held (decided in the background).
 - User actions: `rt.user({ kind, target?, value?, key?, sensitive? }, handler?)`. Values are redacted when
   `sensitive` or when the target names a secret (`input "Password"`, `input "Card number"`); a kanban `card "…"`
   keeps its value. Typing on the same target within 1 s is one timeline event per burst.
 - `app`: `CreateOptions.app()` if given, else `global.document.title` and `global.location.pathname`.
-- Only the injected clock is used; same inputs → byte-identical situations at any budget (tested).
 - Request identities for `Request` bodies are computed after a microtask read of a clone (≤ 100 ms of clock time);
   the op exists synchronously (opCreated) with `identity` filled in just before the request gate.
+- WebSocket/EventSource message ops are created synchronously inside the message dispatch, before any app listener
+  (opCreated fires there), and are ambient while the app's handlers run.
+
+### Actions per trigger (exported as `TRIGGER_ACTIONS`, `PASSIVE`, `BUILTIN_ACTIONS`)
+
+| trigger | passive | other actions (tier) | blocking? |
+|---|---|---|---|
+| delivery | deliver | discard (guard), defer (guard; only with related ops in flight, ≤ 2) | yes, when salient and an action is permitted and the model can answer within the hold budget |
+| mutation | apply | discard (guard), defer (guard; < 2 defers) | no by default (background; discard = late revert ≤ 2 s); yes with `policy.holdWrites` |
+| request | send | coalesce (guard, fetch), delay (guard), block (heal), serve_cached (heal, GET with a cached answer) | yes, when permitted |
+| failure | deliver | retry (heal, replayable fetch, < 4 attempts), serve_cached (heal) | fetch: when permitted; XHR: no |
+| stall | wait | hedge (heal, idempotent GET), serve_cached (heal) | no |
+| inconsistency | ignore | rollback (heal), resync (heal) | no |
+| transition | ignore | rollback (heal), resync (heal) | no |
+| error | ignore | rollback (heal, only if its chain wrote state) | no |
+
+With `holdWrites` off, a non-blocking `mutation` decision's `defer` is recorded only (nothing to hold).
 
 ## SIM requests (sim/NEEDS.md): done
 
-1–5 (batch 1): DONE (`EvaluateRequest.subject`, `hooks`, `policy.requireDiagnosis`, `vocabulary`, side-effect-free
-`situation()`). 6 (batch 2): DONE `situation: { budget }`. a–f (batch 3): DONE (see above).
+1–5 (batch 1), 6 (batch 2), a–f (batch 3): DONE. Batch 4 / situation-v2: DONE: `SubjectRef {kind:"delivery", op,
+paths?, store?}`; `hooks.opCreated` synchronous inside WebSocket and EventSource dispatch; deterministic holds;
+action names/tiers/passive per trigger (table above; exported); forcing semantics kept; `ActionRecord.dropped` and
+the `dropped` event; `hooks.mutationProposed` still synchronous; `situation()` side-effect free; `vocabulary`,
+`situation.budget`, `requireDiagnosis` unchanged.
 
-Fact and question wording changed again in batch 3 (versions "version a → b", real failure counts, compact
-questions, item-level change summaries, `transient` label, pending-local-change fact): regenerate rows.
+Wording changed in batch 4: new `delivery` trigger sentences ("The response to GET … (#6) arrived and is about to be
+delivered; its operation last wrote search.results."), version facts take the op as reference ("since its operation
+(#6) started", "this message (#5) started after that user action"), the pending-change fact ends with "<ref> started
+after/before that user action", full budget 2,400. Regenerate rows.
 
 ## For UI (adapters, devtools)
 
-- Public API as before, plus `Decision.candidate`/`Decision.mass`, `Situation.compact`/`budget`, `Runtime.holdBudgetMs()`
-  / `situationBudget()`. Detection lines now read "Not acted on (would have done X p): reason." (UI's splitReport
-  regex for "Not acted on (...)" still matches.) Repeats of a report are printed as one summary line when the minute
-  ends. `test/browser/ui/mock-runtime.ts` needs `holdBudgetMs()` and `situationBudget()` (not type-checked today).
-- DOM observer ignores `[data-genclass-ignore]` subtrees (incl. shadow roots) and events dispatched by app code while
-  an op runs.
+- `src/devtools/ui.ts` `NOUN` needs `delivery: "response"` ("message" when the decision subject is a WebSocket or
+  EventSource message, as `src/decide/report.ts` does), and `actTitle` should lead with "Reverted" when
+  `ActionRecord.late` (the runtime's console line does). This is the one failing test.
+- `test/browser/ui/mock-runtime.ts` `situationBudget()` returns 3200; the runtime's full budget is now 2,400.
+- Adapters: with `holdWrites` off (default) `propose()` commits synchronously in the caller's stack (redux dispatch,
+  zustand set); the model decides in the background. The hold paths of the adapters are exercised with
+  `policy: { holdWrites: true }` (I added it to the real-runtime setups of your adapter tests).
+- DOM observer: synthetic events need `observe.untrustedEvents: true`.
 
 ## Triggers and triage
 
-| trigger | raised when | waits? | actions offered (passive first) |
-|---|---|---|---|
-| mutation | a non-user, non-GenClass write to a holdable store | yes, when an action is permitted (hold budget; late revert ≤ 2 s after) | apply, discard, defer (if < 2 defers) |
-| request | every instrumented fetch/XHR not issued by GenClass (keepalive and sync XHR never held) | yes, when permitted | send, coalesce*, delay, block, serve_cached* |
-| failure | network error, timeout (`TimeoutError` abort), 5xx/429/408 | fetch: when permitted (heal); XHR: no | deliver, retry* (replayable, < 4 attempts), serve_cached* |
-| stall | in flight > max(4×median, 2×p95, 500 ms), ≥ 5 latency samples | no | wait, hedge* (idempotent GET), serve_cached* |
-| inconsistency | a learned invariant breaks at a settled point (once per episode) | no | ignore, rollback* (snapshot), resync* |
-| transition | a completed op's write set / value kind / status class / write count seen in < 1% of ≥ 20 completions | no | ignore, rollback* (its chain's writes), resync* |
-| error | uncaught error / unhandled rejection / `reportError` | no | ignore, rollback* (only if its chain wrote state) |
+| trigger | raised when |
+|---|---|
+| delivery | a fetch/XHR response (2xx–4xx not handled as a failure) or a WebSocket/EventSource message is about to reach the app |
+| mutation | a non-user, non-GenClass write to a store, not covered by a delivery decision |
+| request | every instrumented fetch/XHR not issued by GenClass (keepalive and sync XHR never held) |
+| failure | network error, timeout (`TimeoutError` abort), 5xx/429/408 |
+| stall | in flight > max(4×median, 2×p95, 500 ms), ≥ 5 latency samples |
+| inconsistency | a learned invariant breaks at a settled point (once per episode) |
+| transition | a completed op's write set / value kind / status class / write count seen in < 1% of ≥ 20 completions |
+| error | uncaught error / unhandled rejection / `reportError` |
 
 Triage (`"salient"`): facts first (cheap); the model is consulted only for a non-neutral fact or an `always`
-standing question. Non-neutral: a written field was written by another chain since the cause started; a field of
-the same store moved since then; a newer op with the cause's signature is in flight; a pending local change (a user
-action's write whose request is still in flight) is being overwritten; an identical additive change in 10 s; an
-identical request in flight or sent within min(2 s, half its usual gap); failure streak ≥ 2 (request); rate ≥ 3×
-usual with ≥ 5 in 10 s; cause latency > 3× median; every failure/stall/inconsistency/transition/error.
+standing question. Non-neutral: a newer-data conflict or a pending local change on a predicted/written field
+(delivery, mutation); a newer op with the cause's signature in flight (mutation); an identical additive change in
+10 s; an identical request in flight or sent within min(2 s, half its usual gap); failure streak ≥ 2 (request); rate
+≥ 3× usual with ≥ 5 in 10 s; cause latency > 3× median; every failure/stall/inconsistency/transition/error. Neutral
+(never asks by itself): inputs that moved, user writes alone, a newer same-signature request in flight at delivery.
 
 ## Example situations: compact budgets (from test/budget.test.ts)
 
-The same stale-write situation at 1,000 chars (1-thread WASM: compact questions) and 2,000 chars (4-thread WASM:
-full questions). Questions are shown on one line each.
+The stale typeahead response (delivery) at 1,000 chars (1-thread WASM: compact questions) and 2,000 chars (4-thread
+WASM: full questions). Questions are shown on one line each.
 
-### mutation at 1000 chars (998)
+### delivery at 1000 chars (956)
 
 ```
 app: /search
-trigger: A write to search.results from GET /api/search?q=rea (#6) is about to be applied.
+trigger: The response to GET /api/search?q=rea (#6) arrived and is about to be delivered; its operation last wrote search.results.
 facts:
-  search.results was written once by other operations since this write's cause (#6) started (version 0 → 1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
-  search.query changed since this write's cause (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
-  This write comes from GET /api/search?q=rea (#6), started 0.90s ago, ended 0.00s ago with 200; its chain began with user typed "rea" into input "Search" (#5).
-  This write would change search.results: 2 items ["reac-1", "reac-2"] → 2 items ["rea-1", "rea-2"].
+  search.results was written twice by other operations since its operation (#6) started (version 1 → 3), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
+  search.query changed since its operation (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
+  The response to GET /api/search?q=rea (#6) arrived after 0.90s (200); the app has not seen it yet.
+  This request comes from user typed "rea" into input "Search" (#5), started 0.90s ago.
 in_flight: none
 timeline:
   -0.00s end GET /api/search?q=rea (#6): 200 in 0.90s
 state:
-  search.results = 2 items ["reac-1", "reac-2"] (v1, by #8 0.69s ago)
+  search.results = 2 items ["reac-1", "reac-2"] (v3, by #8 0.69s ago)
   search.query = "reac" (v4, by #7 0.81s ago)
 stats:
   GET /api/search: 4 done, 0 of last 4 failed, 4 in last 10s
 questions:
   diagnosis: What is happening here? expected | stale | conflict | duplicate | inconsistent | failing | slow | overload | unusual | transient
-  action: What should the runtime do with this write? apply | discard | defer
+  action: What should the runtime do with this response or message? deliver | discard
 ```
 
-### mutation at 2000 chars (1494)
+### delivery at 2000 chars (1611)
 
 ```
 app: /search
-trigger: A write to search.results from GET /api/search?q=rea (#6) is about to be applied.
+trigger: The response to GET /api/search?q=rea (#6) arrived and is about to be delivered; its operation last wrote search.results.
 facts:
-  search.results was written once by other operations since this write's cause (#6) started (version 0 → 1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
-  search.query changed since this write's cause (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
-  This write comes from GET /api/search?q=rea (#6), started 0.90s ago, ended 0.00s ago with 200; its chain began with user typed "rea" into input "Search" (#5).
-  This write would change search.results: 2 items ["reac-1", "reac-2"] → 2 items ["rea-1", "rea-2"].
+  search.results was written twice by other operations since its operation (#6) started (version 1 → 3), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
+  search.query changed since its operation (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
+  The response to GET /api/search?q=rea (#6) arrived after 0.90s (200); the app has not seen it yet.
+  This request comes from user typed "rea" into input "Search" (#5), started 0.90s ago.
 in_flight: none
 timeline:
+  -0.97s start GET /api/search?q=re (#4, by #3)
+  -0.93s end GET /api/search?q=r (#2): 200 in 0.12s
+  -0.93s write search.results: 0 items → 2 items ["r-1", "r-2"] (by #2)
   -0.90s write search.query: "re" → "rea" (by #5, user)
   -0.90s start GET /api/search?q=rea (#6, by #5)
   -0.85s end GET /api/search?q=re (#4): 200 in 0.12s
-  -0.85s GenClass Dropped the write to search.results from GET /api/search?q=re (#4); search stays at version 3.
+  -0.85s write search.results: 2 items ["r-1", "r-2"] → 2 items ["re-1", "re-2"] (by #4)
   -0.81s write search.query: "rea" → "reac" (by #7, user)
   -0.81s start GET /api/search?q=reac (#8, by #7)
   -0.69s end GET /api/search?q=reac (#8): 200 in 0.12s
-  -0.69s write search.results: 0 items → 2 items ["reac-1", "reac-2"] (by #8)
+  -0.69s write search.results: 2 items ["re-1", "re-2"] → 2 items ["reac-1", "reac-2"] (by #8)
   -0.00s end GET /api/search?q=rea (#6): 200 in 0.90s
 state:
-  search.results = 2 items ["reac-1", "reac-2"] (v1, by #8 0.69s ago)
+  search.results = 2 items ["reac-1", "reac-2"] (v3, by #8 0.69s ago)
   search.query = "reac" (v4, by #7 0.81s ago)
 stats:
   GET /api/search: 4 done, 0 of last 4 failed, 4 in last 10s
 questions:
   diagnosis: What is happening here? expected: normal behaviour, nothing is wrong | stale: outdated data or an older operation is about to replace newer state | conflict: concurrent operations are competing over the same state or resource | duplicate: the same change or request is happening again without a new intent | inconsistent: the state contradicts itself or relationships it normally keeps | failing: an operation keeps failing or its failures follow a pattern | slow: an operation is far slower than usual | overload: work is being triggered far more often than usual | unusual: this differs from how the same operation normally behaves | transient: a one-off failure that is likely to succeed if tried again
-  action: What should the runtime do with this write? apply: let this write update the state now | discard: drop this write and keep the current state | defer: hold this write until the related in-flight operations finish, then decide again
+  action: What should the runtime do with this response or message? deliver: pass it to the application now | discard: deliver it but drop the state changes it would make over newer data
 ```
 
+## Example situations: full budget (2,400), one per trigger (from test/situation.test.ts, test/delivery.test.ts)
 
-## Example situations: full budget, one per trigger (from test/situation.test.ts)
-
-The model gets the Jev state object, shown with `stateText`. Diagnosis criteria (identical in every row, omitted):
-expected, stale, conflict, duplicate, inconsistent, failing, slow, overload, unusual, transient with their descriptions.
-
-### mutation
+### delivery: a stale out-of-order response
 
 ```
 app: /search
-trigger: A write to search.results from GET /api/search?q=rea (#6) is about to be applied.
+trigger: The response to GET /api/search?q=rea (#6) arrived and is about to be delivered; its operation last wrote search.results.
 facts:
-  search.results was written once by other operations since this write's cause (#6) started (version 0 → 1), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
-  search.query changed since this write's cause (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
-  This write comes from GET /api/search?q=rea (#6), started 0.90s ago, ended 0.00s ago with 200; its chain began with user typed "rea" into input "Search" (#5).
-  This write would change search.results: 2 items ["reac-1", "reac-2"] → 2 items ["rea-1", "rea-2"].
+  search.results was written twice by other operations since its operation (#6) started (version 1 → 3), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7).
+  search.query changed since its operation (#6) started: "rea" → "reac", last by user typed "reac" into input "Search" (#7) 0.09s after #6 started.
+  The response to GET /api/search?q=rea (#6) arrived after 0.90s (200); the app has not seen it yet.
+  This request comes from user typed "rea" into input "Search" (#5), started 0.90s ago.
 in_flight: none
 timeline:
   -1.05s user typed "reac" into input "Search" (4 keystrokes, #1–#7)
@@ -267,23 +406,95 @@ timeline:
   -0.97s write search.query: "r" → "re" (by #3, user)
   -0.97s start GET /api/search?q=re (#4, by #3)
   -0.93s end GET /api/search?q=r (#2): 200 in 0.12s
-  -0.93s GenClass Dropped the write to search.results from GET /api/search?q=r (#2); search stays at version 2.
+  -0.93s write search.results: 0 items → 2 items ["r-1", "r-2"] (by #2)
   -0.90s write search.query: "re" → "rea" (by #5, user)
   -0.90s start GET /api/search?q=rea (#6, by #5)
   -0.85s end GET /api/search?q=re (#4): 200 in 0.12s
-  -0.85s GenClass Dropped the write to search.results from GET /api/search?q=re (#4); search stays at version 3.
+  -0.85s write search.results: 2 items ["r-1", "r-2"] → 2 items ["re-1", "re-2"] (by #4)
   -0.81s write search.query: "rea" → "reac" (by #7, user)
   -0.81s start GET /api/search?q=reac (#8, by #7)
   -0.69s end GET /api/search?q=reac (#8): 200 in 0.12s
-  -0.69s write search.results: 0 items → 2 items ["reac-1", "reac-2"] (by #8)
+  -0.69s write search.results: 2 items ["re-1", "re-2"] → 2 items ["reac-1", "reac-2"] (by #8)
   -0.00s end GET /api/search?q=rea (#6): 200 in 0.90s
 state:
-  search.results = 2 items ["reac-1", "reac-2"] (v1, by #8 0.69s ago)
+  search.results = 2 items ["reac-1", "reac-2"] (v3, by #8 0.69s ago)
   search.query = "reac" (v4, by #7 0.81s ago)
 stats:
   GET /api/search: 4 done, 0 of last 4 failed, 4 in last 10s
 questions:
   diagnosis (choice): What is happening here?
+    expected: normal behaviour, nothing is wrong
+    stale: outdated data or an older operation is about to replace newer state
+    conflict: concurrent operations are competing over the same state or resource
+    duplicate: the same change or request is happening again without a new intent
+    inconsistent: the state contradicts itself or relationships it normally keeps
+    failing: an operation keeps failing or its failures follow a pattern
+    slow: an operation is far slower than usual
+    overload: work is being triggered far more often than usual
+    unusual: this differs from how the same operation normally behaves
+    transient: a one-off failure that is likely to succeed if tried again
+  action (choice): What should the runtime do with this response or message?
+    deliver: pass it to the application now
+    discard: deliver it but drop the state changes it would make over newer data
+```
+
+### delivery: a WebSocket message over a pending local change
+
+```
+app: /search
+trigger: A WebSocket message /live (#5) arrived and is about to be delivered; messages like it last wrote board.cards.:id.
+facts:
+  board.cards.c1 has a pending local change: user clicked button "Move c1 to done" (#3) wrote it 0.05s ago and its PATCH /api/cards/c1 {col: "done"} (#4) is still in flight; this message (#5) started after that user action.
+  A WebSocket message (#5) {n: 2, card: "c1", col: "doing"} arrived on /live; the app has not seen it yet.
+in_flight:
+  WS /live (#1) 0.10s so far
+  PATCH /api/cards/c1 {col: "done"} (#4) 0.05s so far, by #3
+timeline:
+  -0.10s start WS /live (#1)
+  -0.10s event ws.message {n: 1, card: "c2", col: "doing"} (#2)
+  -0.10s write board.cards.c2: "todo" → "doing" (by #2)
+  -0.05s user clicked button "Move c1 to done" (#3)
+  -0.05s write board.cards.c1: "todo" → "done" (by #3, user)
+  -0.05s start PATCH /api/cards/c1 {col: "done"} (#4, by #3)
+  -0.00s event ws.message {n: 2, card: "c1", col: "doing"} (#5)
+state:
+  board.cards.c1 = "done" (v1, by #3 0.05s ago)
+  board.cards.c2 = "doing" (v1, by #2 0.10s ago)
+stats: none
+```
+
+### mutation: an older task's write over a newer task's (no delivery decision covers it)
+
+```
+app: /search
+trigger: A write to profile.name from task load profile (#1) is about to be applied.
+facts:
+  profile.name was written once by other operations since this write's cause (#1) started (version 0 → 1), last 0.30s ago by task save profile (#2), which started 0.10s after #1.
+  profile.saved changed since this write's cause (#1) started: 0 → 1, last by task save profile (#2) 0.10s after #1 started.
+  This write comes from task load profile (#1), started 0.40s ago.
+  This write would change profile.name: "Grace" → "Ada (cached)".
+in_flight: none
+timeline:
+  -0.40s start task load profile (#1)
+  -0.30s start task save profile (#2)
+  -0.30s write profile.name: "Ada" → "Grace"; profile.saved: 0 → 1 (by #2)
+  -0.30s end task save profile (#2): ok in 0.00s
+state:
+  profile.name = "Grace" (v1, by #2 0.30s ago)
+  profile.saved = 1 (v1, by #2 0.30s ago)
+stats: none
+questions:
+  diagnosis (choice): What is happening here?
+    expected: normal behaviour, nothing is wrong
+    stale: outdated data or an older operation is about to replace newer state
+    conflict: concurrent operations are competing over the same state or resource
+    duplicate: the same change or request is happening again without a new intent
+    inconsistent: the state contradicts itself or relationships it normally keeps
+    failing: an operation keeps failing or its failures follow a pattern
+    slow: an operation is far slower than usual
+    overload: work is being triggered far more often than usual
+    unusual: this differs from how the same operation normally behaves
+    transient: a one-off failure that is likely to succeed if tried again
   action (choice): What should the runtime do with this write?
     apply: let this write update the state now
     discard: drop this write and keep the current state
@@ -310,6 +521,16 @@ state: none
 stats: none
 questions:
   diagnosis (choice): What is happening here?
+    expected: normal behaviour, nothing is wrong
+    stale: outdated data or an older operation is about to replace newer state
+    conflict: concurrent operations are competing over the same state or resource
+    duplicate: the same change or request is happening again without a new intent
+    inconsistent: the state contradicts itself or relationships it normally keeps
+    failing: an operation keeps failing or its failures follow a pattern
+    slow: an operation is far slower than usual
+    overload: work is being triggered far more often than usual
+    unusual: this differs from how the same operation normally behaves
+    transient: a one-off failure that is likely to succeed if tried again
   action (choice): What should the runtime do with this request?
     send: send the request now
     coalesce: do not send; reuse the result of the identical request that is in flight or just finished
@@ -336,8 +557,8 @@ timeline:
   -6.06s start task poll (#5)
   -6.06s start GET /api/status (#6, by #5)
   -6.00s end GET /api/status (#6): 200 in 0.06s
-  -6.00s end task poll (#5): ok in 0.06s
   -6.00s write status.checked: 1 → 2 (by #6)
+  -6.00s end task poll (#5): ok in 0.06s
   -4.06s start task poll (#7)
   -4.06s start GET /api/status (#8, by #7)
   -4.00s end GET /api/status (#8): 503 in 0.06s
@@ -356,6 +577,16 @@ stats:
   GET /api/status: 6 done, 3 of last 6 failed, 5 in last 10s
 questions:
   diagnosis (choice): What is happening here?
+    expected: normal behaviour, nothing is wrong
+    stale: outdated data or an older operation is about to replace newer state
+    conflict: concurrent operations are competing over the same state or resource
+    duplicate: the same change or request is happening again without a new intent
+    inconsistent: the state contradicts itself or relationships it normally keeps
+    failing: an operation keeps failing or its failures follow a pattern
+    slow: an operation is far slower than usual
+    overload: work is being triggered far more often than usual
+    unusual: this differs from how the same operation normally behaves
+    transient: a one-off failure that is likely to succeed if tried again
   action (choice): What should the runtime do with this failed request?
     deliver: pass the failure to the application as it is
     retry: retry the request after a short backoff
@@ -398,6 +629,16 @@ stats:
   GET /api/report/:id: 7 done, median 0.24s, p95 0.27s, 0 of last 7 failed, 2 in last 10s (usual 2.31)
 questions:
   diagnosis (choice): What is happening here?
+    expected: normal behaviour, nothing is wrong
+    stale: outdated data or an older operation is about to replace newer state
+    conflict: concurrent operations are competing over the same state or resource
+    duplicate: the same change or request is happening again without a new intent
+    inconsistent: the state contradicts itself or relationships it normally keeps
+    failing: an operation keeps failing or its failures follow a pattern
+    slow: an operation is far slower than usual
+    overload: work is being triggered far more often than usual
+    unusual: this differs from how the same operation normally behaves
+    transient: a one-off failure that is likely to succeed if tried again
   action (choice): What should the runtime do with this slow request?
     wait: keep waiting for the request
     hedge: send a second identical request and use whichever answers first
@@ -432,6 +673,16 @@ state:
 stats: none
 questions:
   diagnosis (choice): What is happening here?
+    expected: normal behaviour, nothing is wrong
+    stale: outdated data or an older operation is about to replace newer state
+    conflict: concurrent operations are competing over the same state or resource
+    duplicate: the same change or request is happening again without a new intent
+    inconsistent: the state contradicts itself or relationships it normally keeps
+    failing: an operation keeps failing or its failures follow a pattern
+    slow: an operation is far slower than usual
+    overload: work is being triggered far more often than usual
+    unusual: this differs from how the same operation normally behaves
+    transient: a one-off failure that is likely to succeed if tried again
   action (choice): What should the runtime do about this inconsistent state?
     ignore: leave the state as it is
     rollback: restore the affected state to its last consistent snapshot
@@ -473,6 +724,16 @@ stats:
   POST /api/cart: 23 done, median 0.08s, p95 0.08s, 0 of last 20 failed, 23 in last 10s
 questions:
   diagnosis (choice): What is happening here?
+    expected: normal behaviour, nothing is wrong
+    stale: outdated data or an older operation is about to replace newer state
+    conflict: concurrent operations are competing over the same state or resource
+    duplicate: the same change or request is happening again without a new intent
+    inconsistent: the state contradicts itself or relationships it normally keeps
+    failing: an operation keeps failing or its failures follow a pattern
+    slow: an operation is far slower than usual
+    overload: work is being triggered far more often than usual
+    unusual: this differs from how the same operation normally behaves
+    transient: a one-off failure that is likely to succeed if tried again
   action (choice): What should the runtime do about this unusual state change?
     ignore: leave the state as it is
     rollback: restore the affected state to its last consistent snapshot
@@ -502,11 +763,20 @@ stats:
   GET /api/profile: 1 done, 0 of last 1 failed, 1 in last 10s
 questions:
   diagnosis (choice): What is happening here?
+    expected: normal behaviour, nothing is wrong
+    stale: outdated data or an older operation is about to replace newer state
+    conflict: concurrent operations are competing over the same state or resource
+    duplicate: the same change or request is happening again without a new intent
+    inconsistent: the state contradicts itself or relationships it normally keeps
+    failing: an operation keeps failing or its failures follow a pattern
+    slow: an operation is far slower than usual
+    overload: work is being triggered far more often than usual
+    unusual: this differs from how the same operation normally behaves
+    transient: a one-off failure that is likely to succeed if tried again
   action (choice): What should the runtime do about this error?
     ignore: leave the state as it is
     rollback: restore the affected state to its last consistent snapshot
 ```
-
 
 ## Deviations from the contract (and why)
 
@@ -518,9 +788,14 @@ questions:
   snapshot" would also revert other chains' writes, e.g. user input); inconsistency rollback uses the snapshot.
 - Default redaction is by word-level secret names (approved SIM request a), not the §2 regex.
 - `situation(trigger)` returns the last situation built for that trigger (an "ask about now" one otherwise).
+- Batch 4 salience: a user action that changed a field is not, by itself, a version conflict (see Batch 4, contract
+  deltas). XHR `on*` getters return GenClass's wrapper of the app's handler (needed so XHR implementations that call
+  `this.onload(e)` themselves are gated too).
+- With `holdWrites` off (default) `mutation` `defer` cannot do anything (the write already applied): it is recorded only.
 - Extra public surface: `Runtime.adapter()/inflight()/holdBudgetMs()/situationBudget()`, `on("report")`,
   `Situation.salient/facts/compact/budget`, `Decision.tier/ran/answers/subjectRef/candidate/mass`,
-  `ActionRecord.late`, `Explanation.message`, `StandingQuestion.always`,
+  `ActionRecord.late/dropped`, `Explanation.message`, `StandingQuestion.always`, `PolicyOptions.holdWrites`,
+  `observe.untrustedEvents`, `SituationDraft.delivery`,
   `InitOptions.vocabulary/settleMs/learn/situation`, `CreateOptions.app/hooks`, `ActionDef.tier`,
   `ActionContext.builtin/describe/onUndo`, `EvaluateRequest.timeoutMs/subject`.
 
@@ -531,3 +806,10 @@ questions:
   still notified on every `set()`).
 - Lead (UI-NEEDS item 2): `react-dom` is not a devDependency of `@genclass/runtime`.
 - Any change to situation wording must be coordinated with SIM (one implementation, `src/situation/*`).
+- Predicted write sets are normalised paths (`board.cards.:id`): while one item of a collection has a pending local
+  change, a message about another item of the same collection is salient too (extra latency, never a wrong drop:
+  `discard` drops only fields with newer data or the pending change).
+- `holdWrites: true` with adapter stores whose state is read directly (`store.getState()` in redux middleware):
+  those reads do not see held writes (only the runtime's own `get()` does). Default off; per-store `hold: false`.
+- Content comparison facts (response/write value vs current value: identical / older / newer version) are not
+  implemented yet; waiting for SIM's separability proposals (room is left in the fact budget).

@@ -18,10 +18,10 @@ const REFRESH = flag("refresh", "single-flight") as "single-flight" | "per-reque
 const RETRY_ORIGINAL = Boolean(flag("retryOriginal", true));
 const AUTO_MS = Number(flag("autoRefreshMs", 10000));
 
-const auth = rt.atom("auth", { status: "signed-out" as "signed-out" | "signed-in", user: "", token: "", refreshToken: "", busy: false, refreshes: 0, error: "" });
+const session = rt.atom("session", { status: "signed-out" as "signed-out" | "signed-in", user: "", token: "", refreshToken: "", busy: false, refreshes: 0, error: "" });
 const emptyDash = { invoiceFilter: "all", projects: [] as Project[], invoices: [] as Invoice[], notifications: [] as Note[], unread: 0, pending: [] as number[], errors: {} as Record<string, string> };
 const dash = rt.atom("dash", emptyDash);
-let session = 0;
+let epoch = 0; // bumps on every sign-in / sign-out: responses from an older session are dropped
 // what the browser's password manager would autofill after the first successful sign-in
 let saved = { username: "", password: "" };
 
@@ -29,25 +29,25 @@ let saved = { username: "", password: "" };
 const api = axios.create({ baseURL: "/api", timeout: 8000 });
 
 api.interceptors.request.use((cfg) => {
-  const t = auth.get().token;
+  const t = session.get().token;
   if (t) cfg.headers.Authorization = `Bearer ${t}`;
   return cfg;
 });
 
 function signOut(reason: string) {
-  session++;
-  auth.set({ status: "signed-out", user: "", token: "", refreshToken: "", busy: false, refreshes: 0, error: reason });
+  epoch++;
+  session.set({ status: "signed-out", user: "", token: "", refreshToken: "", busy: false, refreshes: 0, error: reason });
   dash.set(emptyDash);
 }
 
 async function doRefresh(): Promise<string> {
-  const refreshToken = auth.get().refreshToken;
+  const refreshToken = session.get().refreshToken;
   try {
     const r = await axios.post<{ token: string; refreshToken: string }>("/api/auth/refresh", { refreshToken }, { timeout: 8000 });
-    auth.update((a) => (a.status === "signed-in" ? { ...a, token: r.data.token, refreshToken: r.data.refreshToken, refreshes: a.refreshes + 1 } : a));
+    session.update((a) => (a.status === "signed-in" ? { ...a, token: r.data.token, refreshToken: r.data.refreshToken, refreshes: a.refreshes + 1 } : a));
     return r.data.token;
   } catch (e) {
-    if ((e as AxiosError).response?.status === 401 && auth.get().status === "signed-in") signOut("Your session expired. Please sign in again.");
+    if ((e as AxiosError).response?.status === 401 && session.get().status === "signed-in") signOut("Your session expired. Please sign in again.");
     throw e;
   }
 }
@@ -64,7 +64,7 @@ function refreshAccessToken(): Promise<string> {
 
 api.interceptors.response.use(undefined, async (err: AxiosError) => {
   const cfg = err.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
-  if (err.response?.status !== 401 || !cfg || cfg._retry || !auth.get().refreshToken) throw err;
+  if (err.response?.status !== 401 || !cfg || cfg._retry || !session.get().refreshToken) throw err;
   cfg._retry = true;
   const token = await refreshAccessToken();
   if (!RETRY_ORIGINAL) throw err;
@@ -74,16 +74,16 @@ api.interceptors.response.use(undefined, async (err: AxiosError) => {
 
 // ------------------------------------------------------------------------------------------------- data
 async function loadPanel(p: Panel) {
-  const mine = session;
+  const mine = epoch;
   const status = dash.get().invoiceFilter;
   try {
     const r = await api.get<{ data: unknown[] }>(`/${p}`, p === "invoices" && status !== "all" ? { params: { status } } : undefined);
     const items = Array.isArray(r.data?.data) ? r.data.data : [];
-    if (mine !== session) return;
+    if (mine !== epoch) return;
     if (p === "invoices" && dash.get().invoiceFilter !== status) return; // the filter changed meanwhile
     dash.update((d) => ({ ...d, [p]: items, ...(p === "notifications" ? { unread: (items as Note[]).filter((n) => !n.read).length } : {}), errors: { ...d.errors, [p]: "" } }));
   } catch {
-    if (mine !== session) return;
+    if (mine !== epoch) return;
     dash.update((d) => ({ ...d, errors: { ...d.errors, [p]: `Could not load ${p}` } }));
   }
 }
@@ -91,48 +91,48 @@ async function loadPanel(p: Panel) {
 const loadAll = () => Promise.all((["projects", "invoices", "notifications"] as Panel[]).map(loadPanel));
 
 async function signIn(username: string, password: string) {
-  if (auth.get().busy || !username.trim()) return;
-  auth.update((a) => ({ ...a, busy: true, error: "" }));
+  if (session.get().busy || !username.trim()) return;
+  session.update((a) => ({ ...a, busy: true, error: "" }));
   try {
     const r = await axios.post<{ token: string; refreshToken: string; user: { username: string } }>("/api/auth/login", { username: username.trim(), password }, { timeout: 8000 });
-    session++;
+    epoch++;
     saved = { username: username.trim(), password };
-    auth.set({ status: "signed-in", user: r.data.user.username, token: r.data.token, refreshToken: r.data.refreshToken, busy: false, refreshes: 0, error: "" });
+    session.set({ status: "signed-in", user: r.data.user.username, token: r.data.token, refreshToken: r.data.refreshToken, busy: false, refreshes: 0, error: "" });
     void loadAll();
   } catch (e) {
-    auth.update((a) => ({ ...a, busy: false, error: (e as AxiosError).response?.status === 422 ? "Enter your username and password" : "Sign-in failed, try again" }));
+    session.update((a) => ({ ...a, busy: false, error: (e as AxiosError).response?.status === 422 ? "Enter your username and password" : "Sign-in failed, try again" }));
   }
 }
 
 async function approve(inv: Invoice) {
   if (dash.get().pending.includes(inv.id)) return;
-  const mine = session;
+  const mine = epoch;
   dash.update((d) => ({ ...d, pending: [...d.pending, inv.id] }));
   try {
     const r = await api.patch<Invoice>(`/invoices/${inv.id}`, { status: "approved" });
-    if (mine !== session) return;
+    if (mine !== epoch) return;
     dash.update((d) => ({ ...d, invoices: d.invoices.map((x) => (x.id === inv.id ? r.data : x)), pending: d.pending.filter((x) => x !== inv.id) }));
   } catch {
-    if (mine !== session) return;
+    if (mine !== epoch) return;
     dash.update((d) => ({ ...d, pending: d.pending.filter((x) => x !== inv.id), errors: { ...d.errors, invoices: `Could not approve invoice ${inv.id}` } }));
   }
 }
 
 async function markRead(n: Note) {
   if (n.read) return;
-  const mine = session;
+  const mine = epoch;
   dash.update((d) => ({ ...d, notifications: d.notifications.map((x) => (x.id === n.id ? { ...x, read: true } : x)), unread: d.unread - 1 }));
   try {
     await api.post(`/notifications/${n.id}/read`);
   } catch {
-    if (mine !== session) return;
+    if (mine !== epoch) return;
     dash.update((d) => ({ ...d, notifications: d.notifications.map((x) => (x.id === n.id ? { ...x, read: false } : x)), unread: d.unread + 1, errors: { ...d.errors, notifications: "Could not mark as read" } }));
   }
 }
 
 // --------------------------------------------------------------------------------------------------- UI
 function SignIn() {
-  const [a] = useAtom(auth);
+  const [a] = useAtom(session);
   const [username, setUsername] = useState(saved.username);
   const [password, setPassword] = useState(saved.password);
   return (
@@ -157,7 +157,7 @@ function SignIn() {
 const TITLE: Record<Panel, string> = { projects: "Projects", invoices: "Invoices", notifications: "Inbox" };
 
 function Dashboard() {
-  const [a] = useAtom(auth);
+  const [a] = useAtom(session);
   const [d, setD] = useAtom(dash);
   useEffect(() => {
     const h = setInterval(() => void loadAll(), AUTO_MS);
@@ -247,7 +247,7 @@ function Dashboard() {
 }
 
 function App() {
-  const [a] = useAtom(auth);
+  const [a] = useAtom(session);
   return a.status === "signed-in" ? <Dashboard /> : <SignIn />;
 }
 

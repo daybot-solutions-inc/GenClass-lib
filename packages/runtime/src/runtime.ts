@@ -50,9 +50,11 @@ import { cloneValue, flatten, normalizeLeafKind, type FieldChange, type Leaf } f
 import { InvariantMiner } from "./state/invariants.js";
 import { Baselines } from "./learn/baselines.js";
 import { Profiles, shapeOf } from "./learn/profiles.js";
-import { buildSituation, type BuildOptions, type BuiltSituation } from "./situation/build.js";
+import { buildSituation, relatedInFlight, type BuildOptions, type BuiltSituation } from "./situation/build.js";
 import { computeFacts } from "./situation/facts.js";
-import type { ChainWriteInfo, ErrorInfo, ReqMeta, SitEnv, SubjectSpec, Violation } from "./situation/env.js";
+import type { ChainWriteInfo, DeliverySpec, ErrorInfo, ReqMeta, SitEnv, SubjectSpec, Violation } from "./situation/env.js";
+import { conflictsOn, matchFields, predictedWrites } from "./situation/conflicts.js";
+import { installEventSource } from "./observe/eventsource.js";
 import { opLabel } from "./situation/describe.js";
 import { BUILTIN_ACTIONS, diagnosisVocabulary, PASSIVE } from "./situation/questions.js";
 import { STATE_CHAR_BUDGET, stateText } from "./situation/serialize.js";
@@ -70,13 +72,15 @@ import { installStorage } from "./observe/storage.js";
 import { installPerf } from "./observe/perf.js";
 import { installWebSocket } from "./observe/websocket.js";
 import { installTimers } from "./observe/timers.js";
-import { defaultRedact, normalizeFieldPath, secs, truncate, type Redactor } from "./util.js";
+import { defaultRedact, normalizeFieldPath, plural, secs, truncate, type Redactor } from "./util.js";
 
 const DECISIONS_KEPT = 200;
 /** A held write that applied because its hold budget expired can still be reverted this long after it applied. */
 const LATE_REVERT_MS = 2000;
 /** Non-held triggers (stall, inconsistency, transition, error) are not worth answering after this long. */
 const BACKGROUND_DEADLINE_MS = 5000;
+/** A delivery `discard` keeps dropping the chain's writes over newer data for this long. */
+const DISCARD_MARK_MS = 10_000;
 const STALL_MIN_MS = 500;
 const LONG_RUNNING_MS = 10_000;
 const PROFILED: ReadonlySet<OpKind> = new Set<OpKind>(["fetch", "xhr", "user", "task", "ws"]);
@@ -149,6 +153,7 @@ export class RuntimeImpl implements Runtime {
   private explainMap = new Map<string, ExplainRec>();
   private lastBuilt: Partial<Record<TriggerKind, BuiltSituation>> = {};
   private storeWriters = new Map<string, Map<string, number>>();
+  private lastChainMap = new Map<string, string[]>();
   private identicalMap = new Map<string, OpRec[]>();
   private errorsRecent: { key: string; t: number; op?: number }[] = [];
   private settleTimer: unknown = null;
@@ -182,6 +187,7 @@ export class RuntimeImpl implements Runtime {
     this.cache = new ResponseCache(this.clock);
     this.policy = policyConfig(o.policy);
     this.hub.holdUserWrites = this.policy.holdUserWrites;
+    this.hub.holdWrites = this.policy.holdWrites;
     this.rate = new RateLimiter(() => this.policy.maxActionsPerMinute);
     this._mode = o.mode ?? "guard";
     this.triage = o.triage ?? "salient";
@@ -203,7 +209,10 @@ export class RuntimeImpl implements Runtime {
     this.env = this.makeEnv();
     this.hub.hooks = {
       gate: (m) => this.gateMutation(m),
-      mayHold: () => this.consultable() && this._mode !== "observe",
+      mayHold: () => this.hub.holdWrites && this.consultable() && this._mode !== "observe",
+      observeWrite: (m) => this.observeWrite(m),
+      filter: (m) => this.dropFilter(m),
+      dropped: (m, dropped, applied) => this.onDropped(m, dropped, applied),
       appError: (e, source) => this.reportError(e, { source }),
       waitRelated: (m) => this.waitRelated(m),
       applied: (m, s, changes, writer) => this.onApplied(m, s, changes, writer),
@@ -259,9 +268,11 @@ export class RuntimeImpl implements Runtime {
     if (on("fetch")) tryAdd("fetch", () => installFetch(host));
     if (on("xhr")) tryAdd("xhr", () => installXHR(host));
     if (on("websocket")) tryAdd("websocket", () => installWebSocket(this.wsHost()));
+    if (on("eventsource")) tryAdd("eventsource", () => installEventSource(this.wsHost()));
     if (on("user"))
       tryAdd("user", () =>
         installDomUser(g, {
+          untrusted: on("untrustedEvents", false),
           user: (a, h) => this.user(a, h),
           ambientKind: () => {
             const c = this.ctx.peek();
@@ -299,6 +310,7 @@ export class RuntimeImpl implements Runtime {
       watchStall: (op, req, ctl) => this.watchStall(op, req, ctl),
       failureStreak: (sig) => this.base.stats(sig)?.failStreak ?? 0,
       uniqueId: () => `uniq:${++this.uniq}`,
+      deliver: (o, release) => this.runDelivery({ op: o.op, channel: "response", req: o.req, status: o.status }, release),
       setIdentity: (op, req, identity) => {
         if (op.identity === identity) return;
         op.identity = identity;
@@ -326,6 +338,8 @@ export class RuntimeImpl implements Runtime {
       startOp: (name: string, o: Omit<StartOpts, "startSeq" | "t">) => this.startOp("ws", name, o),
       endOp: (op: OpRec, status: OpStatus, eo?: EndOpts) => this.endOp(op, status, eo),
       event: (name: string, data: Record<string, unknown>, op?: OpRec) => this.events.push(this.clock.now(), "custom", name, { ...(op ? { op: op.id } : {}), data }),
+      deliverMessage: (o: { op: OpRec; channel: "websocket" | "eventsource"; message: { path: string; summary: string }; queuedAhead: number }, release: () => void) =>
+        this.runDelivery(o, release),
     };
   }
 
@@ -421,8 +435,8 @@ export class RuntimeImpl implements Runtime {
   }
 
   /**
-   * Situation size in characters: the configured number, or "auto" by the model's device: webgpu 3,200; wasm
-   * 1,000 at 1 thread to 2,000 at 4 threads (linear); unknown device (custom providers) 3,200.
+   * Situation size in characters: the configured number, or "auto" by the model's device: webgpu 2,400 (≈ 1,000
+   * tokens); wasm 1,000 at 1 thread to 2,000 at 4 threads (linear); unknown device (custom providers) 2,400.
    */
   situationBudget(): number {
     if (typeof this.budgetOpt === "number") return this.budgetOpt;
@@ -486,7 +500,9 @@ export class RuntimeImpl implements Runtime {
     // Never hold when no non-passive action is permitted for this trigger in this mode (and policy): the subject
     // proceeds at once and the decision is still made in the background, for detection.
     const permitted = permittedActions(this.policy, this._mode, built.actions);
-    const waits = opts.hold && permitted.length > 0 && !this.paused;
+    // Never hold when nothing could be done, or when the model is not expected to answer within the hold budget
+    // (decide in the background instead: detection, late revert)
+    const waits = opts.hold && permitted.length > 0 && !this.paused && this.expectedLatency() <= this.holdBudgetMs();
     if (!waits) passive();
     let expired = false;
     let budgetTimer: unknown = null;
@@ -506,6 +522,7 @@ export class RuntimeImpl implements Runtime {
       .submit(
         { trigger: spec.trigger, state: built.situation.state, questions: built.situation.questions, priority: waits ? opts.priority : Math.min(opts.priority, 1), subject: built.subjectRef },
         deadline,
+        ctl.stale ? () => !!ctl.stale!() : undefined,
       )
       .then((res) => {
         if (budgetTimer !== null) this.clock.clearTimeout(budgetTimer);
@@ -542,22 +559,24 @@ export class RuntimeImpl implements Runtime {
     let reason: string | null = g.reason;
     let run: string | null = g.run;
     let late = false;
-    if (run) {
-      if (!st.waits && st.hold) {
-        reason = "the subject was not held";
-        run = null;
-      } else if (st.hold && (st.expired || st.passiveRan())) {
-        if (run === "discard" && ctl.revert && ctl.revertable) {
-          // late revert: the write already applied (fail-open); revert exactly that write when nothing depends on it
-          const why = ctl.revertable();
-          if (why) {
-            reason = why;
-            run = null;
-          } else late = true;
-        } else {
-          reason = "the decision arrived after the hold budget expired";
+    // the subject already went its way (write applied, response delivered, request sent): an action now is late
+    const proceeded = ctl.proceeded ? ctl.proceeded() : st.hold && (st.expired || st.passiveRan());
+    if (trigger === "delivery" && !proceeded) {
+      const op = (built.spec as DeliverySpec).op;
+      if (op.delivery) op.delivery.decided = true;
+    }
+    const custom = run ? built.actions.find((a) => a.name === run)?.custom : undefined;
+    if (run && proceeded && !custom) {
+      if (run === "discard" && ctl.revert && ctl.revertable) {
+        // late revert: the write already applied; revert exactly that write when nothing depends on it
+        const why = ctl.revertable();
+        if (why) {
+          reason = why;
           run = null;
-        }
+        } else late = true;
+      } else {
+        reason = st.waits ? "the decision arrived after the hold budget expired" : "the subject was not held (decided in the background)";
+        run = null;
       }
     }
     if (reason?.startsWith("rate limit") && now - this.rateWarnedAt > 60_000) {
@@ -636,6 +655,7 @@ export class RuntimeImpl implements Runtime {
       };
       if (err) record.error = err instanceof Error ? err.message : String(err);
       if (late) record.late = true;
+      eff?.onRecord?.(record);
       if (eff?.undo) {
         const undo = eff.undo;
         let undone = false;
@@ -689,8 +709,10 @@ export class RuntimeImpl implements Runtime {
           tookOver = true;
           return true;
         }
-        // the same policy as the model's own choices: mode tier, deny/allow, rate limit
+        // the same policy as the model's own choices: mode tier, deny/allow, rate limit; and the subject must not
+        // have proceeded already (a write that applied cannot be discarded by a custom action)
         if (this.paused || restriction(this.policy, this._mode, { name, tier: b.tier }) !== null) return false;
+        if (ctl.proceeded?.()) return false;
         const t = this.clock.now();
         if (this.rate.full(t)) return false;
         this.rate.take(t);
@@ -725,19 +747,24 @@ export class RuntimeImpl implements Runtime {
 
   // ------------------------------------------------------------------------------------------ mutations
 
-  private gateMutation(m: MutationRec): { held?: Promise<Verdict> } {
-    if (!this.consultable()) return {};
-    let resolveV!: (v: Verdict) => void;
-    const held = new Promise<Verdict>((r) => (resolveV = r));
-    let sync = true;
-    let syncVerdict: Verdict | null = null;
-    const settle = (v: Verdict) => {
-      if (sync) syncVerdict = v;
-      resolveV(v);
+  /** The controller of a write: discard/defer while held, late revert once applied. */
+  private mutationController(m: MutationRec, settle: ((v: Verdict) => void) | null): Controller {
+    const superseded = (): boolean => {
+      if (m.outcome === "discarded") return true;
+      if (m.outcome !== "applied" || !m.applied) return false;
+      for (const c of m.applied) {
+        const f = this.hub.field(c.path);
+        const last = f?.log[f.log.length - 1];
+        if (!last || last.mutation !== m.id) return true;
+      }
+      return false;
     };
-    const ctl: Controller = {
-      passive: () => settle("apply"),
+    return {
+      passive: () => settle?.("apply"),
+      proceeded: () => m.state === "done",
+      stale: superseded,
       run: (action) => {
+        if (!settle) throw new Error("the write was not held");
         if (action === "discard") {
           settle("discard");
           const paths = m.changes.map((c) => c.path).join(", ");
@@ -780,11 +807,196 @@ export class RuntimeImpl implements Runtime {
         };
       },
     };
-    this.trigger({ trigger: "mutation", m }, ctl, { hold: true, priority: 2 });
+  }
+
+  /** policy.holdWrites (opt-in): a salient write waits for the model (never reordering the store's writes). */
+  private gateMutation(m: MutationRec): { held?: Promise<Verdict> } {
+    if (!this.consultable() || this.covered(m)) return {};
+    let resolveV!: (v: Verdict) => void;
+    const held = new Promise<Verdict>((r) => (resolveV = r));
+    let sync = true;
+    let syncVerdict: Verdict | null = null;
+    const settle = (v: Verdict) => {
+      if (sync) syncVerdict = v;
+      resolveV(v);
+    };
+    this.trigger({ trigger: "mutation", m }, this.mutationController(m, settle), { hold: true, priority: 2 });
     sync = false;
     if (syncVerdict === "apply") return {};
     if (syncVerdict) return { held: Promise.resolve(syncVerdict) };
     return { held };
+  }
+
+  /** Default (no store holds): a write about to apply is triaged now and decided in the background. */
+  private observeWrite(m: MutationRec): void {
+    if (!this.consultable() || m.genclass || this.covered(m)) return;
+    this.trigger({ trigger: "mutation", m }, this.mutationController(m, null), { hold: false, priority: 1 });
+  }
+
+  /** The write's causal chain went through the delivery gate, which predicted these fields and decided in time. */
+  private covered(m: MutationRec): boolean {
+    if (this.triage === "always") return false; // every trigger is asked
+    let op: OpRec | undefined = m.cause ?? undefined;
+    for (let n = 0; op && n < 16; n++) {
+      const d = op.delivery;
+      if (d) {
+        if (!d.known) return false;
+        const all = m.changes.every((c) => d.patterns.has(c.path) || d.patterns.has(normalizeFieldPath(c.path)));
+        return all && (!d.salient || d.decided);
+      }
+      op = this.ops.get(op.cause);
+    }
+    return false;
+  }
+
+  /**
+   * Expected time for a new decision: the usual provider latency for it and every decision queued ahead of it, plus
+   * the one being computed (at least as long as it has already taken). Infinite while the provider is not answering
+   * (its last evaluation timed out): holding would only add latency.
+   */
+  private expectedLatency(): number {
+    if (this.queue.stuck) return Infinity;
+    const lat = this.queue.latencies();
+    let base: number;
+    if (lat.length) {
+      const a = [...lat].sort((x, y) => x - y);
+      base = a[Math.floor((a.length - 1) / 2)];
+    } else base = this.decider?.status.warmupMs ?? 0;
+    const current = this.queue.computing ? Math.max(base, this.clock.now() - this.queue.computingSince) : 0;
+    return base * (1 + this.queue.waiting) + current;
+  }
+
+  // ----------------------------------------------------------------------------------------------- delivery
+
+  /**
+   * The delivery gate: a response (or push message) for op X is about to reach the app. Salient when a field X's
+   * signature writes has newer data or a pending local change; then the delivery waits for the model (only extra
+   * latency). discard: deliver, but drop the writes X's chain makes over newer data; defer: wait for the related
+   * in-flight operations, then decide again (twice at most).
+   */
+  runDelivery(
+    o: { op: OpRec; channel: "response" | "websocket" | "eventsource"; req?: ReqMeta; status?: number; message?: { path: string; summary: string }; queuedAhead?: number },
+    release: () => void,
+    defers = 0,
+  ): void {
+    let released = false;
+    const rel = () => {
+      if (released) return;
+      released = true;
+      release();
+    };
+    const op = o.op;
+    if (!this.consultable() || this.paused || this.destroyed || op.genclass) return rel();
+    const now = this.clock.now();
+    const predicted = predictedWrites(this.env, op);
+    const matched = matchFields(this.env, predicted.patterns);
+    const conflicts = conflictsOn(this.env, op, matched, now);
+    op.delivery = { patterns: new Set(predicted.patterns), known: predicted.source !== "unknown", salient: conflicts.length > 0, decided: false };
+    const spec: DeliverySpec = { trigger: "delivery", op, channel: o.channel, predicted, matched, conflicts, defers, queuedAhead: o.queuedAhead ?? 0 };
+    if (o.req) spec.req = o.req;
+    if (o.status !== undefined) spec.status = o.status;
+    if (o.message) spec.message = o.message;
+    const what = o.channel === "response" ? `the response to ${opLabel(op)}` : `message ${opLabel(op)}`;
+    const ctl: Controller = {
+      passive: rel,
+      proceeded: () => released,
+      stale: () => released,
+      run: (action) => {
+        if (released) throw new Error("already delivered");
+        if (action === "discard") {
+          const protect = new Set(conflicts.map((c) => c.path));
+          const mark: NonNullable<OpRec["discardMark"]> = { protect, until: this.clock.now() + DISCARD_MARK_MS, dropped: [] };
+          op.discardMark = mark;
+          rel();
+          const shown = [...protect].slice(0, 3).join(", ");
+          return {
+            changed: `Delivered ${what} and dropped the state changes it makes over newer data${shown ? ` (${shown})` : ""}.`,
+            onRecord: (r) => {
+              r.dropped = [...new Set(mark.dropped.map((d) => d.path))];
+              mark.onDrop = (paths) => r.dropped!.push(...paths.filter((p) => !r.dropped!.includes(p)));
+            },
+            undo: () => {
+              mark.until = 0;
+              const values = new Map<string, { value: unknown; removed: boolean }>();
+              for (const d of mark.dropped) values.set(d.path, { value: d.after, removed: d.removed });
+              if (values.size) this.hub.restoreFields(values, this.ctx.op());
+            },
+          };
+        }
+        if (action === "defer") {
+          const related = relatedInFlight(this.env, op, matched);
+          const t0 = this.clock.now();
+          return this.waitOps(related).then(() => {
+            this.runDelivery(o, release, defers + 1);
+            return { changed: `Held ${what} for ${secs(this.clock.now() - t0)} until ${plural(related.length, "related operation")} finished, then decided again.` };
+          });
+        }
+        throw new Error(`unsupported action ${action}`);
+      },
+    };
+    this.trigger(spec, ctl, { hold: true, priority: 2 });
+  }
+
+  /** Writes of a chain marked by delivery `discard` that would land over newer data. */
+  private dropFilter(m: MutationRec): Set<string> | null {
+    if (m.genclass || m.userSync) return null;
+    const now = this.clock.now();
+    let x: OpRec | undefined = m.cause ?? undefined;
+    for (let n = 0; x && n < 16; n++) {
+      if (x.discardMark && x.discardMark.until >= now) break;
+      x = this.ops.get(x.cause);
+    }
+    if (!x || !x.discardMark || x.discardMark.until < now) return null;
+    const mark = x.discardMark;
+    const drop = new Set<string>();
+    for (const c of m.changes) if (mark.protect.has(c.path) || this.writtenOver(x, c.path)) drop.add(c.path);
+    return drop;
+  }
+
+  /** Since x started, a user action or a newer operation (outside x's chain) wrote this field. */
+  private writtenOver(x: OpRec, path: string): boolean {
+    for (const e of this.hub.logSince(path, x.startSeq)) {
+      if (e.writer === null) continue;
+      const w = this.ops.get(e.writer);
+      if (!w || this.ops.isAncestorOrSelf(x, w) || this.ops.isAncestorOrSelf(w, x)) continue;
+      if (e.user || w.kind === "user" || w.start > x.start) return true;
+      const root = this.ops.get(e.root);
+      if (root && root.kind === "user" && root.start > x.start) return true;
+    }
+    return false;
+  }
+
+  private onDropped(m: MutationRec, dropped: FieldChange[], applied: boolean): void {
+    let x: OpRec | undefined = m.cause ?? undefined;
+    for (let n = 0; x && n < 16 && !x.discardMark; n++) x = this.ops.get(x.cause);
+    const paths = dropped.map((c) => c.path);
+    if (x?.discardMark) {
+      for (const c of dropped) x.discardMark.dropped.push({ path: c.path, after: c.after, removed: c.afterLeaf === undefined });
+      x.discardMark.onDrop?.(paths);
+    }
+    const text = `dropped the write of ${paths.join(", ")}${m.cause ? ` by ${opLabel(m.cause)}` : ""} over newer data${applied ? " (its other changes applied)" : ""}`;
+    this.events.push(this.clock.now(), "action", "dropped", { ...(m.cause ? { op: m.cause.id } : {}), data: { text, paths, op: x?.id ?? null, mutation: m.id } });
+  }
+
+  /** Resolves when all these ops ended (10 s at most). */
+  private waitOps(ops: OpRec[]): Promise<void> {
+    const pending = new Set(ops.filter((o) => o.end === undefined));
+    if (!pending.size) return Promise.resolve();
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        off();
+        this.clock.clearTimeout(timer);
+        resolve();
+      };
+      const off = this.ops.onEnd((op) => {
+        pending.delete(op);
+        if (!pending.size) finish();
+      });
+      const timer = this.clock.setTimeout(finish, LONG_RUNNING_MS);
+    });
   }
 
   private waitRelated(m: MutationRec): Promise<void> {
@@ -836,10 +1048,18 @@ export class RuntimeImpl implements Runtime {
         const acc = (op.chain ??= new Map());
         op.chainWrites = (op.chainWrites ?? 0) + 1;
         for (const c of changes) {
+          if (!c.afterLeaf) continue; // a container that became expanded (or a removed field) is not a write target
           const key = normalizeFieldPath(c.path);
           const prev = acc.get(key);
           const k1 = normalizeLeafKind(c.afterLeaf);
           acc.set(key, { kind: k1, len0: prev ? prev.len0 : c.beforeLeaf?.len ?? -1, len1: c.afterLeaf?.len ?? -1 });
+        }
+        if (op.kind !== "user") {
+          this.lastChainMap.set(op.name, [...acc.keys()]);
+          if (this.lastChainMap.size > 1000) {
+            const first = this.lastChainMap.keys().next().value;
+            if (first !== undefined) this.lastChainMap.delete(first);
+          }
         }
       }
     }
@@ -1081,6 +1301,7 @@ export class RuntimeImpl implements Runtime {
       canCoalesce: (id, self) => !!this.cache.shareable(id, self, this.clock.now()),
       resyncable: (store) => typeof this.hub.get(store)?.opts.resync === "function",
       chainWrites: (op) => this.chainWrites(op),
+      lastChain: (sig) => this.lastChainMap.get(sig),
       writable: (store) => !!this.hub.get(store)?.writable,
     };
   }
@@ -1182,7 +1403,16 @@ export class RuntimeImpl implements Runtime {
     const rt = this;
     return {
       name: s.name,
-      get: () => hub.read(s) as T,
+      get: () => {
+        // holdWrites: inside the writing chain, read your own pending writes
+        if (hub.holdWrites && s.queue.length) {
+          const amb = rt.ctx.peek();
+          const op = amb instanceof LazyOp ? amb.nearest : amb;
+          const v = hub.pendingView(s, op ? op.root ?? op.id : null);
+          if (v !== undefined) return v as T;
+        }
+        return hub.read(s) as T;
+      },
       set(next: T | ((prev: T) => T)) {
         if (rt.destroyed) {
           const v = typeof next === "function" ? (next as (p: T) => T)(hub.read(s) as T) : next;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { STATE_CHAR_BUDGET, stateChars, stateText, toJevState } from "../src/situation/serialize.js";
 import type { EvaluateRequest } from "../src/types.js";
+import type { OpRec } from "../src/trace/ops.js";
 import { defaultScript, setup, type Setup } from "./helpers.js";
 
 const KEYS = ["app", "trigger", "facts", "in_flight", "timeline", "state", "stats"];
@@ -47,15 +48,44 @@ async function typeahead(s: Setup) {
 }
 
 describe("situations per trigger (CONTRACT §5, §6)", () => {
-  it("mutation: a stale response about to overwrite newer results", async () => {
-    const s = setup({ script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
+  it("delivery: a stale response about to overwrite newer results", async () => {
+    const s = setup({ script: defaultScript({ delivery: { diagnosis: "stale", action: "discard" } }) });
     await typeahead(s);
+    const calls = s.decider.calls.filter((c) => c.trigger === "delivery");
+    expect(calls).toHaveLength(1); // in-order responses never ask
+    const req = calls[0];
+    check(req);
+    show("delivery", req);
+    expect(s.rt.hub.get("search")!.value).toEqual({ query: "reac", results: ["reac-1", "reac-2"] });
+    expect(req.state.trigger).toMatch(/^The response to GET \/api\/search\?q=rea \(#\d+\) arrived and is about to be delivered; its operation last wrote search\.results\.$/);
+    expect((req.state.facts as string[]).join("\n")).toMatch(/search\.results was written twice by other operations since its operation \(#\d+\) started \(version 1 → 3\), last \d\.\d\ds ago by GET \/api\/search\?q=reac \(#\d+\), which started 0\.09s after #\d+, from a later user action \(#\d+\)\./);
+    expect(req.subject).toMatchObject({ kind: "delivery" });
+  });
+
+  it("mutation: an older task's write over a newer task's (no delivery decision covers it)", async () => {
+    const s = setup({ script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
+    const profile = s.rt.atom("profile", { name: "Ada", saved: 0 });
+    // a long task starts, a newer task writes, then the older task writes the same field from inside its chain
+    let load!: OpRec;
+    let finish!: () => void;
+    void s.rt.op("load profile", () => {
+      load = s.rt.ctx.op()!;
+      return new Promise<void>((r) => (finish = r));
+    });
+    await s.clock.advance(100);
+    void s.rt.op("save profile", () => profile.set((p) => ({ ...p, name: "Grace", saved: p.saved + 1 })));
+    await s.clock.advance(300);
+    s.rt.ctx.run(load, () => profile.set((p) => ({ ...p, name: "Ada (cached)" })));
+    finish();
+    await s.clock.advance(1000);
     const req = s.decider.calls.filter((c) => c.trigger === "mutation").pop()!;
     check(req);
     show("mutation", req);
-    expect(s.rt.hub.get("search")!.value).toEqual({ query: "reac", results: ["reac-1", "reac-2"] });
-    expect((req.state.facts as string[])[0]).toMatch(/^search\.results was written once by other operations since this write's cause \(#\d+\) started \(version 0 → 1\), last \d\.\d\ds ago by GET \/api\/search\?q=reac \(#\d+\), which started 0\.09s after #\d+, from a later user action \(#\d+\)\.$/);
-    expect(req.subject).toMatchObject({ kind: "mutation", store: "search", paths: ["search.results"] });
+    expect((req.state.facts as string[]).join("\n")).toMatch(/profile\.name was written once by other operations since this write's cause \(#\d+\) started \(version 0 → 1\), last 0\.\d\ds ago by task save profile \(#\d+\)/);
+    expect(req.subject).toMatchObject({ kind: "mutation", store: "profile", paths: ["profile.name"] });
+    // no store holds by default: the write applied, then the model's discard reverted it (late, within 2 s)
+    expect(profile.get()).toEqual({ name: "Grace", saved: 1 });
+    expect(s.rt.interventions()[0]).toMatchObject({ action: "discard", late: true });
   });
 
   it("request: an identical POST while the first is in flight", async () => {

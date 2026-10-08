@@ -31,6 +31,7 @@ export const BUILTIN_ACTIONS: Record<string, BuiltinAction> = {
 export const TRIGGER_ACTIONS: Record<TriggerKind, string[]> = {
   mutation: ["apply", "discard", "defer"],
   request: ["send", "coalesce", "delay", "block", "serve_cached"],
+  delivery: ["deliver", "discard", "defer"],
   failure: ["deliver", "retry", "serve_cached"],
   stall: ["wait", "hedge", "serve_cached"],
   inconsistency: ["ignore", "rollback", "resync"],
@@ -42,6 +43,7 @@ export const TRIGGER_ACTIONS: Record<TriggerKind, string[]> = {
 export const PASSIVE: Record<TriggerKind, string> = {
   mutation: "apply",
   request: "send",
+  delivery: "deliver",
   failure: "deliver",
   stall: "wait",
   inconsistency: "ignore",
@@ -53,6 +55,7 @@ export const PASSIVE: Record<TriggerKind, string> = {
 export const ACTION_INSTRUCTIONS: Record<TriggerKind, string> = {
   mutation: "What should the runtime do with this write?",
   request: "What should the runtime do with this request?",
+  delivery: "What should the runtime do with this response or message?",
   failure: "What should the runtime do with this failed request?",
   stall: "What should the runtime do with this slow request?",
   inconsistency: "What should the runtime do about this inconsistent state?",
@@ -90,8 +93,17 @@ export function diagnosisVocabulary(vocab: Vocabulary | undefined, pluginLabels:
   return { expected, ...rest };
 }
 
-export function actionDescription(name: string, vocab: Vocabulary | undefined, custom?: string): string {
-  return vocab?.actions?.[name] ?? custom ?? BUILTIN_ACTIONS[name]?.description ?? name;
+/** Descriptions of built-in actions that differ for one trigger. */
+export const TRIGGER_DESCRIPTIONS: Partial<Record<TriggerKind, Record<string, string>>> = {
+  delivery: {
+    deliver: "pass it to the application now",
+    discard: "deliver it but drop the state changes it would make over newer data",
+    defer: "hold it until the related in-flight operations finish, then decide again",
+  },
+};
+
+export function actionDescription(name: string, vocab: Vocabulary | undefined, custom?: string, trigger?: TriggerKind): string {
+  return vocab?.actions?.[name] ?? custom ?? (trigger ? TRIGGER_DESCRIPTIONS[trigger]?.[name] : undefined) ?? BUILTIN_ACTIONS[name]?.description ?? name;
 }
 
 /**

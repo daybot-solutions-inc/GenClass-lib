@@ -7,6 +7,8 @@ import type { UserAction } from "../types.js";
 import { isSensitiveName, truncate } from "../util.js";
 
 interface UserSink {
+  /** Record synthetic (isTrusted false) events too (test harnesses). Default false. */
+  untrusted?: boolean;
   user<T>(action: UserAction, handler?: () => T): T | undefined;
   /** Kind of the ambient op ("user", "task", "fetch", ...), or null when none. */
   ambientKind?(): string | null;
@@ -196,6 +198,9 @@ export function installDomUser(g: Record<string, unknown>, sink: UserSink): (() 
     const r = sink.runningKind?.() ?? null;
     if (r !== null && r !== "user") return true;
     if (e.isTrusted !== false) return false;
+    // a synthetic event: only recorded when the app opted in (observe.untrustedEvents), and never while an app
+    // operation is ambient
+    if (!sink.untrusted) return true;
     const k = sink.ambientKind?.() ?? null;
     return k !== null && k !== "user";
   };

@@ -75,6 +75,14 @@ derived values the app maintains (e.g. `{ name, fields: ["cart.total","cart.item
 s.cart.total === sum(...) }`, first field = the derived one): genuine broken relations are labelled
 `inconsistent`. Keep displayed text deterministic (no real clocks; Date is virtual anyway).
 
+Naming: the runtime redacts values whose field or store name is a secret word (password, token, secret, auth,
+card number, cvv, ssn, ...), so do not call a store `auth` (use `session`). Affordance options added since the first
+wave: `resets: [ids]` (e.g. sign-out makes `after: ["signIn"]` affordances unavailable again), `requires: "<css>"`
+(a precondition checked when the step runs: skipped at once, without waiting, when no visible element matches; use it
+for wizards and modal flows), and follow-ups (`then`) are skipped at once when their chain's first step was skipped.
+`kind: "key"` affordances press the chosen `values` entry (e.g. ["ArrowDown", "Enter", "Escape"]). Collections can
+declare `unique: [fields]` (409 on a clash) and `required: [fields]` (422 when missing).
+
 ## Determinism rules (the harness virtualises time and network; avoid what it cannot)
 OK: setTimeout/setInterval/rAF/requestIdleCallback/MessageChannel/queueMicrotask, fetch, XMLHttpRequest (axios,
 $.ajax, superagent), WebSocket, AbortController, AbortSignal.timeout, Date, Math.random, crypto.randomUUID.

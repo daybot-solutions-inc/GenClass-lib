@@ -370,7 +370,8 @@ export function parseUrl(raw: string, base: string | undefined): ParsedUrl {
   try {
     const u = new URL(raw, base ?? "http://localhost/");
     const b = base ? new URL(base) : null;
-    const sameOrigin = !b || b.origin === u.origin;
+    // ws:// and wss:// on the page's host count as same-origin (WebSocket URLs use their own scheme)
+    const sameOrigin = !b || b.origin === u.origin || (/^wss?:$/.test(u.protocol) && u.host === b.host);
     return {
       href: u.href,
       where: sameOrigin ? u.pathname : `${u.host}${u.pathname}`,

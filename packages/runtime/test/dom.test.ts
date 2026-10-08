@@ -112,6 +112,27 @@ describe("DOM user-action observer", () => {
     await clock.flush();
   });
 
+  it("synthetic (isTrusted false) events are user actions only with observe.untrustedEvents (test harnesses)", async () => {
+    page(`<button id="go">Go</button>`);
+    const synthetic = () => {
+      const ev = new MouseEvent("click", { bubbles: true });
+      Object.defineProperty(ev, "isTrusted", { value: false });
+      document.getElementById("go")!.dispatchEvent(ev);
+    };
+    const clock = new FakeClock();
+    rt = createRuntime({ clock, global: window, decider: new ScriptedDecider(), report: "silent", observe: { ...OFF, user: true } }) as RuntimeImpl;
+    synthetic();
+    expect(rt.history().filter((e) => e.kind === "user")).toHaveLength(0);
+    rt.destroy();
+    rt = createRuntime({ clock, global: window, decider: new ScriptedDecider(), report: "silent", observe: { ...OFF, user: true, untrustedEvents: true } }) as RuntimeImpl;
+    synthetic();
+    expect(rt.history().filter((e) => e.kind === "user").map((e) => e.name)).toEqual(['click button "Go"']);
+    // never while an app operation's code is running (the app dispatched it)
+    await rt.op("task", () => synthetic());
+    expect(rt.history().filter((e) => e.kind === "user")).toHaveLength(1);
+    await clock.flush();
+  });
+
   it("destroy() removes the listeners", () => {
     page(`<button id="b">B</button>`);
     rt = createRuntime({ clock: new FakeClock(), global: window, decider: new ScriptedDecider(), report: "silent", observe: { ...OFF, user: true } }) as RuntimeImpl;

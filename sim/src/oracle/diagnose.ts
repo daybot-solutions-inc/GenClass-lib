@@ -8,7 +8,7 @@ import type { NetEntry, Network } from "../net/network.js";
 import { sigOf, type ErrorTag, type Knowledge, type SimOp, type SimWrite } from "./knowledge.js";
 
 export interface Subject {
-  kind: "write" | "op" | "error" | "invariant" | "chain" | "unknown";
+  kind: "write" | "op" | "error" | "invariant" | "chain" | "push" | "unknown";
   /** transition on a user action / timer: the app ops in its causal chain. */
   chain?: SimOp[];
   intent?: number;
@@ -113,6 +113,8 @@ export function diagnose(trigger: string, s: Subject, ctx: DiagCtx): string | un
     }
     case "failure":
       return diagnoseFailure(s.op, s.net ?? netOf(s.op, network), ctx);
+    case "delivery":
+      return undefined; // filled after the run from the writes the delivery caused (runner.ts)
     case "stall": {
       const e = s.net ?? netOf(s.op, network);
       if (!e) return s.op ? "slow" : undefined;

@@ -421,6 +421,9 @@ export function installFetch(host: NetHost): (() => void) | null {
             if (!primary) return; // hedges answer through their own path
             if (failed && host.gated(op) && !answered) {
               failureGate(sendOp, res, null, { kind: "http", status: res.status, statusText: res.statusText, durMs: (sendOp.end ?? host.clock.now()) - sendOp.start });
+            } else if (!failed && host.gated(sendOp) && !answered) {
+              // the delivery gate: delaying a response is only extra latency (any correct app tolerates it)
+              host.deliver({ op: sendOp, req, status: res.status }, () => answer(res));
             } else answer(res);
           },
           (err: unknown) => {
@@ -454,6 +457,7 @@ export function installFetch(host: NetHost): (() => void) | null {
         };
         const ctl: Controller = {
           passive: deliver,
+          proceeded: () => handled || answered,
           run: (action): ActionEffect | Promise<ActionEffect> => {
             if (handled || answered) throw new Error("the failure was already delivered");
             if (action === "retry") {
@@ -543,6 +547,9 @@ export function installFetch(host: NetHost): (() => void) | null {
       const reqCtl: Controller = {
         // the request goes out unless it already went out or was answered (also after a failed action)
         passive: sendNow,
+        proceeded: () => sent || answered,
+        // superseded: the app aborted it before it was sent
+        stale: () => !sent && !!signal?.aborted,
         run: (action): ActionEffect | Promise<ActionEffect> => {
           if (answered || sent) throw new Error("the request was already sent");
           if (action === "block") {

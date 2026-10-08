@@ -13,6 +13,7 @@ export interface PolicyConfig {
   deny: Set<string>;
   holdBudgetMs: number | "auto";
   holdUserWrites: boolean;
+  holdWrites: boolean;
   maxActionsPerMinute: number;
   requireDiagnosis: boolean;
 }
@@ -24,6 +25,7 @@ export function policyConfig(p: PolicyOptions | undefined): PolicyConfig {
     deny: new Set(p?.deny ?? []),
     holdBudgetMs: p?.holdBudgetMs ?? "auto",
     holdUserWrites: p?.holdUserWrites ?? false,
+    holdWrites: p?.holdWrites ?? false,
     maxActionsPerMinute: p?.maxActionsPerMinute ?? 60,
     requireDiagnosis: p?.requireDiagnosis ?? true,
   };

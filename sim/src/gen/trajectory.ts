@@ -4,7 +4,7 @@
 // cost → soft action label; diagnosis from the sim's knowledge at decision time; ask rows from probes.
 
 import { askQuestions } from "../ask/questions.js";
-import { actionLabel, runCost, TIER, W, type CostBreakdown } from "../oracle/cost.js";
+import { clientDivergenceAt, actionLabel, runCost, TIER, W, type CostBreakdown } from "../oracle/cost.js";
 import { hashAll, Rng } from "../rng.js";
 import { runScenario, type DecisionRec, type ExplorePolicy, type RunResult } from "../run/runner.js";
 import type { RuntimeFactory } from "../run/rt.js";
@@ -111,8 +111,11 @@ function pickOnPolicy(decs: DecisionRec[], max: number, rng: Rng): DecisionRec[]
   return chosen.sort((a, b) => a.k - b.k);
 }
 
+/** Dense trajectories (storms) are labelled only in their first DENSE_K decisions: replay cost grows with k. */
+const DENSE_K = 600;
+
 function pickPoints(decs: DecisionRec[], max: number, rng: Rng): DecisionRec[] {
-  const cands = decs.filter((d) => d.actions.length >= 2);
+  const cands = decs.filter((d) => d.actions.length >= 2 && d.k < DENSE_K);
   if (cands.length <= max) return cands;
   const chosen: DecisionRec[] = [];
   const pool = cands.slice();
@@ -169,6 +172,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
     const forcedPrefix = new Map<number, string>();
     for (const d of base.decisions) if (d.k < p.k && d.explored) forcedPrefix.set(d.k, d.chosen);
     const pc = await pointCosts(scn, ideal, base, p, o.factory, o.futures ?? 3, o.adaptive ?? true);
+    if (p.probe) p.probe.l_div_now = Math.round(clientDivergenceAt(base, ideal, p.t) * 1000) / 1000;
     out.runs += pc.runs;
     if (pc.drop) drop(pc.drop);
     const ok = !pc.drop;
@@ -216,6 +220,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
         subject: p.subject,
         transform: tr.variant,
         ...(p.fakeDiagnosis ? { fake_diagnosis: true } : {}),
+        ...(p.probe ? { probe: p.probe } : {}),
         ...(onp
           ? {
               on_policy: true,
@@ -283,6 +288,12 @@ const r3 = (x: number) => Math.round(x * 1000) / 1000;
  * model latency, other users' timing) with a salt shared by all actions (common random numbers). Each future is a
  * separate run whose decision prefix must be byte-identical to the base run.
  */
+/** Wall time spent in runCost (profiling). */
+export let costMs = 0;
+export function resetCostMs(): void {
+  costMs = 0;
+}
+
 export async function pointCosts(
   scn: Scenario,
   ideal: RunResult,
@@ -326,7 +337,9 @@ export async function pointCosts(
       // Replay check: every decision up to k must be byte-identical to the base run.
       const mine = cf.decisions.filter((d) => d.k <= p.k);
       if (mine.length !== p.k + 1 || mine.some((d) => d.fp !== base.decisions[d.k]?.fp)) return { costs, parts, runs, drop: "prefix-mismatch", results };
+      const tc = performance.now();
       const c = runCost(cf, idealJ, p.t, scn.tEnd);
+      costMs += performance.now() - tc;
       (costs[a] ??= []).push(Math.round(c.total * 1e4) / 1e4);
       if (j === 0) {
         parts[a] = c;

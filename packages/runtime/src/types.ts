@@ -44,6 +44,7 @@ export type AnswerOf<Q extends Question> = Q extends { type: "noul" }
 export type TriggerKind =
   | "mutation"
   | "request"
+  | "delivery"
   | "failure"
   | "stall"
   | "inconsistency"
@@ -91,7 +92,10 @@ export interface ModelStatus {
  */
 export interface SubjectRef {
   kind: TriggerKind;
-  /** request / failure / stall / transition: the subject op; error: the ambient op when it was thrown. */
+  /**
+   * request / failure / stall / transition / delivery: the subject op (delivery: the fetch op or the WebSocket /
+   * EventSource message op); error: the ambient op when it was thrown.
+   */
   op?: number;
   /** mutation: the held mutation id. */
   mutation?: number;
@@ -265,7 +269,7 @@ export interface Change {
 
 export type Mode = "observe" | "guard" | "heal";
 export type Tier = "passive" | "guard" | "heal";
-export type ObserverName = "fetch" | "xhr" | "user" | "errors" | "nav" | "storage" | "perf" | "websocket" | "timers";
+export type ObserverName = "fetch" | "xhr" | "user" | "errors" | "nav" | "storage" | "perf" | "websocket" | "eventsource" | "timers";
 
 export interface PolicyOptions {
   /** Defaults: report 0.6, guard 0.9, heal 0.8. */
@@ -280,6 +284,13 @@ export interface PolicyOptions {
   holdBudgetMs?: number | "auto";
   /** Default false. */
   holdUserWrites?: boolean;
+  /**
+   * Default false: store writes are never held (decisions about responses and messages are taken at the network
+   * boundary; salient writes not covered by such a decision are decided in the background and may be reverted
+   * under the late-revert rules). true (opt-in): salient writes wait for the model, without ever reordering a
+   * store's writes, and reads inside the writing chain see the pending value.
+   */
+  holdWrites?: boolean;
   /** Default 60 non-passive actions per minute; beyond it the passive action runs and a warning is emitted. */
   maxActionsPerMinute?: number;
   /**
@@ -324,7 +335,11 @@ export interface InitOptions {
   /** Default "console". */
   report?: "console" | "silent" | ((r: Report) => void);
   /** Default: all true (where the global supports them). */
-  observe?: Partial<Record<ObserverName, boolean>>;
+  /**
+   * Observers to install (default: all, `timers` only with a document). `untrustedEvents` (default false): record
+   * synthetic DOM events (isTrusted false) as user actions too, for in-page test harnesses.
+   */
+  observe?: Partial<Record<ObserverName | "untrustedEvents", boolean>>;
   /** Default "salient". */
   triage?: "salient" | "always";
   policy?: PolicyOptions;
@@ -343,7 +358,7 @@ export interface InitOptions {
   settleMs?: number;
   /**
    * Size of the situation text the model reads, in characters. Default "auto": by device from the model status
-   * (webgpu 3,200; wasm 1,100 + 300 per extra thread up to 4 threads: 2,000; unknown device 3,200).
+   * (webgpu 2,400; wasm 1,000 at 1 thread to 2,000 at 4 threads, linear; unknown device 2,400).
    */
   situation?: { budget?: number | "auto" };
 }
@@ -434,6 +449,8 @@ export interface SituationDraft {
   stores: string[];
   mutation?: { id: number; store: string; changes: Change[] };
   request?: RequestInfo;
+  /** delivery: the fields the operation is predicted to write (normalised paths) and those with newer data. */
+  delivery?: { channel: "response" | "websocket" | "eventsource"; predicted: string[]; conflicts: string[] };
   failure?: { kind: "network" | "timeout" | "http"; status?: number; message?: string };
   error?: { name: string; message: string; source?: string };
   invariants?: { id: string; text: string }[];
@@ -497,6 +514,8 @@ export interface ActionRecord {
   undo?: () => void;
   /** The subject had already proceeded (hold budget expired): the action reverted it afterwards. */
   late?: boolean;
+  /** delivery `discard`: store paths whose writes by the delivered operation's chain were dropped so far. */
+  dropped?: string[];
 }
 
 export interface Report {

@@ -119,6 +119,49 @@ gated policy saves only ≈ 0.05 cost units per decision of the 1.15 available (
 (91%). SIM's frozen data uses uncertainty-based labels (≥ 0.95 on clear cases), which is what the final round
 trains on; R17 matches R32 here, which supports R17 as the WASM default.
 
-## Final round 1 (frozen runtime `situation-v1`, SIM phase A)
+## Final round 1 (frozen runtime `situation-v1`, SIM phase A) — v1 baseline
 
-(in progress)
+Training: both students from their stage-1c weights on SIM phase A train (448,420 rows; budgets 3,200 / 2,000 /
+1,000 chars, compact bare-label questions at 1,000) + 12% frozen-wording curriculum (`cur4`) + 3% older replay,
+`max_len` 2048. R32: 2.4 passes (771 steps, c02–c07, 1 h 25 min); R17: 3.0 passes (2,168 steps, c08–c11, 1 h 12 min).
+Evaluation: 20,000 random rows of SIM's held-out test split (12,901 decision rows), temperatures fitted on 8,000 dev
+rows (per kind; split-half NLL 0.332 → 0.331, ECE 0.013 → 0.009, so the fit transfers).
+
+| model | action acc | diagnosis acc | guard FIR | guard precision (fires) | guard recall | heal FIR | heal precision (fires) | heal recall | ECE action / diag |
+|---|---|---|---|---|---|---|---|---|---|
+| **R17-final1** | 81.9 | 90.5 | **0.05%** (5/10,224) | 80.8 (26) | 1.8% | **0.24%** (24/10,224) | 79.0 (152) | 4.5% | **0.009 / 0.010** |
+| R32-final1 | 81.8 | 89.7 | 0.05% (5/10,224) | 78.3 (23) | 1.5% | 0.22% (23/10,224) | 77.1 (157) | 4.5% | 0.008 / 0.012 |
+
+Recall on **clear** cases (gold puts ≥ 0.9 on one permitted non-passive action): R17 guard 4.2% of 429 rows (clear
+stale/duplicate 7.7% of 220), heal 6.1% of 1,193; R32 3.5% / 6.8% / 5.9%.
+Counterfactual cost per decision (heal mode): R17 33.35, R32 33.34 vs always-passive 33.40 vs oracle 32.38 — the gate
+recovers ≈ 5% of the available improvement.
+
+Per trigger (R17; action / diagnosis acc, heal FIR, heal precision): mutation 90.3 / 89.7, 0.10%, 83%; request
+75.0 / 94.5, 0.20%, 70%; failure 75.9 / 85.3, 0.55%, 83%; inconsistency 85.3 / 94.7, 0.30%, 60%; stall 67.0 / 91.2,
+0.50%, 67%; transition 86.5 / 87.0, 0%; error 94.3 / 98.9, 0%. Per budget (R17): 1,000 chars 82.1 / 87.9 (heal FIR
+0.20%), 2,000 chars 81.9 / 91.0 (0.30%), 3,200 chars 81.8 / 91.9 (0.22%) — compact situations cost ≈ 4 points of
+diagnosis accuracy and nothing in action accuracy.
+
+Threshold sweep (R17, heal): 0.5 → 1,440 fires at 56% precision; 0.8 → 206 at 77%; 0.9 → 87 at 85%; 0.95 → 39 at 97%.
+
+Against the PLAN-v1 targets: guard FIR ≤ 0.1% **met** (0.05%), heal FIR ≤ 0.5% **met** (0.24%), ECE ≤ 0.02 **met**;
+diagnosis ≥ 95% **not met** (90.5%); recall on clear stale/duplicate ≥ 80% **far from met** (7.7%).
+
+Why recall is low: on the 1,216 clear actionable test rows R17's argmax equals the gold action only 41% of the time
+and its non-passive mass has median 0.48 (p90 0.79), while on passive-best rows the non-passive mass has p90 0.42 and
+p99 0.71: the situations of clear actionable cases and of benign look-alikes overlap a lot for these models, so a
+calibrated model cannot be ≥ 0.8 sure. Per trigger the argmax accuracy on clear rows is failure 51%, mutation 48%,
+stall 54%, request 30%, inconsistency 14%, transition 5%. R32 (3× the compute per token) is no better than R17, which
+points at **information/data**, not student capacity, as the bottleneck — the questions for the scaled program are
+whether a much larger teacher separates these cases (P2) and whether more and on-policy data does.
+
+Size and latency of the delivered exports (`~/gcl/train-out/final1/{r17,r32}` on the train VM; R17 also in
+`packages/runtime-model/files/r17/`): R17 q8 9.58 MB / fp16 13.57 MB; q8 vs PyTorch: argmax 100%, gate agreement
+99.5% @0.8 / 100% @0.9 (233 questions); onnxruntime-web 1.30 WASM 1 thread ≈ 177 / 323 / 589 ms at 500 / 780 / 1,170
+sequence tokens (SIM rows: ≈ 380 / 780 / 1,100 tokens at the 1,000 / 2,000 / 3,200-char budgets).
+
+**Recommendation for v1:** R17 as the default for every device (same accuracy as R32 at a third of the latency and
+size); the gate is precise and well calibrated but intervenes rarely. CORE's situation-v2 redesign (a `delivery`
+trigger at the network boundary, non-blocking mutations) supersedes this format; these numbers are the baseline for
+the v2 rounds.

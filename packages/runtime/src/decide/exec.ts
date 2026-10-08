@@ -13,6 +13,8 @@ export interface ActionEffect {
   /** One sentence: exactly what GenClass altered. */
   changed: string;
   undo?: () => void;
+  /** Called with the ActionRecord once it exists (effects that keep acting later, e.g. delivery discard). */
+  onRecord?: (r: import("../types.js").ActionRecord) => void;
 }
 
 export interface Controller {
@@ -26,6 +28,10 @@ export interface Controller {
    */
   revertable?(): string | null;
   revert?(): ActionEffect;
+  /** The subject already proceeded (write applied, request sent, response delivered): actions now come too late. */
+  proceeded?(): boolean;
+  /** A queued decision about this subject is no longer worth computing (delivered, superseded, aborted). */
+  stale?(): boolean;
 }
 
 export interface TriggerOpts {
@@ -60,6 +66,11 @@ export interface NetHost {
   watchStall(op: OpRec, req: ReqMeta, ctl: () => Controller): () => void;
   failureStreak(sig: string): number;
   emit(name: string, data?: Record<string, unknown>, op?: OpRec): void;
+  /**
+   * A response is about to reach the app: the delivery gate. `release` delivers it (now or after a decision);
+   * called at most once; synchronously when nothing is salient.
+   */
+  deliver(o: { op: OpRec; req: ReqMeta; status: number }, release: () => void): void;
   /** A request identity that matches nothing else (bodies that cannot be read cheaply). */
   uniqueId(): string;
   /** Set a request's identity once known (after reading its body) and register it. */

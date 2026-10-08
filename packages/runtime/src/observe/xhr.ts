@@ -1,11 +1,19 @@
 // XMLHttpRequest observer (basics): ops with causes and identities, request gate (send/delay/block/serve_cached;
-// a blocked or cached answer is replayed onto the XHR as a completed response, honouring responseType), failures
-// and stalls observed for detection (the app sees XHR failures directly, so only the passive action applies),
-// context set when the request completes. Synchronous XHRs are never held. An abort() while GenClass holds the
-// request means it is never sent. Listeners are added once per XHR object; values faked onto an XHR are removed
-// when it is opened again.
+// a blocked or cached answer is replayed onto the XHR as a completed response, honouring responseType), the
+// delivery gate for successful responses, failures and stalls observed for detection (the app sees XHR failures
+// directly, so only the passive action applies), context set when the request completes. Synchronous XHRs are never
+// held. An abort() while GenClass holds the request means it is never sent. Listeners are added once per XHR
+// object; values faked onto an XHR are removed when it is opened again.
+//
+// Delivery gate: the app's completion listeners (readystatechange, progress, load, loadend; added with
+// addEventListener or set as on* handlers, before or after open()) run through a thin wrapper. When a response
+// completes, the first completion event asks the delivery gate (synchronously); while it holds, the app's completion
+// listeners are queued in order and run, with the request op ambient, once the response is delivered. Holding is only
+// latency. An abort() during the hold drops the queued events and tells the app it was aborted. on* getters return
+// the wrapper (the app's own function is called through it).
 
 import type { ActionEffect, Controller, NetHost } from "../decide/exec.js";
+import type { ReqMeta } from "../situation/env.js";
 import type { OpRec } from "../trace/ops.js";
 import { opLabel } from "../situation/describe.js";
 import { fnv1a, secs } from "../util.js";
@@ -27,7 +35,25 @@ interface XhrState {
   /** Own properties defined by fake(), removed on the next open(). */
   faked: string[];
   onEnd?: () => void;
+  req?: ReqMeta;
+  /** Delivery gate for the current request: not reached yet, holding the app's completion events, or open. */
+  dlv: "none" | "held" | "open";
+  /** The app's completion listener calls queued while the delivery is held. */
+  queue: (() => void)[];
 }
+
+/** Events an app sees when a response completes: held together while the delivery gate decides. */
+const COMPLETION = new Set(["readystatechange", "progress", "load", "loadend"]);
+const HANDLERS = ["onreadystatechange", "onprogress", "onload", "onloadend"];
+const FAILURE_STATUS = (s: number) => s >= 500 || s === 429 || s === 408;
+
+function invoke(listener: unknown, target: unknown, ev: Event): unknown {
+  if (typeof listener === "function") return (listener as (this: unknown, e: Event) => unknown).call(target, ev);
+  const h = (listener as { handleEvent?: (e: Event) => unknown } | null)?.handleEvent;
+  return typeof h === "function" ? h.call(listener, ev) : undefined;
+}
+
+const captureOf = (o: unknown): boolean => (typeof o === "boolean" ? o : !!(o as { capture?: boolean } | null)?.capture);
 
 const states = new WeakMap<object, XhrState>();
 
@@ -104,26 +130,138 @@ export function installXHR(host: NetHost): (() => void) | null {
   const send = P.send;
   const abort = P.abort;
   const setHeader = P.setRequestHeader;
+  const nativeAdd = P.addEventListener as (this: EventTarget, t: string, l: unknown, o?: unknown) => void;
+  const nativeRemove = P.removeEventListener as (this: EventTarget, t: string, l: unknown, o?: unknown) => void;
+  const ownAdd = Object.getOwnPropertyDescriptor(P, "addEventListener");
+  const ownRemove = Object.getOwnPropertyDescriptor(P, "removeEventListener");
+  /** Per XHR object: app listener → wrapper, by "type|capture". */
+  const wrappers = new WeakMap<object, Map<unknown, Map<string, (e: Event) => unknown>>>();
+  let wrappedAny = false;
   let disabled = false;
+
+  const report = (e: unknown) => {
+    const r = host.global.reportError as ((e: unknown) => void) | undefined;
+    if (typeof r === "function") r.call(host.global, e);
+    else ((host.global.console as Console | undefined) ?? globalThis.console)?.error?.(e);
+  };
+
+  /** The response completed: ask the delivery gate once (synchronously); successful responses only. */
+  const arrive = (xhr: XMLHttpRequest, st: XhrState): void => {
+    if (st.dlv !== "none") return;
+    st.dlv = "open";
+    const op = st.op;
+    if (!op || !st.req || op.end !== undefined || st.failed) return;
+    const status = xhr.status;
+    if (!status || FAILURE_STATUS(status)) return; // failures: detection only, at loadend
+    host.endOp(op, "ok", { code: status });
+    host.ctx.stick(op);
+    if (!host.gated(op)) return;
+    st.dlv = "held";
+    let sync = true;
+    host.deliver({ op, req: st.req, status }, () => {
+      if (st.dlv !== "held") return; // aborted meanwhile
+      st.dlv = "open";
+      if (sync) return;
+      host.ctx.stick(op);
+      const q = st.queue;
+      st.queue = [];
+      for (const f of q) {
+        try {
+          f();
+        } catch (e) {
+          report(e);
+        }
+      }
+    });
+    sync = false;
+  };
+
+  /** An app completion listener is about to run: hold it while the response's delivery is undecided. */
+  const gateCall = (xhr: XMLHttpRequest, ev: Event, call: () => unknown): unknown => {
+    const st = states.get(xhr);
+    if (!disabled && st && st.async && COMPLETION.has(ev.type) && xhr.readyState === 4) {
+      arrive(xhr, st);
+      if (st.dlv === "held") {
+        st.queue.push(call);
+        return undefined;
+      }
+    }
+    return call();
+  };
+
+  const wrap = (xhr: XMLHttpRequest, listener: unknown): ((e: Event) => unknown) =>
+    function (this: unknown, ev: Event) {
+      return gateCall(xhr, ev, () => invoke(listener, xhr, ev));
+    };
+
+  const wAdd = function (this: XMLHttpRequest, type: string, listener: unknown, opts?: unknown) {
+    if (disabled || !listener || !COMPLETION.has(type)) return nativeAdd.call(this, type, listener, opts);
+    let byL = wrappers.get(this);
+    if (!byL) wrappers.set(this, (byL = new Map()));
+    let byKey = byL.get(listener);
+    if (!byKey) byL.set(listener, (byKey = new Map()));
+    const key = `${type}|${captureOf(opts)}`;
+    let w = byKey.get(key);
+    if (!w) byKey.set(key, (w = wrap(this, listener)));
+    wrappedAny = true;
+    return nativeAdd.call(this, type, w, opts);
+  };
+
+  const wRemove = function (this: XMLHttpRequest, type: string, listener: unknown, opts?: unknown) {
+    const w = wrappers.get(this)?.get(listener)?.get(`${type}|${captureOf(opts)}`);
+    return nativeRemove.call(this, type, w ?? listener, opts);
+  };
+
+  /** on* completion handlers go through the gate too (set before or after open; plain fields or the browser's). */
+  const wrapHandlers = (xhr: XMLHttpRequest): void => {
+    for (const prop of HANDLERS) {
+      let desc: PropertyDescriptor | undefined;
+      let o: object | null = xhr;
+      while (o && !(desc = Object.getOwnPropertyDescriptor(o, prop))) o = Object.getPrototypeOf(o) as object | null;
+      if (desc && !desc.configurable && o === xhr) continue;
+      const nativeSet = desc?.set && o !== xhr ? desc.set : undefined;
+      let current: unknown = null;
+      try {
+        current = desc ? (desc.get ? desc.get.call(xhr) : desc.value) : null;
+      } catch {
+        current = null;
+      }
+      let wrapper: ((e: Event) => unknown) | null = null;
+      const set = (fn: unknown) => {
+        wrapper = typeof fn === "function" ? wrap(xhr, fn) : null;
+        if (nativeSet) nativeSet.call(xhr, wrapper);
+      };
+      try {
+        Object.defineProperty(xhr, prop, { configurable: true, enumerable: true, get: () => wrapper, set });
+        set(current);
+      } catch {
+        /* leave this handler as it is */
+      }
+    }
+  };
 
   const stateOf = (xhr: XMLHttpRequest): XhrState => {
     let st = states.get(xhr);
     if (!st) {
-      st = { method: "GET", url: "", async: true, headers: new Map(), held: false, abortedWhileHeld: false, faked: [] };
+      st = { method: "GET", url: "", async: true, headers: new Map(), held: false, abortedWhileHeld: false, faked: [], dlv: "none", queue: [] };
       states.set(xhr, st);
       const s = st;
-      // added once per XHR object (reused objects do not accumulate listeners)
-      xhr.addEventListener("readystatechange", () => {
-        if (xhr.readyState === 4 && s.op) host.ctx.stick(s.op);
+      // added once per XHR object (reused objects do not accumulate listeners), never wrapped
+      const add = (t: string, fn: () => void) => nativeAdd.call(xhr, t, fn);
+      add("readystatechange", () => {
+        if (xhr.readyState !== 4 || !s.op) return;
+        if (s.async) arrive(xhr, s);
+        host.ctx.stick(s.op);
       });
-      xhr.addEventListener("error", () => (s.failed = "error"));
-      xhr.addEventListener("timeout", () => (s.failed = "timeout"));
-      xhr.addEventListener("abort", () => (s.failed = "abort"));
-      xhr.addEventListener("loadend", () => {
+      add("error", () => (s.failed = "error"));
+      add("timeout", () => (s.failed = "timeout"));
+      add("abort", () => (s.failed = "abort"));
+      add("loadend", () => {
         const f = s.onEnd;
         s.onEnd = undefined;
         f?.();
       });
+      wrapHandlers(xhr);
     }
     return st;
   };
@@ -141,6 +279,9 @@ export function installXHR(host: NetHost): (() => void) | null {
     st.held = false;
     st.abortedWhileHeld = false;
     st.onEnd = undefined;
+    st.req = undefined;
+    st.dlv = "none";
+    st.queue = [];
     return (open as (...a: unknown[]) => void).apply(this, args);
   };
 
@@ -154,6 +295,23 @@ export function installXHR(host: NetHost): (() => void) | null {
 
   const wAbort = function (this: XMLHttpRequest) {
     const st = disabled ? undefined : states.get(this);
+    if (st && st.dlv === "held") {
+      // the response arrived but the app has not seen it: drop it and tell the app it was aborted
+      st.dlv = "open";
+      st.queue = [];
+      if (st.op) host.emit("xhr.aborted-while-held", {}, st.op);
+      abort.call(this);
+      const fire = (t: string) => {
+        try {
+          this.dispatchEvent(new Event(t));
+        } catch {
+          /* ignore */
+        }
+      };
+      fire("abort");
+      fire("loadend");
+      return;
+    }
     if (st && st.held && !st.abortedWhileHeld) {
       // the request was never sent: end it as aborted, tell the app like a real abort, never send it
       st.abortedWhileHeld = true;
@@ -184,7 +342,10 @@ export function installXHR(host: NetHost): (() => void) | null {
     const req = parsed.meta;
     const op = host.startOp("xhr", req.signature, { detail: parsed.detail, identity: req.identity, method: req.method, url: req.url });
     st.op = op;
+    st.req = req;
     st.failed = undefined;
+    st.dlv = "none";
+    st.queue = [];
     const xhr = this;
     let cancelStall: () => void = () => undefined;
     st.onEnd = () => {
@@ -198,7 +359,7 @@ export function installXHR(host: NetHost): (() => void) | null {
         if (host.gated(op)) host.trigger({ trigger: "failure", op, req, failure: { kind: timeout ? "timeout" : "network", durMs: (op.end ?? 0) - op.start } }, passiveOnly(), { hold: false, priority: 1 });
         return;
       }
-      const failed = status >= 500 || status === 429 || status === 408;
+      const failed = FAILURE_STATUS(status);
       host.endOp(op, failed ? "error" : "ok", { code: status, ...(failed ? { errorText: `HTTP ${status}`, failure: true } : {}) });
       if (failed && host.gated(op)) host.trigger({ trigger: "failure", op, req, failure: { kind: "http", status, statusText: xhr.statusText, durMs: (op.end ?? 0) - op.start } }, passiveOnly(), { hold: false, priority: 1 });
     };
@@ -219,6 +380,8 @@ export function installXHR(host: NetHost): (() => void) | null {
     st.held = true;
     let decided = false;
     const ctl: Controller = {
+      proceeded: () => decided || st.abortedWhileHeld,
+      stale: () => st.abortedWhileHeld,
       passive: () => {
         if (decided) return;
         decided = true;
@@ -284,6 +447,8 @@ export function installXHR(host: NetHost): (() => void) | null {
     P.send = wSend as XMLHttpRequest["send"];
     P.abort = wAbort as XMLHttpRequest["abort"];
     P.setRequestHeader = wSetHeader as XMLHttpRequest["setRequestHeader"];
+    P.addEventListener = wAdd as XMLHttpRequest["addEventListener"];
+    P.removeEventListener = wRemove as XMLHttpRequest["removeEventListener"];
   } catch {
     return null;
   }
@@ -293,5 +458,16 @@ export function installXHR(host: NetHost): (() => void) | null {
     if (P.send === (wSend as unknown)) P.send = send;
     if (P.abort === (wAbort as unknown)) P.abort = abort;
     if (P.setRequestHeader === (wSetHeader as unknown)) P.setRequestHeader = setHeader;
+    // listeners added while installed keep their (pass-through) wrappers: once any exists, add/remove stay
+    // installed as pass-throughs so removeEventListener still finds them
+    const restore = (name: "addEventListener" | "removeEventListener", own: PropertyDescriptor | undefined, w: unknown) => {
+      if ((P as unknown as Record<string, unknown>)[name] !== w) return;
+      if (own) Object.defineProperty(P, name, own);
+      else delete (P as unknown as Record<string, unknown>)[name];
+    };
+    if (!wrappedAny) {
+      restore("addEventListener", ownAdd, wAdd);
+      restore("removeEventListener", ownRemove, wRemove);
+    }
   };
 }
