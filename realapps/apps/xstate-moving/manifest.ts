@@ -39,9 +39,9 @@ const manifest: AppManifest = {
     dates: ["refetch-on-enter", "once"],
   },
   affordances: [
-    { id: "more", kind: "click", sel: "li.room button.inc", nth: 6, weight: 2.5, mode: "accumulate", intent: "nth", burst: [0, 2], requires: "li.room button.inc:not([disabled])" },
+    { id: "more", kind: "click", sel: "li.room button.inc", nth: 6, weight: 2.2, mode: "accumulate", intent: "nth", burst: [0, 2], requires: "li.room button.inc:not([disabled])" },
     { id: "fewer", kind: "click", sel: "li.room button.dec", nth: 4, weight: 1, mode: "accumulate", intent: "nth", requires: "li.room button.dec:not([disabled])" },
-    { id: "dates", kind: "click", sel: "footer button.to-dates", weight: 2.5, mode: "accumulate", dblclickP: 0.1, impatientP: 0.2, requires: "footer button.to-dates:not([disabled])", then: ["pick"] },
+    { id: "dates", kind: "click", sel: "footer button.to-dates", weight: 1.8, mode: "accumulate", dblclickP: 0.1, impatientP: 0.2, requires: "footer button.to-dates:not([disabled])", then: ["pick"] },
     { id: "pick", kind: "click", sel: "li.date button.hold", nth: 4, weight: 0, mode: "accumulate", intent: "nth", followOnly: true, dblclickP: 0.15 },
     { id: "hold", kind: "click", sel: "li.date button.hold", nth: 4, weight: 1, mode: "accumulate", intent: "nth", after: ["dates"], dblclickP: 0.15, impatientP: 0.2, requires: "li.date button.hold:not([disabled])" },
     { id: "book", kind: "click", sel: "section.held button.book", weight: 2.5, mode: "accumulate", after: ["dates"], dblclickP: 0.2, impatientP: 0.3, requires: "section.held button.book:not([disabled])" },

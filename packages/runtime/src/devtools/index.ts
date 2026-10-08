@@ -13,6 +13,7 @@ import type {
   Answer,
   Clock,
   Decision,
+  EffectiveGates,
   Explanation,
   Mode,
   ModelStatus,
@@ -22,6 +23,7 @@ import type {
   Runtime,
   RuntimeEvents,
   Situation,
+  TriggerKind,
 } from "../types.js";
 import { CSS } from "./css.js";
 import {
@@ -1088,8 +1090,26 @@ class Devtools {
         sit?.actions?.length
           ? sec("Actions available", null, h("div", { class: "acts" }, sit.actions.map((n, i) => h("span", { class: "chip" }, h("code", { text: n }), i === 0 ? "passive" : null))))
           : null,
+        sit ? sec("Gates", null, block(this.gateLines())) : null,
       ].filter(Boolean) as Node[]),
     );
+  }
+
+  /** The gate thresholds in force (CORE batch 6): defaults, plus per-trigger values the model ships. */
+  private gateLines(): string[] {
+    const gates = (this.rt as { gates?: (t?: TriggerKind) => EffectiveGates }).gates;
+    if (typeof gates !== "function") return [];
+    const fmt = (g: EffectiveGates) => `guard ${g.guard} (${g.source.guard}) · heal ${g.heal} (${g.source.heal}) · report ${g.report} (${g.source.report})`;
+    const lines: string[] = [];
+    const all = safe(() => gates.call(this.rt), null as EffectiveGates | null);
+    if (all) lines.push(`default: ${fmt(all)}`);
+    const by = safe(() => this.rt.status.gate, undefined);
+    const kinds = new Set<TriggerKind>([...Object.keys(by?.guard?.byTrigger ?? {}), ...Object.keys(by?.heal?.byTrigger ?? {})] as TriggerKind[]);
+    for (const k of kinds) {
+      const g = safe(() => gates.call(this.rt, k), null as EffectiveGates | null);
+      if (g) lines.push(`${k}: ${fmt(g)}`);
+    }
+    return lines;
   }
 
   // ------------------------------------------------------------------------------------------ controls

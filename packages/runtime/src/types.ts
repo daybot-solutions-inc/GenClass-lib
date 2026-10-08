@@ -84,6 +84,33 @@ export interface ModelStatus {
   attempts?: { variant: string; device: string; error: string }[];
   /** onnxruntime-web version. */
   ort?: string;
+  /** Data-derived gate thresholds shipped with the model (meta.json `gate`), validated. */
+  gate?: ModelGate;
+}
+
+/** Thresholds of one tier: a default and optional per-trigger values. */
+export interface GateTier {
+  default?: number;
+  byTrigger?: Partial<Record<TriggerKind, number>>;
+}
+
+/** The model's own gate thresholds (meta.json `gate`): the action probabilities are calibrated to these. */
+export interface ModelGate {
+  report?: number;
+  guard?: GateTier;
+  heal?: GateTier;
+}
+
+/** Where an effective threshold comes from: the app's policy.thresholds, the model's meta gate, or the defaults. */
+export type GateSource = "policy" | "model" | "default";
+
+/** The thresholds the §8 gate uses (for one trigger kind, or the defaults when none is given). */
+export interface EffectiveGates {
+  trigger?: TriggerKind;
+  report: number;
+  guard: number;
+  heal: number;
+  source: { report: GateSource; guard: GateSource; heal: GateSource };
 }
 
 /**
@@ -274,7 +301,10 @@ export type Tier = "passive" | "guard" | "heal";
 export type ObserverName = "fetch" | "xhr" | "user" | "errors" | "nav" | "storage" | "perf" | "websocket" | "eventsource" | "timers";
 
 export interface PolicyOptions {
-  /** Defaults: report 0.6, guard 0.9, heal 0.8. */
+  /**
+   * Overrides of the gate thresholds. Unset tiers use the model's own thresholds (meta.json `gate`, per trigger kind
+   * then its default), else report 0.6, guard 0.9, heal 0.8.
+   */
   thresholds?: { report?: number; guard?: number; heal?: number };
   /** Action names. When set, only these non-passive actions may run. */
   allow?: string[];
@@ -492,6 +522,9 @@ export interface Decision {
   candidate?: string;
   /** Summed probability of the permitted actions (the gate compares it with the candidate's tier threshold). */
   mass?: number;
+  /** The threshold `mass` was compared with (the candidate's tier, for this trigger kind), and where it came from. */
+  threshold?: number;
+  thresholdSource?: GateSource;
   /** The action that actually ran. */
   ran: string;
   /** Every answer the model gave (including plugin standing questions). */
@@ -540,6 +573,8 @@ export interface Explanation {
   answers: Record<string, Answer>;
   action?: ActionRecord;
   changed?: string;
+  /** The gate thresholds in force for this decision's trigger when it was decided. */
+  gates?: EffectiveGates;
 }
 
 // ----------------------------------------------------------------------------------------- plugins (§9)
@@ -655,6 +690,8 @@ export interface Runtime {
   holdBudgetMs(): number;
   /** The current situation size in characters (situation.budget, "auto" by default). */
   situationBudget(): number;
+  /** The gate thresholds in force for a trigger kind (policy overrides, else the model's meta gate, else defaults). */
+  gates(trigger?: TriggerKind): EffectiveGates;
   setMode(mode: Mode): void;
   pause(): void;
   resume(): void;

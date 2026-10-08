@@ -226,6 +226,7 @@ rt.situation(trigger?): Situation  // what the model would see: { trigger, subje
 rt.explain(id): Explanation | null // a decision ("d3") or action ("a1") id -> { message, decision, situationText, facts, timeline, answers, action?, changed? }
 rt.holdBudgetMs(): number          // the current hold budget
 rt.situationBudget(): number       // the current situation size in characters
+rt.gates(trigger?): EffectiveGates // the gate thresholds in force (see Policy)
 rt.history(n?): RtEvent[]          // recent events, oldest first
 rt.decisions(n?): Decision[]       // last 200 decisions
 rt.interventions(n?): ActionRecord[]
@@ -244,7 +245,7 @@ every observer and restores the globals it wrapped.
 | `mutation` | a salient state write not covered by a delivery decision (decided in the background unless `holdWrites`) | `apply`, `discard`, `defer` |
 | `request` | a fetch/XHR is about to be sent | `send`, `coalesce`, `delay`, `block`, `serve_cached` |
 | `failure` | a request failed (network, timeout, 5xx, 429, 408) before the app sees it | `deliver`, `retry`, `serve_cached` |
-| `stall` | a request is far past its usual latency | `wait`, `hedge`, `serve_cached` |
+| `stall` | a request is far past its usual latency, or has been in flight 10 s without a latency baseline yet | `wait`, `hedge`, `serve_cached` |
 | `inconsistency` | a learned relation between fields broke | `ignore`, `rollback`, `resync` |
 | `transition` | an operation changed state unlike it usually does | `ignore`, `rollback`, `resync` |
 | `error` | an uncaught error or unhandled rejection | `ignore`, `rollback` |
@@ -286,7 +287,7 @@ match anything.
 
 ```ts
 interface PolicyOptions {
-  thresholds?: { report?: number; guard?: number; heal?: number };  // defaults 0.6 / 0.9 / 0.8
+  thresholds?: { report?: number; guard?: number; heal?: number };  // overrides; else the model's own gate, else 0.6 / 0.9 / 0.8
   allow?: string[];                 // only these non-passive actions may run
   deny?: string[];                  // these never run
   holdBudgetMs?: number | "auto";   // default "auto": clamp(1.5 × median recent model latency, 150, 800) ms
@@ -296,6 +297,13 @@ interface PolicyOptions {
   requireDiagnosis?: boolean;       // default true
 }
 ```
+
+Thresholds: the model's action probabilities are calibrated against the thresholds it ships with (`gate` in its
+meta.json: `{ report?, guard: { default, byTrigger? }, heal: { default, byTrigger? } }`, visible as
+`runtime.status.gate`). For each trigger kind the effective threshold is your `policy.thresholds` value when set,
+else the model's value for that trigger kind, else its tier default, else 0.6 / 0.9 / 0.8. `runtime.gates(trigger?)`
+returns the thresholds in force and where each comes from (`policy`, `model`, `default`); every decision records the
+threshold it was compared with (`threshold`, `thresholdSource`) and `explain(id).gates` the full set.
 
 The permitted actions are the applicable non-passive actions the mode allows (observe: none; guard: guard tier;
 heal: both), minus denied ones (only allowed ones when `allow` is set). GenClass runs the most probable permitted
@@ -434,11 +442,13 @@ interface Decision {
   probabilities: Record<string, number>; executed: boolean; reason?: string; facts: string[];
   tier: "passive" | "guard" | "heal"; ran: string; answers: Record<string, Answer>; subjectRef?: SubjectRef;
   candidate?: string /* most probable permitted action */; mass?: number /* summed probability of the permitted actions */;
+  threshold?: number /* what mass was compared with */; thresholdSource?: "policy" | "model" | "default";
 }
 type Detection = Decision;
 interface ActionRecord { id: string; decisionId: string; action: string; tier; trigger; subject: string; at: number; ok: boolean; error?: string; changed: string; undo?: () => void; late?: boolean; dropped?: string[] /* delivery discard: fields dropped */ }
 type SubjectRef = { kind: "delivery"; op: number; paths?: string[]; store?: string } | { kind: "mutation"; ... } | ...
-interface Explanation { message: string; decision: Decision; situationText: string; facts: string[]; timeline: string[]; answers: Record<string, Answer>; action?: ActionRecord; changed?: string }
+interface Explanation { message: string; decision: Decision; situationText: string; facts: string[]; timeline: string[]; answers: Record<string, Answer>; action?: ActionRecord; changed?: string; gates?: EffectiveGates }
+interface EffectiveGates { trigger?: TriggerKind; report: number; guard: number; heal: number; source: { report: "policy" | "model" | "default"; guard: …; heal: … } }
 interface RtEvent { seq: number; t: number; kind: "user"|"op.start"|"op.end"|"state"|"error"|"nav"|"perf"|"storage"|"custom"|"decision"|"action"; name: string; op?: number; cause?: number; data?: Record<string, unknown> }
 interface Op { id: number; kind: "user"|"fetch"|"xhr"|"ws"|"task"|"timer"|"genclass"; name: string /* e.g. "GET /api/x", "WS message /live", "SSE update /stream" */; detail?: string; start: number; end?: number; status?: "ok"|"error"|"aborted"|"blocked"; code?: number | string; cause?: number; root?: number; attempt: number; reads: Map<string, number>; identity?: string }
 ```

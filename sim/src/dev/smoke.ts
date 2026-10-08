@@ -66,7 +66,48 @@ async function repeatPrior(n: number): Promise<void> {
   edges.forEach((e, b) => console.log(`gap <= ${e} ms: ${tot[b]} repeats, accidental ${(acc[b]! / Math.max(1, tot[b]!)).toFixed(3)}`));
 }
 
+/** On-policy model host: onnxruntime-node vs onnxruntime-web on TRAIN's request fixtures (parity + latency). */
+async function ortCheck(dir: string): Promise<void> {
+  const { readFileSync } = await import("node:fs");
+  const { loadModelDecider } = await import("../run/onpolicy.js");
+  const reqs = JSON.parse(readFileSync(`${dir}/requests.json`, "utf8")) as { id: string; state: unknown; questions: Record<string, unknown>; tokens?: number }[];
+  const res: Record<string, { ms: number[]; ans: Record<string, unknown>[] }> = {};
+  for (const mode of ["node", "web"]) {
+    process.env.SIM_ORT = mode;
+    const m = await loadModelDecider(dir);
+    const out = { ms: [] as number[], ans: [] as Record<string, unknown>[] };
+    for (const r of reqs) {
+      const t0 = performance.now();
+      const a = await m.host.evaluate({ trigger: "ask", state: r.state, questions: r.questions } as never);
+      out.ms.push(performance.now() - t0);
+      out.ans.push(a as Record<string, unknown>);
+    }
+    res[mode] = out;
+    console.log(`${mode} (${m.ort}, ${m.name}): median ${[...out.ms].sort((a, b) => a - b)[out.ms.length >> 1]!.toFixed(0)} ms, mean ${(out.ms.reduce((a, b) => a + b, 0) / out.ms.length).toFixed(0)} ms over ${reqs.length}`);
+  }
+  let same = 0;
+  let n = 0;
+  let maxDiff = 0;
+  reqs.forEach((_, i) => {
+    for (const [q, a] of Object.entries(res.node!.ans[i]!)) {
+      const b = res.web!.ans[i]![q] as { choice?: string; probabilities?: Record<string, number>; p?: number } | undefined;
+      const x = a as { choice?: string; probabilities?: Record<string, number>; p?: number };
+      if (!b) continue;
+      n++;
+      if (x.choice !== undefined) {
+        if (x.choice === b.choice) same++;
+        for (const [k, v] of Object.entries(x.probabilities ?? {})) maxDiff = Math.max(maxDiff, Math.abs(v - (b.probabilities?.[k] ?? 0)));
+      } else if (x.p !== undefined && b.p !== undefined) {
+        same += Math.round(x.p) === Math.round(b.p) ? 1 : 0;
+        maxDiff = Math.max(maxDiff, Math.abs(x.p - b.p));
+      } else same++;
+    }
+  });
+  console.log(`parity: ${same}/${n} answers agree, max probability difference ${maxDiff.toFixed(4)}`);
+}
+
 async function main(): Promise<void> {
+  if (args.includes("--ort-check")) return ortCheck(opt("--ort-check", ""));
   if (args.includes("--repeat-prior")) return repeatPrior(Number(opt("--repeat-prior", "20000")));
   const factory: RuntimeFactory = fake ? createFakeRuntime : await realRuntimeFactory();
   if (args.includes("--profile")) return profile(factory);

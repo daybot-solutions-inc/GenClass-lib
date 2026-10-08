@@ -1,9 +1,10 @@
-// Moving-company quote and booking wizard (Preact 10 + XState v5 machine run with createActor; fetch). The machine owns
-// the flow: inventory (+/- per room; every change re-quotes after a short debounce: POST /quotes stores the estimate
-// for that inventory) → moving dates (GET /dates?left__gt=0) → holding (POST /holds, then POST /dates/:id/take
-// takes one crew slot; a slot that went negative is given back) → held (a 20 s countdown in the machine; running out
-// or going back releases the date: DELETE /holds/:id + POST /dates/:id/give) → booking (POST /bookings, retried once
-// after a 5xx) → confirmed. The machine context is mirrored into a GenClass atom on every transition and Preact
+// Moving-company quote and booking wizard (Preact 10 + XState v5 machine run with createActor; fetch). A parallel
+// machine: the quote region follows the inventory (+/- per room; every change re-quotes after a short debounce: POST
+// /quotes stores the estimate for that inventory) while the flow region walks the wizard: moving dates (GET
+// /dates?left__gt=0) → holding (POST /holds, then POST /dates/:id/take takes one crew slot; a slot that went negative
+// is given back) → held (a 20 s countdown in the machine; running out or going back releases the date: DELETE
+// /holds/:id + POST /dates/:id/give) → booking (POST /bookings, retried once after a 5xx) → confirmed. The inventory
+// stays editable until booking. The machine context is mirrored into a GenClass atom on every transition and Preact
 // renders it through a signal. Latent bugs by flag: quotes spawned per change and never cancelled (quote=spawn-leak:
 // a slow answer for the previous inventory lands after the current one and the wizard shows and books a stale
 // price), holds that expire only on screen (holdExpiry=leak: the server keeps the hold and the crew slot, so that
@@ -31,6 +32,8 @@ interface Ctx {
   holdLeft: number;
   bookKey: string;
   booking: Booking | null;
+  /** booking or booked: the inventory can no longer change */
+  locked: boolean;
   error: string;
   notice: string;
 }
@@ -69,7 +72,7 @@ function estimate(rooms: Rooms) {
   return { cubicFeet, crew, hours, total: hours * crew * 58 + 180 };
 }
 const postQuote = (rooms: Rooms, signal?: AbortSignal) => api<Quote>(`/api/quotes`, "POST", { rooms, ...estimate(rooms) }, {}, signal);
-const fresh = (): Ctx => ({ rooms: { ...DEFAULT_ROOMS }, quote: null, quoting: true, dates: [], date: null, hold: null, holdLeft: 0, bookKey: "", booking: null, error: "", notice: "" });
+const fresh = (): Ctx => ({ rooms: { ...DEFAULT_ROOMS }, quote: null, quoting: true, dates: [], date: null, hold: null, holdLeft: 0, bookKey: "", booking: null, locked: false, error: "", notice: "" });
 
 class DateFull extends Error {}
 async function placeHold(d: MoveDate, quoteId: number): Promise<{ hold: Hold; date: MoveDate }> {
@@ -95,6 +98,14 @@ function holdError(e: unknown, d: MoveDate): string {
   if (e instanceof HttpError && e.status === 409) return `You already have a hold on ${d.label}.`;
   return errText(e, `holding ${d.label}`);
 }
+
+/** An inventory change (re)starts the quote debounce; a quote request in flight is left behind. */
+const roomEdit = {
+  target: "debounce",
+  reenter: true,
+  guard: ({ context, event }: { context: Ctx; event: Extract<Ev, { type: "ROOM" }> }) => !context.locked && (context.rooms[event.room] ?? 0) + event.delta >= 0 && (context.rooms[event.room] ?? 0) + event.delta <= 9,
+  actions: assign(({ context, event }: { context: Ctx; event: Extract<Ev, { type: "ROOM" }> }) => ({ rooms: { ...context.rooms, [event.room]: (context.rooms[event.room] ?? 0) + event.delta }, quoting: true, error: "", notice: "" })),
+} as const;
 
 const machine = setup({
   types: { context: {} as Ctx, events: {} as Ev },
@@ -129,121 +140,124 @@ const machine = setup({
   },
 }).createMachine({
   id: "move",
-  initial: "inventory",
+  type: "parallel",
   context: fresh(),
   states: {
-    inventory: {
+    // the estimate follows the inventory in its own region, whatever step the customer is on
+    quote: {
       initial: "quoting",
       states: {
-        idle: {},
-        debounce: { after: { 500: "quoting" } },
-        // a quote that could not be saved is tried again after a while
-        failed: { after: { 3000: { target: "quoting", actions: assign({ quoting: true }) } } },
+        idle: { on: { ROOM: roomEdit } },
+        debounce: { after: { 500: "quoting" }, on: { ROOM: roomEdit } },
+        // a quote that could not be saved is tried again after a while (still pending meanwhile)
+        failed: { after: { 3000: "quoting" }, on: { ROOM: roomEdit } },
         quoting:
           QUOTE === "invoke-cancel"
             ? {
+                on: { ROOM: roomEdit },
                 invoke: {
                   src: "quote",
                   input: ({ context }: { context: Ctx }) => context.rooms,
                   onDone: { target: "idle", actions: assign(({ event }) => ({ quote: event.output as Quote, quoting: false, error: "" })) },
-                  onError: { target: "failed", actions: assign(({ event }) => ({ quoting: false, error: errText(event.error, "updating the quote") })) },
+                  onError: { target: "failed", actions: assign(({ event }) => ({ error: errText(event.error, "updating the quote") })) },
                 },
               }
             : {
                 entry: spawnChild("quoteTask", { input: ({ context }: { context: Ctx }) => context.rooms }),
                 on: {
+                  ROOM: roomEdit,
                   QUOTED: { target: "idle", actions: assign(({ event }) => ({ quote: event.quote, quoting: false, error: "" })) },
-                  QUOTE_FAILED: { target: "failed", actions: assign(({ event }) => ({ quoting: false, error: event.error })) },
+                  QUOTE_FAILED: { target: "failed", actions: assign(({ event }) => ({ error: event.error })) },
                 },
               },
       },
       on: {
-        ROOM: {
-          target: ".debounce",
-          reenter: true,
-          guard: ({ context, event }) => (context.rooms[event.room] ?? 0) + event.delta >= 0 && (context.rooms[event.room] ?? 0) + event.delta <= 9,
-          actions: assign(({ context, event }) => ({ rooms: { ...context.rooms, [event.room]: (context.rooms[event.room] ?? 0) + event.delta }, quoting: true, error: "", notice: "" })),
-        },
         // a quote that lands late (only spawned requests can) still replaces the shown one
         QUOTED: { actions: assign(({ event }) => ({ quote: event.quote })) },
-        NEXT: { target: "dates", guard: ({ context }) => !context.quoting && !!context.quote },
       },
     },
-    dates: {
-      initial: "check",
+    flow: {
+      initial: "start",
       states: {
-        check: { always: [{ guard: ({ context }) => DATES === "once" && context.dates.length > 0, target: "ready" }, { target: "loading" }] },
-        loading: {
-          invoke: {
-            src: "loadDates",
-            onDone: { target: "ready", actions: assign(({ event }) => ({ dates: event.output })) },
-            onError: { target: "ready", actions: assign(({ event }) => ({ error: errText(event.error, "loading moving dates") })) },
+        start: { on: { NEXT: { target: "dates", guard: ({ context }) => !context.quoting && !!context.quote } } },
+        dates: {
+          initial: "check",
+          states: {
+            check: { always: [{ guard: ({ context }) => DATES === "once" && context.dates.length > 0, target: "ready" }, { target: "loading" }] },
+            loading: {
+              invoke: {
+                src: "loadDates",
+                onDone: { target: "ready", actions: assign(({ event }) => ({ dates: event.output })) },
+                onError: { target: "ready", actions: assign(({ event }) => ({ error: errText(event.error, "loading moving dates") })) },
+              },
+            },
+            // an empty calendar (or a failed load) is checked again after a while
+            ready: { after: { 6000: { guard: ({ context }) => context.dates.length === 0, target: "loading" } } },
+          },
+          on: {
+            PICK: { target: "holding", guard: ({ context }) => !!context.quote, actions: assign(({ event }) => ({ date: event.date, error: "", notice: "" })) },
+            BACK: { target: "start" },
           },
         },
-        // an empty calendar (or a failed load) is checked again after a while
-        ready: { after: { 6000: { guard: ({ context }) => context.dates.length === 0, target: "loading" } } },
-      },
-      on: {
-        PICK: { target: "holding", actions: assign(({ event }) => ({ date: event.date, error: "", notice: "" })) },
-        BACK: { target: "#move.inventory.idle" },
-      },
-    },
-    holding: {
-      invoke: {
-        src: "hold",
-        input: ({ context }) => ({ date: context.date!, quoteId: context.quote!.id }),
-        onDone: {
-          target: "held",
-          actions: assign(({ context, event }) => ({
-            hold: event.output.hold,
-            date: event.output.date,
-            dates: context.dates.map((d) => (d.id === event.output.date.id ? event.output.date : d)),
-            holdLeft: HOLD_S,
-            bookKey: BOOK_KEY === "idempotency-key" ? `booking-${event.output.hold.id}` : "",
-          })),
+        holding: {
+          invoke: {
+            src: "hold",
+            input: ({ context }) => ({ date: context.date!, quoteId: context.quote!.id }),
+            onDone: {
+              target: "held",
+              actions: assign(({ context, event }) => ({
+                hold: event.output.hold,
+                date: event.output.date,
+                dates: context.dates.map((d) => (d.id === event.output.date.id ? event.output.date : d)),
+                holdLeft: HOLD_S,
+                bookKey: BOOK_KEY === "idempotency-key" ? `booking-${event.output.hold.id}` : "",
+              })),
+            },
+            onError: { target: "dates", actions: assign(({ context, event }) => ({ date: null, error: holdError(event.error, context.date!) })) },
+          },
         },
-        onError: { target: "dates", actions: assign(({ context, event }) => ({ date: null, error: holdError(event.error, context.date!) })) },
+        held: {
+          invoke: { src: "ticker" },
+          on: {
+            TICK: [
+              { guard: ({ context }) => context.holdLeft <= 1, target: "dates", actions: ["expire", assign(({ context }) => ({ notice: `Your hold on ${context.date!.label} ran out.`, hold: null, date: null, holdLeft: 0 }))] },
+              { actions: assign(({ context }) => ({ holdLeft: context.holdLeft - 1 })) },
+            ],
+            BOOK: { target: "booking", guard: ({ context }) => !context.quoting && !!context.quote, actions: assign({ error: "", locked: true }) },
+            BACK: { target: "dates", actions: ["release", assign({ hold: null, date: null, holdLeft: 0 })] },
+          },
+        },
+        booking: {
+          invoke: {
+            src: "book",
+            input: ({ context }) => context,
+            onDone: { target: "confirmed", actions: assign(({ context, event }) => ({ booking: { id: event.output.id, label: context.date!.label, total: context.quote!.total }, hold: null })) },
+            onError: { target: "held", actions: assign(({ event }) => ({ locked: false, error: errText(event.error, "booking your move") })) },
+          },
+          on: BOOK_GUARD === "none" ? { BOOK: { target: "booking", reenter: true } } : {},
+        },
+        confirmed: {},
       },
     },
-    held: {
-      invoke: { src: "ticker" },
-      on: {
-        TICK: [
-          { guard: ({ context }) => context.holdLeft <= 1, target: "dates", actions: ["expire", assign(({ context }) => ({ notice: `Your hold on ${context.date!.label} ran out.`, hold: null, date: null, holdLeft: 0 }))] },
-          { actions: assign(({ context }) => ({ holdLeft: context.holdLeft - 1 })) },
-        ],
-        BOOK: { target: "booking", actions: assign({ error: "" }) },
-        BACK: { target: "dates", actions: ["release", assign({ hold: null, date: null, holdLeft: 0 })] },
-      },
-    },
-    booking: {
-      invoke: {
-        src: "book",
-        input: ({ context }) => context,
-        onDone: { target: "confirmed", actions: assign(({ context, event }) => ({ booking: { id: event.output.id, label: context.date!.label, total: context.quote!.total }, hold: null })) },
-        onError: { target: "held", actions: assign(({ event }) => ({ error: errText(event.error, "booking your move") })) },
-      },
-      on: BOOK_GUARD === "none" ? { BOOK: { target: "booking", reenter: true } } : {},
-    },
-    confirmed: {
-      on: { NEW: { target: "inventory", actions: assign(({ context }) => ({ ...fresh(), dates: context.dates })) } },
-    },
+  },
+  on: {
+    NEW: { guard: ({ context }) => !!context.booking, target: [".quote.quoting", ".flow.start"], actions: assign(({ context }) => ({ ...fresh(), dates: context.dates })) },
   },
 });
 
 const stepOf = (v: unknown): string => (typeof v === "string" ? v : Object.keys(v as object)[0]!);
 const actor = createActor(machine);
-const move = rt.atom("move", { step: "inventory", ...actor.getSnapshot().context, loadingDates: false, busy: false });
+const move = rt.atom("move", { step: "start", ...actor.getSnapshot().context, loadingDates: false, busy: false });
 actor.subscribe((s) => {
-  const step = stepOf(s.value);
-  move.set({ step, ...s.context, loadingDates: s.matches({ dates: "loading" }), busy: ["holding", "booking"].includes(step) });
+  const step = stepOf((s.value as { flow: unknown }).flow);
+  move.set({ step, ...s.context, loadingDates: s.matches({ flow: { dates: "loading" } }), busy: ["holding", "booking"].includes(step) });
 });
 actor.start();
 const moveSig = atomSignal(move);
 
 // ------------------------------------------------------------------------------------------- view
 const STEPS: [string, string[]][] = [
-  ["Inventory", ["inventory"]],
+  ["Inventory", ["start"]],
   ["Date", ["dates", "holding"]],
   ["Book", ["held", "booking"]],
   ["Done", ["confirmed"]],
@@ -263,27 +277,27 @@ function Wizard() {
         ))}
       </ol>
       {m.error ? <p role="alert">{m.error}</p> : m.notice ? <p className="notice">{m.notice}</p> : null}
-      {m.step === "inventory" ? (
-        <section className="inventory">
-          <ul className="rooms">
-            {ROOMS.map(([k, label]) => (
-              <li key={k} className="room">
-                <span className="label">{label}</span>{" "}
-                <button type="button" className="dec" disabled={!m.rooms[k]} onClick={() => send({ type: "ROOM", room: k, delta: -1 })}>
-                  −
-                </button>{" "}
-                <span className="count">{m.rooms[k] ?? 0}</span>{" "}
-                <button type="button" className="inc" disabled={(m.rooms[k] ?? 0) >= 9} onClick={() => send({ type: "ROOM", room: k, delta: 1 })}>
-                  +
-                </button>
-              </li>
-            ))}
-          </ul>
-          <p className="quote">{m.quoting ? "Updating your quote…" : q ? `${q.cubicFeet} cu ft · ${q.crew} movers · about ${q.hours} h · $${q.total}` : "No quote yet."}</p>
-        </section>
-      ) : null}
+      <section className="inventory">
+        <h2>What are we moving?</h2>
+        <ul className="rooms">
+          {ROOMS.map(([k, label]) => (
+            <li key={k} className="room">
+              <span className="label">{label}</span>{" "}
+              <button type="button" className="dec" disabled={m.locked || !m.rooms[k]} onClick={() => send({ type: "ROOM", room: k, delta: -1 })}>
+                −
+              </button>{" "}
+              <span className="count">{m.rooms[k] ?? 0}</span>{" "}
+              <button type="button" className="inc" disabled={m.locked || (m.rooms[k] ?? 0) >= 9} onClick={() => send({ type: "ROOM", room: k, delta: 1 })}>
+                +
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="quote">{m.quoting ? "Updating your quote…" : q ? `${q.cubicFeet} cu ft · ${q.crew} movers · about ${q.hours} h · $${q.total}` : "No quote yet."}</p>
+      </section>
       {m.step === "dates" ? (
         <section className="dates">
+          <h2>Pick a moving date</h2>
           {m.loadingDates ? <p className="muted">Checking the calendar…</p> : null}
           {!m.loadingDates && m.dates.length === 0 ? <p className="muted">No dates open right now.</p> : null}
           {!m.loadingDates ? (
@@ -307,10 +321,7 @@ function Wizard() {
             {m.date.label} with crew {m.date.crew}
           </h2>
           <p className="countdown">Held for you — {m.holdLeft} s left to book.</p>
-          <p>
-            {q.cubicFeet} cu ft · {q.crew} movers · ${q.total}
-          </p>
-          <button type="button" className="book" disabled={m.step === "booking" && BOOK_GUARD === "state"} onClick={() => send({ type: "BOOK" })}>
+          <button type="button" className="book" disabled={m.quoting || (m.step === "booking" && BOOK_GUARD === "state")} onClick={() => send({ type: "BOOK" })}>
             {m.step === "booking" ? "Booking…" : `Book for $${q.total}`}
           </button>
         </section>
@@ -328,7 +339,7 @@ function Wizard() {
             Back
           </button>
         ) : null}{" "}
-        {m.step === "inventory" ? (
+        {m.step === "start" ? (
           <button type="button" className="primary to-dates" disabled={m.quoting || !q} onClick={() => send({ type: "NEXT" })}>
             See moving dates
           </button>

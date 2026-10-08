@@ -1,6 +1,6 @@
 # @genclass/runtime: status (CORE)
 
-Updated: 2026-10-08 (batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
+Updated: 2026-10-08 (batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
 MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
 
 ## State
@@ -38,6 +38,34 @@ observe mode on the same scenario (`debug.js --interference`):
 | situation | `src/situation/*.ts` | facts, version conflicts (`conflicts.ts`), response content vs store (`content.ts`), evidence facts (`evidence.ts`), budget-shaped serializer, compact questions, triage, subject refs |
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
+
+## Batch 6 (done): data-derived gate thresholds; no-baseline stalls
+
+- **Gate thresholds from the model.** The model host passes meta.json `gate` (`{ report?, guard: { default,
+  byTrigger? }, heal: { default, byTrigger? } }`) through in its ready status (`status.gate`; one line in
+  `src/model/backend.ts`, MODEL's file). The runtime validates it (`parseGate`: numbers in [0, 1], known trigger kinds,
+  a bare number = the tier default) and gates with: the app's `policy.thresholds` value when set, else the model's
+  value for the trigger kind, else its tier default, else report 0.6 / guard 0.9 / heal 0.8 (`effectiveGates`, per
+  tier). The detection/report threshold follows the same rule.
+- **Exposed:** `runtime.gates(trigger?)` → `{ trigger?, report, guard, heal, source: { report, guard, heal } }` with
+  sources `policy` / `model` / `default`; `Decision.threshold` (what the permitted mass was compared with: the
+  candidate's tier for that trigger) and `Decision.thresholdSource`; `explain(id).gates` (the full set at decision
+  time); the devtools Now view has a "Gates" section (defaults and every trigger kind the model gives its own value;
+  a few lines in `src/devtools/index.ts`, UI's file). Gate reasons print the threshold rounded to 2 decimals.
+- **No-baseline stall fallback (REAL wave 4: a hung non-GET request with no baseline produced no decision).** A
+  request whose signature has no latency baseline yet (fewer than 5 completions) raises `stall` once it has been in
+  flight 10 s. Its situation adds one neutral fact: "POST /api/upload has no latency baseline yet (0 completed
+  requests); requests without one are checked after 10.0s in flight." Situation text of every existing trigger is
+  unchanged; what changes is that such requests now produce stall situations (new rows for SIM/REAL), and in heal
+  mode a hung idempotent GET without a baseline can now be hedged or served from cache. Every request without a
+  baseline schedules one more 10 s timer (cleared when it ends).
+- Tests: `test/gates.test.ts` (parseGate validation; precedence policy > model per trigger > model default >
+  defaults; the runtime records `threshold`/`thresholdSource` and acts at the model's 0.6 where the old 0.9 would not;
+  overrides win; the model host's ready status carries `gate` into `runtime.gates()`; the no-baseline stall at 10 s
+  with its fact), `test/gates-devtools.test.ts` (Now view), `test/model/loader.test.ts` (one test, MODEL's file: the
+  backend's ready status carries meta.json `gate`; absent without it). All suites on the VM: 45 files, 375 tests; one
+  run failed `review-perf`'s 1 ms redux-dispatch bound at load average ~50 (1.44 ms); A/B against the committed code
+  in the same minute gave equal times (0.64–0.70 ms both), and the rerun passes (0.64 ms).
 
 ## Fix after batch 5: situation() purity (REAL report, oss-svelte-conduit)
 

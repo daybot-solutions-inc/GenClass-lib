@@ -6,7 +6,7 @@
 // InferenceSession -> Engine -> warm-up pass. The first plan that works wins; failures are recorded in
 // status.attempts.
 
-import type { Clock, ModelStatus } from "../types.js";
+import type { Clock, ModelGate, ModelStatus } from "../types.js";
 import { parseCalibration } from "./calibrate.js";
 import { Engine, type EngineResult, type ModelMeta, type OrtLike, type OrtSessionLike } from "./engine.js";
 import { ModelLoadError, ModelNotReadyError, errorMessage, type LoadAttempt } from "./errors.js";
@@ -265,6 +265,8 @@ export class ModelBackend {
             ...(warmupMs !== undefined ? { warmupMs } : {}),
             ...(latency ? { latency } : {}),
             ...(attempts.length ? { attempts } : {}),
+            // the model's own gate thresholds (meta.json `gate`), validated by the runtime (decide/policy.ts)
+            ...(meta.gate && typeof meta.gate === "object" ? { gate: meta.gate as ModelGate } : {}),
           });
           return;
         } catch (e) {

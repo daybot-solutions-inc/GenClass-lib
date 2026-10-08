@@ -39,6 +39,7 @@ import type {
   TriggerKind,
   UserAction,
   Vocabulary,
+  EffectiveGates,
 } from "./types.js";
 import { browserClock } from "./clock.js";
 import { GenClassUnavailableError } from "./errors.js";
@@ -54,7 +55,7 @@ import { analyzeBody, createdIds, vhash } from "./situation/content.js";
 import { commitAmbiguity, failureOf, hostOfSig } from "./situation/evidence.js";
 import { Profiles, shapeOf } from "./learn/profiles.js";
 import { buildSituation, relatedInFlight, type BuildOptions, type BuiltSituation } from "./situation/build.js";
-import { computeFacts } from "./situation/facts.js";
+import { computeFacts, NO_BASELINE_STALL_MS } from "./situation/facts.js";
 import type { ChainWriteInfo, CreateRec, DeliverySpec, ErrorInfo, OutcomeRec, ReqMeta, SitEnv, SubjectSpec, Violation } from "./situation/env.js";
 import { conflictsOn, matchFields, predictedWrites } from "./situation/conflicts.js";
 import { installEventSource } from "./observe/eventsource.js";
@@ -62,7 +63,7 @@ import { opLabel } from "./situation/describe.js";
 import { BUILTIN_ACTIONS, diagnosisVocabulary, PASSIVE } from "./situation/questions.js";
 import { STATE_CHAR_BUDGET, stateText } from "./situation/serialize.js";
 import { DeciderQueue } from "./decide/decider.js";
-import { gate, holdBudget, permittedActions, policyConfig, RateLimiter, restriction, type PolicyConfig } from "./decide/policy.js";
+import { effectiveGates, gate, holdBudget, parseGate, permittedActions, policyConfig, RateLimiter, restriction, type PolicyConfig } from "./decide/policy.js";
 import { decisionLine, detectionLine, interventionLine, Reporter } from "./decide/report.js";
 import type { ActionEffect, Controller, EndOpts, NetHost, TriggerOpts } from "./decide/exec.js";
 import { ResponseCache } from "./observe/cache.js";
@@ -99,6 +100,7 @@ interface ExplainRec {
   timeline: string[];
   answers: Record<string, Answer>;
   action?: ActionRecord;
+  gates: EffectiveGates;
 }
 
 type Listeners = { [K in keyof RuntimeEvents]: Set<(v: RuntimeEvents[K]) => void> };
@@ -578,7 +580,8 @@ export class RuntimeImpl implements Runtime {
     const diagnosisConfidence = diagnosisProbabilities[diagnosis] ?? dg?.confidence ?? 0;
     const now = this.clock.now();
     const offered = built.actions.map((a) => ({ name: a.name, tier: a.tier }));
-    const g = gate(this.policy, this.rate, { actions: offered, probabilities, top, diagnosis, mode: this._mode, paused: this.paused, now });
+    const gates = this.gates(trigger);
+    const g = gate(this.policy, this.rate, { actions: offered, probabilities, top, diagnosis, mode: this._mode, paused: this.paused, now, thresholds: { guard: gates.guard, heal: gates.heal } });
     let reason: string | null = g.reason;
     let run: string | null = g.run;
     let late = false;
@@ -631,10 +634,14 @@ export class RuntimeImpl implements Runtime {
       mass: g.mass,
     };
     if (g.candidate) decision.candidate = g.candidate;
+    if (g.threshold !== undefined && g.thresholdTier) {
+      decision.threshold = g.threshold;
+      decision.thresholdSource = gates.source[g.thresholdTier];
+    }
     if (reason) decision.reason = reason;
     this.decisionsBuf.push(decision);
     if (this.decisionsBuf.length > DECISIONS_KEPT) this.decisionsBuf.shift();
-    const rec: ExplainRec = { decision, situationText: stateText(built.situation.state), facts: built.situation.facts, timeline: built.parts.timeline, answers };
+    const rec: ExplainRec = { decision, situationText: stateText(built.situation.state), facts: built.situation.facts, timeline: built.parts.timeline, answers, gates };
     this.explainMap.set(decision.id, rec);
     if (this.explainMap.size > DECISIONS_KEPT * 2) {
       const first = this.explainMap.keys().next().value;
@@ -643,7 +650,7 @@ export class RuntimeImpl implements Runtime {
     this.events.push(now, "decision", trigger, { data: { id: decision.id, diagnosis, action, executed: decision.executed } });
     if (this.debug) this.log(`decision ${decision.id}`, decision);
     this.fire("decide", decision);
-    const detected = diagnosis !== "expected" && diagnosisConfidence >= this.policy.thresholds.report;
+    const detected = diagnosis !== "expected" && diagnosisConfidence >= gates.report;
     if (detected) this.fire("detect", decision);
     // standing questions
     for (const q of built.standing) {
@@ -1435,8 +1442,8 @@ export class RuntimeImpl implements Runtime {
 
   private watchStall(op: OpRec, req: ReqMeta, ctl: () => Controller): () => void {
     const lat = this.base.latency(req.signature);
-    if (!lat) return () => undefined;
-    const at = Math.max(4 * lat.median, 2 * lat.p95, STALL_MIN_MS);
+    // without a latency baseline (fewer than 5 completions) a request is checked once it has been in flight 10 s
+    const at = lat ? Math.max(4 * lat.median, 2 * lat.p95, STALL_MIN_MS) : NO_BASELINE_STALL_MS;
     const h = this.clock.setTimeout(() => {
       if (op.end !== undefined || this.destroyed || op.triggered?.has("stall")) return;
       (op.triggered ??= new Set()).add("stall");
@@ -1525,6 +1532,11 @@ export class RuntimeImpl implements Runtime {
 
   get status(): ModelStatus {
     return this.decider ? this.decider.status : { state: "off" };
+  }
+
+  /** The gate thresholds in force for a trigger kind: policy overrides, else the model's meta gate, else defaults. */
+  gates(trigger?: TriggerKind): EffectiveGates {
+    return effectiveGates(this.policy, parseGate(this.decider?.status.gate), trigger);
   }
 
   get mode(): Mode {
@@ -1866,9 +1878,9 @@ export class RuntimeImpl implements Runtime {
     const r = this.explainMap.get(id);
     if (!r) return null;
     const d = r.decision;
-    const detected = d.diagnosis !== "expected" && d.diagnosisConfidence >= this.policy.thresholds.report;
+    const detected = d.diagnosis !== "expected" && d.diagnosisConfidence >= r.gates.report;
     const message = r.action ? interventionLine(d, r.action) : detected ? detectionLine(d) : decisionLine(d);
-    const e: Explanation = { message, decision: d, situationText: r.situationText, facts: r.facts, timeline: r.timeline, answers: r.answers };
+    const e: Explanation = { message, decision: d, situationText: r.situationText, facts: r.facts, timeline: r.timeline, answers: r.answers, gates: r.gates };
     if (r.action) {
       e.action = r.action;
       e.changed = r.action.changed;

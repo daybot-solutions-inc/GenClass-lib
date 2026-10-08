@@ -50,6 +50,11 @@ export interface RuntimeOptions {
   budget?: number;
   /** On-policy runs: the production gate (default thresholds, diagnosis gate) instead of forced execution. */
   production?: boolean;
+  /**
+   * On-policy gate: "shipping" = the runtime's defaults (report 0.6 / guard 0.9 / heal 0.8, diagnosis gate);
+   * "explore" = summed permitted mass >= 0.5 for guard and heal (diagnosis gate kept), heal mode.
+   */
+  gate?: "shipping" | "explore";
   app: () => { title?: string; route?: string };
 }
 
@@ -79,7 +84,11 @@ export function createOptions(o: RuntimeOptions): Record<string, unknown> {
   if (Object.keys(vocabulary).length) opts.vocabulary = vocabulary;
   if (o.hooks) opts.hooks = o.hooks;
   if (o.budget) opts.situation = { budget: o.budget };
-  if (o.production) opts.policy = { holdBudgetMs: 1e9, maxActionsPerMinute: 1e9 };
+  if (o.production) {
+    opts.policy = o.gate === "explore"
+      ? { thresholds: { report: 0.6, guard: 0.5, heal: 0.5 }, holdBudgetMs: 1e9, maxActionsPerMinute: 1e9 }
+      : { holdBudgetMs: 1e9, maxActionsPerMinute: 1e9 };
+  }
   return opts;
 }
 

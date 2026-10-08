@@ -17,6 +17,8 @@ import { cadenceFact, commitAmbiguity, markFacts, repeatEvidence, scopeFacts } f
 import type { Unusual } from "../learn/profiles.js";
 
 export const MAX_FACTS = 12;
+/** A request with no latency baseline yet (< 5 completions) raises `stall` after this long in flight. */
+export const NO_BASELINE_STALL_MS = 10_000;
 const WINDOW = 10_000;
 
 const RANK: Record<FactKind, number> = {
@@ -510,7 +512,11 @@ function stallFacts(env: SitEnv, op: OpRec, req: ReqMeta, now: number): Fact[] {
   const waited = now - op.start;
   const out: Fact[] = [];
   if (lat) out.push(fact(`The request #${op.id} has been in flight for ${secs(waited)}; ${req.signature} usually takes ${secs(lat.median)} (p95 ${secs(lat.p95)}, ${lat.n} samples), ${ratio(waited, lat.median)} the median.`, "baseline", false));
-  else out.push(fact(`The request #${op.id} has been in flight for ${secs(waited)}.`, "baseline", false));
+  else {
+    out.push(fact(`The request #${op.id} has been in flight for ${secs(waited)}.`, "baseline", false));
+    const n = env.base.stats(req.signature)?.count ?? 0;
+    out.push(fact(`${req.signature} has no latency baseline yet (${plural(n, "completed request")}); requests without one are checked after ${secs(NO_BASELINE_STALL_MS)} in flight.`, "baseline", true));
+  }
   const slowPeers = [...env.ops.inFlight].filter((o) => o.id !== op.id && o.name === op.name && lat && now - o.start > 3 * lat.median);
   if (slowPeers.length) out.push(fact(`${plural(slowPeers.length, `other ${req.signature} request`)} ${slowPeers.length === 1 ? "is" : "are"} also running past 3× the usual latency.`, "concurrency", true));
   out.push(...scopeFacts(env, req.signature, now));

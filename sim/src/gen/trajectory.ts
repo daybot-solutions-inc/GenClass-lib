@@ -35,6 +35,10 @@ export interface GenOptions {
   mode?: "gold" | "unlabeled" | "onpolicy";
   /** On-policy mode: the model (runtime model host) that decides in the base run. */
   model?: import("../types.js").DecisionProvider;
+  /** On-policy mode: the runtime gate the model acts through (default "shipping"). */
+  gate?: "shipping" | "explore";
+  /** On-policy mode: name@version of the deciding model (meta.policy_model). */
+  modelName?: string;
   /** Unlabeled mode: max decision rows per trajectory (default 40). */
   maxUnlabeled?: number;
 }
@@ -157,7 +161,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
   const onp = o.mode === "onpolicy" && o.model;
   const explore = onp ? undefined : explorePolicy(o.exploreScale, R.fork("explore"));
   const base = onp
-    ? await runScenario(scn, { ideal: false, factory: o.factory, record: true, probeAsk: false, onPolicy: { model: o.model! } })
+    ? await runScenario(scn, { ideal: false, factory: o.factory, record: true, probeAsk: false, onPolicy: { model: o.model!, gate: o.gate ?? "shipping" } })
     : await runScenario(scn, { ideal: false, factory: o.factory, record: true, probeAsk: o.askRows, ...(explore ? { explore } : {}) });
   out.runs++;
   out.decisions = base.decisions.length;
@@ -235,12 +239,16 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
         ...(onp
           ? {
               on_policy: true,
+              gate: o.gate ?? "shipping",
+              policy_model: o.modelName ?? null,
               model_probs: p.modelProbs ?? null,
               model_choice: p.modelChoice ?? null,
               model_diagnosis: p.modelDiagnosis ?? null,
               ran: p.ran ?? passive,
               false_intervention: (p.ran ?? passive) !== passive && lab.passiveBest,
               miss: (p.ran ?? passive) === passive && !lab.passiveBest && lab.nonPassiveMass >= 0.9,
+              // Cost of what ran minus passive (mean over futures; > 0 = the model's action made things worse).
+              ran_harm: (p.ran ?? passive) !== passive && costs[p.ran!] !== undefined ? Math.round((costs[p.ran!]! - costs[passive]!) * 1e3) / 1e3 : 0,
             }
           : {}),
       },
