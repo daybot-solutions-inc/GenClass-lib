@@ -8,8 +8,8 @@ MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/ru
 On the VM (`npm install` at the repo root; in packages/runtime with `GENCLASS_MODEL_DIR=~/gcl/model/.cache-model`
 and `NODE_OPTIONS=--expose-gc`): `tsc --noEmit` clean, `tsup` build OK, `vitest run`: **41 files, 346 tests, all
 passing** (UI's devtools fix from the lead's batch-4 commit included). Every `test/review-*.test.ts` passes
-unchanged; MODEL's pass. Perf (REVIEW's tests, shared VM): keystroke write with a 5,000-item array 0.25 ms; async
-write 0.19 ms; redux-style dispatch on 5,000 entities 0.67 ms (user) / 0.66 ms (async); settled point 0.3 ms (+2.3 ms
+unchanged; MODEL's pass. Perf (REVIEW's tests, shared VM): keystroke write with a 5,000-item array 0.22 ms; async
+write 0.14 ms; redux-style dispatch on 5,000 entities 0.71 ms (user) / 0.70 ms (async); settled point 0.3 ms (+2.3 ms
 with an unchanged 5,000-item adapter store).
 
 **Never worse (REAL's harness, `realapps/`, built from this tree):** an all-passive model in heal mode against
