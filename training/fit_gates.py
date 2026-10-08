@@ -256,6 +256,7 @@ def metrics(T: Table, fired: np.ndarray, sel: np.ndarray, boot: int = 0, seed: i
     return base
 
 
+DEV_MARGIN = 0.8  # dev fits must meet 0.8 × each limit, so they hold on the shifted test sets (coordinator, 08:00)
 Z_UB = 1.645  # one-sided 95% Wilson upper bound: dev rows are in-distribution, test/real apps are not
 
 
@@ -275,7 +276,10 @@ def ok(mt: dict, tier: str, use_real: bool) -> bool:
     checks = [(c["fir_sim"], L["fir"]), (c["harm_sim"], L["harm"])]
     if use_real:
         checks += [(c["fir_real"], L["fir"]), (c["harm_real"], L["harm"])]
+    lim_scale = DEV_MARGIN
+
     def holds(k: int, n: int, lim: float) -> bool:
+        lim = lim * lim_scale
         if n == 0:
             return True
         if wilson_upper(0, n) > lim:  # too few rows to certify the limit even with zero events: point estimate

@@ -262,7 +262,11 @@ REAL eval-set rows outside REAL's test split): lowest r with false detections �
 benign-salient and ≤ 2% on SIM rows whose **gold diagnosis is `expected`** (95% Wilson upper bounds). SIM
 passive-best rows were not usable as "false": ≈ 45% of them carry a real anomaly (failing / slow / transient /
 overload networks where waiting is still best) and the detection is correct there (precision 0.91 at r = 0.7) — no
-threshold ≤ 0.99 brings "any detection on passive-best rows" under 2%. **`gate.report = 0.70`** (in `meta.json`).
+threshold ≤ 0.99 brings "any detection on passive-best rows" under 2% (deviation accepted by the coordinator). The dev
+fit gave 0.70; it failed the SIM limit on held-out test (table below), so the coordinator selected **`gate.report =
+0.85`** for v2b — **this one choice is test-informed**. Shipped v2b `meta.json` sha256 `59d4b608…238126` (2,091 B),
+`model.json` sha256 `64f12f2a…af459c`. From now on every dev fit (action gates and `gate.report`) must meet 0.8 × each
+limit (Wilson upper bound), so that it holds on the shifted test sets without test-informed changes.
 
 Verification on test, r = 0.70 (r = 0.85 in brackets):
 

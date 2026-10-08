@@ -32,6 +32,7 @@ import numpy as np
 GRID = [round(0.50 + 0.05 * i, 2) for i in range(10)] + [0.97, 0.99]
 LIM = {"real_benign": 0.01, "sim_expected": 0.02}
 BENIGN = {"clean-benign", "benign-salient"}
+DEV_MARGIN = 0.8  # the dev fit must meet 0.8 × each limit (coordinator, 08:00: no test-informed choices)
 CASE_DIAG = {"stale-overwrite": "stale", "duplicate-submit": "duplicate", "genuine-break": "inconsistent"}
 
 
@@ -131,7 +132,7 @@ def fit(fit_sets: dict[str, list[dict]]) -> tuple[float, dict]:
                 ben_n += t["false_on_real_benign"][1]
         ub_s, ub_b = wilson_upper(sim_k, sim_n), wilson_upper(ben_k, ben_n)
         curve[r] = {"sim_expected": [sim_k, sim_n, round(ub_s, 5)], "real_benign": [ben_k, ben_n, round(ub_b, 5)]}
-        if ub_s > LIM["sim_expected"] or ub_b > LIM["real_benign"]:
+        if ub_s > DEV_MARGIN * LIM["sim_expected"] or ub_b > DEV_MARGIN * LIM["real_benign"]:
             break
         best = r
     return best, curve

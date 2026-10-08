@@ -1,0 +1,36 @@
+{
+  "name": "@genclass/runtime-model",
+  "version": "0.1.0",
+  "description": "The local decision model for @genclass/runtime: a 17M-parameter GenClass encoder (ONNX, int8 for WASM and fp16 for WebGPU), its tokenizer and calibration. Loaded by the runtime from jsDelivr, or self-hosted.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/daybot-solutions-inc/GenClass-lib.git",
+    "directory": "packages/runtime-model"
+  },
+  "homepage": "https://github.com/daybot-solutions-inc/GenClass-lib/tree/main/packages/runtime-model#readme",
+  "keywords": [
+    "genclass",
+    "onnx",
+    "model",
+    "webgpu",
+    "wasm",
+    "onnxruntime-web",
+    "runtime"
+  ],
+  "files": [
+    "files/",
+    "MODEL_CARD.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "verify": "node scripts/verify.mjs",
+    "prepack": "node scripts/verify.mjs",
+    "e2e": "node scripts/e2e.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

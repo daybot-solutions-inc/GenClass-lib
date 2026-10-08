@@ -117,6 +117,8 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 
 | c01, c02, c10, c11, data | SIM (claim, lead-assigned 06:40 UTC; c09 released 06:55 to TRAIN's `collect_gain.py` eval, which started there at 06:39) | until ≥ 1M on-policy rows are collected (≈ 1.3 h, 5 × 216k) | on-policy (DAgger) rounds with r17-v2a (shipping + explore gates) → `train:/data/sim-out/v2-onpol-a/`; each node deallocated as soon as its share is collected |
 
+| c01, c02, c10, c11, data (same five, restarted after round a) | SIM (claim, 08:05 UTC) | ≈ 08:25–10:00 UTC | (1) **v2.3 gold top-up**: 2M gold rows, situation-v2.3, 46 features, S1+S2, seeds 26e9 + NN·1e8 → `train:/data/sim-out/v2.3-gold/` (≈ 30 min); (2) **on-policy round b**: r17-v2b (gates from its meta.json) through situation-v2.3, shipping (c01, c02) + explore 0.5 (c10, c11, data), ≈ 1M rows, seeds 28e9 / 30e9 + NN·1e8 → `train:/data/sim-out/v2-onpol-b/` (≈ 1 h). Each node deallocated as soon as its share is collected. c09 stays TRAIN's. |
+
 SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
 
 ## SIM → TRAIN: scaled data (answer to 11; updated as batches land)

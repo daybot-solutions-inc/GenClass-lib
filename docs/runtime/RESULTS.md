@@ -76,6 +76,22 @@ Per-class precision / recall at 0.70 on sim2e:
 The shipped threshold, 0.85, was chosen after the dev-fitted 0.70 failed the simulated false-detection limit on
 test, so that one choice is test-informed. Future exports fit with a stricter dev margin.
 
+### On-policy round a (the model acting inside the simulator)
+
+| Gate | Acts | False interventions among acts | Harmful (≥ +1 cost) | Misses (clear action skipped) |
+|---|---|---|---|---|
+| shipping (0.9 / 0.8) | 2.6% of decisions | 12% | 366 | 43,662 (9.7%), mostly request and failure |
+| exploratory 0.5 | 21.5% | 36% | 15,054 | 29,913 |
+
+Where the false interventions come from:
+- `coalesce` of deliberate repeated actions;
+- `retry` and `serve_cached` during real outages;
+- `discard` where the response wasn't actually stale;
+- `rollback` / `resync` on coincidental relations.
+
+The worst `retry` harm (POSTs that had already committed) is now prevented by the v2.2 rule: retry only when the
+request is idempotent or carries an idempotency key. These rows train the next student, up-weighted.
+
 Targets: guard FIR ≤ 0.1% (met), heal FIR ≤ 0.5% (met), calibration error ≤ 0.02 (met: 0.009),
 diagnosis ≥ 95% (not yet), clear-case recall ≥ 80% (not yet).
 
@@ -150,6 +166,7 @@ trained v2 model once it exists.
 | Curriculum (cur1–cur4) | ~1.9M | done |
 | Sim v1 phase A / phase B | 600k / 1.4M | done (v1, superseded) |
 | Sim v2 gold (S1+S2 labels, 46 features, 115 domains) | **10,423,855** (7.56M train / 318k dev / 2.55M test) | done, 20 nodes in ~31 min |
+| Sim on-policy round a (model r17-v2a acting in the sim; DAgger) | **1,248,131** (448k at shipping gate, 672k at explore gate 0.5) | done |
 | Sim v2 unlabeled (for teacher labelling) | **51,272,078** | done (~21k rows/s per node) |
 | Real-browser v2 gold (158 apps, 40+ stacks) | **616,437** (+523k unlabeled) | done; determinism 3,030/3,030, interference 0/256 |
 | Real-app eval set (unambiguous) | **16,600** (clean-benign 4,000, benign-salient 4,000, duplicate 4,000, genuine break 3,085, stale 1,515) | done |
