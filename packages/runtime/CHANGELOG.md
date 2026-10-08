@@ -6,17 +6,20 @@
   (`genclass-runtime-r17` 2.0.0-rc2, checkpoint `r17-v2b`) from jsDelivr. The model is 9.6 MB (q8, WASM) and is
   cached after the first load. On held-out data:
   - Diagnosis: 84.2% on simulated apps and 83.6% on real apps.
-  - False interventions: 0.02% (guard) and 0.23% (heal) on simulated apps; none were seen on held-out real apps.
-  - Recall is low: guard acts on 1.2% of clear simulated cases; heal on 5.7% of them and on 8.5% of actionable
+  - False interventions: 0.01% (guard) and 0.07% (heal) on simulated apps; none were seen on held-out real apps.
+  - Recall is low: guard acts on 0.7% of clear simulated cases; heal on 2.9% of them and on 5.7% of actionable
     real-app cases.
-  - In observe mode, 1.4% (simulated) to 3.8% (real) of decisions where nothing was wrong get flagged.
+  - In observe mode, 1.4% (simulated) to 3.8% (real) of decisions where nothing was wrong get flagged (3.1% on the
+    model's own on-policy simulated traffic).
 
   Numbers, gates and limits are in the model card (`@genclass/runtime-model`, `MODEL_CARD.md`).
 - **The model sets the gate thresholds** (runtime batch 6). The model's `meta.json` `gate` provides the report,
   guard and heal thresholds per trigger kind; `policy.thresholds` still overrides them. The shipped model uses:
   - report 0.85;
-  - guard 0.75–0.95;
-  - heal 0.55–1.0.
+  - guard 0.80 (mutation 0.95);
+  - heal 0.85 (failure 0.95).
+
+  These were refit on the model's own on-policy traffic before release.
 
   `rt.gates(trigger)` shows the values in force and where each came from. Decisions record the threshold and its
   source, and the devtools overlay shows the gates. Also in batch 6: a request with no latency baseline counts as a

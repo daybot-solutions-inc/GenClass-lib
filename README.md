@@ -33,8 +33,8 @@ which available action is best. There is no list of known bugs in the code.
 > - **Model:** `genclass-runtime-r17` 2.0.0-rc2 (9.6 MB, WASM or WebGPU), loaded from jsDelivr by default.
 >   - On held-out data it diagnoses about 84% of decisions correctly (83.6% on real apps).
 >   - In observe mode it flags 1.4% (simulated) to 3.8% (real) of decisions where nothing was wrong.
->   - When it acts, it is rarely wrong (0.02% guard, 0.23% heal on simulated apps; none seen on held-out real apps),
->     but it acts on only 1–9% of the cases where acting would help.
+>   - When it acts, it is rarely wrong (0.01% guard, 0.07% heal on simulated apps; none seen on held-out real apps),
+>     but it acts on under 6% of the cases where acting would help.
 >
 >   See the [model card](packages/runtime-model/MODEL_CARD.md).
 > - **Older versions on npm:** `0.1.0-alpha.1` (the v2 runtime without the install commands or model gates) and
@@ -65,8 +65,8 @@ which available action is best. There is no list of known bugs in the code.
    | mode | behaviour |
    |---|---|
    | `observe` (default) | reports only |
-   | `guard` (opt-in) | `discard`, `defer`, `coalesce`, `delay`, only when the permitted actions' summed probability reaches the model's fitted guard threshold for that trigger (0.75–0.95) |
-   | `heal` (experimental) | also `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync` and custom actions, at the heal threshold for that trigger (0.55–0.90; 1.0 on requests) |
+   | `guard` (opt-in) | `discard`, `defer`, `coalesce`, `delay`, only when the permitted actions' summed probability reaches the model's fitted guard threshold for that trigger (0.80; 0.95 on mutations) |
+   | `heal` (experimental) | also `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync` and custom actions, at the heal threshold for that trigger (0.85; 0.95 on failures) |
 
    Detections are reported when the top diagnosis is not `expected` with probability ≥ 0.85 (the model's report
    threshold).
@@ -88,8 +88,8 @@ All numbers are on held-out data, with each recall reported next to its false-in
 |---|---|
 | Round 1 model, R17 (9.6 MB int8; **previous format** `situation-v1`), simulated apps | diagnosis 90.5%, action 81.9%, guard FIR 0.05%, heal FIR 0.24%, calibration error 0.009. Recall on clear stale/duplicate cases is only 7.7% (precise but timid). |
 | Why round 1 was timid ([sim/SEPARABILITY.md](sim/SEPARABILITY.md)) | Many clear cases had benign twins with identical visible facts; 24% of clear rows were mislabelled `expected`; labels assumed knowledge a runtime cannot have. v2 adds measured facts and fixes the labels. |
-| **r17-v2b** (`situation-v2`; shipped as `@genclass/runtime-model@0.1.0`) | Simulated apps: diagnosis 84.2%, action 77.8%. Real apps: diagnosis 83.6%, action 80.0%. Guard FIR 0.02% simulated, 0.00% on held-out real apps; heal FIR 0.23% / 0.00%. Recall: heal acts on 5.7% of clear simulated cases and 8.5% of actionable real-app cases; guard on 1.2%. |
-| Observe mode with r17-v2b (report threshold 0.85, fitted on dev data) | Held-out test: 1.41% of decisions where nothing was wrong flagged on simulated apps, 3.78% on real apps (1.05% without one app); 61–65% of problem decisions flagged, 89–94% of flags with the right diagnosis |
+| **r17-v2b** (`situation-v2`; shipped as `@genclass/runtime-model@0.1.0`) | Simulated apps: diagnosis 84.2%, action 77.8%. Real apps: diagnosis 83.6%, action 80.0%. Gates refit on the model's own on-policy traffic. Guard FIR 0.01% simulated, 0.00% on held-out real apps; heal FIR 0.07% / 0.00%. Recall: heal acts on 2.9% of clear simulated cases and 5.7% of actionable real-app cases; guard on 0.7%. |
+| Observe mode with r17-v2b (report threshold 0.85, fitted on dev data) | Held-out test: 1.41% of decisions where nothing was wrong flagged on simulated apps (3.1% on the model's own on-policy traffic), 3.78% on real apps (1.05% without one app); 61–65% of problem decisions flagged, 89–94% of flags with the right diagnosis |
 | Training continues | teacher model, distillation, DAgger rounds; ~10M simulated gold rows, ~50M unlabeled rows, ~0.6M real-app rows |
 | Never make a correct app worse (always-passive model, heal vs observe, 66 real apps × 6 seeds) | 0/396 clean runs changed: final page text (inputs and alerts excluded) and server state. Request timing and store contents are not compared, nor is observe mode against no runtime. With chaos: 3/198 changed. |
 | Same check on the v1 runtime (store-write holds) | 4/198 clean runs changed; the React/Redux RealWorld app never rendered its home feed |

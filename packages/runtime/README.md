@@ -33,8 +33,8 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 >   - Diagnosis is right on about 84% of held-out decisions (83.6% on real apps).
 >   - It flags 1.4% (simulated apps) to 3.8% (real apps) of held-out decisions where nothing was wrong. On real apps,
 >     most of those came from one app.
->   - In `guard` / `heal` it intervened wrongly on 0.02% / 0.23% of held-out simulated cases, and never on held-out
->     real apps, but it acts on only 1–9% of the cases where acting would help.
+>   - In `guard` / `heal` it intervened wrongly on 0.01% / 0.07% of held-out simulated cases, and never on held-out
+>     real apps, but it acts on under 6% of the cases where acting would help.
 >
 >   Details: [Model quality](#model-quality) and the
 >   [model card](https://www.npmjs.com/package/@genclass/runtime-model).
@@ -69,7 +69,7 @@ started (version 1 → 3), last 0.69s ago by GET /api/search?q=reac (#8), which 
 user action (#7). (stale, 0.96)
 ```
 
-The same run in guard mode. The model's `discard` (0.98) passed the model's delivery gate (0.75), so the results
+The same run in guard mode. The model's `discard` (0.98) passed the model's delivery gate (0.80), so the results
 for "reac" stayed:
 
 ```
@@ -190,14 +190,15 @@ These hold for the runtime; whether the model's decisions are good is a separate
 | mode | what it does | non-passive actions | gate (default model) |
 |---|---|---|---|
 | `observe` (**default**) | Reports what it sees and what it would have done. Never holds a request, never runs an action. | none | n/a |
-| `guard` (opt-in) | Also prevents failures with guard-tier actions: `discard`, `defer`, `coalesce`, `delay`. These withhold, deduplicate or slow something down. | guard tier | summed probability of the permitted actions ≥ the trigger's guard threshold (delivery 0.75, request 0.75, mutation 0.95), and the top diagnosis is not `expected` |
-| `heal` (**experimental**) | Also recovers: `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync`, plus your own actions. | guard + heal tier | heal actions ≥ the trigger's heal threshold (transition 0.55, inconsistency 0.80, default 0.85, failure 0.90; 1.0 on requests, so effectively never there), guard actions as in guard mode, diagnosis not `expected` |
+| `guard` (opt-in) | Also prevents failures with guard-tier actions: `discard`, `defer`, `coalesce`, `delay`. These withhold, deduplicate or slow something down. | guard tier | summed probability of the permitted actions ≥ the trigger's guard threshold (delivery 0.80, request 0.80, mutation 0.95), and the top diagnosis is not `expected` |
+| `heal` (**experimental**) | Also recovers: `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync`, plus your own actions. | guard + heal tier | heal actions ≥ the trigger's heal threshold (0.85 on every trigger except failure, 0.95), guard actions as in guard mode, diagnosis not `expected` |
 
 ```ts
 GenClass.init({ mode: "guard" });
 ```
 
-- **Where the thresholds come from.** They were fitted on held-out data and ship in the model's `meta.json`
+- **Where the thresholds come from.** They were fitted on held-out dev data, including the model's own on-policy
+  traffic, and ship in the model's `meta.json`
   ([model card](https://www.npmjs.com/package/@genclass/runtime-model)). A model without a `gate` gets the
   runtime's defaults: report 0.6, guard 0.9, heal 0.8. `policy.thresholds: { report, guard, heal }` overrides both.
   `rt.gates(trigger)` shows the values in force and where each came from (`"policy"`, `"model"` or `"default"`).
@@ -413,10 +414,10 @@ Full tables, per-trigger gates and how each threshold was fitted: the
 | **Observe:** decisions flagged where nothing was wrong (report 0.85) | 1.41% (149 / 10,582) | 3.78% (305 / 8,079); 1.05% without one app |
 | Observe: problem decisions flagged | 65% | 61% |
 | Observe: flags with the right diagnosis | 94% | 89% |
-| **Guard:** false interventions | 0.02% (2 / 8,987) | 0.00% (0 / 66) |
-| Guard: clear cases acted on | 1.2% | – |
-| **Heal:** false interventions | 0.23% (38 / 16,290) | 0.00% (0 / 1,124) |
-| Heal: cases acted on | 5.7% of clear cases | 8.5% of actionable cases |
+| **Guard:** false interventions | 0.01% (1 / 8,987) | 0.00% (0 / 66) |
+| Guard: cases acted on | 0.7% of clear cases | 0.0% of actionable cases |
+| **Heal:** false interventions | 0.07% (11 / 16,290) | 0.00% (0 / 1,124) |
+| Heal: cases acted on | 2.9% of clear cases | 5.7% of actionable cases |
 
 What this means in practice:
 
@@ -427,8 +428,8 @@ What this means in practice:
   - Raise `policy.thresholds.report` to see fewer flags. At 0.9: 0.9% (simulated) and 3.4% (real) false, with 58% and
     52% of problems flagged.
 - **Guard (opt-in).** When it acts, it is almost always right, but it rarely acts. Expect it to miss most problems.
-- **Heal (experimental).** On held-out simulated apps, heal actions on failures (`retry`, `serve_cached`) were wrong
-  on 0.66% of the failures where doing nothing was best. That is over the 0.5% target the thresholds were fitted to.
+- **Heal (experimental).** Heal actions on failures (`retry`, `serve_cached`) are the least precise: wrong on 0.19%
+  of held-out simulated failures where doing nothing was best (target 0.5%), at a failure threshold of 0.95.
 - **Not yet met:** diagnosis ≥ 95%, clear-case recall ≥ 80%, and false flags ≤ 1% on held-out data. Training
   continues (a larger teacher model, distillation, more real-app data).
 - **Format.** The model was trained on situations rendered by the runtime at `situation-v2`. This version renders
@@ -516,8 +517,7 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
   - In observe mode, expect some false flags: 1–4 per 100 decisions where nothing was wrong, more in some apps.
   - It misses most problems.
   - It was not evaluated on your app.
-  - Heal-mode actions on failures (`retry`, `serve_cached`) exceeded their false-intervention target on held-out
-    data.
+  - Heal-mode actions on failures (`retry`, `serve_cached`) are its least precise actions.
 
   Watch observe mode before turning on `guard` or `heal`.
 - **Redaction gaps (all modes with a model).**
