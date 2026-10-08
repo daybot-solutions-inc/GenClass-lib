@@ -102,7 +102,7 @@ events `shadow`, `breaker`, `limit`, `modelBudget`. `status` adds `effectiveMode
 
 Gate order (each request/decision): protected → cross-origin → op scope (created under off/observe) →
 mode/allow/deny/requireDiagnosis (at the effective mode) → thresholds → `policy.actionLimits`
-(`limit:perMinute|perSubject|perSession`; defaults 60/5/200) → `onBeforeAction` (`vetoed`, `would-veto`, or
+(`limit:perMinute|perSubject|perSession`; defaults 60/min global, 10/min per subject, 200 per session) → `onBeforeAction` (`vetoed`, `would-veto`, or
 `limit:hold` past the budget) → execute. effectiveMode = min(mode, sample cap, breaker cap, route rule); URL overrides
 (`?genclass`, `?genclass-mode`, `?genclass-aggr`, `?genclass-sample`) only demote unless `debug: true`.
 `policy.holdBudgetMs` is a hard ceiling that includes defers and the veto hook. Hidden tabs skip background

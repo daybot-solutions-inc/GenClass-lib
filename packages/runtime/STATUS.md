@@ -1175,7 +1175,7 @@ version} + `rt.learn.clear()`, `model.loadIf/threads/timeoutMs/maxDecisionsPerMi
 `src/util/match.ts`, `src/decide/breaker.ts`, `src/decide/summary.ts`, `test/options.test.ts` (27 tests). Suite: 413
 passed, 14 skipped; tsc clean.
 
-Behaviour changes (all toward safety): breaker on by default; `perSubject: 5` / `perSession: 200` limits; reasons
+Behaviour changes (all toward safety): breaker on by default; `perSubject: 10` per subject per rolling 60 s (beta.1: was 5, too low for a typeahead) / `perSession: 200` absolute cap; reasons
 `rate limit` → `limit:perMinute`; URL overrides (`?genclass`, `?genclass-mode`, `?genclass-aggr`) only demote unless
 `debug: true`; cross-origin requests are always passive; ops created under an off/observe route scope are never
 action targets.

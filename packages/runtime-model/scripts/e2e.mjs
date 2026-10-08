@@ -2,7 +2,7 @@
 // End-to-end proof (train VM only; never on the Mac): a fresh Vite app installs the LOCAL @genclass/runtime tarball
 // and the LOCAL @genclass/runtime-model tarball, and runs in headless Chromium (WASM). The app has a classic
 // typeahead bug: it writes whatever response arrives last. Requests to the runtime's default model URL
-// (https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/*) are answered from
+// (https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/*) are answered from
 // node_modules/@genclass/runtime-model/files/, onnxruntime-web's wasm from node_modules/onnxruntime-web/dist/, and the
 // search API by page.route with per-query delays. Per mode (observe, guard):
 //   A. clean typing, one key per settled response      -> expect 0 model calls
@@ -23,6 +23,7 @@ const RUNTIME_TGZ = resolve(process.env.RUNTIME_TGZ ?? "");
 const MODEL_TGZ = resolve(process.env.MODEL_TGZ ?? "");
 const WORK = resolve(process.env.WORK || "/data/install/model-e2e");
 const TRIALS = Number(process.env.TRIALS || 6);
+const LEVELS = (process.env.LEVELS || "observe:balanced,guard:balanced,guard:eager,guard:cautious").split(",");
 for (const [k, v] of [["RUNTIME_TGZ", RUNTIME_TGZ], ["MODEL_TGZ", MODEL_TGZ]]) if (!v.endsWith(".tgz") || !existsSync(v)) throw new Error(`set ${k} to a .tgz`);
 
 const sh = (cmd, cwd) => execSync(cmd, { cwd, stdio: ["ignore", "pipe", "inherit"], encoding: "utf8", env: { ...process.env, CI: "1", npm_config_fund: "false", npm_config_audit: "false" } });
@@ -48,7 +49,8 @@ writeFileSync(
   join(APP, "index.html"),
   `<!doctype html>
 <html lang="en">
-  <head><meta charset="UTF-8" /><title>Typeahead</title></head>
+  <head><meta charset="UTF-8" /><title>Typeahead</title>
+    <script>window.GENCLASS_CONFIG = { aggressiveness: new URLSearchParams(location.search).get("level") || undefined };</script></head>
   <body>
     <input id="q" aria-label="Search packages" autocomplete="off" />
     <ul id="results"></ul>
@@ -111,13 +113,14 @@ const results = { versions, build: build.split("\n").filter((l) => /built in|dis
 console.log(`versions ${JSON.stringify(versions)}`);
 console.log(`self-hosting (fetch-model + info): ${selfHost.ok ? "ok" : "FAILED"}\n  ${(selfHost.info ?? [selfHost.error]).join("\n  ")}`);
 
-async function runMode(mode) {
+async function runMode(spec) {
+  const [mode, level] = spec.split(":");
   const ctx = await browser.newContext();
   const served = [];
   await ctx.route(/^https:\/\/cdn\.jsdelivr\.net\/npm\//, (r) => {
     const u = new URL(r.request().url());
     let m;
-    if ((m = /^\/npm\/@genclass\/runtime-model@0\.1\.0\/files\/([^/]+)$/.exec(u.pathname))) {
+    if ((m = /^\/npm\/@genclass\/runtime-model@[^/]+\/files\/([^/]+)$/.exec(u.pathname))) {
       served.push(m[1]);
       return r.fulfill({ path: join(MODEL_FILES, m[1]), headers: { "access-control-allow-origin": "*", "content-type": "application/octet-stream" } });
     }
@@ -144,7 +147,7 @@ async function runMode(mode) {
   });
   page.on("pageerror", (e) => errors.push(e.message));
 
-  await page.goto(`${site.url}/?genclass=${mode}`);
+  await page.goto(`${site.url}/?genclass=${mode}&level=${level}`);
   await page.waitForFunction(() => ["ready", "error"].includes(window.__rt?.status?.state), null, { timeout: 180_000 });
   const status = await page.evaluate(() => {
     const s = window.__rt.status;
@@ -232,14 +235,14 @@ async function runMode(mode) {
 }
 
 try {
-  for (const mode of ["observe", "guard"]) {
+  for (const mode of LEVELS) {
     console.log(`=== ${mode}`);
     const r = await runMode(mode);
     results.modes[mode] = r;
     const s = r.status;
     console.log(`model ${s.state} ${s.model ?? ""} ${s.version ?? ""} device=${s.device} variant=${s.variant} worker=${s.worker} threads=${s.threads} load=${s.loadMs}ms warmup=${s.warmupMs}ms holdBudget=${s.budget}ms situation=${s.situationChars} chars ${s.error ?? ""}`);
     console.log(`served from the default URL path: ${r.served.join(", ")}`);
-    for (const [t, g] of Object.entries(s.gates)) console.log(`gates ${t.padEnd(8)} report ${g.report} (${g.source.report})  guard ${g.guard} (${g.source.guard})  heal ${g.heal} (${g.source.heal})`);
+    for (const [t, g] of Object.entries(s.gates)) console.log(`gates ${t.padEnd(8)} kind ${g.kind} level ${g.level ?? g.aggressiveness} (${g.levelSource}) tau ${g.tauGain ?? "-"} report ${g.report} (${g.source.report})  guard ${g.guard} (${g.source.guard})  heal ${g.heal} (${g.source.heal})`);
     console.log(`clean slow typing: ${r.cleanSlow.modelCalls} model calls; clean fast typing: ${r.cleanFast.modelCalls} model calls`);
     for (const t of r.trials) {
       const d = t.decisions.map((x) => `${x.trigger}:${x.diagnosis} ${x.diagnosisConfidence?.toFixed(2)} -> ${x.action} ${x.confidence?.toFixed(2)}${x.executed ? " EXECUTED" : ""} ${Math.round(x.latencyMs)}ms [threshold ${x.threshold ?? "-"} ${x.thresholdSource ?? ""}]${x.reason ? ` (${x.reason})` : ""}`).join(" | ");

@@ -21,7 +21,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-const DEFAULT_FROM = "https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/";
+const DEFAULT_FROM = "https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/";
 const CARD_FORMAT = "genclass-runtime-model/1";
 const ROLES = ["tokenizer", "calibration", "meta"];
 

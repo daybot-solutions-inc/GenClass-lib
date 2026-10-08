@@ -9,7 +9,7 @@ the browser with onnxruntime-web, in a Web Worker, on WebGPU or WASM. Nothing le
 load, and caches it in Cache Storage. This is the default model URL:
 
 ```
-https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/
+https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/
 ```
 
 ## Files
@@ -19,7 +19,7 @@ https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/
 | file | size | used for |
 |---|---|---|
 | `files/model.json` | 1 KB | the model card the runtime reads first (`genclass-runtime-model/1`) |
-| `files/genclass-runtime-r17-q8.onnx` | 9.6 MB | WASM, and WebGPU without `shader-f16`. 8-bit weights, int8 embeddings |
+| `files/genclass-runtime-r17-q8.onnx` | 10.2 MB | WASM, and WebGPU without `shader-f16`. 8-bit weights, int8 embeddings |
 | `files/genclass-runtime-r17-fp16.onnx` | 13.6 MB | WebGPU with `shader-f16` |
 | `files/tokenizer.json` | 1.1 MB | byte-level BPE, 16,364 tokens |
 | `files/calibration.json` | 1 KB | per-question-kind temperatures |
@@ -28,7 +28,7 @@ https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/
 A browser downloads `model.json`, the tokenizer, the calibration, the meta file and **one** of the two `.onnx` files:
 about 11 MB on WASM. onnxruntime-web's wasm (3.1 MB brotli) comes from jsDelivr's `onnxruntime-web` package.
 
-Model: `genclass-runtime-r17` 2.0.0-rc2. `model.json` sha256 `64f12f2ab9b4f3e54040ef5d7981a94f6f464b4f183db905fe2ac72068af459c`.
+Model: `genclass-runtime-r17` 2.0.0-rc4t (training run `r17-v2dT`). `model.json` sha256 `3f79289280dc11e4284b04d63a505e3cac9e77b3dc06a981cd4686c880169daf`. Its `meta.json` gate is a gain gate with three aggressiveness profiles (`cautious`, `balanced`, `eager`), chosen with `GenClass.init({ aggressiveness })` in `@genclass/runtime` 0.1.0-beta.1 and later.
 
 ## Self-hosting
 
@@ -46,7 +46,7 @@ GenClass.init({ model: { baseUrl: "/genclass-model/" } });
 Or download it with the runtime's CLI, which verifies every hash:
 
 ```bash
-npx @genclass/runtime fetch-model public/genclass-model --from https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/
+npx @genclass/runtime fetch-model public/genclass-model --from https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/
 ```
 
 With the script tag, use `data-model="/genclass-model/"`.

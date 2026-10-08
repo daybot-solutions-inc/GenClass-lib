@@ -166,6 +166,17 @@ describe("policy.actionLimits", () => {
     expect(ds.map((d) => d.executed)).toEqual([true, true, false]);
     expect(ds[2].reason).toBe("limit:perSubject");
   });
+  it("perSubject defaults to 10 per rolling minute (a typeahead keeps getting fixes)", async () => {
+    const s = setup({ breaker: false, triage: "always", script: DELAY });
+    s.server.on("GET", "/api/x", { body: 1, latency: 5 });
+    await hit(s, "/api/x", 11, 1000);
+    const ds = reqDecisions(s);
+    expect(ds.slice(0, 10).every((d) => d.executed)).toBe(true);
+    expect(ds[10].reason).toBe("limit:perSubject");
+    await s.clock.advance(61_000);
+    await hit(s, "/api/x", 1, 1000);
+    expect(reqDecisions(s).pop()!.executed).toBe(true);
+  });
   it("perSession caps the session", async () => {
     const s = setup({ policy: { actionLimits: { perSession: 1 } }, breaker: false, triage: "always", script: DELAY });
     s.server.on("GET", "/api/x", { body: 1, latency: 5 });

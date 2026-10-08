@@ -209,6 +209,8 @@ GenClass runs with safe defaults (`mode: "guard"`, a `"balanced"` gate, circuit 
 - **Telemetry**: `sinks` (structured, redacted records), `session` (id and tags, never shown to the model), `report: "interventions"` (a quiet production console), `rt.summary()`, `rt.on("shadow" | "breaker" | "limit" | "modelBudget", cb)`.
 - **Loading and cost**: `model.loadIf`, `model.threads`, `model.timeoutMs`, `model.maxDecisionsPerMinute`, `model.unloadAfterIdleMs`.
 
+Action limits default to 60 per minute overall, 10 per minute on the same subject (store field or endpoint), and 200 per session.
+
 URL overrides (`?genclass-mode`, `?genclass-aggr`, `?genclass-sample`) can only lower settings, unless `debug: true` is set.
 
 ```ts

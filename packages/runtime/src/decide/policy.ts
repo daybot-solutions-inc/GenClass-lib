@@ -48,7 +48,7 @@ export function policyConfig(p: PolicyOptions | undefined): PolicyConfig {
     maxActionsPerMinute: p?.actionLimits?.perMinute ?? p?.maxActionsPerMinute ?? 60,
     actionLimits: {
       perMinute: p?.actionLimits?.perMinute ?? p?.maxActionsPerMinute ?? 60,
-      perSubject: p?.actionLimits?.perSubject ?? 5,
+      perSubject: p?.actionLimits?.perSubject ?? 10,
       perSession: p?.actionLimits?.perSession ?? 200,
     },
     requireDiagnosis: p?.requireDiagnosis ?? true,

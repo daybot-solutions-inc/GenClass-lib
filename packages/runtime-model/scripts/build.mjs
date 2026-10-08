@@ -2,7 +2,7 @@
 // Assembles the publishable model directory files/ (model.json at its root, as the runtime's default URL
 // https://cdn.jsdelivr.net/npm/@genclass/runtime-model@<version>/files/ expects) from a TRAIN export.
 //
-//   node scripts/build.mjs [--from <export dir>]
+//   node scripts/build.mjs [--from <export dir>]      e.g. --from files/r17-0.2.0
 //
 // Source (first that exists): --from, $GENCLASS_MODEL_SRC, ~/gcl/train-out/v2b/r17 (train VM), files/r17 (where
 // TRAIN delivers on the Mac). Only model.json and the files it lists are copied; each is checked against its sha256
@@ -24,7 +24,7 @@ function arg(name) {
   return i > 0 ? process.argv[i + 1] : undefined;
 }
 
-const candidates = [arg("--from"), process.env.GENCLASS_MODEL_SRC, join(homedir(), "gcl/train-out/v2b/r17"), join(OUT, "r17")].filter(Boolean);
+const candidates = [arg("--from") ?? process.argv.slice(2).find((a) => !a.startsWith("--")), process.env.GENCLASS_MODEL_SRC, join(OUT, "r17-0.2.0"), join(homedir(), "gcl/train-out/v2b/r17"), join(OUT, "r17")].filter(Boolean);
 const src = candidates.map((c) => resolve(c)).find((c) => existsSync(join(c, "model.json")));
 if (!src) {
   console.error(`no model export found (looked for model.json in: ${candidates.join(", ")})`);

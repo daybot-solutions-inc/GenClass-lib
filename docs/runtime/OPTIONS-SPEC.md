@@ -39,7 +39,7 @@ order: off < observe < guard < heal
 | 5 | `breaker` (+ `rt.breaker.reset()`) | safety | on | new |
 | 6 | `shadow` | safety | `false` | new |
 | 7 | `onBeforeAction`, `vetoMode` | safety | unset, `"enforce"` | new |
-| 8 | `policy.actionLimits` (`maxActionsPerMinute` = deprecated alias) | safety | `{perMinute:60, perSubject:5, perSession:200}` | new / extended |
+| 8 | `policy.actionLimits` (`maxActionsPerMinute` = deprecated alias) | safety | `{perMinute:60, perSubject:10, perSession:200}` | new / extended |
 | 9 | `policy.holdBudgetMs` | safety | `"auto"` | semantics tightened |
 | 10 | `redact` | privacy | built-in | extended (`kind` arg) |
 | 11 | `sinks` + `rt.summary()` | telemetry | `[]` | new |
@@ -356,7 +356,7 @@ Only `rt.breaker.reset()` clears a trip. `setMode` does not.
 - The decision id matches `explain()`.
 
 ### 4.8 `policy.actionLimits` (and deprecated `maxActionsPerMinute`)
-**Type** `{ perMinute?, perSubject?, perSession? }`. **Default** `{ perMinute:60, perSubject:5, perSession:200 }`.
+**Type** `{ perMinute?, perSubject?, perSession? }`. **Default** `{ perMinute:60, perSubject:10, perSession:200 }`. (beta.1: perSubject raised from 5 to 10 per rolling minute after INSTALL e2e showed a typeahead hitting 5.)
 
 **Semantics.**
 - `maxActionsPerMinute: n` still works and maps to `actionLimits.perMinute`. If both are set, `actionLimits.perMinute` wins and a deprecation warning is logged once.
@@ -364,13 +364,13 @@ Only `rt.breaker.reset()` clears a trip. `setMode` does not.
 - `perSession` counts actions over the page lifetime.
 - When a limit is exceeded, the passive action runs with reason `limit:<kind>`, a `limit` event fires, and a warning is logged once per kind per minute.
 - A coalesce or delay burst that answers one decision counts as one action.
-- The docs note that a polling endpoint retried often may hit `perSubject:5`. Raise it for that subject class, or set it to `Infinity`.
+- The docs note that a polling endpoint retried often may hit `perSubject:10`. Raise it for that subject class, or set it to `Infinity`.
 
 **Hooks.** `policy.ts policyConfig` and `RateLimiter` (per-subject map plus a session counter), at gate step 6.
 
 **Tests.**
 - The alias keeps today's per-minute behaviour.
-- A 6th retry on the same endpoint within 60 s → `limit:perSubject`.
+- An 11th action on the same subject within 60 s (and the 11th after the window slides is allowed) → `limit:perSubject`.
 - The 201st action → `limit:perSession`.
 - Shadow does not consume the limits.
 - Window expiry restores the count.
@@ -637,7 +637,7 @@ status.mode = requested; status.effectiveMode / Report.mode / SinkRecord.mode = 
 - **Nothing breaks.** `report` widens, and `redact` gains an optional third argument. `maxActionsPerMinute` stays as a deprecated alias of `actionLimits.perMinute`.
 - **Behaviour changes, all toward safety (changelog):**
   1. `breaker` is on by default. Opt out with `breaker:false`.
-  2. New `perSubject:5` and `perSession:200` limits. Opt out with `Infinity`. This may suppress frequent retries on polling endpoints.
+  2. New `perSubject:10` (per rolling minute) and `perSession:200` limits. Opt out with `Infinity`. This may suppress frequent retries on polling endpoints.
   3. `holdBudgetMs` is now a hard ceiling that includes defers and `onBeforeAction` time.
   4. `model.loadIf.saveData:"lazy"` forces lazy preload on Save-Data connections.
   5. Hidden tabs skip background evaluation and release held items immediately (counted in `summary.model.hiddenSkipped`).

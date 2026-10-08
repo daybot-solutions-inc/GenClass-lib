@@ -382,7 +382,7 @@ export interface PolicyOptions {
   /** Default 60 non-passive actions per minute; beyond it the passive action runs and a warning is emitted. */
   /** @deprecated use actionLimits.perMinute */
   maxActionsPerMinute?: number;
-  /** Default { perMinute: 60, perSubject: 5, perSession: 200 }. */
+  /** Default { perMinute: 60, perSubject: 10, perSession: 200 }. */
   actionLimits?: ActionLimits;
   /**
    * Default true: a non-passive action also requires the model's top diagnosis to be something other than
@@ -485,8 +485,11 @@ export interface BreakerOptions {
 }
 
 export interface ActionLimits {
+  /** Max non-passive actions across the session within any 60 s (default 60). */
   perMinute?: number;
+  /** Max non-passive actions on the same subject (store field / endpoint signature) within any 60 s (default 10). */
   perSubject?: number;
+  /** Absolute cap on non-passive actions per session (default 200). */
   perSession?: number;
 }
 

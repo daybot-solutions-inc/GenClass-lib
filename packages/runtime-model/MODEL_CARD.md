@@ -1,6 +1,6 @@
 # GenClass runtime model: model card
 
-**`@genclass/runtime-model@0.1.0` ships `genclass-runtime-r17` 2.0.0-rc2 (training run `r17-v2b`).** It reads the
+**`@genclass/runtime-model@0.2.0` ships `genclass-runtime-r17` 2.0.0-rc4t (training run `r17-v2dT`), with a gain gate and three aggressiveness profiles in `meta.json`. The results tables below are still those of 0.1.0 (`r17-v2b`, 2.0.0-rc2) until TRAIN's r17-v2dT numbers are copied in from `training/EVAL.md`.** It reads the
 runtime's frozen situation format `situation-v2`, which `@genclass/runtime` 0.1.0-alpha.1 and later render. The
 numbers below are copied from `training/EVAL.md` and `docs/runtime/RESULTS.md` in the GenClass-lib repository; those
 files have the definitions and full tables.
