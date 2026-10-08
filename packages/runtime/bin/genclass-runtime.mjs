@@ -9,7 +9,8 @@
 //       Download a GenClass model directory (model.json + model files) so an app can self-host it:
 //       GenClass.init({ model: { baseUrl: "/genclass-model/" } }). Follows redirects (GitHub release URLs work),
 //       verifies sizes and sha256, skips files that are already present and valid, and writes a model.json that
-//       lists exactly the downloaded files with their sizes and hashes.
+//       lists exactly the downloaded files with their sizes and hashes. Default --from: @genclass/runtime-model@0.1.0
+//       on jsDelivr (https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/), the runtime's default model.
 //   genclass-runtime info <dir>
 //       Show the model card of a directory, verify every file it lists, and check each variant's ONNX graph against
 //       the card rule "any fp16 tensor -> needs: shader-f16" (WebGPU without shader-f16 cannot run fp16 tensors).
@@ -21,7 +22,9 @@ import { dirname, join, resolve, sep } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-const DEFAULT_FROM = "https://github.com/daybot-solutions-inc/GenClass-lib/releases/download/runtime-model-v0.1.0/";
+// The npm package @genclass/runtime-model@0.1.0 served by jsDelivr: the same files as the runtime's default model
+// (src/model/host.ts -> DEFAULT_MODEL_BASE_URL; test/install/cli.test.ts checks they stay equal).
+const DEFAULT_FROM = "https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/";
 const CARD_FORMAT = "genclass-runtime-model/1";
 const ROLES = ["tokenizer", "calibration", "meta"];
 
@@ -33,8 +36,10 @@ const USAGE = `Usage:
 
 init sets GenClass up in the current project (shows the diff and asks first); remove undoes it
 (\`genclass-runtime init --help\` for details).
-fetch-model downloads a GenClass model directory for self-hosting (default --from ${DEFAULT_FROM},
-default --variant all). Serve <dir> and point the runtime at it: GenClass.init({ model: { baseUrl: "/genclass-model/" } }).`;
+fetch-model downloads a GenClass model directory for self-hosting (default --variant all). The default --from is
+@genclass/runtime-model@0.1.0 on npm via jsDelivr, the runtime's own default model:
+  ${DEFAULT_FROM}
+Serve <dir> and point the runtime at it: GenClass.init({ model: { baseUrl: "/genclass-model/" } }).`;
 
 class UsageError extends Error {}
 

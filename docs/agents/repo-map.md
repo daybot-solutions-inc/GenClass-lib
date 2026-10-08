@@ -905,7 +905,7 @@ Verified with `grep` at b435acb; rows touched by the merge and the two fixes re-
 | sha256 integrity / sha1 header keys | function | `packages/runtime/src/model/hash.ts` -> `sha256Hex`, `sha1Hex` | [model-host](runtime/model-host.md) |
 | Host <-> worker messages | type | `packages/runtime/src/model/protocol.ts` -> `ToWorker`, `FromWorker` | [model-host](runtime/model-host.md) |
 | `genclass-runtime fetch-model <dir>` / `info <dir>` | CLI | `packages/runtime/bin/genclass-runtime.mjs` -> `fetchModel`, `info` | [model-host](runtime/model-host.md) |
-| CLI default source (release `runtime-model-v0.1.0`, 404) | constant | `packages/runtime/bin/genclass-runtime.mjs` -> `DEFAULT_FROM` | [status](status-and-known-issues.md) |
+| CLI default source (jsDelivr `@genclass/runtime-model@0.1.0/files/` = `DEFAULT_MODEL_BASE_URL`, 404 until published) | constant | `packages/runtime/bin/genclass-runtime.mjs` -> `DEFAULT_FROM` | [status](status-and-known-issues.md) |
 
 ### Devtools overlay
 

@@ -15,6 +15,7 @@ import { integrityFor, nodeOnlyImport, scriptTag } from "../../bin/lib/plan.mjs"
 import { libraryEvidence } from "../../bin/lib/detect.mjs";
 import { assetBase } from "../../src/cdn/global.js";
 import { GenClass } from "../../src/index.js";
+import { DEFAULT_MODEL_BASE_URL } from "../../src/model/host.js";
 import { devtoolsOptions, fromDataset, fromPairs, isKilled, isLocalHost, mergeConfig, parsePairs, readMetaConfig } from "../../src/cdn/config.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -331,6 +332,16 @@ describe("modes: observe is the default; --mode guard / heal install those modes
   it("the default script URL is pinned to package.json's version", () => {
     const r = cli(project({ "index.html": PAGE }), "init", "--dry-run");
     expect(r.out).toContain(`https://cdn.jsdelivr.net/npm/@genclass/runtime@${PKG_JSON.version}/dist/genclass.global.min.js`);
+  });
+
+  it("fetch-model's default --from is the runtime's default model directory (npm via jsDelivr), not a GitHub release", () => {
+    const src = readFileSync(BIN, "utf8");
+    expect(src.match(/^const DEFAULT_FROM = "([^"]+)";$/m)?.[1]).toBe(DEFAULT_MODEL_BASE_URL);
+    expect(DEFAULT_MODEL_BASE_URL).toBe("https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/");
+    const r = cli(project({}), "--help");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(DEFAULT_MODEL_BASE_URL);
+    expect(r.out).not.toContain("releases/download");
   });
 
   it("USAGE documents observe as the default", () => {

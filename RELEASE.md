@@ -12,7 +12,7 @@
   - The tree still says `0.1.0-alpha.1` (`packages/runtime/package.json`, `packages/genclass-runtime/package.json`). Bump before any build or pack (step C3).
 - **Order.**
   1. Validate the `r17-v2a` export, with gate thresholds fitted (B0–B2).
-  2. Publish `@genclass/runtime-model@0.1.0` and the GitHub release `runtime-model-v0.1.0` (B3–B6).
+  2. Publish `@genclass/runtime-model@0.1.0` (B3, B4, B6). The GitHub release `runtime-model-v0.1.0` (B5) is optional: the CLI no longer defaults to it.
   3. Run the demos eval: Off / Observe / Guard (B7).
   4. Publish `@genclass/runtime@0.1.0-beta.0` and move `latest` to it (Part C).
 - **The model needs batch 6, which is not on this branch.**
@@ -37,7 +37,7 @@
   - `genclass-runtime` (unscoped alias): **404**, so the name is unregistered.
 - **The default model URL is pinned.**
   - `packages/runtime/src/model/host.ts` -> `DEFAULT_MODEL_BASE_URL` = `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/`.
-  - `packages/runtime/bin/genclass-runtime.mjs` -> `DEFAULT_FROM` = `https://github.com/daybot-solutions-inc/GenClass-lib/releases/download/runtime-model-v0.1.0/`.
+  - `packages/runtime/bin/genclass-runtime.mjs` -> `DEFAULT_FROM` = the same jsDelivr directory (`fetch-model`'s default `--from`; `test/install/cli.test.ts` keeps the two equal). It used to be the GitHub release `runtime-model-v0.1.0`, which we cannot create (no write access to the repo's releases); the published `0.1.0-alpha.1` CLI still defaults to that release, so with alpha.1 pass `--from` explicitly.
   - npm versions are immutable, so **whatever is published as `@genclass/runtime-model@0.1.0` is what every default `GenClass.init()` loads, permanently.** That includes alpha.1, which is `latest` today: it starts loading the model the moment the package exists (in observe mode, so it only reports).
 - **Never publish a round-1 (`situation-v1`) model as `0.1.0`.** `packages/runtime/src/model/loader.ts` checks only the card format `genclass-runtime-model/1`, never a situation version. A v1 model would load into the v2 runtime without any error.
 - **npm 11 refuses to publish a prerelease without `--tag`.** npm 11.8.0 `lib/commands/publish.js` throws "You must specify a tag using --tag when publishing a prerelease version." A non-prerelease (`0.1.0`) needs no tag and becomes `latest`.
@@ -224,7 +224,9 @@ npm publish genclass-runtime-model-0.1.0.tgz --access public
   - alpha.0 defaults to **guard**, holds store writes, and renders `situation-v1` text, which this model was not trained on. In apps still on alpha.0 it can act on that text.
   - Consider `npm deprecate @genclass/runtime@0.1.0-alpha.0 "<message>"` **[user only]** before this publish.
 
-### B5. GitHub release `runtime-model-v0.1.0` **[ask first; user's call]**
+### B5. GitHub release `runtime-model-v0.1.0` **[optional; ask first; user's call]**
+
+Not needed by the CLI any more (`DEFAULT_FROM` is the jsDelivr directory). Only the published `0.1.0-alpha.1` CLI defaults to this release; it needs write access to the repo's releases.
 
 `fetch-model` resolves each card file as `new URL(file, from)`, so the assets must be the same six files, flat, with the card's names:
 
@@ -245,9 +247,10 @@ curl -fsSI https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/mode
 curl -fsS https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/model.json \
   | diff - packages/runtime-model/files/model.json && echo "CDN card identical"       # [agent]
 # [ask first: model downloads] into a scratch directory
-node packages/runtime/bin/genclass-runtime.mjs fetch-model <scratch>/gc-cdn --from https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/
+node packages/runtime/bin/genclass-runtime.mjs fetch-model <scratch>/gc-cdn         # default --from = DEFAULT_FROM = the jsDelivr directory
 node packages/runtime/bin/genclass-runtime.mjs info <scratch>/gc-cdn
-node packages/runtime/bin/genclass-runtime.mjs fetch-model <scratch>/gc-gh          # default --from = DEFAULT_FROM
+# only if B5 was done:
+node packages/runtime/bin/genclass-runtime.mjs fetch-model <scratch>/gc-gh --from https://github.com/daybot-solutions-inc/GenClass-lib/releases/download/runtime-model-v0.1.0/
 node packages/runtime/bin/genclass-runtime.mjs info <scratch>/gc-gh
 ```
 
@@ -418,7 +421,7 @@ Update every place that lists `0.1.0-alpha.1` as latest or the model as unpublis
 - **Never commit `files/` or `*.tgz`.** Both are gitignored. Keep the export directory (and its sha256s) on the train VM.
 - **Lockfile.** A version bump, the alias's dependency or a new workspace changes `package-lock.json`. Commit it in the same commit.
 - **Dist-tags.** A prerelease without `--tag` is refused (npm 11). `npm dist-tag add` moves a tag without republishing. The README's commands resolve `latest`.
-- **The default model URL is a contract.** `DEFAULT_MODEL_BASE_URL` (`@0.1.0/files/`) and `DEFAULT_FROM` (`runtime-model-v0.1.0`) are pinned. Changing either means a runtime release, and every older runtime keeps loading `0.1.0`.
+- **The default model URL is a contract.** `DEFAULT_MODEL_BASE_URL` and `DEFAULT_FROM` (both `@genclass/runtime-model@0.1.0/files/` on jsDelivr) are pinned. Changing either means a runtime release, and every older runtime keeps loading `0.1.0`.
 - **2FA and accounts.** Agents never run `npm login`, handle tokens, or publish. Hand the user the exact command.
 - **Run policy.** On machines other than Mehar's 8 GB Mac, `npm ci`, `tsc`, `tsup`, vitest and `npm pack` are fine. Ask first before Playwright, `smoke.sh`, `test/install/run-all.sh`, model downloads, the demos eval, training, realapps, Azure, `git push`, `gh release` and `npm publish`.
 
@@ -427,7 +430,7 @@ Update every place that lists `0.1.0-alpha.1` as latest or the model as unpublis
 | step | what proves it |
 |---|---|
 | B2 | `genclass-runtime info` exits 0; `vitest run test/model` with `GENCLASS_MODEL_DIR` (export fixtures); `ortweb_report_q8.json` with full argmax agreement; `meta.json` has `gate` |
-| B6 | the CDN card is identical to the packed one; `fetch-model` from the CDN and from the GitHub release verifies every sha256 |
+| B6 | the CDN card is identical to the packed one; `fetch-model` with the default `--from` (the CDN), and from the GitHub release if B5 was done, verifies every sha256 |
 | B7 | demos eval Off / Observe / Guard with no clean-run regressions |
 | C2 | the CI-equivalent run (375 passed + 14 skipped at f107013; re-measure after the merge), perf 4 passed, `npm pack --dry-run` file list |
 | C3 | the built global file contains only the new version |

@@ -238,7 +238,7 @@ model-provided gate thresholds, no-baseline stall fallback; tag `situation-v2.1`
 | `packages/runtime/package.json` `version` | `0.1.0-alpha.1` | **already published**: bump before building or packing the next release |
 | `packages/genclass-runtime/package.json` | `0.1.0-alpha.1`, dependency `@genclass/runtime` `0.1.0-alpha.1` | unpublished alias (no `genclass-runtime` on npm) |
 | `@genclass/runtime-model@0.1.0` | not published (404); `packages/runtime-model/` tracks only `MODEL_CARD.md` | default `model.baseUrl` |
-| GitHub release `runtime-model-v0.1.0` | no such tag in the repo; the CLI's default `--from` 404s (per the lead) | |
+| GitHub release `runtime-model-v0.1.0` | no such tag in the repo (we have no write access to releases); no longer the CLI's default `--from` (now the jsDelivr directory, = `DEFAULT_MODEL_BASE_URL`), but still the published `0.1.0-alpha.1` CLI's | optional (RELEASE.md B5) |
 | v0.1 GenClass model | `https://github.com/MeharPro/GenClass/releases/download/v0.1.0/` | general classifier, **not** a runtime model; used by demos and model tests |
 | R17-final1 / R32-final1 | situation-v1; on the `train` VM (`~/gcl/train-out/final1/`) and Mehar's Mac (`packages/runtime-model/files/r17/`, gitignored) | baseline only; does not match the v2 runtime |
 | `r17-v2a`, `t150-v2a` | training runs on Azure (see TL;DR); r17-v2a's export is served from c09 by `v2_post.sh`, not published | first v2 student / teacher |
@@ -377,7 +377,7 @@ Status-relevant values only; the subsystem docs list the rest.
 | default mode | `"observe"` | `runtime.ts` -> `RuntimeImpl` constructor (`o.mode ?? "observe"`) | no actions unless `mode: "guard"`/`"heal"`, `?genclass=guard`, or `setMode` |
 | test-harness mode | `"guard"` | `test/helpers.ts` -> `setup` | CORE tests exercise interventions; `setup({ mode: undefined })` gives the product default |
 | `DEFAULT_MODEL_BASE_URL` | `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` | `model/host.ts` | unpublished → status `error`, observe only |
-| `DEFAULT_FROM` | `https://github.com/daybot-solutions-inc/GenClass-lib/releases/download/runtime-model-v0.1.0/` | `bin/genclass-runtime.mjs` | `fetch-model` default source; 404 |
+| `DEFAULT_FROM` | `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` | `bin/genclass-runtime.mjs` | `fetch-model` default source (= `DEFAULT_MODEL_BASE_URL`); 404 until the model package is published |
 | `STATE_CHAR_BUDGET` | 2400 (was 3200 in v1) | `situation/serialize.ts` | full situation budget (≈ 1,000 tokens at the measured 2.4 chars/token) |
 | `COMPACT_BUDGET` / `COMPACT_QUESTIONS_BUDGET` | 1100 / 1400 | `situation/serialize.ts` / `situation/questions.ts` | section-limit floor / bare-label questions |
 | auto situation budget | webgpu and unknown device 2,400; wasm `1000 + round((threads − 1) × 1000 / 3)`, threads clamped 1–4; × `budgetScale` (× 0.8 per `max_tokens_exceeded`, floor 0.5) | `RuntimeImpl.situationBudget` | device sizing; a numeric `situation.budget` wins |

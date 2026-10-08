@@ -389,7 +389,7 @@ Earlier pass (b435acb, fresh clone): `npm ci` OK from the committed lockfile (EB
 | `policy.holdWrites` | option | `false` (unset) | `src/types.ts` -> `PolicyOptions.holdWrites` | tests about held store writes pass `true` |
 | `MockRuntime.situationBudget()` | test | `2400` (was `3200`) | `test/browser/ui/mock-runtime.ts` | matches the v2 full budget |
 | `DEFAULT_MODEL_BASE_URL` | const | `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` | `src/model/host.ts` | default model location = the unpublished package |
-| CLI `DEFAULT_FROM` | const | `https://github.com/daybot-solutions-inc/GenClass-lib/releases/download/runtime-model-v0.1.0/` | `bin/genclass-runtime.mjs` | default `fetch-model --from` (planned release) |
+| CLI `DEFAULT_FROM` | const | `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` (= `DEFAULT_MODEL_BASE_URL`) | `bin/genclass-runtime.mjs` | default `fetch-model --from` (404 until the model package is published) |
 | test env vars | env | `GENCLASS_MODEL_DIR`, `NODE_OPTIONS=--expose-gc`, `GENCLASS_BENCH_MODELS="name=dir,..."`, `GENCLASS_WEBGPU_VARIANTS=<dir>`, `GENCLASS_OFFLINE=1` | test files | see Tests |
 | `HAVE_MODEL` | test | `existsSync(<MODEL_DIR>/model.json)` | `test/browser/model-helpers.ts` | every model spec calls `test.skip(!HAVE_MODEL, ...)` |
 | `DEFAULT_CACHE_NAME` | const | `"genclass-runtime-v1"` | `src/model/loader.ts` | Cache Storage bucket; default of `window.GC.cacheKeys()` |
@@ -549,7 +549,7 @@ Blocked on training: no situation-v2 model is ready to publish. The first one, `
 
 1. Put a model directory (card `genclass-runtime-model/1`: `model.json`, `<name>-q8.onnx`, `<name>-fp16.onnx`, `tokenizer.json`, `calibration.json`, `meta.json`) under `packages/runtime-model/files/` (gitignored), so jsDelivr serves it at `DEFAULT_MODEL_BASE_URL`. Check it with `node packages/runtime/bin/genclass-runtime.mjs info packages/runtime-model/files`.
 2. Add `packages/runtime-model/package.json` (`@genclass/runtime-model`, `0.1.0`, `files` including `files/`). It then becomes a workspace automatically (`packages/*`), so run a root `npm install` and commit the lockfile change, or CI's `npm ci` fails.
-3. Attach the same files to a GitHub release tagged `runtime-model-v0.1.0` (the CLI's `DEFAULT_FROM`).
+3. Optionally attach the same files to a GitHub release tagged `runtime-model-v0.1.0` (only the published `0.1.0-alpha.1` CLI defaults to it; the CLI's `DEFAULT_FROM` is now the jsDelivr directory).
 4. Rerun the demos with the trained model, then publish `@genclass/runtime@0.1.0` without a prerelease tag (user, 2FA).
 
 ### CI (`.github/workflows/ci.yml`)
