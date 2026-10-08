@@ -33,7 +33,7 @@ sync() {
     rm -rf "$tmp"
     r "echo ${TAG} > ~/gcl/real-cache/runtime/current"
   fi
-  r "grep -c . ~/gcl/real/realapps/src/harness/trajectory.ts >/dev/null && echo synced to ${H} (runtime: \$(cat ~/gcl/real-cache/runtime/current 2>/dev/null || echo working-tree))"
+  r "grep -c . ~/gcl/real/realapps/src/harness/trajectory.ts >/dev/null && echo synced to ${H}: runtime \$(cat ~/gcl/real-cache/runtime/current 2>/dev/null || echo working-tree)"
 }
 case "$cmd" in
   sync) sync ;;

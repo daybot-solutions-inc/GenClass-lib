@@ -1,6 +1,6 @@
 # Open tasks: @genclass/runtime
 
-Status as of 2026-10-08 04:00 UTC. Branch `runtime`. Spec: [docs/runtime/CONTRACT.md](docs/runtime/CONTRACT.md).
+Status as of 2026-10-08. New sessions: start with HANDOFF.md. Branch `runtime`. Spec: [docs/runtime/CONTRACT.md](docs/runtime/CONTRACT.md).
 The runtime decides through a trained local model; nothing here is hardcoded per bug pattern.
 
 ## Done

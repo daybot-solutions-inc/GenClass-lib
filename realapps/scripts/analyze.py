@@ -5,7 +5,7 @@
 """
 import collections, glob, json, os, sys
 
-PASSIVE = {"mutation": "apply", "request": "send", "failure": "deliver", "stall": "wait", "inconsistency": "ignore", "transition": "ignore", "error": "ignore"}
+PASSIVE = {"mutation": "apply", "delivery": "deliver", "request": "send", "failure": "deliver", "stall": "wait", "inconsistency": "ignore", "transition": "ignore", "error": "ignore"}
 
 def rows_of(d):
     for split in ("train", "dev", "test"):

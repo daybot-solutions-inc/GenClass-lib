@@ -90,3 +90,35 @@ def test_stale_vs_benign_versions_semantics():
             assert newer, r["meta"]["case"]
         if case in ("fresh", "older_between", "same_root", "moved_inflight"):
             assert not newer, r["meta"]["case"]
+
+
+def test_runtime_rows_situation_v2():
+    """rt.py mirrors the frozen `situation-v2` renderer: deliveries appear, labels map to the runtime's actions, the
+    situation fits the 2,400-char full budget. Pure Python (no jev_local import)."""
+    import rows as R
+    import rt
+    from app import App
+    from fmt import Style
+
+    seen = Counter()
+    for i in range(1500):
+        rng = random.Random(f"rt2:{i}")
+        app = App(rng, rng.choice(G.TRAIN_DOMAINS))
+        st = Style.make(rng, False)
+        trig = rng.choices(list(G.TRIGGERS), [w for _, w in G.TRIGGERS.values()])[0]
+        sc = G.TRIGGERS[trig][0](rng, app, st)
+        r = R.decision_row(sc, app, st, rng, 1.0)
+        m = r["meta"]
+        if m["style"] != "runtime":
+            continue
+        seen[m["trigger"]] += 1
+        assert rt.size_chars(r["state"]) <= rt.STATE_CHAR_BUDGET
+        if "action" in r["questions"]:
+            crit = r["questions"]["action"]["criteria"]
+            lab = r["labels"]["action"]
+            assert (lab.get("label") or max(lab["dist"], key=lab["dist"].get)) in crit
+            assert m["passive"] in crit
+            assert set(crit) <= set(rt.TRIGGER_ACTIONS[m["trigger"]])
+        if m["trigger"] == "delivery":
+            assert "about to be delivered" in r["state"]["trigger"]
+    assert seen["delivery"] > 0 and seen["mutation"] > 0

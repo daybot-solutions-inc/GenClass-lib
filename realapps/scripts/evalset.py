@@ -19,7 +19,7 @@ Rows are balanced per case (--per-case, default 2000) and keep their original sp
 """
 import collections, json, os, sys, glob
 
-PASSIVE = {"mutation": "apply", "request": "send", "failure": "deliver", "stall": "wait", "inconsistency": "ignore", "transition": "ignore", "error": "ignore"}
+PASSIVE = {"mutation": "apply", "delivery": "deliver", "request": "send", "failure": "deliver", "stall": "wait", "inconsistency": "ignore", "transition": "ignore", "error": "ignore"}
 
 def rows(d, splits):
     for split in splits:

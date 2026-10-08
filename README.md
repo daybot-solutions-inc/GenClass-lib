@@ -29,7 +29,7 @@ bugs; the model infers from runtime context.
 > **Status: alpha.** [`@genclass/runtime@0.1.0-alpha.0`](https://www.npmjs.com/package/@genclass/runtime) is on
 > npm. The runtime, model host, devtools and adapters are built and tested. The runtime-specialist model is still
 > being trained and is not yet published, so for now the alpha observes and records but does not act yet. The
-> demos will be evaluated with the trained model. See [OPEN_TASKS.md](OPEN_TASKS.md).
+> demos will be evaluated with the trained model. See [OPEN_TASKS.md](OPEN_TASKS.md); contributors and agents continuing the work: [HANDOFF.md](HANDOFF.md).
 
 ## What's in this repo
 

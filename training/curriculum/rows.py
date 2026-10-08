@@ -137,17 +137,21 @@ def decision_row(sc: Scen, app: App, st: Style, rng: random.Random, p_runtime: f
     rendered = None
     if p_runtime > 0 and rng.random() < p_runtime:
         import rt
-        rendered = rt.render(sc, app, rng)
+        rinfo: dict = {}
+        rendered = rt.render(sc, app, rng, info=rinfo)
+    trigger = sc.trigger
     if rendered is not None:  # exactly what @genclass/runtime hands the model
         state, questions = rendered
-        names = {a: a for a in sc.actions}
+        # situation-v2: a mutation may be rendered as a `delivery` (apply -> deliver, discard, defer)
+        trigger = rinfo.get("trigger", sc.trigger)
+        names = dict(rinfo.get("action_map") or {a: a for a in sc.actions})
         ld = {"type": "choice", "label": sc.diag} if isinstance(sc.diag, str) else {"type": "choice", "dist": dict(sc.diag)}
         labels = {"diagnosis": ld}
         if "action" in questions:  # the runtime asks only when more than one action applies
             if isinstance(sc.action, str):
-                labels["action"] = {"type": "choice", "label": sc.action}
+                labels["action"] = {"type": "choice", "label": names.get(sc.action, sc.action)}
             else:
-                dist = {a: p for a, p in sc.action.items() if a in questions["action"]["criteria"]}
+                dist = {names[a]: p for a, p in sc.action.items() if a in names and names[a] in questions["action"]["criteria"]}
                 tot = sum(dist.values())
                 labels["action"] = {"type": "choice", "dist": {k: v / tot for k, v in dist.items()}}
         prim_names = add_prims(questions, labels, sc.prims, rng, rng.choice((0, 0, 1, 2)))
@@ -166,13 +170,13 @@ def decision_row(sc: Scen, app: App, st: Style, rng: random.Random, p_runtime: f
         style = "varied"
     a_gold = sc.action if isinstance(sc.action, str) else max(sc.action, key=sc.action.get)
     d_gold = sc.diag if isinstance(sc.diag, str) else max(sc.diag, key=sc.diag.get)
-    meta = {"kind": "decision", "trigger": sc.trigger, "case": sc.case, "domain": app.dom.key,
+    meta = {"kind": "decision", "trigger": trigger, "case": sc.case, "domain": app.dom.key,
             "passive_best": sc.passive_best, "action_gold": names.get(a_gold, a_gold), "action_canonical": a_gold,
             "passive": names.get(PASSIVE[sc.trigger], PASSIVE[sc.trigger]), "diag_gold": d_gold,
             "action_names": names, "prims": prim_names, "heldout_templates_possible": st.test,
             "soft_action": not isinstance(sc.action, str), "style": style}
     return {"state": state, "questions": questions, "labels": labels, "meta": meta,
-            "family": f"cur/{sc.trigger}/{sc.case.split('/')[-1]}"}
+            "family": f"cur/{trigger}/{sc.case.split('/')[-1]}"}
 
 
 def ask_row(sc: Scen, app: App, st: Style, rng: random.Random) -> dict | None:

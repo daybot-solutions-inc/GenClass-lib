@@ -15,7 +15,7 @@ if ! ls "$HOME/.cache/ms-playwright" 2>/dev/null | grep -q chromium_headless_she
   npx playwright install --only-shell chromium
 fi
 # system libraries Chromium needs (no-op when present)
-if ! ldd "$(ls -d "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-*/headless_shell | head -1)" 2>/dev/null | grep -q "not found"; then :; else
+if ldd "$(ls -d "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-*/headless_shell "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-*/chrome-headless-shell 2>/dev/null | head -1)" 2>/dev/null | grep -q "not found"; then
   sudo -n env PATH="$PATH" npx playwright install-deps chromium >/dev/null
 fi
 # build against the pinned runtime (cluster.sh sync with TAG=...), never the working tree, for data generation

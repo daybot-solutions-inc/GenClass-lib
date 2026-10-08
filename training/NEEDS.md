@@ -107,8 +107,9 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 | 2–4 F80 nodes (e.g. c10, c11) | REAL (requested; lead please arbitrate with SIM) | from ≈ 03:10 | scaled real-browser generation (≈ 55 Chromium workers per node; ≥ 500k rows ≈ 5 node-hours); REAL deallocates when idle |
 
 | c12 | SIM | 03:05–03:20 UTC (done, **deallocated**) | situation-v2 pipeline check: 41.7k gold rows in 211 s, 265k unlabeled rows in 24 s on one F80; collected to `train:/data/sim-out/v2chk-{gold,unl}` (check data, batch-4 runtime) |
-| c02–c05, c08–c11 | TRAIN (T1 runs `r17-t1g10` / `r17-t1g20`) | ≈ 04:10 UTC (auto-eval, then TRAIN deallocates) | SEPARABILITY §7 T1 experiments on phase A; resumable — tell TRAIN if v2 freeze lands first |
-| c01, c06, c07, c12 | TRAIN (T1 gain-head run `r17-t1h`) | ≈ 04:30 UTC (then deallocated; c01 stays workbench) | T1 variant with a separate gain-regression head; resumable — yields to SIM v2 on request |
+| c02–c05, c08, c09 | **released to SIM 03:35 UTC** (TRAIN T1 runs stopped, resumable; nodes left running and idle for SIM's v2 share — SIM deallocates when done) | — | — |
+| c06, c07, c12 | free (TRAIN deallocated 03:32) | — | SIM v2 claim |
+| c01, c10, c11 | REAL (TRAIN processes killed 03:35; c01 clean) | — | real-browser rows |
 | c02–c09, c12–c23 (20 nodes) | SIM (claim) | from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
 
 SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
@@ -165,3 +166,10 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     harness is format-agnostic (records whatever the runtime hands the decider; passive actions come from the
     runtime's own `PASSIVE`; `delivery` diagnosed). Builds pin the runtime source to a git tag
     (`RW_RUNTIME_SRC`/`RW_RUNTIME_TAG`; `meta.runtime` in every row).
+16. **REAL production on `situation-v2` (tag 6e5e86e), started 2026-10-08.** Sweeps on v2: determinism 132/132
+    identical, interference 0/132 (the v1 Conduit breakage is gone). v2 pilot: `train:/data/real-out/v2-pilot/`
+    (400 trajectories, 2,519 gold incl. 135 `delivery` rows, 2,397 unlabeled, 0 drops). Production batches
+    (resumable, 30k trajectories each, `--test-keep 0.5`, 70 Chromium workers): `c01:~/gcl/real-out/v2b1/`
+    (seeds 1,000,000+), `c10:~/gcl/real-out/v2b2/` (2,000,000+), `c11:~/gcl/real-out/v2b3/` (3,000,000+); each has
+    `{train,dev,test}.jsonl`, `unlabeled-*.jsonl`, `stats.json`, `manifest.json`. REAL claims c01, c10, c11 until
+    these finish (target ≥ 500k gold), then copies them to `train:/data/real-out/` with the eval set and deallocates.

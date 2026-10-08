@@ -258,3 +258,9 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
   ≈ 04:25). `t1h_post.sh` (detached on c01) evaluates gate policies and `head>m` policies (fire argmax predicted
   gain over permitted actions if > m, with/without the diagnosis condition).
 - Nodes running: c02–c05, c08–c11 (T1 τ runs), c01, c06, c07, c12 (gain head) — claims in NEEDS.md.
+
+### 03:32–03:35 situation-v2 frozen (6e5e86e): T1 on v1 stopped
+- Per coordinator (option 2): `r17-t1g10` / `r17-t1g20` (step ≈ 1,350/2,168) and `r17-t1h` (≈ 1,000) stopped,
+  resumable; no T1 result on v1 — rerun on v2 data later. c06, c07, c12 deallocated; c02–c05, c08, c09 released to
+  SIM (idle, running); c01, c10, c11 left to REAL (TRAIN post scripts killed). Gain-head interim: loss 0.98 → 0.85 vs
+  trivial predictors 0.97–1.01 (little learnable signal, consistent with SEPARABILITY).
