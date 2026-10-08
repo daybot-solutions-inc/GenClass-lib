@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-beta.0
+## 0.1.0-beta.0 (2026-10-08)
 
 - **Ships with a model.** A default `GenClass.init()` now loads `@genclass/runtime-model@0.1.0`
   (`genclass-runtime-r17` 2.0.0-rc2, checkpoint `r17-v2b`) from jsDelivr. The model is 9.6 MB (q8, WASM) and is

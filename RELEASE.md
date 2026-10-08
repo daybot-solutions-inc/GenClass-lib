@@ -4,6 +4,8 @@
 > **Read this when:** you are asked to cut a release, prepare a tarball for the user to publish, or package a trained model.
 > **Source of truth:** the code. Verified 2026-10-08 (~07:00 UTC) against branch `mvp-v2-merge` at f107013. That branch is `mvp-v2` (release commit 806a296), merged with origin/runtime eff18cb (dabbce2), plus the two runtime fixes 054da38 and f107013. Newer commits on origin/runtime (up to 5bc40c9) were read with `git show` and are not merged on this branch. If this doc and the code disagree, the code wins.
 
+> **Done 2026-10-08 (~13:40 UTC): Part B and Part C.** Published `@genclass/runtime-model@0.1.0` (dist-tag `latest`, same session; `r17-v2b` = `genclass-runtime-r17` 2.0.0-rc2 with gates guard 0.80 (mutation 0.95), heal 0.85 (failure 0.95, inconsistency 0.85), report 0.85; 9 files, 21.7 MB, shasum 84f3334428f0eea4d0e1a2a636b0003d8df3175f; local tag `runtime-model-v0.1.0`) and `@genclass/runtime@0.1.0-beta.0` (dist-tag `latest`, published 2026-10-08 ~13:40 UTC by `karanvir1729` with 2FA, from the clean release worktree at 1f0f617, branch `release/runtime-0.1.0-beta.0`, local annotated tag `v0.1.0-beta.0` not pushed; 52 files, 1.1 MB, shasum a15d2fb0d054ded5df81e9cb2ae87b1fd3f67e88). `@genclass/runtime@0.1.0-alpha.0` deprecated: "Old situation-v1 build that defaults to guard; use 0.1.0-beta.0 or later". jsDelivr serves `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` (`model.json` 200; all 5 files' sha256 match `model.json`). Browser check: a plain HTML page with the jsDelivr script tag (`genclass.global.min.js` @0.1.0-beta.0) in Chromium: mode `observe`, model ready in a Web Worker on WebGPU (fp16), `loadMs` 4750, every gate's source `model`, `decide()` 72 ms. Nothing was pushed and no GitHub release was created (the user's GitHub account is read-only on daybot-solutions-inc/GenClass-lib); the CLI's `fetch-model` default is the jsDelivr model directory. Still open: push `mvp-v2-b6` and the tags (needs an account with write access); the GitHub releases (B5, C7) are optional. The rest of this doc is the procedure as planned.
+
 ## TL;DR
 
 - **Versions.**
@@ -33,7 +35,7 @@
   - Agents ask first before Playwright, `smoke.sh`, the install end-to-end runs, model downloads, the demos eval, and anything that touches training or Azure. Mehar runs Azure (`HANDOFF.md`).
 - **Registry** (`npm view`, 2026-10-08 ~07:00 UTC):
   - `@genclass/runtime`: versions `0.0.0-stage`, `0.1.0-alpha.0`, `0.1.0-alpha.1`; `latest` = `0.1.0-alpha.1`, no other dist-tags.
-  - `@genclass/runtime-model`: **404**.
+  - `@genclass/runtime-model`: **404**. (Since 2026-10-08 ~13:40 UTC: `0.1.0` is `latest`; `@genclass/runtime` `latest` = `0.1.0-beta.0`, `0.1.0-alpha.0` deprecated. See the note at the top.)
   - `genclass-runtime` (unscoped alias): **404**, so the name is unregistered.
 - **The default model URL is pinned.**
   - `packages/runtime/src/model/host.ts` -> `DEFAULT_MODEL_BASE_URL` = `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/`.
@@ -134,7 +136,7 @@ Runtime review findings still open (2026-10-08 review; see [Drift and open issue
 
 Step markers: **[agent]** is light and allowed locally. **[ask first]** needs the user's OK in chat. **[user only]** is run by the user with their npm 2FA, or by Mehar on his Azure setup.
 
-## Part B: `@genclass/runtime-model@0.1.0` (first, once `r17-v2a` is validated)
+## Part B: `@genclass/runtime-model@0.1.0` (done 2026-10-08 with `r17-v2b`; see the note at the top)
 
 ### B0. Gates before packaging anything
 
@@ -269,7 +271,7 @@ scripts/vm.sh run demos 'GENCLASS_MODEL_URL=cdn setsid nohup bash demos/scripts/
 
 `GENCLASS_MODEL_URL=cdn` loads the published package. Results go to `demos/results-runtime-model-0.1.0.{json,md}`; record them in `docs/runtime/RESULTS.md` §5. **Gate for Part C:** on clean runs, Observe and Guard introduce no bugs that Off does not have; report every fix count with its false interventions.
 
-## Part C: `@genclass/runtime@0.1.0-beta.0` (or `0.1.0-alpha.2` without the model)
+## Part C: `@genclass/runtime@0.1.0-beta.0` (done 2026-10-08; see the note at the top)
 
 Replace `0.1.0-beta.0` with `0.1.0-alpha.2` throughout if it goes out before Part B.
 

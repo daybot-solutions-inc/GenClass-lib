@@ -57,10 +57,9 @@ Read next: **[HANDOFF.md](HANDOFF.md)** (the team's live handoff, kept current b
   teacher, 88 ranks, launched 05:20 UTC, ETA ≈ 08:30) per `training/LOG.md`. Not in this branch but on
   `origin/runtime` (416e374, `docs/runtime/RESULTS.md`): r17-v2a finished, `sim2e` diagnosis 84.4%, action 77.9%, guard
   FIR 0.00%, heal FIR 0.46%, recall at the fixed gates very low. REAL `v2c*` gold had not landed at eff18cb.
-- **Model: none published** (`@genclass/runtime-model` 404), so `packages/runtime/src/model/host.ts` ->
-  `DEFAULT_MODEL_BASE_URL` and the CLI's `DEFAULT_FROM` fail: a default `GenClass.init()` ends with model status `error`
-  and logs `[GenClass] Model unavailable (...); observing only.`
-- **npm:** `@genclass/runtime@0.1.0-alpha.1` is `latest` (published 2026-10-08 from 806a296: NaN fix, situation-v2,
+- **Model: published** (2026-10-08 ~13:40 UTC): `@genclass/runtime-model@0.1.0` (`r17-v2b`, `latest`). `packages/runtime/src/model/host.ts` ->
+  `DEFAULT_MODEL_BASE_URL` and the CLI's `DEFAULT_FROM` (both the jsDelivr `files/` directory) now resolve.
+- **npm (updated 2026-10-08 ~13:40 UTC):** `@genclass/runtime@0.1.0-beta.0` is `latest` (from 1f0f617; install paths, fixes, batch 6+, ships with the model); `0.1.0-alpha.0` is deprecated. Older note: `@genclass/runtime@0.1.0-alpha.1` was `latest` (published 2026-10-08 from 806a296: NaN fix, situation-v2,
   default `observe`). It does **not** contain the install paths (`./auto` exports, `dist/cdn/`, the global build,
   `init`/`remove`) nor the two fixes. **The next release** (`0.1.0-alpha.2`, or a beta together with the v2 model once
   validated) carries them. `packages/runtime/package.json` and `packages/genclass-runtime/package.json` still say
@@ -167,7 +166,7 @@ demos eval, Python tests, training. One test: `npx vitest run test/delivery.test
 |---|---|---|
 | `packages/runtime/` | `@genclass/runtime`: `src/` (incl. `auto.ts`, `cdn/`), `test/` (incl. `install/`), `bin/genclass-runtime.mjs` CLI (`init`, `remove`, `fetch-model`, `info`; `init`/`remove` in `bin/lib/`), `STATUS.md` (runtime state, example situations, deviations), `CHANGELOG.md`, `INSTALL-NEEDS.md` (INSTALL's requests), `UI-NEEDS.md` | [runtime/](docs/agents/runtime/public-api-and-lifecycle.md) (8 docs; start with public-api-and-lifecycle and [build-test-release](docs/agents/runtime/build-test-release.md)), [model-io-contract](docs/agents/model-io-contract.md) |
 | `packages/genclass-runtime/` | unscoped alias `genclass-runtime` 0.1.0-alpha.1 (unpublished): `cli.mjs` forwards to `@genclass/runtime`'s CLI so `npx genclass-runtime init` could work; a workspace | [repo-map](docs/agents/repo-map.md) |
-| `packages/runtime-model/` | only `MODEL_CARD.md` of the unpublished model package | [model-host](docs/agents/runtime/model-host.md) |
+| `packages/runtime-model/` | only `MODEL_CARD.md` of the model package (published as `@genclass/runtime-model@0.1.0`; files come from the export) | [model-host](docs/agents/runtime/model-host.md) |
 | `sim/` | `@genclass/sim`: deterministic training-data simulator (S1/S2 labels, `SEPARABILITY.md`) | [sim.md](docs/agents/sim.md) |
 | `realapps/` | 128 app directories with a `manifest.ts` (Mehar's commits say 96 after wave 3; wave-4 apps arrived inside f3a9dd1/eff18cb), incl. 14 open-source Conduit front-ends, in headless Chromium; REAL rows and the never-worse sweep | [realapps.md](docs/agents/realapps.md) |
 | `training/` | Python training, curriculum (`curriculum/rt.py`), eval, export, Azure launch scripts; `NEEDS.md`, `LOG.md`, `EVAL.md` | [training.md](docs/agents/training.md) |

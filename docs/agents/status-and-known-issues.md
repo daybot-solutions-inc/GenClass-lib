@@ -35,7 +35,7 @@ paths (`runtime.ts`, `types.ts`, `util.ts`, `state/hub.ts`, `situation/content.t
   local tag `v0.1.0-alpha.1` not pushed): NaN fix, situation-v2, default `observe`, no model. It has **none of Mehar's
   install paths** (`npm view @genclass/runtime@0.1.0-alpha.1 exports` has no `./auto*`; `sideEffects: false`) and
   neither fix below. Before it, `0.1.0-alpha.0` (tag `v0.1.0-alpha.0` = 654d822): situation-v1, `guard` default, NaN
-  crash. `@genclass/runtime-model` is **not published** (404).
+  crash. **Since 2026-10-08 ~13:40 UTC:** `@genclass/runtime@0.1.0-beta.0` (dist-tag `latest`, published 2026-10-08 ~13:40 UTC by `karanvir1729` with 2FA, from the clean release worktree at 1f0f617, branch `release/runtime-0.1.0-beta.0`, local annotated tag `v0.1.0-beta.0` not pushed; 52 files, 1.1 MB, shasum a15d2fb0d054ded5df81e9cb2ae87b1fd3f67e88) and `@genclass/runtime-model@0.1.0` (dist-tag `latest`, same session; `r17-v2b` = `genclass-runtime-r17` 2.0.0-rc2 with gates guard 0.80 (mutation 0.95), heal 0.85 (failure 0.95, inconsistency 0.85), report 0.85; 9 files, 21.7 MB, shasum 84f3334428f0eea4d0e1a2a636b0003d8df3175f; local tag `runtime-model-v0.1.0`); `0.1.0-alpha.0` deprecated; the default model URL resolves.
 - **Next release** (`0.1.0-alpha.2`, or a beta together with the v2 model once it is validated; `OPEN_TASKS.md` Next
   14): the install paths, the two fixes, and whatever of `origin/runtime` is merged by then. Before any build or pack
   meant to ship, bump `packages/runtime/package.json` (still `0.1.0-alpha.1`; the global build bakes the version into
@@ -237,7 +237,7 @@ model-provided gate thresholds, no-baseline stall fallback; tag `situation-v2.1`
 | tag `v0.1.0-alpha.1` | → 806a296 | published alpha.1 (`latest`); local only, not pushed |
 | `packages/runtime/package.json` `version` | `0.1.0-alpha.1` | **already published**: bump before building or packing the next release |
 | `packages/genclass-runtime/package.json` | `0.1.0-alpha.1`, dependency `@genclass/runtime` `0.1.0-alpha.1` | unpublished alias (no `genclass-runtime` on npm) |
-| `@genclass/runtime-model@0.1.0` | not published (404); `packages/runtime-model/` tracks only `MODEL_CARD.md` | default `model.baseUrl` |
+| `@genclass/runtime-model@0.1.0` | published 2026-10-08 (`latest`, `r17-v2b`, shasum 84f33344...); `packages/runtime-model/` tracks only `MODEL_CARD.md` | default `model.baseUrl` |
 | GitHub release `runtime-model-v0.1.0` | no such tag in the repo (we have no write access to releases); no longer the CLI's default `--from` (now the jsDelivr directory, = `DEFAULT_MODEL_BASE_URL`), but still the published `0.1.0-alpha.1` CLI's | optional (RELEASE.md B5) |
 | v0.1 GenClass model | `https://github.com/MeharPro/GenClass/releases/download/v0.1.0/` | general classifier, **not** a runtime model; used by demos and model tests |
 | R17-final1 / R32-final1 | situation-v1; on the `train` VM (`~/gcl/train-out/final1/`) and Mehar's Mac (`packages/runtime-model/files/r17/`, gitignored) | baseline only; does not match the v2 runtime |
@@ -376,8 +376,8 @@ Status-relevant values only; the subsystem docs list the rest.
 |---|---|---|---|
 | default mode | `"observe"` | `runtime.ts` -> `RuntimeImpl` constructor (`o.mode ?? "observe"`) | no actions unless `mode: "guard"`/`"heal"`, `?genclass=guard`, or `setMode` |
 | test-harness mode | `"guard"` | `test/helpers.ts` -> `setup` | CORE tests exercise interventions; `setup({ mode: undefined })` gives the product default |
-| `DEFAULT_MODEL_BASE_URL` | `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` | `model/host.ts` | unpublished → status `error`, observe only |
-| `DEFAULT_FROM` | `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` | `bin/genclass-runtime.mjs` | `fetch-model` default source (= `DEFAULT_MODEL_BASE_URL`); 404 until the model package is published |
+| `DEFAULT_MODEL_BASE_URL` | `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` | `model/host.ts` | resolves since 2026-10-08 (model `0.1.0` on npm/jsDelivr) |
+| `DEFAULT_FROM` | `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` | `bin/genclass-runtime.mjs` | `fetch-model` default source (= `DEFAULT_MODEL_BASE_URL`); resolves since 2026-10-08 |
 | `STATE_CHAR_BUDGET` | 2400 (was 3200 in v1) | `situation/serialize.ts` | full situation budget (≈ 1,000 tokens at the measured 2.4 chars/token) |
 | `COMPACT_BUDGET` / `COMPACT_QUESTIONS_BUDGET` | 1100 / 1400 | `situation/serialize.ts` / `situation/questions.ts` | section-limit floor / bare-label questions |
 | auto situation budget | webgpu and unknown device 2,400; wasm `1000 + round((threads − 1) × 1000 / 3)`, threads clamped 1–4; × `budgetScale` (× 0.8 per `max_tokens_exceeded`, floor 0.5) | `RuntimeImpl.situationBudget` | device sizing; a numeric `situation.budget` wins |

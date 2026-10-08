@@ -6,11 +6,12 @@ release commit 806a296); `mvp-v2-merge` merges the two. Spec:
 [docs/runtime/CONTRACT.md](docs/runtime/CONTRACT.md). Results and numbers: [docs/runtime/RESULTS.md](docs/runtime/RESULTS.md).
 The runtime decides through a trained local model; nothing here is hardcoded per bug pattern.
 
-The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). No situation-v2 model is published yet (`@genclass/runtime-model` returns 404); the first
-v2 runs are training (In progress).
+The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). Since 2026-10-08 (~13:40 UTC) `@genclass/runtime-model@0.1.0` (`r17-v2b`) and
+`@genclass/runtime@0.1.0-beta.0` are on npm (`latest`), so the default model URL resolves (Done).
 
 ## Done
 
+- **Published `@genclass/runtime@0.1.0-beta.0` (dist-tag `latest`, published 2026-10-08 ~13:40 UTC by `karanvir1729` with 2FA, from the clean release worktree at 1f0f617, branch `release/runtime-0.1.0-beta.0`, local annotated tag `v0.1.0-beta.0` not pushed; 52 files, 1.1 MB, shasum a15d2fb0d054ded5df81e9cb2ae87b1fd3f67e88)** and **`@genclass/runtime-model@0.1.0` (dist-tag `latest`, same session; `r17-v2b` = `genclass-runtime-r17` 2.0.0-rc2 with gates guard 0.80 (mutation 0.95), heal 0.85 (failure 0.95, inconsistency 0.85), report 0.85; 9 files, 21.7 MB, shasum 84f3334428f0eea4d0e1a2a636b0003d8df3175f; local tag `runtime-model-v0.1.0`)**. jsDelivr serves `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` (`model.json` 200; all 5 files' sha256 match `model.json`). Browser check: a plain HTML page with the jsDelivr script tag (`genclass.global.min.js` @0.1.0-beta.0) in Chromium: mode `observe`, model ready in a Web Worker on WebGPU (fp16), `loadMs` 4750, every gate's source `model`, `decide()` 72 ms. `@genclass/runtime@0.1.0-alpha.0` deprecated: "Old situation-v1 build that defaults to guard; use 0.1.0-beta.0 or later". Nothing was pushed and no GitHub release was created (the user's GitHub account is read-only on daybot-solutions-inc/GenClass-lib).
 - **Published `@genclass/runtime@0.1.0-alpha.1` to npm** (published 2026-10-08 (~05:33 UTC) by `karanvir1729` under dist-tag `latest`, from release commit 806a296 (local annotated tag `v0.1.0-alpha.1`, not pushed); 26 files, 486.8 kB, shasum 9e3e82bcf752d6eb34db0620d072e6a913508dff). It ships the NaN fix (ad24804), the
   situation-v2 runtime (decisions at the network boundary via the `delivery` trigger; store writes not held by default),
   EventSource observed, synthetic DOM events ignored unless `observe: { untrustedEvents: true }`, default mode `observe`
@@ -105,6 +106,10 @@ Mehar operates the Azure cluster; nobody else touches Azure. The jobs below run 
 The usual order (HANDOFF.md): v2 data collected → teacher → labels → distillation → DAgger → EVAL → model
 package → demos rerun → runtime release.
 
+- **Push `mvp-v2-b6` and the tags** (`v0.1.0-beta.0`, `runtime-model-v0.1.0`, `v0.1.0-alpha.1`) through an account with
+  write access to daybot-solutions-inc/GenClass-lib. GitHub releases for them are optional.
+- **Model `0.2.0` (`r17-v2c`)**: the next model package.
+
 6. **Check the v2 data before training on it** (from the review findings): SIM samples budget 3,200 for ~40% of
    trajectories (`sim/src/world/scenario.ts` → `budget`), above the v2 device budgets; unlabeled rows hard-label
    `expected` diagnoses that S1 would relabel (`sim/src/gen/trajectory.ts` → `unlabeledTrajectory`; a relabel pass
@@ -177,8 +182,8 @@ package → demos rerun → runtime release.
 
 ## Needs the user
 
-- **2FA publishes:** the next prerelease with the one-command install (`0.1.0-alpha.2` or a beta with the model;
-  Next item 14), `@genclass/runtime-model@0.1.0` and `@genclass/runtime@0.1.0` (`0.1.0-alpha.1` is done). Agents
+- **2FA publishes:** `@genclass/runtime@0.1.0` and the next model (`0.1.0-alpha.1`, `0.1.0-beta.0` and
+  `@genclass/runtime-model@0.1.0` are done). Agents
   prepare the tarball and the exact command per [RELEASE.md](RELEASE.md).
 - **Push** `mvp-v2` (head = release commit 806a296) and tag `v0.1.0-alpha.1` to origin (needs an account with write access).
 - **Install on Polar Parts** (`MeharPro/Polar-Parts`) once the trained model is good (user OK'd). Start in
