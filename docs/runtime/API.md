@@ -409,7 +409,7 @@ const rt = createRuntime({
 interface DecisionProvider {
   readonly status: ModelStatus;
   ready(): Promise<void>;
-  evaluate(req: { trigger; state; questions; priority?; subject?; timeoutMs? }): Promise<Record<string, Answer>>;
+  evaluate(req: { trigger; state; questions; priority?; subject?; notOffered?; timeoutMs? }): Promise<Record<string, Answer>>;
   onStatus?(fn): () => void;
   dispose?(): void;
 }

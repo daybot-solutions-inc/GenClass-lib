@@ -146,6 +146,11 @@ export interface EvaluateRequest {
   priority?: number;
   /** What is being decided (tests/sim). Never part of the model input. */
   subject?: SubjectRef;
+  /**
+   * Built-in actions of this trigger that are not offered here, with the reason (= `Situation.notOffered`; tests/sim).
+   * Never part of the model input; the model host ignores it.
+   */
+  notOffered?: Record<string, string>;
   /** Drop the request if it cannot be answered within this many ms (queued requests are not computed). */
   timeoutMs?: number;
 }

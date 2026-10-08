@@ -550,7 +550,14 @@ export class RuntimeImpl implements Runtime {
     const deadline = waits ? t0 + budget + (lateOk ? LATE_REVERT_MS : 0) : t0 + BACKGROUND_DEADLINE_MS;
     this.queue
       .submit(
-        { trigger: spec.trigger, state: built.situation.state, questions: built.situation.questions, priority: waits ? opts.priority : Math.min(opts.priority, 1), subject: built.subjectRef },
+        {
+          trigger: spec.trigger,
+          state: built.situation.state,
+          questions: built.situation.questions,
+          priority: waits ? opts.priority : Math.min(opts.priority, 1),
+          subject: built.subjectRef,
+          ...(built.situation.notOffered ? { notOffered: { ...built.situation.notOffered } } : {}),
+        },
         deadline,
         ctl.stale ? () => !!ctl.stale!() : undefined,
       )

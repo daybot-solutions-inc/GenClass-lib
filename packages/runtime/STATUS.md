@@ -1,6 +1,6 @@
 # @genclass/runtime: status (CORE)
 
-Updated: 2026-10-08 (batch 8: relation learner precision; batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
+Updated: 2026-10-08 (batch 9: EvaluateRequest.notOffered; batch 8: relation learner precision; batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
 MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
 
 ## State
@@ -38,6 +38,14 @@ observe mode on the same scenario (`debug.js --interference`):
 | situation | `src/situation/*.ts` | facts, version conflicts (`conflicts.ts`), response content vs store (`content.ts`), evidence facts (`evidence.ts`), budget-shaped serializer, compact questions, triage, subject refs |
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
+
+## Batch 9 (done): `EvaluateRequest.notOffered` (SIM seam)
+
+`EvaluateRequest.notOffered` (action → reason, a copy of `Situation.notOffered`) is passed to every decision provider
+so non-model providers (sim, realapps, tests) can record which built-in actions were withheld and why. It is never
+part of the state the model reads, and the model host does not forward it to its worker (only state and questions
+cross). No text or format change. Test: `test/idempotency.test.ts` (the provider receives the same reasons as
+`situation().notOffered`; absent when everything is offered; not in the serialized state).
 
 ## Batch 8 (done): relation learner precision (situation-v2.3)
 
