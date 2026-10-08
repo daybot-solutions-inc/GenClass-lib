@@ -110,6 +110,36 @@ Remaining issues:
   on-policy dev data, falling back to the tier default where evidence is thin;
 - **request** acts are 19% false, mostly coalescing deliberate repeated clicks.
 
+### Head-to-head for model 0.2.0 (all on the shipped q8 outputs)
+
+Shipped (dev-fitted) operating points, held-out test:
+
+| | v2c | v2d (mass gate) | v2dT (gain gate) |
+|---|---|---|---|
+| guard FIR (sim) | 0.016% | 0.006% | 0.003% |
+| heal FIR (sim) | 0.21% | 0.07% | 0.105% |
+| heal gain captured | **5.2%** | 4.4% | 4.4% |
+| heal real-app action recall | **9.8%** | 5.5% | 0.7% |
+| FIR on real apps | 0.00% | 0.00% | 0.00% |
+
+At equal safety (one global threshold swept on the same test records), v2dT captures the most:
+
+| | heal gain at FIR ≤ 0.05 / 0.1 / 0.2 / 0.5% |
+|---|---|
+| v2dT | 2.1 / 3.4 / 6.2 / 12.3% |
+| v2d | 1.6 / 2.5 / 5.3 / 10.0% |
+| v2c | 1.6 / 2.8 / 4.6 / 8.3% |
+
+v2dT also leads guard-mode real-app recall at FIR ≤ 0.5%: 14.1%, against 3.1–3.4%.
+
+**Why v2dT ships conservatively.** There are too few clean real-app dev rows to certify per-trigger margins, so the
+fit falls back to strict defaults. The same thin evidence pushes `gate.report` up to 0.97–0.99. Next: a large
+real-app certification dev set (dev apps only), then refit all three, then pick 0.2.0 by its shipped operating
+point.
+
+**Quantization.** The q8 export was fixed by moving to MatMulNBits block 16: 223/223 decisions match PyTorch,
+the file is 10.16 MB, and it is fp16-free.
+
 Targets: guard FIR ≤ 0.1% (met), heal FIR ≤ 0.5% (met), calibration error ≤ 0.02 (met: 0.009),
 diagnosis ≥ 95% (not yet), clear-case recall ≥ 80% (not yet).
 

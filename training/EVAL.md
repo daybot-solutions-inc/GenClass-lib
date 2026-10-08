@@ -353,3 +353,50 @@ clean+benign-salient 0.36%, SIM gold-expected 1.1% (sim2e) / 1.7% (sim2f) — bu
 (over the 2% limit on the shipped model's own distribution); detection with the right diagnosis on held-out REAL
 apps: duplicate-submit 76%, stale-overwrite 28%. Shipped hashes: meta.json `c3358947…0eb50` (2,602 B), model.json
 `9e2a42bd…afff20`. The previous meta.json is kept as `meta.json.pre-onpol` on the train VM.
+
+## Head-to-head for `@genclass/runtime-model@0.2.0`: `r17-v2d` (SIM labels, mass gate) vs `r17-v2dT` (T1 labels, gain gate), baseline `r17-v2c` (2026-10-08 11:45 UTC)
+
+All numbers below come from the **shipped q8 ONNX files** (onnxruntime CPU on the exported file, packed like the
+runtime; `collect_onnx.py`), with temperatures (per kind + per header) fitted on q8 sim2e dev and gates + `gate.report`
+fitted on q8 dev records (sim2g + on-policy a/b dev + REAL eval rows outside REAL's test split + REAL dev; 95% Wilson at
+0.8 × the limits; certification rule) and verified on q8 test records (on-policy b test 20k + sim2e + sim2f + sim3e
+(v2.3 slice) + on-policy a test; REAL eval sets' test splits — v2-eval for every trigger but inconsistency, v23-eval for
+inconsistency). v2d and v2dT: from v2c, identical data and schedule (1.5B tokens; sim2r, v2.3 gold, on-policy a,
+REAL v2c + v2d/v23e top-ups minus both eval sets); v2dT's action labels = softmax(gain/τ = 1) on every SIM/REAL bucket.
+q8 export: MatMulNBits 8-bit **block 16** (parity fix; 10.16 MB, fp16-free).
+
+| | v2c (baseline) | v2d (mass) | v2dT (gain) |
+|---|---|---|---|
+| q8 vs PyTorch argmax / gate@0.8 / max \|Δp\| | 223/223 / 99.5% / 0.056 | 223/223 / 100% / 0.034 | 223/223 / 100% / 0.048 |
+| fp16 argmax / max \|Δp\| | 223/223 / 0.011 | 223/223 / 0.020 | 223/223 / 0.023 |
+| action / diagnosis acc: sim2e | 77.8 / 85.2 | 77.8 / 85.2 | 73.9 / 85.4 (labels differ) |
+| sim3e (v2.3) | 75.7 / 84.0 | 75.5 / 84.4 | 70.7 / 84.2 |
+| real2e / real3e | 79.9 / 84.0 · 77.5 / 84.3 | 80.2 / 84.9 · 77.6 / 85.9 | 77.8 / 85.5 · 71.9 / 86.4 |
+| gates (dev-fitted) | guard 0.80 (mutation 0.85); heal 0.80 (failure 0.90, inconsistency 0.80, stall 0.85) | guard 0.80 (delivery 0.85, mutation 0.90); heal 0.85 (failure 0.95, inconsistency 0.80) | gain: guard 6.0 (mutation never); heal 4.0 (failure 6.0, inconsistency 2.5) |
+| **guard** test: FIR SIM / REAL | 0.016% / 0.00% | 0.006% / 0.00% | 0.003% / 0.00% |
+| guard recall clear / gain captured | 1.8% / 1.3% | 1.4% / 0.95% | 1.8% / **2.3%** |
+| **heal** test: FIR SIM [CI] / REAL | 0.21% [0.17, 0.24] / 0.00% | 0.07% [0.05, 0.09] / 0.00% | 0.105% [0.07, 0.13] / 0.00% |
+| heal harm SIM / REAL | 0.05% / 0.06% | 0.02% / 0.02% | 0.02% / 0.03% |
+| heal recall clear / REAL action recall / gain captured | 6.0% / 9.8% / **5.2%** | 3.2% / 5.5% / 4.4% | 4.8% / 0.7% / 4.4% |
+| `gate.report` (dev) | 0.97 | 0.99 | 0.99 |
+| detection: false on gold-expected (onpol-b / sim2e / sim3e) | 0.21 / 0.15 / 0.13% | 0.03 / 0.05 / 0.00% | 0.00 / 0.00 / 0.00% |
+| detection right, REAL held-out apps: duplicate / stale / genuine-break | 64% / 1.7% / 22% | 41% / 0% / 14% | 41% / 1.7% / 14% |
+
+**Equal safety** (comparison only, not used for shipping: one global threshold / margin swept on the same q8 test
+records, best gain captured with SIM FIR ≤ the target; heal mode / guard mode):
+
+| FIR ≤ | v2c heal gain (recall clear) | v2d | v2dT | v2c guard gain | v2d | v2dT |
+|---|---|---|---|---|---|---|
+| 0.05% | 1.6 (2.2) | 1.6 (2.0) | **2.1** (2.8) | 2.0 | 1.4 | **2.6** |
+| 0.1% | 2.8 (3.8) | 2.5 (3.5) | **3.4** (4.3) | **3.9** | 2.4 | **3.9** |
+| 0.2% | 4.6 (6.3) | 5.3 (6.7) | **6.2** (7.2) | **6.4** | 5.1 | 5.9 |
+| 0.5% | 8.3 (10.6) | 10.0 (11.8) | **12.3** (13.3) | 10.1 | 9.6 | **10.9** |
+
+REAL action-case recall at FIR ≤ 0.5%: heal v2dT 6.7% vs v2d 3.7% vs v2c 5.4%; guard 14.1% vs 3.1% vs 3.4%.
+Reading: at equal FIR **v2dT (gain gate) captures the most expected gain** — +20–35% over v2d/v2c in heal mode, ties
+v2c in guard — and the most REAL action recall; with the shipped dev-fitted gates its margins come out conservative
+(heal FIR 0.105%), so its shipped heal gain (4.4%) equals v2d's and is below v2c's (5.2% at twice the FIR), and its
+REAL action recall at the shipped margins is low (0.7%: REAL action cases sit below margin 4). v2d is the most
+conservative; v2c ranks first at its shipped point only because its dev fit allowed a looser heal gate.
+Deliveries (train VM, ORT-web 223/223): `~/gcl/train-out/v2dT/r17/` (2.0.0-rc4t), `v2d/r17/` (2.0.0-rc4),
+`v2c-q8/r17/` (2.0.0-rc3b).

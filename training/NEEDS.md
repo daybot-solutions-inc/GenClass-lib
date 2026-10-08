@@ -110,11 +110,9 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 | c01, c10, c11 | REAL (TRAIN processes killed 03:35; c01 clean) | — | real-browser rows |
 | c02–c09, c12–c23 (20 nodes) | SIM (done 04:05–05:00 UTC, **all deallocated**) | was: from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
 
-| **c09** | **TRAIN workbench (v2)** | from 06:40 UTC | data prep, gate dev sets, eval; serves tars on :8805 |
-| **c08 c02 c03 c04 c05 c13** | **TRAIN `r17-v2d`** (SIM labels, mass gate) | 10:04 → ≈ 11:30 UTC (train + distributed eval/export) | claimed (`~/.gcl-claim`) |
-| **c06 c12 c16 c17 c18 c19** | **TRAIN `r17-v2dT`** (T1 labels, gain gate) | 10:04 → ≈ 11:30 UTC | claimed (`~/.gcl-claim`) |
+| **c09** | **TRAIN workbench (v2)** | from 06:40 UTC | data prep, gate dev sets, eval; serves tars on :8805 (sim2g, gatefix, v2c_data, v2d_sim3, v2d_real3) |
 | c14, c15 | REAL (v23e top-up) | REAL's claim | — |
-| c01, c07, c10, c11, c20–c23 | free (deallocated) | — | — |
+| c01–c08, c10–c13, c16–c23 | free (TRAIN deallocated by 11:50 UTC) | — | — |
 
 SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
 
