@@ -122,6 +122,10 @@ export interface Step {
   requiresText?: string;
   /** Index of the first step of this follow-up chain: when that step was skipped, this one is skipped too. */
   head?: number;
+  /** Affordances one of which must have actually run before (manifest `after`); otherwise skipped at run time. */
+  after?: string[];
+  /** Affordances made unavailable again once this step ran (manifest `resets`). */
+  resets?: string[];
 }
 
 export interface ExternalEvent {

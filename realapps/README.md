@@ -9,7 +9,7 @@ the same row format, cost terms and label rule as the sim.
 
 ```
 realapps/
-  apps/<name>/            66 apps (52 written for the corpus + 14 open-source): manifest.ts (Node side) + source;
+  apps/<name>/            128 apps (114 written for the corpus + 14 open-source): manifest.ts (Node side) + source;
                           apps/README.md = authoring guide
   apps/_shared/           genclass.ts (the app's one-line integration), atom bridges (Vue, Svelte), Conduit manifest
   corpus/                 open-source apps: oss.json (repo, commit, licence), patch_oss.py, prepare_oss.sh,
@@ -34,7 +34,7 @@ mixed with the correct guard. Every app reads feature flags (`flag(name, default
 bug. The **first option** of each flag is the correct default; clean runs use only first options. Apps are ordinary
 apps. None is written for a particular trigger rule.
 
-- **Written for the corpus** (52 apps in `apps/<name>`; authoring rules in `apps/README.md`):
+- **Written for the corpus** (114 apps in `apps/<name>`, four authoring waves; rules in `apps/README.md`):
   - **React:** hooks, useGenClassState, useReducer, React 19 actions/`useOptimistic`, React Router 7 data APIs.
   - **State:** Redux Toolkit, RTK Query, redux-saga, Zustand, Jotai, Valtio, XState, effector, MobX, nanostores.
   - **Data:** TanStack Query (React, Vue, Svelte, Solid), SWR, axios, ky, ofetch, wretch, superagent, RxJS.
@@ -318,7 +318,42 @@ Clean runs: passive is best on 96% of them. The rest are actions that genuinely 
 - pinia-cart and svelte-inventory end with a different server state because held requests shift timing.
 - This was reported for situation-v2, which drops write holds by default.
 
-## Throughput
+## Production on `situation-v2` (2026-10-08)
+
+Runtime tag `situation-v2` (6e5e86e), 96 apps (128 for the top-up). Sweeps before production:
+- determinism: 132/132 (v2 rebuild), 3,030/3,030 (96 apps × 30 seeds after the scroll fix), 640/640 (128 apps);
+- interference: 0/132 and 0/256 clean runs changed by GenClass with an all-passive model (the v1 Conduit breakage is
+  gone).
+
+| batch | apps | trajectories | gold | unlabeled | location |
+|---|---|---|---|---|---|
+| `v2c1..4` | 96 | 4 × 20k | 511,333 | 439,006 | `train:/data/real-out/v2c{1..4}` |
+| `v2d1..2` (top-up) | 32 (wave 4) | 2 × 8k | 105,104 | 84,096 | `train:/data/real-out/v2d{1,2}` |
+| **total v2** | 128 | 96k | **616,437** | 523,102 | |
+| `v2-eval` | 96 | — | 16,600 eval rows | — | `train:/data/real-out/v2-eval/real_eval.jsonl` |
+
+Throughput on F80 nodes: ≈ 7.5–8.5 trajectories/s and ≈ 46 gold + 40 unlabeled rows/s per node (70 workers), i.e.
+≈ 165k gold rows per node-hour. 20k trajectories took ≈ 45 min per node.
+
+Label fixes made for v2 (all rows above have them):
+- the diagnosis vocabulary is the runtime's own `DEFAULT_DIAGNOSES`, paraphrased but never a label subset;
+- `delivery` is diagnosed by the first write the response or message makes, plus "an older operation's write over
+  list elements a newer async operation already wrote → `stale`";
+- **S1** as in the sim (never `expected` where acting wins by ≥ 1; `meta.diagnosis_s1`, `meta.diagnosis_subject`).
+
+Harness determinism fixes found at scale:
+- **Scroll events are real-time.** `focus()` scrolled off-screen elements into view, and a Svelte Conduit's scroll
+  handler then loaded the next page at a nondeterministic virtual instant. The page now never scrolls (focus with
+  `preventScroll`, programmatic scrolling is a no-op, stray scroll events are stopped).
+- **`Request` bodies are IO-backed** in Chromium: the body given to `new Request(...)` is remembered so the mock
+  fetch never reads it back; native-work settling is bounded by real time (5 s), not hop count.
+- A hung page `close()` stalled a worker for 50 minutes: closes now time out (context recycled) and `gen.js` kills
+  and replaces a worker silent for 15 minutes.
+
+The pre-fix batches `v2b1..3` (≈ 380k gold, 66 apps, stopped) are kept on `train:/data/real-out/` with valid action
+labels but pre-fix diagnosis labels; see `training/NEEDS.md`.
+
+## Throughput (pilot, train VM)
 
 Measured on `train` (64 vCPU), short batches including browser start-up:
 

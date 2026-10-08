@@ -78,6 +78,25 @@ interface Row {
   hist: { t: number; v: Item | null }[];
 }
 
+/** `where` filter of external events: { field: value } or { field: { $gt, $gte, $lt, $lte, $ne, $in } }. */
+export function matchesWhere(it: Item, where: Record<string, unknown>): boolean {
+  return Object.entries(where).every(([k, cond]) => {
+    const x = it[k];
+    if (cond && typeof cond === "object" && !Array.isArray(cond)) {
+      const c = cond as Record<string, unknown>;
+      const n = Number(x);
+      if ("$gt" in c && !(n > Number(c.$gt))) return false;
+      if ("$gte" in c && !(n >= Number(c.$gte))) return false;
+      if ("$lt" in c && !(n < Number(c.$lt))) return false;
+      if ("$lte" in c && !(n <= Number(c.$lte))) return false;
+      if ("$ne" in c && x === c.$ne) return false;
+      if ("$in" in c && !(Array.isArray(c.$in) && (c.$in as unknown[]).includes(x))) return false;
+      return true;
+    }
+    return x === cond;
+  });
+}
+
 export class Coll {
   rows = new Map<string, Row>();
   order: Row[] = [];
@@ -369,6 +388,39 @@ export class MockServer {
           const v = req.query.get(f);
           if (v !== null && v !== "" && v !== "all") items = items.filter((it) => String(it[f]) === v);
         }
+        // generic operators on any field: f__in=a,b  f__gt / __gte / __lt / __lte (numeric or ISO strings)
+        // f__ne=v  f__empty=true|false (null, undefined, "" or [])
+        for (const [key, raw] of req.query.entries()) {
+          const m = /^(.+)__(in|gt|gte|lt|lte|ne|empty)$/.exec(key);
+          if (!m) continue;
+          const [, f, op] = m as unknown as [string, string, string];
+          const isEmpty = (x: unknown) => x === undefined || x === null || x === "" || (Array.isArray(x) && x.length === 0);
+          const cmp = (x: unknown): number => {
+            const a = Number(x);
+            const b = Number(raw);
+            if (!Number.isNaN(a) && !Number.isNaN(b) && raw.trim() !== "") return a - b;
+            return String(x ?? "") < raw ? -1 : String(x ?? "") > raw ? 1 : 0;
+          };
+          items = items.filter((it) => {
+            const x = it[f!];
+            switch (op) {
+              case "in":
+                return raw.split(",").includes(String(x));
+              case "ne":
+                return String(x) !== raw;
+              case "empty":
+                return (raw === "true" || raw === "1") === isEmpty(x);
+              case "gt":
+                return !isEmpty(x) && cmp(x) > 0;
+              case "gte":
+                return !isEmpty(x) && cmp(x) >= 0;
+              case "lt":
+                return !isEmpty(x) && cmp(x) < 0;
+              default:
+                return !isEmpty(x) && cmp(x) <= 0;
+            }
+          });
+        }
         const sort = req.query.get("sort");
         if (sort) {
           const desc = sort.startsWith("-");
@@ -381,6 +433,17 @@ export class MockServer {
         }
         const total = items.length;
         const size = Number(req.query.get("limit") ?? req.query.get("pageSize") ?? c.pageSize ?? 20) || 20;
+        // cursor pagination: ?cursor=<id of the last item seen> (or ?after=); the response carries nextCursor
+        const cursor = req.query.get("cursor") ?? req.query.get("after");
+        if (cursor !== null && !isCart) {
+          const i0 = cursor === "" ? 0 : items.findIndex((it) => String(it.id) === cursor) + 1;
+          const pageItems = i0 <= 0 && cursor !== "" ? [] : items.slice(i0, i0 + size);
+          const last = pageItems[pageItems.length - 1];
+          const nextCursor = i0 + size < items.length && last ? String(last.id) : null;
+          const body = this.envelope(c, pageItems, total, 0);
+          const withCursor = Array.isArray(body) ? body : { ...(body as Record<string, unknown>), nextCursor };
+          return { status: 200, body: withCursor, wrote: false, list: true, ...(Array.isArray(body) && nextCursor ? { headers: { "x-next-cursor": nextCursor } } : {}) };
+        }
         let page = Number(req.query.get("page") ?? 0);
         let off = Number(req.query.get("offset") ?? 0);
         if (page > 0) off = (page - 1) * size;
@@ -509,7 +572,7 @@ export class MockServer {
     if (!coll) return;
     const c = coll.spec;
     const all = coll.list();
-    const items = where ? all.filter((it) => Object.entries(where).every(([k, v]) => it[k] === v)) : all;
+    const items = where ? all.filter((it) => matchesWhere(it, where)) : all;
     if (kind === "create") {
       const fresh: Item = { ...(data ?? {}) };
       if (this.spec.cart?.collection === (c.path ?? c.name) && fresh.productId !== undefined) {

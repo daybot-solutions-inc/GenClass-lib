@@ -52,19 +52,18 @@ def evaluate(rows: dict, recs: dict, cal: dict) -> dict:
                 rd = q["diagnosis"]
                 top_d = list(rd["labels"])[int(softmax(rd["logits"], tau).argmax())]
             A = [a for a in names if a != passive and tiers.get(a, "heal") in PERMIT[mode]]
-            s = st[case]
-            s["rows"] += 1
-            s["argmax_ok"] += int(top in expect)
-            if not A:
-                continue
+            keys = [case, "ALL"] + ([f"{case} [test split]"] if m.get("_split") == "test" else [])
             idx = {a: i for i, a in enumerate(names)}
-            mass = float(sum(p[idx[a]] for a in A))
-            cand = max(A, key=lambda a: p[idx[a]])
-            s["permitted_expected"] += int(bool(expect & set(A)) or passive in expect)
-            for t in TH[mode]:
-                fired = mass >= t and top_d != "expected"
-                s[f"fired@{t}"] += int(fired)
-                s[f"hit@{t}"] += int(fired and cand in expect)
+            mass = float(sum(p[idx[a]] for a in A)) if A else 0.0
+            cand = max(A, key=lambda a: p[idx[a]]) if A else None
+            for key in keys:
+                s = st[key]
+                s["rows"] += 1
+                s["argmax_ok"] += int(top in expect)
+                for t in TH[mode]:
+                    fired = bool(A) and mass >= t and top_d != "expected"
+                    s[f"fired@{t}"] += int(fired)
+                    s[f"hit@{t}"] += int(fired and cand in expect)
         res = {}
         for case, s in st.items():
             n = max(s["rows"], 1)
@@ -87,7 +86,7 @@ def main() -> None:
     with a.rows.open() as f:
         for line in f:
             r = json.loads(line)
-            rows[r["id"]] = r.get("meta") or {}
+            rows[r["id"]] = {**(r.get("meta") or {}), "_split": r.get("split")}
     report = {}
     for spec in a.model:
         name, rest = spec.split("=", 1)

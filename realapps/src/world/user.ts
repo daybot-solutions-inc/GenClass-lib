@@ -130,6 +130,7 @@ export class UserDriver {
   pins: Record<number, string[]> | undefined;
 
   private skippedSteps = new Set<number>();
+  private reqOk = new Set<number>();
 
   private skip(st: Step, why: string): void {
     this.skippedSteps.add(st.i);
@@ -138,16 +139,30 @@ export class UserDriver {
     this.next();
   }
 
+  /** Affordances whose steps actually ran (minus those reset since). */
+  private ranAff = new Set<string>();
+
+  /** Grace (virtual ms) for a `requires` precondition: a few-ms difference in when a response lands (e.g. GenClass
+   * holding it briefly) must not flip whether the user can take the step. */
+  static REQUIRES_GRACE = 300;
+
   private run(st: Step, waited: number): void {
     if (waited === 0 && st.head !== undefined && st.head !== st.i && this.skippedSteps.has(st.head)) return this.skip(st, "chain");
-    if (waited === 0 && st.requires) {
+    // `after`: one of these affordances must have actually run (not just been scheduled)
+    if (waited === 0 && st.after?.length && !st.after.some((a) => this.ranAff.has(a))) return this.skip(st, "after");
+    if (st.requires && !this.reqOk.has(st.i)) {
       let ok = false;
       try {
         ok = deepQueryAll(this.w.document, st.requires).some((e) => visible(e) && (!st.requiresText || textOf(e).toLowerCase().includes(st.requiresText.toLowerCase())));
       } catch {
         ok = false;
       }
-      if (!ok) return this.skip(st, "precondition");
+      if (!ok) {
+        if (waited >= UserDriver.REQUIRES_GRACE) return this.skip(st, "precondition");
+        this.loop.schedule(100, () => this.run(st, waited + 100), "user-wait", USER_PHASE);
+        return;
+      }
+      this.reqOk.add(st.i);
     }
     if (st.when === "inflight" && this.hooks.inflight() === 0) {
       this.hooks.skipped(st, "not-inflight");
@@ -163,6 +178,8 @@ export class UserDriver {
       return;
     }
     this.hooks.ran(st, el);
+    this.ranAff.add(st.intent.affordance);
+    for (const r of st.resets ?? []) this.ranAff.delete(r);
     this.usedEl.set(st.i, el);
     if (this.ideal && st.kind !== "type" && st.kind !== "key") {
       const pin = pinOf(el);

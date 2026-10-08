@@ -19,7 +19,7 @@ const arg = (n: string, d?: string) => {
   return i < 0 ? d : process.argv[i + 1] && !process.argv[i + 1]!.startsWith("--") ? process.argv[i + 1] : "true";
 };
 const appName = arg("app");
-const seed = Number(arg("seed", "1"));
+const seed = Number(String(arg("seed", "1")).split("-")[0]);
 const runner = new Runner(0);
 await runner.start();
 if (arg("det")) {
@@ -103,15 +103,38 @@ if (arg("interference")) {
   await runner.close();
   process.exit(0);
 }
-const scn = buildScenario(seed, appName ? APPS.filter((a) => a.name === appName) : APPS, arg("clean") ? { clean: true } : {});
+const scn = buildScenario(seed, appName ? APPS.filter((a) => appName.split(",").includes(a.name)) : APPS, arg("clean") ? { clean: true } : {});
 console.log(`app=${scn.app.name} split=${scn.split} chaos=${scn.chaos} variant=${JSON.stringify(scn.variant)} tEnd=${Math.round(scn.tEnd)} steps=${scn.steps.length} ext=${scn.external.length} budget=${scn.budget} explore=${scn.explore}`);
 if (arg("steps")) for (const s of scn.steps) console.log(`  step ${s.i} t=${Math.round(s.t)} ${s.kind} ${s.sel}${s.text ? ` "${s.text}"` : ""}${s.value !== undefined ? ` value=${JSON.stringify(s.value)}` : ""}${s.accidental ? " ACCIDENTAL" : ""}${s.when ? ` when=${s.when}` : ""}`);
 const hash = (x: unknown) => createHash("sha1").update(JSON.stringify(x)).digest("hex").slice(0, 12);
+if (arg("traj") && (String(arg("seed", "1")).includes("-") || (appName ?? "").includes(","))) {
+  // lists: --app a,b,c --seed 1-5 --traj  -> one summary line per (app, seed)
+  const [s0, s1] = String(arg("seed", "1")).split("-").map(Number);
+  let rows = 0;
+  let dead = 0;
+  let nearly = 0;
+  let drops = 0;
+  for (const a of (appName ?? "").split(",").filter(Boolean)) {
+    for (let sd = s0!; sd <= (s1 ?? s0)!; sd++) {
+      const t = await generateTrajectory(sd, APPS, runner, { maxPoints: 6, futures: 3, adaptive: true, testKeep: 1, apps: [a], ...(arg("clean") ? { clean: true } : {}) });
+      const st = t.steps;
+      const flag = !st ? "" : st.ran === 0 ? " DEAD SESSION" : st.skipped > 3 * st.ran && st.idealSkipped * 2 < st.ran + st.skipped ? " NEARLY DEAD" : "";
+      if (flag.includes("DEAD SESSION")) dead++;
+      if (flag.includes("NEARLY")) nearly++;
+      rows += t.rows.length;
+      drops += Object.values(t.drops).reduce((x, y) => x + y, 0);
+      console.log(`${a} seed ${sd}: rows=${t.rows.length} decisions=${t.decisions} drops=${JSON.stringify(t.drops)} notes=${JSON.stringify(t.notes)} steps ran=${st?.ran} skipped=${st?.skipped} ${JSON.stringify(st?.why ?? {})} ideal-skipped=${st?.idealSkipped}${flag}${t.skipped ? ` skipped=${t.skipped}` : ""}`);
+    }
+  }
+  console.log(`traj summary: rows=${rows} drops=${drops} dead=${dead} nearly-dead=${nearly}`);
+  await runner.close();
+  process.exit(0);
+}
 if (arg("traj")) {
   const t = await generateTrajectory(seed, APPS, runner, { maxPoints: 6, futures: 3, adaptive: true, testKeep: 1, ...(appName ? { apps: [appName] } : {}), ...(arg("clean") ? { clean: true } : {}) });
   const st = t.steps;
   console.log(`traj runs=${t.runs} realMs=${t.realMs} runMs=${t.runMs} decisions=${t.decisions} rows=${t.rows.length} drops=${JSON.stringify(t.drops)} notes=${JSON.stringify(t.notes)} skipped=${t.skipped ?? ""}`);
-  if (st) console.log(`steps base ran=${st.ran} skipped=${st.skipped} ${JSON.stringify(st.why)}; ideal skipped=${st.idealSkipped} ${JSON.stringify(st.idealWhy)}${st.ran === 0 ? "  DEAD SESSION" : ""}`);
+  if (st) console.log(`steps base ran=${st.ran} skipped=${st.skipped} ${JSON.stringify(st.why)}; ideal skipped=${st.idealSkipped} ${JSON.stringify(st.idealWhy)}${st.ran === 0 ? "  DEAD SESSION" : st.skipped > 3 * st.ran && st.idealSkipped * 2 < st.ran + st.skipped ? "  NEARLY DEAD (> 75% of base steps skipped, ideal healthy)" : ""}`);
   for (const p of t.points) console.log(`   ${p.trigger} diag=${p.diagnosis} best=${p.best} npm=${p.nonPassiveMass} harm=${JSON.stringify(p.harm)} gain=${p.gain} K=${p.futures}`);
   for (const r of t.rows.slice(0, Number(arg("show", "3")))) {
     console.log("----", r.id, JSON.stringify(r.labels), JSON.stringify((r.meta as Record<string, unknown>).costs), (r.meta as Record<string, unknown>).diag_why);

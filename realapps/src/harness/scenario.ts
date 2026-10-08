@@ -188,7 +188,7 @@ export function buildSession(app: AppManifest, rng: Rng, p: Persona, t0: number,
     const value = a.values?.length ? r.pick(a.values) : undefined;
     const key = `${a.key ?? a.id}${a.intent === "text" && text ? `:${text}` : a.intent === "nth" && nth !== undefined ? `:${nth}` : a.intent === "value" && value ? `:${value}` : ""}`;
     const intent = { key, mode: a.mode, affordance: a.id };
-    const base = { kind: a.kind, sel: a.sel, intent, ...(text ? { text } : {}), ...(nth !== undefined ? { nth } : {}), ...(a.waitMs ? { waitMs: a.waitMs } : {}), ...(a.requires ? { requires: a.requires } : {}), ...(a.requiresText ? { requiresText: a.requiresText } : {}), ...(chainHead !== undefined ? { head: chainHead } : {}), ...(a.kind === "key" && value !== undefined ? { key: value } : {}) };
+    const base = { kind: a.kind, sel: a.sel, intent, ...(text ? { text } : {}), ...(nth !== undefined ? { nth } : {}), ...(a.waitMs ? { waitMs: a.waitMs } : {}), ...(a.requires ? { requires: a.requires } : {}), ...(a.requiresText ? { requiresText: a.requiresText } : {}), ...(a.after?.length ? { after: a.after } : {}), ...(a.resets?.length ? { resets: a.resets } : {}), ...(chainHead !== undefined ? { head: chainHead } : {}), ...(a.kind === "key" && value !== undefined ? { key: value } : {}) };
     if (a.kind === "type") {
       const v = value ?? "";
       let typed = "";
