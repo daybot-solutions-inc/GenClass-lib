@@ -108,7 +108,7 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 
 | c12 | SIM | 03:05–03:20 UTC (done, **deallocated**) | situation-v2 pipeline check: 41.7k gold rows in 211 s, 265k unlabeled rows in 24 s on one F80; collected to `train:/data/sim-out/v2chk-{gold,unl}` (check data, batch-4 runtime) |
 | c01, c10, c11 | REAL (TRAIN processes killed 03:35; c01 clean) | — | real-browser rows |
-| c02–c09, c12–c23 (20 nodes) | SIM (claim) | from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
+| c02–c09, c12–c23 (20 nodes) | SIM (done 04:05–05:00 UTC, **all deallocated**) | was: from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
 
 | **c02** | **TRAIN workbench (v2)** | from 05:05 UTC | v2 import, curriculum replay, eval, export |
 | **c03–c09, c13** | **TRAIN `r17-v2a`** (R17 on v2 gold) | from ≈ 05:30 UTC, ≈ 1.5 h | first v2 R17 export |
@@ -136,6 +136,17 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
 - gold-r1x (v1, situation-v1, 115 domains + round-2 personas/regimes/clean runs, original 15 features; stopped when
   bulk v1 was paused): `data:~/simdata/gold-r1x/` (832,279 rows: train 625,847 / dev 20,620 / test 185,812; gz shards
   + manifest; `data` is deallocated, start it to pull).
+- **Situation-v2 big runs (tag `situation-v2`, commit 6e5e86e; labels with S1 + S2, see sim/README.md and
+  sim/SEPARABILITY.md; 46 features, 115 domains; held-out lists unchanged: TEST_DOMAINS, family hash,
+  TEST_PATTERNS, TEST_FEATURES):**
+  - **gold** `train:/data/sim-out/v2-gold/` — 10,423,855 rows (train 7,560,367 / dev 317,732 / test 2,545,756), 23 gz
+    shards + `manifest.json`, 44 GB; seeds 11e9 + NN·1e8 (NN = node). Raw per-future costs in `meta.cost_futures`;
+    S1 rule in `meta.diagnosis_s1`.
+  - **unlabeled** `train:/data/sim-out/v2-unl/` — 51,272,078 rows (train 37,243,384 / dev 1,533,254 / test
+    12,495,440), 104 gz shards + `manifest.json`; seeds 16e9 + NN·1e8.
+  - Throughput: gold ≈ 278 rows/s per F80 (20 nodes ≈ 5.5k rows/s, 31 min); unlabeled ≈ 21k rows/s per F80
+    (2 min). Global dedupe test-first dropped < 0.001 %.
+  - On-policy: waits for TRAIN's first v2 export (`--on-policy <dir>`).
 - Distributed batches (gz shards + `manifest.json`, deduped, test-first): collected per run under
   `data:~/simdata/<run>/` — locations listed here as they land.
 

@@ -29,7 +29,7 @@ const manifest: AppManifest = {
     poll: ["chain", "interval"],
   },
   affordances: [
-    { id: "tab", kind: "click", sel: "nav.tabs button", text: ["All", "Failed", "Succeeded"], weight: 1.2, mode: "replace", key: "filter" },
+    { id: "tab", kind: "click", sel: "nav.tabs button", text: ["All", "Failed", "Failed", "Succeeded"], weight: 1.2, mode: "replace", key: "filter" },
     { id: "endpoint", kind: "select", sel: "select[name=endpoint]", values: ["all", ...endpoints], weight: 0.6, mode: "replace", key: "filter" },
     { id: "page", kind: "click", sel: "nav.pages button", nth: 4, weight: 2, mode: "replace", key: "page" },
     { id: "redeliver", kind: "click", sel: "tr.delivery button.redeliver", nth: 5, weight: 3, mode: "accumulate", intent: "nth", dblclickP: 0.15, impatientP: 0.2, requires: "tr.delivery button.redeliver" },
