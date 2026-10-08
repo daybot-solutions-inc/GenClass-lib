@@ -70,6 +70,14 @@ existing facts is unchanged, only when inconsistency (and transition) triggers f
    changed) is busy (`hub.busy`). Unless it is explicitly derived (the left side of a learned len / sum / sum of
    products / count-by-group relation; `miner.derived`), it is kept out of equality and membership relations (existing
    candidates are dropped) and out of transition write-set shapes (`miner.busyCounter`).
+- **Measured on REAL's apps** (`realapps`, 148 of the 158 apps built in my slot (10 Vite/OSS builds were not), seeds
+  1–3, clean scenarios: no chaos, correct apps, so every inconsistency is a false alarm unless an app variant has a
+  deliberate bug), batch-7 runtime vs this one: **inconsistency decisions 745 → 45 (−94 %)**, runs with any 229 → 21
+  of 444, apps with any 105 → 15; transition decisions 58 → 54; all decisions 2,927 → 2,086. Rules 1–5 alone gave
+  745 → 305; the rest came from name compatibility for aggregates, selection-only membership, no sums over id/version
+  columns, group-named counters and no unique foreign keys. Remaining top relations: `gym.count == len(gym.classes)`,
+  `cart.total == sum(price * qty)` (4; possibly variant bugs), `log.rows[*].call unique` (id-shaped values),
+  per-person / per-station counters named after their group (`lunch.perPerson.Lena == count(person == "Lena")`).
 - Tests: `test/relations.test.ts` (one synthetic store per case, each with a control showing the old false positive
   where applicable, plus checks that real defects still fire: a dangling selection, a divergence after typing stops).
   Updated: `test/invariants.test.ts` (badge → badgeCount for name compatibility; ≥ 3 rows for id uniqueness),

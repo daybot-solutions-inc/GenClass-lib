@@ -16,3 +16,12 @@ $HOME/jev/.venv/bin/python training/fit_gates.py --cal out/cal/$M-sim2e.json \
   --test real=data/realev/test.jsonl:$R/${M}__realev__test.jsonl:test \
   --test realc=data/real2e/test.jsonl:$R/${M}__real2e__test.jsonl \
   --out out/gates/$M.json "${W[@]}"
+# observe-mode detections: gate.report (fit on dev, verify on test) → same meta.json
+$HOME/jev/.venv/bin/python training/fit_report.py --cal out/cal/$M-sim2e.json \
+  --fit sim=data/sim2g/dev.jsonl:$R/${M}__sim2g__dev.jsonl \
+  --fit real=data/realev/test.jsonl:$R/${M}__realev__test.jsonl:notest \
+  --test sim2e=data/sim2e/test.jsonl:$R/${M}__sim2e__test.jsonl \
+  --test sim2f=data/sim2f/test.jsonl:$R/${M}__sim2f__test.jsonl \
+  --test real2e=data/real2e/test.jsonl:$R/${M}__real2e__test.jsonl \
+  --test realev=data/realev/test.jsonl:$R/${M}__realev__test.jsonl:test \
+  --out out/gates/$M-report.json "${W[@]}"
