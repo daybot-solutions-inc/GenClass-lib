@@ -244,7 +244,7 @@ function orderedKeys(o: Record<string, unknown>): string[] {
 /** Compact one-line description of a value, redacting sensitive keys. */
 export function describe(v: unknown, path: string, redact: Redactor, max = 80): string {
   const r = redact(path, v);
-  if (r !== v) return typeof r === "string" ? r : describe(r, "", () => r, max);
+  if (!Object.is(r, v)) return typeof r === "string" ? r : describe(r, "", () => r, max);
   return truncate(desc(v, path, redact, 0, max), max);
 }
 
@@ -397,7 +397,7 @@ export function redactSearch(search: string, redact: Redactor, max = 60): string
     const parts: string[] = [];
     p.forEach((v, k) => {
       const r = redact(`query.${k}`, v);
-      parts.push(`${k}=${r !== v ? REDACTED : v}`);
+      parts.push(`${k}=${!Object.is(r, v) ? REDACTED : v}`);
     });
     return truncate("?" + parts.join("&"), max);
   } catch {
