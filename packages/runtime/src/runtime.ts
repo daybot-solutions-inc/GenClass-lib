@@ -1468,10 +1468,10 @@ export class RuntimeImpl implements Runtime {
         return sn ? { t: sn.t, seq: sn.seq } : null;
       },
       storeWriters: this.storeWriters,
+      // read-only (situation building never changes runtime state): pruning happens when errors are recorded
       recentErrors: () => {
         const now = this.clock.now();
-        this.errorsRecent = this.errorsRecent.filter((e) => now - e.t <= 10_000);
-        return this.errorsRecent;
+        return this.errorsRecent.filter((e) => now - e.t <= 10_000);
       },
       violations: () => this.miner.current(),
       previewInvariants: (m) => {
@@ -1768,7 +1768,7 @@ export class RuntimeImpl implements Runtime {
     const rec: { key: string; t: number; op?: number } = { key: e.key, t };
     if (op) rec.op = op.id;
     this.errorsRecent.push(rec);
-    if (this.errorsRecent.length > 64) this.errorsRecent.shift();
+    while (this.errorsRecent.length > 64 || (this.errorsRecent.length && t - this.errorsRecent[0].t > 10_000)) this.errorsRecent.shift();
     this.events.push(t, "error", e.name, { ...(op ? { op: op.id } : {}), data: { message: `${e.name}: ${truncate(e.message, 120)}`, ...(e.source ? { source: e.source } : {}) } });
     const ctl: Controller = {
       passive: () => undefined,

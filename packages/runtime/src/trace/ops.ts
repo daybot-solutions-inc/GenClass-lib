@@ -69,6 +69,10 @@ const KEEP_OPS = 1500;
 
 export class OpRegistry {
   private nextId = 1;
+  /** The id the next op will get (tests: situation() must consume none). */
+  get peekNextId(): number {
+    return this.nextId;
+  }
   readonly byId = new Map<number, OpRec>();
   readonly inFlight = new Set<OpRec>();
   private endListeners = new Set<(op: OpRec) => void>();
