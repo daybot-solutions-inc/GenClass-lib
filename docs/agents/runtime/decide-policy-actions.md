@@ -861,8 +861,9 @@ Doc-vs-code mismatches (code is authoritative):
 
 Open items (from `HANDOFF.md`, `OPEN_TASKS.md`, `packages/runtime/STATUS.md`, `docs/runtime/RESULTS.md`):
 
-- No situation-v2 model exists yet; until `@genclass/runtime-model@0.1.0` ships, the published alphas
-  (`@genclass/runtime` 0.1.0-alpha.1 = `latest`, default observe; the older 0.1.0-alpha.0, default guard; neither has a model) take no actions, and R17-final1 (situation-v1) does
+- Since 2026-10-08 ~13:40 UTC the first situation-v2 model is published (`@genclass/runtime-model@0.1.0` = `r17-v2b`), and `@genclass/runtime@0.1.0-beta.0`
+  (`latest`, default observe) loads it by default. Before that the published alphas (0.1.0-alpha.1, default observe; the older
+  0.1.0-alpha.0, default guard, now deprecated; neither had a model) took no actions. R17-final1 (situation-v1) does
   not match this runtime. SIM is generating v2 data on Azure (`training/NEEDS.md`).
 - Hold-induced harm ([RESULTS.md](../../runtime/RESULTS.md) §5; rerun is OPEN_TASKS item 10) was measured with v0.1 on held store writes; v2 holds only deliveries, and the
   never-worse sweep over 66 real apps changed 0/396 clean runs ([../realapps.md](../realapps.md),

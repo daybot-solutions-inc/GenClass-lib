@@ -641,7 +641,7 @@ exact latencies via `latencyFn`), `step`, `runBoth`, `argmin`, `find`.
 
 - **No v2 data or model is final yet.** Phase A/B and gold-r1x are situation-v1 and do not match the runtime at
   b435acb. The v2 runs (`train:/data/sim-out/v2-*`) are in progress on Azure (colleague-operated; [HANDOFF.md](../../HANDOFF.md),
-  training/NEEDS). On-policy (DAgger) rows need a v2 model export that does not exist yet.
+  training/NEEDS). On-policy (DAgger) rows need a v2 model export (at b435acb none existed; since 2026-10-08 `@genclass/runtime-model@0.1.0` = `r17-v2b` is published).
 - **`sim/NEEDS.md` is stale in several places.** Item g (NaN recursion in `describe()`) is marked OPEN but the runtime
   now uses `Object.is(r, v)` (`packages/runtime/src/util.ts` -> `describe`); the "Batch 4 / situation-v2" needs and the
   separability fact proposals (F1-F9) are marked OPEN/ASK but STATUS lists them DONE (batch 4 and batch 5); the old

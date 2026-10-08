@@ -62,14 +62,16 @@ paths (`runtime.ts`, `types.ts`, `util.ts`, `state/hub.ts`, `situation/content.t
   `mix_t150v2`, 88 ranks on c12, c14–c23, launched 05:20 UTC, ETA ≈ 08:30). REAL `v2c1`..`v2c4` had not landed at
   eff18cb; `v2b1`..`v2b3` stopped at ≈ 20.5k trajectories each with pre-fix diagnosis labels (`training/NEEDS.md` 16).
   Spend ≈ $440, burn ≈ $110/h with 20 nodes (LOG 05:22).
-- **First v2 model: trained, not published, not in this branch.** `origin/runtime` 416e374 (`docs/runtime/RESULTS.md`)
+- **First v2 run `r17-v2a`: trained, not itself published.** `origin/runtime` 416e374 (`docs/runtime/RESULTS.md`)
   reports r17-v2a: `sim2e` diagnosis 84.4%, action 77.9%, guard FIR 0.00%, heal FIR 0.46%; real-app eval set guard and
   heal FIR 0.00%; recall at the fixed 0.9/0.8 gates very low (duplicate 0.6%, stale 1.0% on real apps), hence batch 6's
-  model-provided thresholds. Still to come: teacher, distillation, DAgger, EVAL, then `@genclass/runtime-model@0.1.0`
-  and `@genclass/runtime@0.1.0` (owner's 2FA). No t150-v2a result is recorded anywhere yet.
-- **Default install today** (npm alpha.1 and this branch): `GenClass.init()` starts in `observe`, tries the
-  unpublished model URL, ends in model status `error` and logs `[GenClass] Model unavailable (<error>); observing
-  only.` From then on it traces and learns but never builds a situation or decides. No test covers this path.
+  model-provided thresholds. Since then (2026-10-08 ~13:40 UTC) `@genclass/runtime-model@0.1.0`
+  (`r17-v2b`, refit from `r17-v2a`) and `@genclass/runtime@0.1.0-beta.0` are published; `@genclass/runtime@0.1.0` is still to come (owner's 2FA). No t150-v2a result is recorded anywhere yet.
+- **Default install** (npm `0.1.0-beta.0` and this branch, since 2026-10-08): `GenClass.init()` starts in `observe`
+  and loads `@genclass/runtime-model@0.1.0` from the default jsDelivr URL (Chromium check: Web Worker, WebGPU fp16,
+  4.75 s load, `decide()` 72 ms); it decides and reports but acts only in `guard`/`heal`. Before 2026-10-08 (npm
+  alpha.1) the model URL was a 404: model status `error`, `[GenClass] Model unavailable (<error>); observing only.`,
+  and no situation or decision after that. No automated test covers the default-URL path.
 - **Install code review (2026-10-08): 11 confirmed findings, nothing shipped yet.** Worst: `init` and
   `init --mode guard` install observe while printing "Mode guard" (`bin/lib/plan.mjs` -> `AUTO`, `scriptTag`), and the
   tree's version makes the CLI and global build point at the published alpha.1, which lacks those files. Full table:
@@ -115,8 +117,8 @@ paths (`runtime.ts`, `types.ts`, `util.ts`, `state/hub.ts`, `situation/content.t
 | `demos/NEEDS.md` | DEMOS → CORE/MODEL/UI/lead | §1–§8, written against batch 3 (stale for v2, see Drift) |
 | `packages/runtime/UI-NEEDS.md` | UI → CORE requests | Open 1–2 and Nice-to-have 3 (stale, see Drift) |
 | `realapps/README.md`, `realapps/EXAMPLES.md` | REAL's corpus, harness and audit | see [realapps.md](realapps.md) |
-| `README.md`, `packages/runtime/README.md` | Repo landing page; npm README (rewritten by Mehar in d05abc1, merged) | both say `observe` is the default and `0.1.0-alpha.1` is `latest`; the npm README says the `init`, `/auto` and script-tag paths are "not in `0.1.0-alpha.1`" |
-| `packages/runtime-model/MODEL_CARD.md` | Model card for the unpublished `@genclass/runtime-model` | status "final round 1 on the frozen runtime (situation-v1)"; the only tracked file in `packages/runtime-model/` |
+| `README.md`, `packages/runtime/README.md` | Repo landing page; npm README (rewritten by Mehar in d05abc1, merged) | both say `observe` is the default; since 9695830 they describe `0.1.0-beta.0` with its model (before: `0.1.0-alpha.1` as `latest`, and the npm README said the `init`, `/auto` and script-tag paths are "not in `0.1.0-alpha.1`") |
+| `packages/runtime-model/MODEL_CARD.md` | Model card for `@genclass/runtime-model` (published `0.1.0`, 2026-10-08) | since bcbee89 the card for `r17-v2b` (`genclass-runtime-r17` 2.0.0-rc2); earlier status "final round 1 on the frozen runtime (situation-v1)"; `packages/runtime-model/` also has `package.json` and `LICENSE` |
 | `.github/workflows/ci.yml` | CI (b435acb) | Node 22, `ONNXRUNTIME_NODE_INSTALL=skip`, `npm ci`, typecheck and build of `@genclass/runtime`, unit tests without `test/browser/**` and `review-perf`, then `review-perf` with `--retry=2` |
 | `package-lock.json` (root) | committed in b435acb | CI runs `npm ci` from it; keep it in sync |
 | `AGENTS.md`, `CLAUDE.md`, `docs/agents/**` | Agent docs (7dab2b3, refreshed for v2 in b561244; this doc, AGENTS.md, repo-map and glossary re-verified at f107013) | run policy, commands, ground rules, subsystem docs |
@@ -234,7 +236,7 @@ model-provided gate thresholds, no-baseline stall fallback; tag `situation-v2.1`
 | tag `situation-v2` | annotated tag object 75df720 → commit 6e5e86e | **frozen training format of the v2 data and r17-v2a** |
 | tag `situation-v2.1` | → 5bc40c9 (not merged here) | batch 6: v2 plus one neutral stall fact |
 | tag `v0.1.0-alpha.0` | → 654d822 | the first published alpha |
-| tag `v0.1.0-alpha.1` | → 806a296 | published alpha.1 (`latest`); local only, not pushed |
+| tag `v0.1.0-alpha.1` | → 806a296 | published alpha.1 (`latest` until 2026-10-08 ~13:40 UTC, then `0.1.0-beta.0`); local only, not pushed |
 | `packages/runtime/package.json` `version` | `0.1.0-alpha.1` | **already published**: bump before building or packing the next release |
 | `packages/genclass-runtime/package.json` | `0.1.0-alpha.1`, dependency `@genclass/runtime` `0.1.0-alpha.1` | unpublished alias (no `genclass-runtime` on npm) |
 | `@genclass/runtime-model@0.1.0` | published 2026-10-08 (`latest`, `r17-v2b`, shasum 84f33344...); `packages/runtime-model/` tracks only `MODEL_CARD.md` | default `model.baseUrl` |
@@ -452,7 +454,7 @@ model only for salient situations, in a worker. (3) Observability: one console l
 
 - **Code wins over every doc.** CONTRACT.md does not describe batch 4/5 (no `delivery` trigger); the deltas live in
   STATUS "Contract deltas". HANDOFF still says guard is the default.
-- **Two defaults in the wild.** This branch, `mvp-v2` and npm alpha.1 (`latest`) default to `observe`;
+- **Two defaults in the wild.** This branch, `mvp-v2`, npm alpha.1 and npm beta.0 (`latest`) default to `observe`;
   `origin/runtime` (still `o.mode ?? "guard"` at 5bc40c9) and npm alpha.0 default to `guard`. The tests' `setup()`
   defaults to `guard` on purpose. Mehar's install CLI was written against the guard default, so on this branch it
   maps `--mode guard` to the observe entry (install finding 1): never trust `init`'s "Mode" line here.
@@ -771,7 +773,7 @@ has no install code. All must be weighed before the next release.
 | `packages/genclass-runtime/package.json` | version and dependency `0.1.0-alpha.1` | the alias would need the next version and is unpublished (`INSTALL-NEEDS.md` item 1) |
 | `docs/runtime/CONTRACT.md` | no `delivery` trigger (§6); §4 mutations "held until a decision arrives"; §6 budget "≤ 1,000 tokens"; §8 `holdBudgetMs` "default 300"; §2 redaction regex and observer list without `eventsource`/`untrustedEvents`; §13 default-mode entry: "`situation-v1` training data stays valid" | batch 4/5 deltas exist only in STATUS; no store-write holds by default; 2,400-char budget; "auto" hold budget; leaf-field redaction (SIT-14); the entry should say situation-v2 (mode does not change situation text: `src/situation/*` has no mode dependency) |
 | `docs/runtime/ARCHITECTURE.md` | "3,200 characters on WebGPU, 2,000 with WASM threads"; redaction regex | 2,400 on WebGPU and unknown devices, 2,000 only at 4 threads (`STATE_CHAR_BUDGET`); leaf-field rule |
-| `docs/runtime/API.md` | mostly current for v2; still advises `fetch-model` without `--from`; "observe … nothing is held"; no `/auto` or script tag | the default model 404s; "nothing is held" is now true here (054da38), not in npm alpha.1 (DL-3); the install entries are undocumented in API.md. Full API drift: [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md#drift-and-open-issues) |
+| `docs/runtime/API.md` | mostly current for v2; still advises `fetch-model` without `--from`; "observe … nothing is held"; no `/auto` or script tag | the default model was a 404 until 2026-10-08 (resolves now); "nothing is held" is now true here (054da38), not in npm alpha.1 (DL-3); the install entries are undocumented in API.md. Full API drift: [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md#drift-and-open-issues) |
 | `packages/runtime/STATUS.md` | "Updated: … (batch 5 …)"; Open issues: "`react-dom` is not a devDependency"; never-worse "same requests, bodies, server state and DOM"; 42 files / 348 tests; nothing on 054da38 | `react-dom ^19.3.0` is a devDependency; the sweep compares less (RA-1); 46 files / 393 tests here; observe deliveries changed in 054da38 |
 | `docs/runtime/RESULTS.md` §4, §6 (merged version) | "0/396" never-worse; real-browser v2 gold "~495k target, generating" (96 apps) | covers 66 apps and final text/server content only (RA-1, RA-6); the newer RESULTS on `origin/runtime` reports 616,437 REAL gold and r17-v2a |
 | `packages/runtime-model/MODEL_CARD.md` | "`files/r17/` here"; clear-case recall "≈ 5%" | `files/` is gitignored (only `MODEL_CARD.md` is tracked); EVAL.md gives guard 4.2% on all clear rows, 7.7% on clear stale/duplicate, heal 6.1% |

@@ -35,7 +35,7 @@
   changed. Producers of training rows
   run this exact code: the sim (`sim/src/run/rt.ts` -> `realRuntimeFactory`), the real-browser corpus
   ([realapps](../realapps.md)) and the hand-written Python port `training/curriculum/rt.py` (its docstring says
-  "FROZEN at git tag `situation-v2`"). No situation-v2 model exists yet ([HANDOFF.md](../../../HANDOFF.md), `training/NEEDS.md`); the old
+  "FROZEN at git tag `situation-v2`"). The first situation-v2 model, `@genclass/runtime-model@0.1.0` = `r17-v2b`, is published since 2026-10-08 (trained on `situation-v2` data; see `packages/runtime-model/MODEL_CARD.md`); the old
   `situation-v1` tag (1a77558) and its R17 checkpoint do not match this code. Any wording/threshold/budget change
   means a new tag and regenerated data.
 - **Decisions moved to the network boundary (batch 4).** New trigger `delivery`: a fetch/XHR response or a
@@ -940,7 +940,7 @@ Resolved since 654d822 (removed from this list): the `InitOptions.situation` doc
   is new since 654d822) and disables `xhr`, `user`, `errors`, `nav`, `perf`; `eventsource` is left at its default
   (on), but nothing in `sim/src` references `EventSource`. XHR/EventSource deliveries and DOM-derived evidence (F7
   click counts) therefore come only from realapps (inferred from options and a grep, not checked against data).
-- **Open (OPEN_TASKS.md, [HANDOFF.md](../../../HANDOFF.md); release order in [RELEASE.md](../../../RELEASE.md))**: no situation-v2 model yet; the demo items "hold-induced harm" and "typeahead
+- **Open (OPEN_TASKS.md, [HANDOFF.md](../../../HANDOFF.md); release order in [RELEASE.md](../../../RELEASE.md))**: the first situation-v2 model is published since 2026-10-08 (`@genclass/runtime-model@0.1.0` = `r17-v2b`); the demo items "hold-induced harm" and "typeahead
   salient about 6 times per trial" were measured with v0.1 store holds (situation-v1) and need re-measuring with a
   v2 model; STATUS.md reports 0/396 clean real-app runs changed with an always-passive model.
 

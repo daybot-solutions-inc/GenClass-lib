@@ -25,9 +25,9 @@ f107013 (redaction). `origin/runtime` has four newer commits (up to 5bc40c9, run
 
 | dir | tracked files | what | owner / workstream | doc | relevance |
 |---|---|---|---|---|---|
-| `packages/runtime/` | 183 | `@genclass/runtime`, version `0.1.0-alpha.1` in the tree (= the published `latest`, which lacks the install code: bump before the next build), the npm library: `src/` (72), `test/` (95), `bin/` (6: `genclass-runtime.mjs` CLI, mode 100755, plus `bin/lib/` with `init`/`remove`), package and build configs, STATUS, CHANGELOG, INSTALL-NEEDS, UI-NEEDS | CORE. MODEL owns `src/model/**` and `bin/genclass-runtime.mjs` (`fetch-model`, `info`). INSTALL owns `src/auto.ts`, `src/cdn/**`, `bin/lib/**`, `test/install/**`. UI owns `src/devtools/**` and `src/adapters/**`. REVIEW owns `test/review-*.test.ts`. Us (lead): `test/default-mode.test.ts`, `test/observe-delivery.test.ts`, `test/redaction-v2.test.ts` | the 8 docs under `runtime/`; start with [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md) | core |
+| `packages/runtime/` | 183 | `@genclass/runtime`, version `0.1.0-alpha.1` in the tree at f107013 (bumped to `0.1.0-beta.0` in 9695830; `0.1.0-beta.0` is the published `latest` since 2026-10-08 ~13:40 UTC), the npm library: `src/` (72), `test/` (95), `bin/` (6: `genclass-runtime.mjs` CLI, mode 100755, plus `bin/lib/` with `init`/`remove`), package and build configs, STATUS, CHANGELOG, INSTALL-NEEDS, UI-NEEDS | CORE. MODEL owns `src/model/**` and `bin/genclass-runtime.mjs` (`fetch-model`, `info`). INSTALL owns `src/auto.ts`, `src/cdn/**`, `bin/lib/**`, `test/install/**`. UI owns `src/devtools/**` and `src/adapters/**`. REVIEW owns `test/review-*.test.ts`. Us (lead): `test/default-mode.test.ts`, `test/observe-delivery.test.ts`, `test/redaction-v2.test.ts` | the 8 docs under `runtime/`; start with [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md) | core |
 | `packages/genclass-runtime/` | 4 | (new, f3a9dd1) unscoped alias package `genclass-runtime` 0.1.0-alpha.1: `cli.mjs` imports `@genclass/runtime`'s `bin/genclass-runtime.mjs`; `package.json` (dependency `@genclass/runtime` `0.1.0-alpha.1`), `README.md`, `LICENSE`. A workspace (`packages/*`), **not published** | INSTALL | `packages/runtime/INSTALL-NEEDS.md` item 1 | core (planned) |
-| `packages/runtime-model/` | 1 | `MODEL_CARD.md` only. Planned npm package `@genclass/runtime-model` that `DEFAULT_MODEL_BASE_URL` points at. It has no `package.json` and its `files/` directory is gitignored, so it is not a workspace and is unpublished (npm 404). No situation-v2 model exists yet | lead | [runtime/model-host.md](runtime/model-host.md) | core (planned) |
+| `packages/runtime-model/` | 1 | `MODEL_CARD.md` only at f107013 (since ba11126/bcbee89 also `package.json` and `LICENSE`, so it is a workspace). The npm package `@genclass/runtime-model` that `DEFAULT_MODEL_BASE_URL` points at; `0.1.0` (`r17-v2b`, the first situation-v2 model) is published since 2026-10-08. Its `files/` directory is gitignored | lead | [runtime/model-host.md](runtime/model-host.md) | core (planned) |
 | `sim/` | 106 | `@genclass/sim` (private): training-data simulator that drives the real runtime and writes CONTRACT-D rows. Now 46 feature combinators, 115 domains, S1/S2 labels, gold / unlabeled / on-policy row modes, Azure cluster scripts, separability analysis | SIM | [sim.md](sim.md) | supporting |
 | `realapps/` | 307 | `@genclass/realapps` (private, **not** a root workspace): 128 app directories with a `manifest.ts` (114 written + 14 open-source Conduit front-ends; Mehar's commit messages say 96 after wave 3, the wave-4 apps arrived inside f3a9dd1 and eff18cb) run in headless Chromium with the real runtime; counterfactual labels like the sim; the "never worse" interference and determinism sweeps | REAL | [realapps.md](realapps.md) | supporting |
 | `training/` | 69 | Python curriculum generator, runtime-text port (`curriculum/rt.py`, frozen at `situation-v2`), eval, ONNX export, Azure launch scripts for R17/R32/R68 students and the T150 teacher, teacher labelling, T1 expected-gain scripts | TRAIN (CONTRACT §1 says lead) | [training.md](training.md), [model-io-contract.md](model-io-contract.md) | supporting |
@@ -81,7 +81,7 @@ Doc: [runtime/build-test-release.md](runtime/build-test-release.md), [runtime/pu
 
 ```text
 packages/runtime/
-  package.json              @genclass/runtime, version 0.1.0-alpha.1 (= published latest; bump before the next build); exports . ./auto
+  package.json              @genclass/runtime, version 0.1.0-alpha.1 (0.1.0-beta.0 since 9695830 = published latest); exports . ./auto
                             ./auto/observe ./auto/guard ./auto/heal ./react ./redux ./zustand ./devtools ./worker (no typesVersions);
                             sideEffects [dist/auto.js, dist/auto/*.js, dist/genclass.global{,.min}.js, dist/cdn/*.js, src/model/worker.ts];
                             unpkg/jsdelivr -> dist/genclass.global.min.js; bin genclass-runtime; dep onnxruntime-web ^1.30.0;
@@ -92,7 +92,7 @@ packages/runtime/
                             (IIFE, onnxruntime-web external, __GENCLASS_VERSION__ = package version); CDN worker -> dist/cdn/{worker,
                             ort-webgpu,ort-wasm}.js (onnxruntime-web bundled, plugin cdnOrt)
   vitest.config.ts          unit tests: test/**/*.test.ts, excludes test/browser/**, env node, testTimeout 20000
-  README.md                 npm package README (rewritten by Mehar, d05abc1): one-command install, observe default, no model yet;
+  README.md                 npm package README (rewritten by Mehar, d05abc1): one-command install, observe default, no model yet (at f107013);
                             says init, /auto and the script tag are "not in 0.1.0-alpha.1"
   CHANGELOG.md              (new, f3a9dd1) "## 0.1.0-alpha.1" wrongly lists the install paths (they are not in the published alpha.1)
   INSTALL-NEEDS.md          (new, f3a9dd1) INSTALL -> lead/CORE/MODEL/UI: npx naming decision, package.json and tsup changes,
@@ -308,7 +308,7 @@ The 18 PNGs are written by `ui-devtools.spec.ts`; no README embeds them.
 
 ```text
 packages/runtime-model/
-  MODEL_CARD.md             model card for R17/R32 (sizes, final round 1 on situation-v1, limits); the package itself does not exist yet
+  MODEL_CARD.md             model card for R17/R32 (sizes, final round 1 on situation-v1, limits); since bcbee89 the card for r17-v2b, published as @genclass/runtime-model@0.1.0
 ```
 
 ### `sim/` (106 files)
@@ -887,7 +887,7 @@ Verified with `grep` at b435acb; rows touched by the merge and the two fixes re-
 | X | kind | where | doc |
 |---|---|---|---|
 | Model host factory | function | `packages/runtime/src/model/host.ts` -> `createModelHost` | [model-host](runtime/model-host.md) |
-| Default model URL (unpublished `@genclass/runtime-model@0.1.0`, 404) | constant | `packages/runtime/src/model/host.ts` -> `DEFAULT_MODEL_BASE_URL` | [model-host](runtime/model-host.md) |
+| Default model URL (`@genclass/runtime-model@0.1.0` on jsDelivr, published 2026-10-08) | constant | `packages/runtime/src/model/host.ts` -> `DEFAULT_MODEL_BASE_URL` | [model-host](runtime/model-host.md) |
 | Host defaults (`DEFAULT_TIMEOUT_MS` 10 s, `DEFAULT_MAX_QUEUE` 32) | constant | `packages/runtime/src/model/host.ts` | [model-host](runtime/model-host.md) |
 | Worker URL literal `new Worker(new URL("./worker.js", import.meta.url), ...)` | code pattern | `packages/runtime/src/model/host.ts` -> `defaultWorkerFactory` | [build-test-release](runtime/build-test-release.md) |
 | Load and evaluate (in the worker or inline) | class | `packages/runtime/src/model/backend.ts` -> `ModelBackend` | [model-host](runtime/model-host.md) |
@@ -905,7 +905,7 @@ Verified with `grep` at b435acb; rows touched by the merge and the two fixes re-
 | sha256 integrity / sha1 header keys | function | `packages/runtime/src/model/hash.ts` -> `sha256Hex`, `sha1Hex` | [model-host](runtime/model-host.md) |
 | Host <-> worker messages | type | `packages/runtime/src/model/protocol.ts` -> `ToWorker`, `FromWorker` | [model-host](runtime/model-host.md) |
 | `genclass-runtime fetch-model <dir>` / `info <dir>` | CLI | `packages/runtime/bin/genclass-runtime.mjs` -> `fetchModel`, `info` | [model-host](runtime/model-host.md) |
-| CLI default source (jsDelivr `@genclass/runtime-model@0.1.0/files/` = `DEFAULT_MODEL_BASE_URL`, 404 until published) | constant | `packages/runtime/bin/genclass-runtime.mjs` -> `DEFAULT_FROM` | [status](status-and-known-issues.md) |
+| CLI default source (jsDelivr `@genclass/runtime-model@0.1.0/files/` = `DEFAULT_MODEL_BASE_URL`, resolves since 2026-10-08) | constant | `packages/runtime/bin/genclass-runtime.mjs` -> `DEFAULT_FROM` | [status](status-and-known-issues.md) |
 
 ### Devtools overlay
 
@@ -1079,8 +1079,8 @@ Ignore rules live in `.gitignore` (root), `demos/.gitignore`, `extension/.gitign
 | `demos/dist/` | root and `demos/.gitignore` | `npm run build` in `demos` (`demos/scripts/build.mjs`) | — |
 | `extension/dist/` | root and `extension/.gitignore` | `extension/scripts/build.mjs` (`dist/genclass/`) | — |
 | `sim/out/` | root | `sim/src/gen.ts` (default `--out sim/out/run`), `sim/scripts/final.sh` (`sim/out/final-a/`, `sim/out/final-b/parts/`) | training data; excluded from `scripts/vm.sh` syncs. v2 production data lives on the train VM under `/data/sim-out/v2-*` and REAL's under `/data/real-out/` (per `training/NEEDS.md`; not checked) |
-| `.cache-model/` | root | `node packages/runtime/bin/genclass-runtime.mjs fetch-model .cache-model --from https://github.com/MeharPro/GenClass/releases/download/v0.1.0/` (ask first: download; without `--from` the CLI uses `DEFAULT_FROM`, which 404s) | default `GENCLASS_MODEL_DIR`; absent in a fresh clone, so 14 model tests skip. The v0.1 model is a parity fixture only; it does not match situation-v2 |
-| `packages/runtime-model/files/` | root | intended for `training/export_runtime.py` output (the planned `@genclass/runtime-model` package) | does not exist at b435acb |
+| `.cache-model/` | root | `node packages/runtime/bin/genclass-runtime.mjs fetch-model .cache-model --from https://github.com/MeharPro/GenClass/releases/download/v0.1.0/` (ask first: download; without `--from` the CLI uses `DEFAULT_FROM`, the published `@genclass/runtime-model@0.1.0`, which is not the parity fixture) | default `GENCLASS_MODEL_DIR`; absent in a fresh clone, so 14 model tests skip. The v0.1 model is a parity fixture only; it does not match situation-v2 |
+| `packages/runtime-model/files/` | root | intended for `training/export_runtime.py` output (the `@genclass/runtime-model` package, published 2026-10-08) | does not exist at b435acb |
 | `demos/public/genclass-model/` | `demos/.gitignore` | `npm run fetch-model` in `demos` (`demos/scripts/fetch-model.sh`, v0.1 model) | — |
 | `packages/runtime/test/browser/.build/` | `packages/runtime/test/browser/.gitignore` | `packages/runtime/test/browser/build.mjs` | bundled test app and build info |
 | `test-results/` | root, `demos/.gitignore`, `extension/.gitignore` | Playwright (`packages/runtime/test-results/{browser,ui}`), model benchmarks (`packages/runtime/test-results/model-bench/`) | — |
@@ -1148,8 +1148,10 @@ Doc-vs-code drift you will meet while navigating; the subsystem docs have the de
   `USAGE`), its mode mapping (`packages/runtime/bin/lib/plan.mjs` -> `AUTO`) and
   `packages/runtime/test/install/INSTALL-README-SNIPPET.md` still assume guard
   ([status-and-known-issues.md](status-and-known-issues.md#install-code-review-2026-10-08)).
-- **Version**: `packages/runtime/package.json` and `packages/genclass-runtime/package.json` say `0.1.0-alpha.1`, already
-  published without the install paths; `packages/runtime/CHANGELOG.md` lists the install paths under alpha.1.
+- **Version**: `packages/runtime/package.json` and `packages/genclass-runtime/package.json` said `0.1.0-alpha.1`, already
+  published without the install paths; `packages/runtime/CHANGELOG.md` listed the install paths under alpha.1. Since 9695830
+  the runtime says `0.1.0-beta.0` (published `latest`, 2026-10-08) and the CHANGELOG lists the install paths under it;
+  the alias is still `0.1.0-alpha.1` (unpublished) with dependency `0.1.0-beta.0`.
 - **Subsystem docs**: `docs/agents/runtime/build-test-release.md` and `public-api-and-lifecycle.md` (as committed at
   f107013) still describe six tsup entries and `"sideEffects": false`; no subsystem doc covers `src/auto.ts`,
   `src/cdn/` or `bin/lib/` yet.

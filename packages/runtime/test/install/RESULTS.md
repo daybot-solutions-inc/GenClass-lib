@@ -8,8 +8,8 @@ again (must print "Nothing to do" and change no file) → production build → p
 server in Chromium → `npx file:<tgz> remove --yes` → every file compared with the scaffold (sha256, excluding
 node_modules, lockfiles and build output).
 
-In Chromium, the jsDelivr defaults are served from local copies, because `@genclass/runtime-model` is not published
-yet: the model card and files, and onnxruntime-web's wasm. "Model ready" is the runtime's own
+In Chromium, the jsDelivr defaults are served from local copies, because `@genclass/runtime-model` was not published
+at the time of this run (it is since 2026-10-08): the model card and files, and onnxruntime-web's wasm. "Model ready" is the runtime's own
 `[GenClass] Model ready (...)` console line, so it shows the framework bundled the model worker and the model loaded
 in it.
 

@@ -8,7 +8,7 @@
 
 - The runtime is **situation-v2** (tag `situation-v2` = 6e5e86e): decisions happen at the network boundary (trigger `delivery`), store writes are not held by default, and the model-visible text is **frozen**. Any change to what the model reads needs the user's go-ahead, a new tag, regenerated SIM **and** realapps data, and a retrain (recipe 6).
 - On `mvp-v2` the only runtime changes since the tag are ours: f3636b2 (default mode `observe`; `guard` opt-in, `heal` experimental) and b435acb (CI, committed root lockfile, CLI 100755). Neither touches model text.
-- **No situation-v2 model exists.** The plan (HANDOFF): 150M teacher on v2 gold -> teacher labels on unlabeled rows -> distil R17 (default) and R32 -> DAgger via SIM `--on-policy` -> EVAL -> `@genclass/runtime-model@0.1.0` -> demos rerun -> `@genclass/runtime@0.1.0` (recipes 30, 20, 22, 19; release procedure in [`RELEASE.md`](../../RELEASE.md)).
+- **The first situation-v2 model is published (2026-10-08):** `@genclass/runtime-model@0.1.0` = `r17-v2b`, loaded by default by `@genclass/runtime@0.1.0-beta.0`. The plan was (HANDOFF): 150M teacher on v2 gold -> teacher labels on unlabeled rows -> distil R17 (default) and R32 -> DAgger via SIM `--on-policy` -> EVAL -> `@genclass/runtime-model@0.1.0` -> demos rerun -> `@genclass/runtime@0.1.0` (recipes 30, 20, 22, 19; release procedure in [`RELEASE.md`](../../RELEASE.md)).
 - Light local checks are fine: `npm ci`, runtime `tsc`/`tsup`/vitest, sim `tsc` and `SIM_RUNTIME=real` vitest. **Ask the user first** for Playwright, `smoke.sh`, the sim generator, realapps, training, demos eval, model downloads, anything on Azure, `git push`, `npm publish`. Azure is operated by the colleague (Mehar) right now; nobody on our side touches it.
 - Baseline at b435acb: runtime unit tests 332 passed + 14 skipped (40 + 1 files) without `review-perf`, which passes alone (4); sim 19 passed (5 files). CI (`.github/workflows/ci.yml`) runs the same runtime steps (recipe 21).
 - New recipes: never-worse sweep (28), add a realapps app (29), the v2 training pipeline (30).
@@ -44,7 +44,7 @@ Conventions used below:
 | tag | commit | data and models built on it |
 |---|---|---|
 | `situation-v1` | 1a77558 | SIM phase A (600,676 rows) and B (1,415,344), `gold-r1x`, REAL pilots `pilot4`/`pilot-all`, curriculum `cur1`–`cur4`, round-1 R17/R32-final1. Superseded: does not match the v2 runtime. |
-| `situation-v2` | 6e5e86e | **current.** SIM v2 gold/unlabeled runs (`train:/data/sim-out/v2-*`), REAL `v2-pilot` and `v2b1`–`v2b3`, the `rt.py` port (d73d20c). No model yet. |
+| `situation-v2` | 6e5e86e | **current.** SIM v2 gold/unlabeled runs (`train:/data/sim-out/v2-*`), REAL `v2-pilot` and `v2b1`–`v2b3`, the `rt.py` port (d73d20c). First model: `r17-v2b` = `@genclass/runtime-model@0.1.0` (published 2026-10-08). |
 
 `git diff situation-v2 b435acb -- packages/runtime/src` touches only `devtools/index.ts`, `runtime.ts` (the default mode) and `types.ts` (JSDoc), all f3636b2, none of them model text. Before editing, classify your change (condensed from [model-io-contract.md](model-io-contract.md#versioning-what-invalidates-the-trained-model)):
 
@@ -400,7 +400,7 @@ A change is done when all of these hold. Say explicitly in your final report whi
 
 **Tests.** Pattern: `packages/runtime/test/plugins.test.ts`. In an app, verify with `rt.explain(id)` and the devtools overlay.
 
-**Parity / retrain / release.** No retrain is needed: the model reads the description at runtime. Answer quality on custom actions and questions is unmeasured, and no v2 model exists yet.
+**Parity / retrain / release.** No retrain is needed: the model reads the description at runtime. Answer quality on custom actions and questions is unmeasured (also with the published v2 model, `r17-v2b`).
 
 **Gotchas.** Custom actions are gated at their own tier. At budgets ≤ 1,400 characters (`COMPACT_QUESTIONS_BUDGET`), custom descriptions are sent as `null` unless a `vocabulary.actions` override of ≤ 24 characters exists. Avoid question ids `action` and `diagnosis`. A non-iterable `plugins`, `actions` or `questions` throws inside the constructor (`GenClass.init` then returns an inert runtime). Custom actions can hold a subject indefinitely.
 
@@ -443,7 +443,7 @@ A change is done when all of these hold. Say explicitly in your final report whi
 5. **New graph input or head:** `packages/runtime/src/model/engine.ts` -> `FEEDS`, `OUTPUT_KIND`; `packages/runtime/src/model/packer.ts` -> `planInputs`, `unpackLogits`; `packages/runtime/src/model/serialize.ts` -> `BlockKind`, `questionBlock`; `packages/runtime/src/model/calibrate.ts`; the `Question` / `Answer` types in `packages/runtime/src/types.ts`. This is also a training change (recipe 13).
 6. **onnxruntime-web upgrade:** `packages/runtime/package.json` (`^1.30.0`; update the lockfile), `packages/runtime/src/model/backend.ts` -> `ORT_FALLBACK_VERSION`, check `ORT_WASM_FILES` names exist in the new `dist/`, keep the externals, update the browser-test regex expecting `onnxruntime-web@1.30.x` and the pinned `onnxruntime-node` devDependency (CI skips its binary download with `ONNXRUNTIME_NODE_INSTALL=skip`).
 7. **CLI:** `packages/runtime/bin/genclass-runtime.mjs` (`fetch-model`, `info`; committed as 100755); keep its `parseCard` in sync with `packages/runtime/src/model/loader.ts` -> `parseCard`. No automated CLI tests.
-8. **Default model URL:** `packages/runtime/src/model/host.ts` -> `DEFAULT_MODEL_BASE_URL` and the CLI's `DEFAULT_FROM` (recipe 20). Both 404 today.
+8. **Default model URL:** `packages/runtime/src/model/host.ts` -> `DEFAULT_MODEL_BASE_URL` and the CLI's `DEFAULT_FROM` (recipe 20). Both resolve since `@genclass/runtime-model@0.1.0` was published (2026-10-08); before that both were 404.
 9. **Self-hosting (app integration):** `npx genclass-runtime fetch-model public/genclass-model --from <dir URL with model.json>` **[ask first]** (download); copy both `ort-wasm-simd-threaded.wasm` and `ort-wasm-simd-threaded.asyncify.wasm` from `node_modules/onnxruntime-web/dist/`; `GenClass.init({ mode: "guard", model: { baseUrl: "/genclass-model/", ortWasmPaths: "/ort/" } })`; serve COOP/COEP for WASM threads. There is no situation-v2 model to self-host yet: the round-1 R17 export reads v1 text and must not be loaded into this runtime.
 
 **Tests.** Local, no model files needed: `packages/runtime/test/model/`: `host.test.ts`, `loader.test.ts`, the `engine.test.ts` graph-contract test. **[ask first]** `npm run test:browser` (needs a model directory and Playwright Chromium; rebuilds `dist/`).
@@ -592,7 +592,7 @@ Sim typecheck and `SIM_RUNTIME=real npx vitest run` are light local checks (buil
 **Steps.**
 1. **Decide with the user which release** (RELEASE.md A0, B0):
    - **Part A, `0.1.0-alpha.1` (done 2026-10-08, no model):** the NaN fix plus the situation-v2 runtime and the `observe` default, published under dist-tag `latest` from release commit 806a296 (the plan was dist-tag `alpha`). Without a model it only observes, so the open review findings go into the release notes, not the blocker list.
-   - **Part B (after a situation-v2 model exists):** `@genclass/runtime-model@0.1.0` and its GitHub release first (recipe 20), then the demos eval (recipe 22), then `@genclass/runtime@0.1.0-beta.0` or `0.1.0`. Part B treats the open findings as blockers.
+   - **Part B (after a situation-v2 model exists):** `@genclass/runtime-model@0.1.0` and its GitHub release first (recipe 20), then the demos eval (recipe 22), then `@genclass/runtime@0.1.0-beta.0` or `0.1.0`. Part B treats the open findings as blockers. Published 2026-10-08 ~13:40 UTC: `@genclass/runtime-model@0.1.0` (`r17-v2b`) and `@genclass/runtime@0.1.0-beta.0`, both `latest`; no GitHub release was created.
    - Which branch and commit: `mvp-v2` is unpushed; the colleague works on `origin/runtime`. The release commit must reach `origin` (the user decides how).
 2. **Fix what the tarball ships** (RELEASE.md A1): `packages/runtime/README.md` is the npm page: check the README status line and version before packing, and commit any fix.
 3. **Clean release worktree** (RELEASE.md A2): `git worktree add -b release/runtime-<version> ../GenClass-lib-release <commit>`; `git status --porcelain` must print nothing. The main checkout may hold other agents' uncommitted edits, and `tsup` bundles whatever is on disk.
@@ -628,7 +628,7 @@ Sim typecheck and `SIM_RUNTIME=real npx vitest run` are light local checks (buil
 
 **Gotchas.** Cache Storage (`genclass-runtime-v1`) never evicts old versions. `model.json` is revalidated on every load. The demos' `?model=cdn` falls back to `DEFAULT_MODEL_BASE_URL`.
 
-**See.** [RELEASE.md Part B](../../RELEASE.md#part-b-model-package-then-genclassruntime010-after-a-situation-v2-model-exists), [build-test-release.md](runtime/build-test-release.md), [model-host.md](runtime/model-host.md).
+**See.** [RELEASE.md Part B](../../RELEASE.md#part-b-genclassruntime-model010-done-2026-10-08-with-r17-v2b-see-the-note-at-the-top), [build-test-release.md](runtime/build-test-release.md), [model-host.md](runtime/model-host.md).
 
 ### 21. Change the CI workflow
 
@@ -745,7 +745,7 @@ The example is a sketch: check the exact late-revert conditions in `atoms.test.t
 **Goal.** Find out why GenClass changed an app's behaviour when it should not have, relieve the user, and fix the right layer without adding a rule.
 
 **Steps.**
-1. **Confirm the runtime could act.** Check `GenClass.runtime.status` (`state`, `model`, `variant`) and `GenClass.runtime.mode`. In the default `observe` mode (this branch) nothing non-passive can run. With `@genclass/runtime@0.1.0-alpha.0` (default `guard`) the default model URL 404s, the status ends in `error` and the console says "Model unavailable (...); observing only.". So an intervention implies an explicit `mode: "guard" | "heal"` (or `setMode`, or `?genclass=guard|heal`) **and** a self-hosted `model.baseUrl` or a custom `decider`. Guard runs only guard-tier actions: `discard`, `defer`, `coalesce`, `delay`, and custom actions declared `tier: "guard"`.
+1. **Confirm the runtime could act.** Check `GenClass.runtime.status` (`state`, `model`, `variant`) and `GenClass.runtime.mode`. In the default `observe` mode (this branch) nothing non-passive can run. With the alphas (`@genclass/runtime@0.1.0-alpha.0`, default `guard`, and `0.1.0-alpha.1`) the default model URL was a 404 before 2026-10-08, the status ended in `error` and the console said "Model unavailable (...); observing only.". Since 2026-10-08 the default URL serves `@genclass/runtime-model@0.1.0`, which `0.1.0-beta.0` loads by default. So an intervention implies an explicit `mode: "guard" | "heal"` (or `setMode`, or `?genclass=guard|heal`) **and** a model with status `ready` (the default one, a self-hosted `model.baseUrl` or a custom `decider`). Guard runs only guard-tier actions: `discard`, `defer`, `coalesce`, `delay`, and custom actions declared `tier: "guard"`.
 2. **Collect the evidence.** The console line `[GenClass] <Lead> <noun>: <fact> <changed> (<diagnosis>, p; <action> p)`; `GenClass.runtime.interventions()` -> `ActionRecord` (`id` `a<n>`, `decisionId`, `action`, `tier`, `changed`, `ok`, `error`, `late`); `GenClass.runtime.explain("a<n>")` -> `Explanation` (`situationText`, `facts`, `timeline`, `answers`, and `decision` with `diagnosisProbabilities`, `probabilities`, `candidate`, `mass`, `tier`, `reason`). The devtools overlay shows the same evidence with a Copy button. `GenClass.runtime.history(400)` gives the event log; `debug: true` logs swallowed errors.
 3. **Relieve the user.** `ActionRecord.undo?.()` exists only for `discard`, late reverts, `rollback` and custom actions with `onUndo`. At the next page load: `GenClass.init({ policy: { deny: ["<action>"] } })`, or drop the explicit mode (default observe), or `?genclass=observe` / `?genclass=off` / `localStorage.genclass = "off"`. A delivery `discard` mark keeps dropping that chain's writes for 10 s even after `pause()` or `setMode("observe")` (open finding): a reload is the reliable reset.
 4. **Classify** (read the evidence against the code):

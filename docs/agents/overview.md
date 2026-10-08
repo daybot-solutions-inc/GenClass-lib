@@ -1,7 +1,7 @@
 # GenClass-lib system overview: the mental model
 
 > **Scope:** the whole monorepo at the level of one mental model: `@genclass/runtime` (`packages/runtime/src/**`),
-> the unpublished model package (`packages/runtime-model/`), `sim/`, `realapps/`, `training/`, `demos/`, and the
+> the model package (`packages/runtime-model/`, published as `@genclass/runtime-model@0.1.0`), `sim/`, `realapps/`, `training/`, `demos/`, and the
 > legacy GenClass content it builds on (`jev_local/`, `extension/`, `bench/`, `results/`, `scripts/`, legacy
 > `docs/*.md`). Detail lives in the subsystem docs linked from every section; this doc names the stages and the seams
 > between them.
@@ -42,11 +42,13 @@ Path convention: every code pointer is `path/from/repo/root` -> `symbol`. Runtim
 - Fail open everywhere: no model, a loading or failed model, a timeout or any error means the passive action runs;
   the runtime holds only when a non-passive action is permitted **and** the model is expected to answer within the
   hold budget (at most 800 ms with the default `"auto"`).
-- **Where it stands:** `@genclass/runtime@0.1.0-alpha.1` (situation-v2, NaN fix, default `observe`) is `latest` on npm; no model is
-  published (`@genclass/runtime-model` is a 404), so any install only observes. No situation-v2 model exists. The
-  colleague is generating v2 data on Azure (SIM ~10M gold + ~50M unlabeled rows on 20 nodes; REAL ~0.5M real-browser
-  gold rows on 3 nodes); next comes the 150M teacher, distillation into R17/R32, DAgger, EVAL, the model package, a
-  demos rerun and `@genclass/runtime@0.1.0`.
+- **Where it stands (2026-10-08 ~13:45 UTC):** `@genclass/runtime@0.1.0-beta.0` (default `observe`, loads the model by
+  default) is `latest` on npm, and `@genclass/runtime-model@0.1.0` (`r17-v2b` = `genclass-runtime-r17` 2.0.0-rc2, the
+  first situation-v2 model; gates guard 0.80 {mutation 0.95}, heal 0.85 {failure 0.95, inconsistency 0.85}, report
+  0.85) is `latest`; the default model URL on jsDelivr resolves. A default install loads the model and decides, but
+  acts only in `guard`/`heal`. `0.1.0-alpha.0` is deprecated. Nothing is pushed to GitHub. Earlier the same day,
+  `0.1.0-alpha.1` was `latest` with no model published. Next: a `0.2.0` model, a demos rerun and
+  `@genclass/runtime@0.1.0`.
 
 ## 1. The problem and the product principles
 
@@ -105,7 +107,7 @@ Adoption path: `observe` (default) -> `guard` -> `heal`.
  +-------------------------------------------------------------------------------------------------------+
                                         ^ model directory: model.json, *-q8.onnx, *-fp16.onnx,
                                         |   tokenizer.json, calibration.json, meta.json
- OFFLINE                                |   (planned: @genclass/runtime-model@0.1.0, a 404 today)
+ OFFLINE                                |   (@genclass/runtime-model@0.1.0, published 2026-10-08)
    sim/      --drives the real createRuntime in a virtual world--> gold / unlabeled / on-policy rows
    realapps/ --91 real apps + the real runtime in headless Chromium--> gold / unlabeled REAL rows
    training/ curriculum (rt.py) + T150 teacher on gold -> teacher labels on unlabeled rows
@@ -121,11 +123,11 @@ Adoption path: `observe` (default) -> `guard` -> `heal`.
 | State | `packages/runtime/src/state/*`, `packages/runtime/src/adapters/*` | `StoreHub` (atom/guard/adapter stores), drop filter, late revert, opt-in holds, invariant miner (10 templates), stale marks, snapshots; React/Redux/Zustand adapters | frozen at `situation-v2` | [state-and-adapters](runtime/state-and-adapters.md) |
 | Learn, situation, triage | `packages/runtime/src/learn/*` (incl. `cadence.ts`), `packages/runtime/src/situation/*` (incl. `conflicts.ts`, `content.ts`, `evidence.ts`) | baselines, profiles, cadence, version conflicts, content facts F1–F3, evidence facts F5–F9, triage, situation text and questions (model input) | frozen at `situation-v2` | [learn-situation-triage](runtime/learn-situation-triage.md) |
 | Decide | `packages/runtime/src/decide/*`, controllers in `runtime.ts` | queue (stale drop, deadlines), hold budget, policy gate, actions, reports, explain, undo | frozen at `situation-v2` | [decide-policy-actions](runtime/decide-policy-actions.md) |
-| Model host | `packages/runtime/src/model/*`, `packages/runtime/bin/genclass-runtime.mjs` | worker, loader (Cache Storage + sha256), WebGPU/WASM plans, Python-parity packer, calibration, CLI | unchanged since `situation-v1`; no model to load | [model-host](runtime/model-host.md) |
+| Model host | `packages/runtime/src/model/*`, `packages/runtime/bin/genclass-runtime.mjs` | worker, loader (Cache Storage + sha256), WebGPU/WASM plans, Python-parity packer, calibration, CLI | default model `@genclass/runtime-model@0.1.0` published 2026-10-08 | [model-host](runtime/model-host.md) |
 | Devtools | `packages/runtime/src/devtools/*` | shadow-DOM overlay on the public API | mode labels "Observe (default)", "Guard (opt-in)", "Heal (experimental)" | [devtools](runtime/devtools.md) |
-| Build, test, release | `packages/runtime/{package.json,tsup.config.ts,test/**}`, root `package-lock.json`, `.github/workflows/ci.yml` | tsup ESM build (6 entries), vitest (351 tests), Playwright, smoke test, CI | alpha.1 published (`latest`; alpha.0 before it); lockfile and CI committed (CI not yet run on GitHub: `mvp-v2` is not pushed) | [build-test-release](runtime/build-test-release.md) |
+| Build, test, release | `packages/runtime/{package.json,tsup.config.ts,test/**}`, root `package-lock.json`, `.github/workflows/ci.yml` | tsup ESM build (6 entries), vitest (351 tests), Playwright, smoke test, CI | `0.1.0-beta.0` published (`latest` since 2026-10-08 ~13:40 UTC; alpha.1 before it, alpha.0 deprecated); lockfile and CI committed (CI not yet run on GitHub: `mvp-v2` is not pushed) | [build-test-release](runtime/build-test-release.md) |
 | Model I/O contract | runtime `situation/*` + `model/*`, `sim/`, `realapps/`, `training/` | situation text -> packed request -> heads -> calibrated answers; row kinds and labels | format `situation-v2` | [model-io-contract](model-io-contract.md) |
-| Model package | `packages/runtime-model/` | planned home of the published model directory | only `MODEL_CARD.md`; `@genclass/runtime-model` is a 404 on npm | [model-host](runtime/model-host.md), [build-test-release](runtime/build-test-release.md) |
+| Model package | `packages/runtime-model/` | home of the published model directory | tracks `MODEL_CARD.md` (and LICENSE); `@genclass/runtime-model@0.1.0` is `latest` on npm (2026-10-08) | [model-host](runtime/model-host.md), [build-test-release](runtime/build-test-release.md) |
 | Sim | `sim/` (`@genclass/sim`) | training-data generator driving the real runtime in a virtual world: 46 feature combinators × 115 domains; gold, unlabeled and on-policy rows; S1/S2 labels | v1 data on disk (phase A 600,676, phase B 1,415,344 rows); v2 runs in progress on Azure | [sim](sim.md) |
 | Real-app corpus | `realapps/` | 91 real apps (77 written + 14 OSS RealWorld front-ends, 23 frameworks) with the real runtime in headless Chromium on virtual time; same labels as the sim; the never-worse sweep | v2 batches `v2b1`–`v2b3` in progress on c01/c10/c11 (per `training/NEEDS.md`, unverified from here); no tests, not in CI or the workspaces | [realapps](realapps.md) |
 | Training | `training/` | vocabulary, curriculum (`rt.py` at situation-v2), training rounds, teacher labelling, distillation, eval, ONNX export | final round 1 (situation-v1) done and superseded; v2 program prepared, not run | [training](training.md) |
@@ -257,7 +259,7 @@ Other outcomes of the same delivery:
 | default `mode: "observe"` | nothing is permitted, so `waits` is false and the response is released as soon as the trigger runs (after the body read, up to 100 ms: the pre-filter does not check the mode). The release marks the chain as delivered over newer data (F9). Because the subject is already released, the queued delivery decision is dropped as stale before the model sees it; the app's write is not `covered` (salient, not decided), so `observeWrite` raises a background `mutation` decision instead, which can only flag (`[GenClass] Flagged a stale write: ...`). |
 | gate fails (mass < 0.9, top diagnosis `expected`, rate limit) | `deliver`: the stale results show; a `Flagged a stale response` detection line prints when the diagnosis is not `expected` with p ≥ 0.6 |
 | model not expected within the hold budget (`expectedLatency` too high) or slower than the budget | the response is released at once or at the budget (fail open); the writes are then not `covered`, so they get a background `mutation` decision, and a gate-passing `discard` can **late-revert** the write within 2 s if nothing changed those fields since (`delivery.test.ts` -> "a slow model: the response is released at the budget, its writes are decided in the background and late-reverted") |
-| model loading, failed or absent (every install today: the default model URL 404s) | `consultable()` is false: `runDelivery` releases at once, no facts are computed, nothing is recorded; the stale write applies exactly as without GenClass |
+| model loading, failed or absent (every install before 2026-10-08, when the default model URL was a 404) | `consultable()` is false: `runDelivery` releases at once, no facts are computed, nothing is recorded; the stale write applies exactly as without GenClass |
 | model status `off` (lazy preload not started) | the pre-filter and facts run; this salient delivery starts the model load and is released at once (fail open) |
 | `heal` mode | as `guard` here (no heal-tier delivery action) |
 
@@ -409,8 +411,8 @@ guard 0.9, heal 0.8. Default: `packages/runtime/src/runtime.ts` -> `RuntimeImpl`
 Also: `policy.allow` / `policy.deny` narrow the permitted set; `policy.holdWrites: true` re-enables held store writes
 (opt-in, never reorders a store's writes); `pause()` stops gating and triggers while tracing continues; `setMode`
 applies to the next gate. Passive actions per trigger: mutation `apply`, request `send`, delivery `deliver`, failure
-`deliver`, stall `wait`, inconsistency/transition/error `ignore`. The older published alpha.0 and HANDOFF.md still say
-`guard` is the default (alpha.1 says `observe`); the unit-test harness passes `mode: "guard"`. Details:
+`deliver`, stall `wait`, inconsistency/transition/error `ignore`. The older published alpha.0 (deprecated) and HANDOFF.md still say
+`guard` is the default (alpha.1 and beta.0 say `observe`); the unit-test harness passes `mode: "guard"`. Details:
 [public-api-and-lifecycle](runtime/public-api-and-lifecycle.md), [decide-policy-actions](runtime/decide-policy-actions.md).
 
 ## 7. With no model: fail open, observe only
@@ -426,14 +428,16 @@ and its state is `ready` or `off`. Consequences:
 | `error` | same as `loading`, permanently: `ready` is memoised and nothing retries the load |
 | `ready` | full pipeline |
 
-What a default `GenClass.init()` does at b435acb (code reading; no test covers the browser path): it creates a model
-host for `DEFAULT_MODEL_BASE_URL` = `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/`
-(`packages/runtime/src/model/host.ts`); the idle preload fetches `model.json` from a package that does not exist (a
-404 per a check on 2026-10-08), the status becomes `error`, the console prints `[GenClass] Model unavailable
+What a default `GenClass.init()` does: it creates a model host for `DEFAULT_MODEL_BASE_URL` =
+`https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` (`packages/runtime/src/model/host.ts`); since
+2026-10-08 that package is published and the idle preload loads it (a Chromium check with the jsDelivr script tag
+loaded it in a Web Worker on WebGPU (fp16) in 4.75 s; `decide()` answered in 72 ms), so the status becomes `ready`.
+When the model cannot be fetched (offline, blocked CDN, or before 2026-10-08 when the package was a 404; code reading
+at b435acb, no test covers the browser path), the status becomes `error`, the console prints `[GenClass] Model unavailable
 (...); observing only.`, and from then on no situation is built and nothing is held or acted on. Tracing, field
 versions, baselines, cadence, invariants and profiles keep learning; `rt.situation()` still works; `rt.ask()` rejects.
-The CLI's default source (`genclass-runtime fetch-model`, `DEFAULT_FROM`) is a 404 too. The only trained runtime model,
-R17-final1, is situation-v1 and lives only on the train VM / the colleague's Mac; it does not match this runtime. Full
+The CLI's default source (`genclass-runtime fetch-model`, `DEFAULT_FROM`) is the same jsDelivr directory and resolves
+too. The round-1 model R17-final1 is situation-v1 and does not match this runtime; the published `r17-v2b` does. Full
 sequence: [model-host](runtime/model-host.md).
 
 ## 8. Workstreams and ownership
@@ -467,8 +471,8 @@ update the relevant STATUS/NEEDS entry when you change behaviour they describe.
 | Runtime | batches 4 and 5 done: decisions at the network boundary, no store holds by default, EventSource observer, F1–F9 facts, leaf-based redaction, 2,400-char full budget; default mode `observe` (ours). |
 | Tests | lead's run on `mvp-v2` (macOS, Node v25.6.0): `tsc` clean, `tsup` OK, vitest 351 tests = 337 passed + 14 model-parity skips (333 + 14 in the main run, counting the uncommitted `atoms.test.ts` test, 4 in `review-perf.test.ts` alone; it flaked once at 5.5 ms vs its 2 ms bound under parallel load). sim: `tsc` clean, `SIM_RUNTIME=real npx vitest run` 19 passed in 5 files. Not run: Playwright, `smoke.sh`, realapps, demos eval, Python tests, training. |
 | CI | `.github/workflows/ci.yml` (Node 22, `npm ci`, typecheck, build, unit tests, then `review-perf` with `--retry=2`); its steps pass in a fresh clone; it has not run on GitHub yet. |
-| npm | `@genclass/runtime@0.1.0-alpha.1` is `latest` (published 2026-10-08 from 806a296; NaN fix, situation-v2, default `observe`, no model). The older `0.1.0-alpha.0` is situation-v1 code with default `guard`. `@genclass/runtime-model` is a 404. Release procedure: [RELEASE.md](../../RELEASE.md). |
-| Model | no situation-v2 model. R17-final1 (situation-v1) is the baseline only (section 5.3). |
+| npm | Since 2026-10-08 ~13:40 UTC: `@genclass/runtime@0.1.0-beta.0` is `latest` (from 1f0f617; default `observe`, loads the model by default) and `@genclass/runtime-model@0.1.0` is `latest` (`r17-v2b`); `0.1.0-alpha.0` (situation-v1, default `guard`) is deprecated. Before that, `0.1.0-alpha.1` (806a296; NaN fix, situation-v2, default `observe`, no model) was `latest`. Release procedure: [RELEASE.md](../../RELEASE.md). |
+| Model | `@genclass/runtime-model@0.1.0` = `r17-v2b` (first situation-v2 model, published 2026-10-08). R17-final1 (situation-v1) is the baseline only (section 5.3). |
 | Data | SIM v2 (≥ 10M gold + ≥ 50M unlabeled) on c02–c09 and c12–c23; REAL v2 (≥ 500k gold) on c01, c10, c11; the colleague is operating the cluster (a read-only portal look at 04:14 UTC showed c01–c23 and `vm-jev-train` running, `vm-jev-data` deallocated). Nobody on our side touches Azure. |
 | Never worse | realapps sweep, v2 runtime, all-passive model: 0/396 clean runs changed, 3/198 with chaos (request-time holds shifting chaos draws; open), determinism 198/198, conduit 0/30 (STATUS.md). These cover the 66 apps at the time, not the 25 added since, and compare final visible text and server content only ([realapps](realapps.md)). |
 | Next (HANDOFF.md) | v2 data collected -> 150M teacher on v2 gold -> teacher labels on unlabeled rows -> distil R17 (default) and R32 -> DAgger via SIM `--on-policy` -> EVAL -> `@genclass/runtime-model@0.1.0` -> demos rerun -> `@genclass/runtime@0.1.0`. |
