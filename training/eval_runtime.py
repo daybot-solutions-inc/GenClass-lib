@@ -111,7 +111,13 @@ def load_rows(path: Path, limit: int | None) -> dict[str, dict]:
             if limit is not None and i >= limit:
                 break
             r = json.loads(line)
-            rows[r["id"]] = {"meta": r.get("meta") or {}, "labels": r.get("labels") or {}, "family": r.get("family", ""),
+            st = r.get("state")
+            chars = (sum(len(k) + 2 + len("\n".join(v) if isinstance(v, list) else str(v)) + 1 for k, v in st.items())
+                     if isinstance(st, dict) else len(str(st)))
+            m = dict(r.get("meta") or {})
+            bud = m.get("budget") or (m.get("situation") or {}).get("budget") if isinstance(m.get("situation"), dict) else m.get("budget")
+            m["_budget"] = str(bud) if bud else ("≤1100" if chars <= 1100 else "≤2100" if chars <= 2100 else ">2100")
+            rows[r["id"]] = {"meta": m, "labels": r.get("labels") or {}, "family": r.get("family", ""),
                              "questions": {q: list(v.get("criteria", {})) if isinstance(v.get("criteria"), dict) else None
                                            for q, v in r["questions"].items()}}
     return rows
@@ -252,6 +258,7 @@ def decision_metrics(recs: list[dict], rows: dict[str, dict], taus: dict | None,
     by_trig: dict[str, Counter] = defaultdict(Counter)
     by_case: dict[str, Counter] = defaultdict(Counter)
     by_style: dict[str, Counter] = defaultdict(Counter)
+    by_budget: dict[str, Counter] = defaultdict(Counter)
     diag_conf = defaultdict(Counter)
     act_acc = Counter()
     fires_detail = Counter()
@@ -279,7 +286,8 @@ def decision_metrics(recs: list[dict], rows: dict[str, dict], taus: dict | None,
         by_trig[trig]["passive_rows"] += int(passive_best)
         diag_conf[gold_d][top_d] += 1
         case = meta.get("case") or meta.get("family") or "?"
-        for c, key in ((by_case[case], None), (by_style[meta.get("style", "sim")], None)):
+        bud = meta.get("_budget", "?")
+        for c, key in ((by_case[case], None), (by_style[meta.get("style", "sim")], None), (by_budget[bud], None)):
             c["n"] += 1
             c["act_ok"] += int(top_a == gold_a)
             c["diag_ok"] += int(top_d == gold_d)
@@ -298,7 +306,7 @@ def decision_metrics(recs: list[dict], rows: dict[str, dict], taus: dict | None,
                 thr = THRESH[TIER.get(cand, "heal")]
                 fire = float(sum(pa[i] for i in A)) >= thr and top_d != "expected"
             gold_permitted = TIER.get(gold_a, "heal") in permitted
-            for c in (stats["all"], by_trig[trig], by_case[case], by_style[meta.get("style", "sim")]):
+            for c in (stats["all"], by_trig[trig], by_case[case], by_style[meta.get("style", "sim")], by_budget[bud]):
                 c[f"{m}_rows_passive"] += int(passive_best)
                 c[f"{m}_rows_active"] += int(not passive_best and gold_permitted)
                 c[f"{m}_fires"] += int(fire)
@@ -349,7 +357,7 @@ def decision_metrics(recs: list[dict], rows: dict[str, dict], taus: dict | None,
         out["by_trigger"][t] = {"n": c["n"], "action_acc": round(c["act_ok"] / c["n"], 4),
                                 "diag_acc": round(c["diag_ok"] / c["n"], 4), "passive_frac": round(c["passive_rows"] / c["n"], 3),
                                 **summ(c)}
-    for name, groups in (("by_case", by_case), ("by_style", by_style)):
+    for name, groups in (("by_case", by_case), ("by_style", by_style), ("by_budget", by_budget)):
         out[name] = {}
         for t, c in sorted(groups.items()):
             out[name][t] = {"n": c["n"], "action_acc": round(c["act_ok"] / c["n"], 4), "diag_acc": round(c["diag_ok"] / c["n"], 4),

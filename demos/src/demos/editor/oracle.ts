@@ -4,6 +4,7 @@ import type { Oracle, OracleContext } from "../../shared/demo-def.ts";
 import { epochNow } from "../../shared/server.ts";
 import type { Score } from "../../shared/types.ts";
 import type { ServerNote } from "../../server/worlds/editor.ts";
+import { nativeClearInterval, nativeSetInterval } from "../../shared/native.ts";
 
 const LIE_BUG_MS = 1500;
 
@@ -22,7 +23,7 @@ export function editorOracle(ctx: OracleContext): Oracle {
 
   return {
     start() {
-      timer = setInterval(sample, 25);
+      timer = nativeSetInterval(sample, 25);
     },
     check(cond) {
       if (cond === "loaded") return (body()?.value.length ?? 0) > 0;
@@ -30,7 +31,7 @@ export function editorOracle(ctx: OracleContext): Oracle {
     },
     async finish(): Promise<Score> {
       sample();
-      clearInterval(timer);
+      nativeClearInterval(timer);
       const truth = await ctx.link.truth<{ notes: Record<string, ServerNote> }>();
       const id = String(ctx.scenario.intent.noteId ?? "n1");
       const note = truth.state.notes[id];

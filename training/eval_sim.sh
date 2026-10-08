@@ -7,14 +7,15 @@
 set -u
 cd ~/gcl-train
 PY=$HOME/jev/.venv/bin/python
-export PYTHONPATH=$HOME/jev:$HOME/gcl-train/training HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS=6
+T=${EVAL_THREADS:-6}
+export PYTHONPATH=$HOME/jev:$HOME/gcl-train/training HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS=$T
 NAME="$1"; shift
 mkdir -p out/eval out/cal out/records logs
 pids=()
 for M in "$@"; do
   for D in data/${NAME}_t* data/${NAME}_d*; do
     S=$( [ -f "$D/test.jsonl" ] && echo test || echo dev )
-    $PY training/eval_runtime.py --ckpt models/$M --data "$D" --split $S --threads 6 --batch 32 \
+    $PY training/eval_runtime.py --ckpt models/$M --data "$D" --split $S --threads $T --batch 32 \
         --records-dir out/records --out out/eval/.shard-$M-$(basename "$D").json > logs/eval-$M-$(basename "$D").log 2>&1 &
     pids+=($!)
   done

@@ -4,6 +4,7 @@ import type { Oracle, OracleContext } from "../../shared/demo-def.ts";
 import { epochNow } from "../../shared/server.ts";
 import type { Score } from "../../shared/types.ts";
 import { SERVICES, truthAt, type Health, type Incident } from "../../server/worlds/status.ts";
+import { nativeClearInterval, nativeSetInterval } from "../../shared/native.ts";
 
 const GRACE_MS = 3500;
 const POLL_MS = 2000;
@@ -28,7 +29,7 @@ export function statusOracle(ctx: OracleContext): Oracle {
 
   return {
     start() {
-      timer = setInterval(() => samples.push(read()), 50);
+      timer = nativeSetInterval(() => samples.push(read()), 50);
     },
     check(cond) {
       if (cond === "loaded") return Object.values(read().shown).every((s) => s !== "unknown");
@@ -36,7 +37,7 @@ export function statusOracle(ctx: OracleContext): Oracle {
     },
     async finish(): Promise<Score> {
       samples.push(read());
-      clearInterval(timer);
+      nativeClearInterval(timer);
       const truth = await ctx.link.truth<{ incidents: Incident[] }>();
       const incidents = truth.state.incidents;
       const { log } = await ctx.link.log(0);

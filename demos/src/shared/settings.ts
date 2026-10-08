@@ -54,6 +54,11 @@ export interface TrialParams {
   run: string;
 }
 
+/** Investigation knob: ?trace=1 records every proposed/applied write and decision on trial pages. */
+export function traceOn(): boolean {
+  return params.get("trace") === "1";
+}
+
 /** Experiment knob: ?budget=<ms> sets policy.holdBudgetMs (default: the runtime's 300 ms). */
 export function holdBudget(): number | undefined {
   const v = Number(params.get("budget"));

@@ -3,6 +3,7 @@ import type { Oracle, OracleContext } from "../../shared/demo-def.ts";
 import { epochNow } from "../../shared/server.ts";
 import type { Score } from "../../shared/types.ts";
 import { BOARD_SEED, type ColumnId } from "../../server/worlds/board.ts";
+import { nativeClearInterval, nativeSetInterval } from "../../shared/native.ts";
 
 const WINDOW_MS = 1500;
 
@@ -38,7 +39,7 @@ export function boardOracle(ctx: OracleContext): Oracle {
 
   return {
     start() {
-      timer = setInterval(() => samples.push(read()), 50);
+      timer = nativeSetInterval(() => samples.push(read()), 50);
     },
     check(cond) {
       if (cond === "loaded") return ctx.el.querySelectorAll("[data-card]").length > 0;
@@ -46,7 +47,7 @@ export function boardOracle(ctx: OracleContext): Oracle {
     },
     async finish(): Promise<Score> {
       samples.push(read());
-      clearInterval(timer);
+      nativeClearInterval(timer);
       const truth = await ctx.link.truth<{ cards: Record<string, { column: string; version: number }>; moves: Move[] }>();
       const moves = truth.state.moves;
       const initial: Record<string, string> = Object.fromEntries(BOARD_SEED.map(([id, , c]) => [id, c]));
@@ -99,9 +100,17 @@ export function boardOracle(ctx: OracleContext): Oracle {
       if (mismatched.length) reasons.push(`${mismatched.length} card${mismatched.length > 1 ? "s" : ""} in the wrong column at the end (${mismatched.join(", ")})`);
       else if (maxRun > 2000) reasons.push(`board disagreed with the server for ${(maxRun / 1000).toFixed(1)} s`);
       if (last.pending) reasons.push(`${last.pending} card${last.pending > 1 ? "s" : ""} stuck “syncing”`);
+      // For investigations: per mismatched card, what the screen and the server ended with, and the server's moves.
+      const details = {
+        mismatched: mismatched.map((id) => ({ card: id, shown: last.cols[id], server: truth.state.cards[id].column, moves: moves.filter((m) => m.card === id) })),
+        t0: ctx.t0,
+        tEnd: ctx.tEnd,
+        samples: samples.filter((s, i) => i === 0 || mismatched.some((id) => s.cols[id] !== samples[i - 1].cols[id])).map((s) => ({ t: s.t, cols: Object.fromEntries(mismatched.map((id) => [id, s.cols[id]])) })),
+      };
       return {
         bug: reasons.length > 0,
         reasons,
+        details,
         metrics: {
           finalMismatches: mismatched.length,
           divergedMs: Math.round(divergedMs),

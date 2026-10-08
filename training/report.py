@@ -75,6 +75,23 @@ def main() -> None:
                          f"{pct(x['heal']['precision'])} (n={x['n']}, passive {x['passive_frac']})")
         print(f"| {t} | " + " | ".join(cells) + " |")
     print()
+    buds = sorted({t for _, r in reps for t in (dec(r).get("by_budget") or {})})
+    if buds:
+        print("Per state budget (action acc / diagnosis acc / guard FIR / heal FIR / heal precision (fires) / heal recall):\n")
+        print("| budget | " + " | ".join(n for n, _ in reps) + " |")
+        print("|---|" + "---|" * len(reps))
+        for t in buds:
+            cells = []
+            for _, r in reps:
+                x = (dec(r).get("by_budget") or {}).get(t)
+                if not x:
+                    cells.append("–")
+                    continue
+                cells.append(f"{pct(x['action_acc'])} / {pct(x['diag_acc'])} / {fir(x['guard']['false_intervention_rate'])} / "
+                             f"{fir(x['heal']['false_intervention_rate'])} / {pct(x['heal']['precision'])} ({x['heal']['fires']}) / "
+                             f"{pct(x['heal']['recall'])} (n={x['n']})")
+            print(f"| {t} | " + " | ".join(cells) + " |")
+        print()
     print("Threshold sweep (heal-mode permitted set: summed probability ≥ t, candidate = argmax among permitted, diagnosis gate on): fires / false fires / precision\n")
     print("| threshold | " + " | ".join(n for n, _ in reps) + " |")
     print("|---|" + "---|" * len(reps))

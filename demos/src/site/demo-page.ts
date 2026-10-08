@@ -11,7 +11,7 @@ import type { DemoDefinition } from "../shared/demo-def.ts";
 import { startGenClass, statusText, RUNTIME_KIND } from "../shared/genclass.ts";
 import { TrialHarness } from "../shared/harness.ts";
 import { ServerLink, ensureServiceWorker, wait } from "../shared/server.ts";
-import { getMode, holdBudget, loadChaos, modelBaseUrl, sessionId, setMode, siteRoot, trialParams, urlParams, type TrialParams } from "../shared/settings.ts";
+import { getMode, holdBudget, loadChaos, modelBaseUrl, sessionId, setMode, siteRoot, traceOn, trialParams, urlParams, type TrialParams } from "../shared/settings.ts";
 import { MODES, type GcMode } from "../shared/types.ts";
 import { mountActivity } from "./activity.ts";
 import { mountChaosPanel } from "./chaos-panel.ts";
@@ -20,6 +20,7 @@ import { esc, h, toast } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { mountNetLane } from "./netlane.ts";
 import { mountTrials } from "./trials-panel.ts";
+import { nativeClearInterval, nativeSetInterval, nativeSetTimeout } from "../shared/native.ts";
 
 const MODE_LABEL: Record<GcMode, string> = { off: "Off", guard: "Guard", heal: "Heal" };
 const MODE_HINT: Record<GcMode, string> = {
@@ -113,9 +114,9 @@ function modeCard(gc: Runtime, mode: GcMode): HTMLElement {
   };
   gc.on("status", paint);
   paint();
-  const t = setInterval(() => {
+  const t = nativeSetInterval(() => {
     paint();
-    if (gc.status.state !== "loading") clearInterval(t);
+    if (gc.status.state !== "loading") nativeClearInterval(t);
   }, 400);
   return h(
     "div",
@@ -155,7 +156,7 @@ async function bootInteractive(def: DemoDefinition): Promise<void> {
   link.startHeartbeat();
   link.onRestart = () => {
     toast("The mock server restarted and its data was reset. Reloading…");
-    setTimeout(() => location.reload(), 1500);
+    nativeSetTimeout(() => location.reload(), 1500);
   };
   addEventListener("pagehide", () => link.stop());
 
@@ -230,7 +231,7 @@ async function bootTrial(def: DemoDefinition, trial: TrialParams): Promise<void>
   link.startHeartbeat();
   addEventListener("pagehide", () => void link.bye());
 
-  const gcs = startGenClass(trial.mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget() });
+  const gcs = startGenClass(trial.mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget(), trace: traceOn() });
   if (trial.mode !== "off") await Promise.race([gcs.gc.ready.catch(() => undefined), wait(120000)]);
 
   const { frame, body } = appFrame(def, trial.mode);

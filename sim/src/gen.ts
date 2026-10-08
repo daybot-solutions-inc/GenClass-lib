@@ -23,10 +23,15 @@ interface Args {
   ask: boolean;
   fake: boolean;
   sample: boolean;
+  /** Resumable parts mode: fixed seed ranges of `chunk` seeds, one file set per part. */
+  parts: boolean;
+  chunk: number;
+  /** Only merge existing parts into train/dev/test.jsonl. */
+  mergeOnly: boolean;
 }
 
 function parse(argv: string[]): Args {
-  const a: Args = { rows: 1000, out: "sim/out/run", seed: 1, workers: 4, maxPoints: 6, testKeep: 0.33, explore: 1, ask: true, fake: false, sample: false };
+  const a: Args = { rows: 1000, out: "sim/out/run", seed: 1, workers: 4, maxPoints: 6, testKeep: 0.33, explore: 1, ask: true, fake: false, sample: false, parts: false, chunk: 100, mergeOnly: false };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     const v = argv[i + 1];
@@ -41,6 +46,9 @@ function parse(argv: string[]): Args {
       case "--no-ask": a.ask = false; break;
       case "--allow-fake": a.fake = true; break;
       case "--sample": a.sample = true; break;
+      case "--parts": a.parts = true; break;
+      case "--chunk": a.chunk = Number(v); i++; break;
+      case "--merge-only": a.parts = true; a.mergeOnly = true; break;
       default: throw new Error(`unknown argument ${k}`);
     }
   }
@@ -99,6 +107,28 @@ async function main(): Promise<void> {
   let produced = 0;
   let nextSeed = a.seed;
   const batch = 2;
+  // Parts mode (resumable): part i = seeds [seed + i*chunk, seed + (i+1)*chunk). Finished parts have a .json marker
+  // and are skipped on restart; half-written parts (.tmp) are discarded and regenerated.
+  const partsDir = join(out, "parts");
+  const doneParts = new Set<number>();
+  let nextPart = 0;
+  if (a.parts) {
+    mkdirSync(partsDir, { recursive: true });
+    for (const f of readdirSync(partsDir)) {
+      if (f.endsWith(".tmp")) rmSync(join(partsDir, f), { force: true });
+      const m = /^part-(\d+)\.json$/.exec(f);
+      if (m) {
+        const info = JSON.parse(readFileSync(join(partsDir, f), "utf8")) as { rows: Record<string, number> };
+        doneParts.add(Number(m[1]));
+        produced += Object.values(info.rows).reduce((x, y) => x + y, 0);
+      }
+    }
+    if (doneParts.size) console.log(`[gen] resuming: ${doneParts.size} finished parts, ${produced} rows already written`);
+  }
+  if (a.mergeOnly) {
+    await mergeParts(out, partsDir);
+    return;
+  }
   const t0 = Date.now();
   let lastLog = 0;
   await new Promise<void>((done, fail) => {
@@ -107,6 +137,13 @@ async function main(): Promise<void> {
     const feed = (w: Worker) => {
       if (produced >= target) {
         w.postMessage({ stop: true });
+        return;
+      }
+      if (a.parts) {
+        while (doneParts.has(nextPart)) nextPart++;
+        const part = nextPart++;
+        const from = a.seed + part * a.chunk;
+        w.postMessage({ part, seeds: Array.from({ length: a.chunk }, (_, i) => from + i) });
         return;
       }
       const seeds = Array.from({ length: batch }, () => nextSeed++);
@@ -120,6 +157,10 @@ async function main(): Promise<void> {
       workers.push(w);
       w.on("message", (m: Record<string, unknown>) => {
         if (m.type === "ready" || m.type === "idle") return feed(w);
+        if (m.type === "part-done") {
+          doneParts.add(Number(m.part));
+          return;
+        }
         if (m.type === "fatal") return fail(new Error(String(m.error)));
         if (m.type === "error") {
           if (agg.errors.length < 20) agg.errors.push(`seed ${m.seed}: ${m.error}`);
@@ -207,6 +248,11 @@ async function main(): Promise<void> {
     }
   });
   const secs = (Date.now() - t0) / 1000;
+  if (a.parts) {
+    writeFileSync(join(out, "stats.session.json"), JSON.stringify({ note: "this session only; run scripts/analyze.py on parts for totals", rows: produced, seconds: secs, rowsBySplitTrigger: agg.rowsBySplitTrigger, drops: agg.drops, errors: agg.errors }, null, 2));
+    console.log(`[gen] parts session done in ${secs.toFixed(0)} s; ${doneParts.size} parts finished; ${produced} rows in ${partsDir}`);
+    return;
+  }
   // Merge shards.
   const shardDir = join(out, "shards");
   const files = existsSync(shardDir) ? readdirSync(shardDir) : [];
@@ -310,6 +356,25 @@ async function main(): Promise<void> {
     writeFileSync(join(sampleDir, "sample-stats.json"), JSON.stringify(stats, null, 2));
     console.log(`[gen] wrote ${picked.length} sample rows and EXAMPLES.md to ${sampleDir}`);
   }
+}
+
+/** Concatenate finished parts into <out>/{train,dev,test}.jsonl (parts are left in place). */
+async function mergeParts(out: string, partsDir: string): Promise<void> {
+  const files = existsSync(partsDir) ? readdirSync(partsDir).filter((f) => f.endsWith(".jsonl")).sort() : [];
+  const counts: Record<string, number> = {};
+  for (const split of ["train", "dev", "test"]) {
+    const dst = createWriteStream(join(out, `${split}.jsonl`));
+    for (const f of files.filter((x) => x.endsWith(`.${split}.jsonl`))) {
+      const rl = createInterface({ input: createReadStream(join(partsDir, f)) });
+      for await (const line of rl) {
+        if (!line) continue;
+        dst.write(line + "\n");
+        counts[split] = (counts[split] ?? 0) + 1;
+      }
+    }
+    await new Promise((r) => dst.end(r));
+  }
+  console.log(`[gen] merged parts: ${JSON.stringify(counts)} -> ${out}/{train,dev,test}.jsonl`);
 }
 
 main().catch((e) => {

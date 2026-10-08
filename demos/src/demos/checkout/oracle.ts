@@ -4,6 +4,7 @@ import type { Oracle, OracleContext } from "../../shared/demo-def.ts";
 import { epochNow } from "../../shared/server.ts";
 import type { Score } from "../../shared/types.ts";
 import type { ServerOrder } from "../../server/worlds/checkout.ts";
+import { nativeClearInterval, nativeSetInterval } from "../../shared/native.ts";
 
 const DRIFT_BUG_MS = 1000;
 const cents = (s: string | null | undefined) => Number((s ?? "").replace(/[^0-9]/g, "") || 0);
@@ -45,7 +46,7 @@ export function checkoutOracle(ctx: OracleContext): Oracle {
 
   return {
     start() {
-      timer = setInterval(() => samples.push(read()), 30);
+      timer = nativeSetInterval(() => samples.push(read()), 30);
     },
     check(cond) {
       if (cond === "loaded") return $$('[data-testid^="add-"]').length > 0;
@@ -57,7 +58,7 @@ export function checkoutOracle(ctx: OracleContext): Oracle {
     },
     async finish(): Promise<Score> {
       samples.push(read());
-      clearInterval(timer);
+      nativeClearInterval(timer);
       const truth = await ctx.link.truth<{ cart: Record<string, number>; orders: ServerOrder[] }>();
       const orders = truth.state.orders;
       const last = samples[samples.length - 1];

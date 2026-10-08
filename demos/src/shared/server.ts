@@ -4,22 +4,24 @@
 import type { Chaos } from "./chaos.ts";
 import type { ControlMessage, ControlReply, DemoId, EventEntry, LogEntry } from "./protocol.ts";
 
+import { nativeClearInterval, nativeClearTimeout, nativeSetInterval, nativeSetTimeout } from "./native.ts";
+
 declare const __BUILD_ID__: string;
 const BUILD = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "dev";
 
 export class ServerError extends Error {}
 
 function wait(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms));
+  return new Promise<void>((r) => nativeSetTimeout(r, ms));
 }
 
 function waitForControllerChange(ms: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const t = setTimeout(() => resolve(false), ms);
+    const t = nativeSetTimeout(() => resolve(false), ms);
     navigator.serviceWorker.addEventListener(
       "controllerchange",
       () => {
-        clearTimeout(t);
+        nativeClearTimeout(t);
         resolve(true);
       },
       { once: true },
@@ -30,9 +32,9 @@ function waitForControllerChange(ms: number): Promise<boolean> {
 function rawSend(target: ServiceWorker, msg: unknown, timeoutMs = 10000): Promise<ControlReply> {
   return new Promise((resolve, reject) => {
     const ch = new MessageChannel();
-    const t = setTimeout(() => reject(new ServerError(`mock server did not answer ${(msg as { type: string }).type}`)), timeoutMs);
+    const t = nativeSetTimeout(() => reject(new ServerError(`mock server did not answer ${(msg as { type: string }).type}`)), timeoutMs);
     ch.port1.onmessage = (e) => {
-      clearTimeout(t);
+      nativeClearTimeout(t);
       ch.port1.close();
       resolve(e.data as ControlReply);
     };
@@ -145,7 +147,7 @@ export class ServerLink {
         if (r.created) this.onRestart?.();
       });
     });
-    this.hb = setInterval(async () => {
+    this.hb = nativeSetInterval(async () => {
       try {
         const r = await this.send({ type: "ping", sid: this.sid }, 4000);
         if (r.known === false) {
@@ -159,7 +161,7 @@ export class ServerLink {
   }
 
   stop(): void {
-    if (this.hb) clearInterval(this.hb);
+    if (this.hb) nativeClearInterval(this.hb);
     this.hb = null;
   }
 

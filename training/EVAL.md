@@ -4,9 +4,8 @@ Candidates: **R17** (ettin-encoder-17m, d 256 × 7 layers, fresh heads) and **R3
 10 layers), both with the pruned 16,364-token vocabulary. Everything here is on held-out data; all runs on Azure
 (`c01`), with `training/eval_runtime.py` and `training/report.py`.
 
-Status (2026-10-07, 23:10 UTC): **stage 1c is final; stage 2 is a pilot** on pre-freeze SIM data (`r300k`, runtime
-and SIM labels changed afterwards: fact fixes, sharper action labels, the new `transient` diagnosis). The pilot
-numbers show the pipeline and the direction, not the shipping model.
+Status (2026-10-08): stage 1c final; stage-2 pilot on pre-freeze SIM data (`r300k`); **final round 1** on the frozen
+runtime (`situation-v1`) with SIM phase A — see the last section. The shipping candidates are the final-round models.
 
 ## Metrics
 
@@ -97,6 +96,29 @@ and the primitives (versions, identity, streaks, baselines, invariants) it start
   questions add ≈ 185 tokens (fewer with compact questions).
 - So at the WASM-1-thread budget (≈ 600 tokens) R17 decides in ≈ 0.25 s and R32 in ≈ 0.65 s.
 
-## Stage 2 pilot (SIM `r300k`, pre-freeze)
+## Stage 2 pilot (pre-freeze data: SIM `r300k`)
 
-(filled in below when the evaluation finishes)
+Both models continued from stage 1c on SIM `r300k` train (224k rows) + 24% curriculum replay, `max_len` 2048:
+R32 1.5 passes (625 steps, 4 nodes), R17 4 passes (1,664 steps, 6 nodes). Evaluated on 20,000 random rows of SIM's
+held-out test split (13,058 decision rows), temperatures fitted on SIM dev (7,426 rows).
+
+| model | action acc | diagnosis acc | guard FIR | guard fires | heal FIR | heal precision (fires) | heal recall | mean cost: heal policy / always passive / oracle | ECE action / diag |
+|---|---|---|---|---|---|---|---|---|---|
+| R32-s2-pilot | 77.5 | 90.8 | 0.02% (2/10,234) | 2 | 0.06% (6/10,234) | 75.5 (49) | 1.3% | 33.99 / 34.03 / 32.88 | 0.24 / 0.012 |
+| R17-s2-pilot | 78.3 | 91.1 | 0.00% (0/10,234) | 4 | 0.08% (8/10,234) | 65.5 (58) | 1.4% | 33.97 / 34.03 / 32.88 | 0.26 / 0.017 |
+
+Per trigger (action / diagnosis acc): error 94.5 / 93, failure 71 / 85, inconsistency 85 / 97, mutation 84–86 / 90,
+request 72 / 95, stall 64–68 / 87–89, transition 83–85 / 89–90 (R32 / R17 within ~2 points of each other
+everywhere). Threshold sweep (heal, summed mass): at 0.8 the models fire 130 (R32) / 173 (R17) times with 70% / 66%
+precision; at 0.9 21 / 27 times with 81% / 93% precision.
+
+Reading: after stage 2 the models are **precise but almost never confident enough to act** (recall ≈ 1%): the
+pre-freeze SIM action labels were soft (a temperature of ≈ 2 over costs, e.g. 0.31 / 0.34 / 0.34 on clear stale
+writes), so the models learned soft action distributions that rarely put ≥ 0.8 on the non-passive actions. The
+gated policy saves only ≈ 0.05 cost units per decision of the 1.15 available (oracle). Diagnoses are already good
+(91%). SIM's frozen data uses uncertainty-based labels (≥ 0.95 on clear cases), which is what the final round
+trains on; R17 matches R32 here, which supports R17 as the WASM default.
+
+## Final round 1 (frozen runtime `situation-v1`, SIM phase A)
+
+(in progress)

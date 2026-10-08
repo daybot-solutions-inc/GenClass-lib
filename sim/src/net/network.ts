@@ -99,7 +99,20 @@ export type NetCause =
   | "aborted"
   | "notfound";
 
-export const SIM_OP_HEADER = "x-sim-op";
+/**
+ * Correlation channel app op -> network entry: a per-request tracing header, which the runtime excludes from request
+ * identity (CONTRACT/STATUS: tracing ids do not change what a request means) and never serializes. The value is a
+ * realistic random-looking id; the network strips it before processing.
+ */
+export const SIM_OP_HEADER = "x-request-id";
+export function simOpHeaderValue(opId: number): string {
+  return `req-${(opId * 2654435761 >>> 0).toString(16).padStart(8, "0")}-${opId.toString(36)}`;
+}
+export function parseSimOpHeader(v: string | null): number | undefined {
+  if (!v || !v.startsWith("req-")) return undefined;
+  const n = parseInt(v.slice(v.lastIndexOf("-") + 1), 36);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 export interface NetEntry {
   id: number;
@@ -208,7 +221,7 @@ export class Network {
     const href = typeof input === "string" ? input : input instanceof URL ? input.href : req ? req.url : String(input);
     const method = String(init?.method ?? req?.method ?? "GET").toUpperCase();
     const headers = new Headers((init?.headers as HeadersInit | undefined) ?? req?.headers ?? undefined);
-    const simOp = headers.get(SIM_OP_HEADER);
+    const simOp = parseSimOpHeader(headers.get(SIM_OP_HEADER));
     headers.delete(SIM_OP_HEADER);
     const signal = (init?.signal ?? req?.signal ?? null) as AbortSignal | null;
     const bodyInit = init?.body;
@@ -226,7 +239,7 @@ export class Network {
   /** Called synchronously when a request enters the network (after the runtime let it through). */
   onSend: ((e: NetEntry) => void) | null = null;
 
-  private send(href: string, method: string, headers: Headers, raw: string, signal: AbortSignal | null, simOp: string | null): Promise<Response> {
+  private send(href: string, method: string, headers: Headers, raw: string, signal: AbortSignal | null, simOp: number | undefined): Promise<Response> {
     const url = new URL(href, BASE_URL);
     const t0 = this.loop.now();
     const identity = `${method} ${url.pathname}${url.search} ${raw}`;
@@ -286,7 +299,7 @@ export class Network {
     };
     if (slowCause) e.slowCause = slowCause;
     if (salt !== null) e.salt = salt;
-    if (simOp) e.simOp = Number(simOp);
+    if (simOp !== undefined) e.simOp = simOp;
     this.log.push(e);
     this.inflight++;
     if (this.onSend) this.onSend(e);

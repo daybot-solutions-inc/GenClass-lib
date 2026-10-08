@@ -3,7 +3,7 @@
 // real code paths, not flags read by the oracle.
 
 import type { ApiStyle } from "../net/server.js";
-import { SIM_OP_HEADER } from "../net/network.js";
+import { SIM_OP_HEADER, simOpHeaderValue } from "../net/network.js";
 import type { SimOp } from "../oracle/knowledge.js";
 import type { AppEnv, Store, WriteMeta } from "./env.js";
 
@@ -87,7 +87,7 @@ export class Kit {
 
   private async callNet(op: SimOp, opts: CallOpts): Promise<CallResult> {
     const env = this.env;
-    const headers: Record<string, string> = { accept: "application/json", ...(opts.headers ?? {}), [SIM_OP_HEADER]: String(op.id) };
+    const headers: Record<string, string> = { accept: "application/json", ...(opts.headers ?? {}), [SIM_OP_HEADER]: simOpHeaderValue(op.id) };
     if (op.body !== undefined) headers["content-type"] = "application/json";
     let ctl: AbortController | null = null;
     let timer: unknown = null;

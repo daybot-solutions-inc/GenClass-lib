@@ -32,7 +32,8 @@ describe("rows", () => {
     for (const r of rows) {
       expect(["train", "dev", "test"]).toContain(r.split);
       expect(typeof r.id).toBe("string");
-      expect(JSON.stringify(r.state)).not.toContain("x-sim-op");
+      expect(JSON.stringify(r.state)).not.toContain("x-request-id");
+      expect(JSON.stringify(r.state)).not.toMatch(/req-[0-9a-f]{8}-/);
       for (const [qid, l] of Object.entries(r.labels)) {
         const q = r.questions[qid];
         expect(q, `${r.id} label ${qid} has a question`).toBeTruthy();

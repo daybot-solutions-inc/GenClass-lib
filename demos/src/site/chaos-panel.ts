@@ -1,6 +1,7 @@
 // Chaos controls for the mock server (applies to this page's server session only).
 import { CALM, PRESETS, describeChaos, matchPreset, mergeChaos, withPreset, type Chaos, type PresetId, type RouteChaos } from "../shared/chaos.ts";
 import { saveChaos } from "../shared/settings.ts";
+import { nativeClearTimeout, nativeSetTimeout } from "../shared/native.ts";
 import type { ServerLink } from "../shared/server.ts";
 import type { DemoId } from "../shared/types.ts";
 import { h } from "./dom.ts";
@@ -43,8 +44,8 @@ export function mountChaosPanel(demo: DemoId, link: ServerLink, initial: Chaos, 
 
   let timer: ReturnType<typeof setTimeout> | null = null;
   const push = () => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
+    if (timer) nativeClearTimeout(timer);
+    timer = nativeSetTimeout(() => {
       void link.setChaos(chaos, true).catch(() => {});
       saveChaos(demo, chaos);
     }, 120);

@@ -51,7 +51,8 @@ function moveCard(w: World<BoardState>, id: string, column: ColumnId, by: string
   card.updatedBy = by;
   card.updatedAt = now();
   s.moves.push({ t: card.updatedAt, card: id, column, by, version: card.version });
-  w.publish("card.moved", { card: { ...card } });
+  // Key for common random numbers: the logical event, without timestamps that differ between runs.
+  w.publish("card.moved", { card: { ...card } }, `${id}:v${card.version}:${column}:${by}`);
   return card;
 }
 

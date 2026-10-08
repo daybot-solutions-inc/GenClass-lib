@@ -97,6 +97,18 @@ train into `data/s2/sim1/`, bundles it; then the same launcher with `--stream $G
 a mixture with ≈ 80% SIM and ≈ 20% curriculum replay (`data/s2/cur3`: 300k rows, 80% runtime-exact, including
 coincidental-invariant cases), several passes, `--init-from` the stage-1 checkpoints; evaluate on SIM dev/test.
 
+### Final rounds (frozen runtime `situation-v1`)
+
+```
+training/import_final.sh /home/azureuser/gcl/sim/sim/out/final-a simA   # c01: shards, eval subsets, bundle
+# start c02-c11, node.sh sync each, pull ~/xfer/final_simA.tar from c01 (10.0.0.6:8799) on each node
+training/launch_final1.sh <R32 passes> <R17 passes>                      # R32 c02-c07 (rank 0 c02), R17 c09-c11+c08
+# on each rank-0 node, detached: wait for models/<M>/meta.json "final": true, then training/final_post.sh
+#   (SIM eval with dev-fitted temperatures -> export with them -> serve the export tar on :8801)
+# on the train VM, detached: training/pull_on_train.sh <node ip> <M> final1 <r17|r32>  (unpack to
+#   ~/gcl/train-out/final1/<sub>/, verify sha256, onnxruntime-web + node check)
+```
+
 ## 4. Evaluation — `eval_runtime.py`
 
 ```

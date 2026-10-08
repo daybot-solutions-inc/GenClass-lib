@@ -2,47 +2,22 @@
 
 Each example shows the situation exactly as the runtime handed it to the decider, the questions (after the documented transform), the labels, and the per-action counterfactual costs (lower is better; `adjusted` adds the tier premium / tie rule used for the soft label).
 
-## 1. mutation — marketing — cart+form/mutation
+## 1. mutation — commerce — search+settings/mutation
 
-id `sim-1100-d11`, split `train`, chaos `degraded`, features ["cart","form"]
+id `sim-1086-d21`, split `train`, chaos `degraded`, features ["search","settings"]
 
 ```text
-app: Campaignly — /audiences
-trigger: A write to newAudienceForm.form.name, newAudienceForm.placing from GET /v1/my/audiences (#49) is about to be applied.
+app: Cartwise — /app
+trigger: A write to preferences.options.emailReceipts, preferences.isSaving, preferences.error from PATCH /api/settings {emailReceipts: false} (#206) is about to be applied.
 facts:
-  - newAudienceForm.form.name was written 5 times by other operations since this write's cause (#49) started (v18 → v23), last 0.20s ago by user typed "trial" into input "Name" (#58), which started 1.54s after #49, from a later user action (#58).
-  - newAudienceForm.placing has not changed since this write's cause (#49) started (v3).
-  - An identical change to newAudienceForm.form.name, newAudienceForm.placing (set to "") was applied 6.01s ago by GET /v1/my/audiences (#16); they come from separate user actions 6.03s apart.
-  - basket.isLoading changed since this write's cause (#49) started: false → true, last by user clicked button "−" (#50) 0.86s after #49 started.
-  - This write comes from GET /v1/my/audiences (#49), started 1.73s ago, ended 0.00s ago with 200; its chain began with user submitted button "Build audience" (#47).
-  - This write would change newAudienceForm.form.name: "trial" → "".
-  - This write would change newAudienceForm.placing: true → false.
-in_flight:
-  - PATCH /v1/cart/items/:id {qty: 1} (#51) 0.87s so far, by #50
-  - PATCH /v1/cart/items/:id {qty: 1} (#57) 0.37s so far, by #56
-timeline:
-  - -2.69s write newAudienceForm.form.name: "tria" → "trial" (by #46, user)
-  - -2.09s user submitted button "Build audience" (#47)
-  - -2.09s write newAudienceForm.placing: false → true; newAudienceForm.failure: "Name is required" → null (by #47, user)
-  - -2.09s start POST /v1/my/audiences {name: "trial"} (#48, by #47)
-  - -1.73s end POST /v1/my/audiences {name: "trial"} (#48): 201 in 0.36s
-  - -1.73s start GET /v1/my/audiences (#49, by #48)
-  - -0.87s user clicked button "−" (#50)
-  - -0.70s user typed "tria" into input "Name" (4 keystrokes, #52–#55)
-  - -0.70s write newAudienceForm.form.name: "trial" → "t" (by #52, user)
-  - -0.61s write newAudienceForm.form.name: "t" → "tr" (by #53, user)
-  - -0.53s write newAudienceForm.form.name: "tr" → "tri" (by #54, user)
-  - -0.40s write newAudienceForm.form.name: "tri" → "tria" (by #55, user)
-  - -0.37s user clicked button "−" (#56)
-  - -0.20s user typed "trial" into input "Name" (#58)
-  - -0.20s write newAudienceForm.form.name: "tria" → "trial" (by #58, user)
-  - -0.00s end GET /v1/my/audiences (#49): 200 in 1.73s
-state:
-  - newAudienceForm.form.name = "trial" (v23, by #58 0.20s ago)
-  - newAudienceForm.placing = true (v3, by #47 2.09s ago)
-  - newAudienceForm.failure = null (v2, by #47 2.09s ago)
+  - preferences.error was written once by other operations since this write's cause (#206) started (version 0 → 1), last 1.13s ago by PATCH /api/settings {currency: true} (#235), which started 6.89s after #206, from a later…
+  - preferences.options.currency changed 4 times since this write's cause (#206) started and is back to false, last by PATCH /api/settings {currency: true} (#235) 6.90s after #206 started.
+  - preferences.options.compactView changed since this write's cause (#206) started: false → true, last by user changed switch "Compact view" to "on" (#211) 3.46s after #206 started.
+in_flight: none
+timeline: none
+state: none
 stats:
-  - GET /v1/my/audiences: 3 done, errors 0%, 2 in last 10s
+  - PATCH /api/settings: 36 done, median 0.29s, p95 0.92s, 1 of last 20 failed, 6 in last 10s (usual 7.71)
 ```
 
 Questions:
@@ -52,25 +27,25 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "normal behaviour, nothing is wrong",
-   "stale": "an earlier operation finishing late would replace more recent state",
-   "conflict": "concurrent operations are competing over the same state or resource",
-   "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the app's state is internally contradictory",
-   "failing": "an operation keeps failing or its failures follow a pattern",
-   "slow": "the request is unusually slow",
-   "overload": "work is being triggered far more often than usual",
-   "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a single failed attempt that a retry would probably fix"
+   "expected": null,
+   "stale": null,
+   "conflict": null,
+   "duplicate": null,
+   "inconsistent": null,
+   "failing": null,
+   "slow": null,
+   "overload": null,
+   "unusual": null,
+   "transient": null
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do with this write?",
   "criteria": {
-   "apply": "apply this write to the state",
-   "discard": "throw this write away and keep what is there",
-   "defer": "wait for the related requests to finish before deciding on this write"
+   "apply": null,
+   "discard": null,
+   "defer": null
   }
  }
 }
@@ -82,9 +57,9 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "apply": 0.0052,
-   "discard": 0.9905,
-   "defer": 0.0043
+   "apply": 0,
+   "discard": 1,
+   "defer": 0
   }
  },
  "diagnosis": {
@@ -94,50 +69,51 @@ Labels:
 }
 ```
 
-Costs: {"apply":278.0645,"discard":237.5574,"defer":278.0654}  
-Adjusted: {"apply":40.257,"discard":0,"defer":41.757}  
-Sim diagnosis: `stale`, best `discard`, subject {"kind":"write","how":"subject","ref":53}
+Costs: {"apply":13.1991,"discard":10.1194,"defer":13.1948}  
+Adjusted: {"apply":2.83,"discard":0,"defer":4.33}  
+Sim diagnosis: `stale`, best `discard`, subject {"kind":"write","how":"subject","ref":264}
 
 Cost parts:
 ```json
-{"apply":{"area":41.221,"final_client":4.331,"final_server":200,"relation_s":0,"relation_final":0,"errors":10,"uncaught":0,"wasted":3,"latency_s":21.409},"discard":{"area":41.896,"final_client":4.331,"final_server":150,"relation_s":0,"relation_final":0,"errors":11,"uncaught":0,"wasted":8,"latency_s":27.835},"defer":{"area":41.224,"final_client":4.331,"final_server":200,"relation_s":0,"relation_final":0,"errors":10,"uncaught":0,"wasted":3,"latency_s":21.4}}
+{"apply":{"area":7.555,"final_client":0.1,"final_server":0,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":0,"latency_s":15.9},"discard":{"area":4.476,"final_client":0.1,"final_server":0,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":0,"latency_s":15.9},"defer":{"area":7.551,"final_client":0.1,"final_server":0,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":0,"latency_s":15.915}}
 ```
 
 ## 2. mutation — energy — board+chat+toggle/mutation
 
-id `sim-1046-d0`, split `train`, chaos `normal`, features ["board","chat","toggle"]
+id `sim-1046-d2`, split `train`, chaos `normal`, features ["board","chat","toggle"]
 
 ```text
 app: Wattly — /meters
-trigger: A write to lanes.records from PATCH /api/meters/:id {status: "fault", version: 1} (#19) is about to be applied.
+trigger: A write to lanes.records from WS message app.example.test/ws/live-feed (#33) is about to be applied.
 facts:
-  - lanes.records was written twice by other operations since this write's cause (#19) started (v3 → v5), last 0.32s ago by WS message app.example.test/ws/live-feed (#21), which started 0.74s after #19.
-  - conversation.isSubmitting changed since this write's cause (#19) started: true → false, last by POST /api/replies {body: "MTR-301", clientId: "c9u6ar74v"} (#15) 0.01s after #19 started.
-  - This write comes from PATCH /api/meters/:id {status: "fault", version: 1} (#19), started 1.06s ago, ended 0.00s ago with 200; its chain began with user changed card "Meter MTR-140 MTR-01" to "[redacted]" (#18).
-  - This write would change lanes.records: 8 items, 1 changed: {id: "car_4k1k7ln5le9tz4", +6} → {id: "car_4k1k7ln5le9tz4", +6}.
-in_flight: none
+  - lanes.records has a pending local change: user changed card "Meter MTR-140" to "fault" (#30) wrote it 0.22s ago and its PATCH /api/meters/:id {status: "fault", version: 1} (#31) is still in flight; this write comes from WS message app.example.test/ws/live-fee…
+  - lanes.records has not changed since this write's cause (#33) started (version 5).
+  - This write comes from WS message app.example.test/ws/live-feed (#33), started 0.00s ago.
+  - This write would change lanes.records: 8 items, 1 changed: {id: "car_7lp0hpyf14d2ip", version: 1 → 2}.
+in_flight:
+  - PATCH /api/meters/:id {status: "fault", version: 1} (#31) 0.22s so far, by #30
 timeline:
-  - -5.18s start GET /api/meters (#1)
-  - -5.00s end GET /api/meters (#1): 200 in 0.18s
-  - -5.00s write lanes.records: 0 items → 8 items [{id: "car_0cjhxfo716fts1", +5}, …] (by #1)
-  - -3.25s user typed "MTR-301" into textarea "Reply" (7 keystrokes, #6–#13)
-  - -2.64s event ws.message {id: "car_3h1xh1gkaznkq1", status: "fault", +2} (#9)
-  - -2.64s write lanes.records: 8 items, 1 changed: {id: "car_3h1xh1gkaznkq1", +5} → {id: "car_3h1xh1gkaznkq1", +6} (by #9)
-  - -1.50s user pressed a key in textarea "Reply" (#14)
-  - -1.32s user pressed a key in textarea "Reply" (#16)
-  - -1.06s user changed card "Meter MTR-140 MTR-01" to "[redacted]" (#18)
-  - -1.06s write lanes.records: 8 items, 1 changed: {id: "car_4k1k7ln5le9tz4", +5} → {id: "car_4k1k7ln5le9tz4", +6} (by #18, user)
-  - -1.06s start PATCH /api/meters/:id {status: "fault", version: 1} (#19, by #18)
-  - -0.63s event ws.message {id: "car_4k1k7ln5le9tz4", status: "fault", +2} (#20)
-  - -0.63s write lanes.records: 8 items, 1 changed: {id: "car_4k1k7ln5le9tz4", +6} → {id: "car_4k1k7ln5le9tz4", +6} (by #20)
-  - -0.32s event ws.message {id: "car_4k1k7ln5le9tz4", status: "online", +2} (#21)
-  - -0.32s write lanes.records: 8 items, 1 changed: {id: "car_4k1k7ln5le9tz4", +6} → {id: "car_4k1k7ln5le9tz4", +6} (by #21)
-  - -0.00s end PATCH /api/meters/:id {status: "fault", version: 1} (#19): 200 in 1.06s
+  - -5.12s user typed "MTR-301" into textarea "Reply" (7 keystrokes, #6–#13)
+  - -4.52s event ws.message {id: "car_3h1xh1gkaznkq1", status: "fault", +2} (#9)
+  - -4.52s write lanes.records: 8 items, 1 changed: {id: "car_3h1xh1gkaznkq1", version: 1 → 2, status: undefined → "fault"} (by #9)
+  - -3.37s user pressed a key in textarea "Reply" (#14)
+  - -3.20s user pressed a key in textarea "Reply" (#16)
+  - -2.93s user changed card "Meter MTR-140 MTR-01" to "fault" (#18)
+  - -2.93s write lanes.records: 8 items, 1 changed: {id: "car_4k1k7ln5le9tz4", status: undefined → "fault"} (by #18, user)
+  - -2.51s event ws.message {id: "car_4k1k7ln5le9tz4", status: "fault", +2} (#20)
+  - -2.50s write lanes.records: 8 items, 1 changed: {id: "car_4k1k7ln5le9tz4", version: 1 → 2} (by #20)
+  - -2.19s event ws.message {id: "car_4k1k7ln5le9tz4", status: "online", +2} (#21)
+  - -2.19s GenClass Dropped the write to lanes.records from WS message app.example.test/ws/live-feed (#21); lanes stays…
+  - -1.64s user typed "MTR-01 M" into textarea "Reply" (8 keystrokes, #22–#29)
+  - -0.22s user changed card "Meter MTR-140" to "fault" (#30)
+  - -0.22s write lanes.records: 8 items, 1 changed: {id: "car_7lp0hpyf14d2ip", status: undefined → "fault"} (by #30, user)
+  - -0.09s user typed "MTR-01 MT" into textarea "Reply" (#32)
+  - -0.00s event ws.message {id: "car_7lp0hpyf14d2ip", status: "fault", +2} (#33)
 state:
-  - lanes.records = 8 items [{id: "car_0cjhxfo716fts1", +5}, {id: "car_0q1wv9l9416p8x", +5}, …] (v5, by #21 0.32s ago)
+  - lanes.records = 8 items [{id: "car_0cjhxfo716fts1", +5}, {id: "car_0q1wv9l9416p8x", +5}, …] (v5, by #30 0.22s ago)
   - lanes.problem = null (v0)
 stats:
-  - PATCH /api/meters/:id: 1 done, errors 0%, 1 in last 10s
+  - PATCH /api/meters/:id: 1 done, 0 of last 1 failed, 2 in last 10s
 ```
 
 Questions:
@@ -177,9 +153,9 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "apply": 0.0776,
-   "discard": 0.8805,
-   "defer": 0.0419
+   "apply": 1,
+   "discard": 0,
+   "defer": 0
   }
  },
  "diagnosis": {
@@ -189,55 +165,40 @@ Labels:
 }
 ```
 
-Costs: {"apply":9.6227,"discard":3.4428,"defer":9.621}  
-Adjusted: {"apply":5.93,"discard":0,"defer":7.43}  
-Sim diagnosis: `conflict`, best `discard`, subject {"kind":"write","how":"subject","ref":17}
+Costs: {"apply":4.7629,"discard":4.7629,"defer":4.7632}  
+Adjusted: {"apply":0,"discard":1.5,"defer":1.5}  
+Sim diagnosis: `conflict`, best `apply`, subject {"kind":"write","how":"subject","ref":28}
 
 Cost parts:
 ```json
-{"apply":{"area":2.574,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":7.611},"discard":{"area":0.075,"final_client":0.25,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":7.611},"defer":{"area":2.572,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":7.634}}
+{"apply":{"area":2.577,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":8.742},"discard":{"area":2.577,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":8.742},"defer":{"area":2.578,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":8.741}}
 ```
 
-## 3. request — marketing — cart+form/request
+## 3. request — fleet — chat+form+poll/request
 
-id `sim-1100-d4`, split `train`, chaos `degraded`, features ["cart","form"]
+id `sim-1060-d1`, split `train`, chaos `degraded`, features ["poll","chat","form"]
 
 ```text
-app: Campaignly — /audiences
-trigger: POST /v1/basket/items {productId: "172262", qty: 1} (#31) is about to be sent.
+app: Motorly — /vehicles
+trigger: GET /api/v1/metrics?since=month (#25) is about to be sent.
 facts:
-  - 3 identical POST /v1/basket/items requests in the last 10s: #18 answered 200 1.85s ago; #27 answered 200 0.27s ago; #29 in flight (started 0.07s ago); #29 started 0.07s before this one; they come from separate user actions 0.07s apart.
-  - POST /v1/basket/items was requested 5 times in the last 10s (no usual rate learned yet).
-  - This request comes from user clicked button "+ Add new" (#30), started 0.00s ago.
-  - POST is not idempotent; its body (30 bytes) can be replayed.
+  - 1 identical GET /api/v1/metrics request in the last 10s: #21 in flight (started 0.39s ago); #21 started 0.39s before this one.
+  - The last 1 GET /api/v1/metrics request failed in a row (500); no success yet.
+  - GET /api/v1/metrics was requested 3 times in the last 10s (no usual rate learned yet).
+  - This request comes from interval 1.00s (#24), started 0.00s ago.
+  - GET is idempotent.
 in_flight:
-  - POST /v1/basket/items {productId: "172262", qty: 1} (#29) 0.07s so far, by #28
+  - GET /api/v1/metrics?since=month (#21) 0.39s so far, by #20
 timeline:
-  - -2.35s start POST /v1/basket/items {productId: "172262", qty: 1} (#18, by #17)
-  - -1.92s user typed "trial" into input "Name" (5 keystrokes, #19–#23)
-  - -1.85s end POST /v1/basket/items {productId: "172262", qty: 1} (#18): 200 in 0.50s
-  - -1.85s write basket.list: 0 items → 1 item [{id: "588502", name: "new", +4}]; basket.count: 0 → 1; basket.subtotal: 0 → 95… (by #18)
-  - -0.63s user submitted button "Build audience" (#24)
-  - -0.59s user submitted button "Build audience" (#25)
-  - -0.54s user clicked button "+ Add new" (#26)
-  - -0.54s write basket.isLoading: false → true (by #26, user)
-  - -0.54s start POST /v1/basket/items {productId: "172262", qty: 1} (#27, by #26)
-  - -0.27s end POST /v1/basket/items {productId: "172262", qty: 1} (#27): 200 in 0.27s
-  - -0.27s write basket.list: 1 items, 1 changed: {id: "588502", name: "new", +4} → {id: "588502", name: "new", +4}; basket.co… (by #27)
-  - -0.07s user clicked button "+ Add new" (#28)
-  - -0.07s write basket.isLoading: false → true (by #28, user)
-  - -0.07s start POST /v1/basket/items {productId: "172262", qty: 1} (#29, by #28)
-  - -0.00s user clicked button "+ Add new" (#30)
-  - -0.00s start POST /v1/basket/items {productId: "172262", qty: 1} (#31, by #30)
+  - -0.27s user typed "190" into input "Cost" (2 keystrokes, #22–#23)
+  - -0.00s start interval 1.00s (#24)
+  - -0.00s start GET /api/v1/metrics?since=month (#25, by #24)
 state:
-  - basket.isLoading = true (v7, by #28 0.07s ago)
-  - basket.list = 1 item [{id: "588502", name: "new", +4}] (v2, by #27 0.27s ago)
-  - basket.count = 2 (v2, by #27 0.27s ago)
-  - basket.subtotal = 190.3 (v2, by #27 0.27s ago)
-  - basket.failure = "Server error (502)" (v1, by #13 2.77s ago)
-  - basket.orderId = null (v0)
+  - overview_panel.period = "month" (v1, by #20 0.39s ago)
+  - overview_panel.status = "error" (v1, by #1 4.48s ago)
+  - overview_panel.problem = "1 failed" (v1, by #1 4.48s ago)
 stats:
-  - POST /v1/basket/items: 3 done, errors 8%, 5 in last 10s
+  - GET /api/v1/metrics: 1 done, 1 of last 1 failed, 3 in last 10s
 ```
 
 Questions:
@@ -247,26 +208,26 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "normal behaviour, nothing is wrong",
-   "stale": "an earlier operation finishing late would replace more recent state",
-   "conflict": "concurrent operations are competing over the same state or resource",
-   "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the app's state is internally contradictory",
-   "failing": "an operation keeps failing or its failures follow a pattern",
-   "slow": "the request is unusually slow",
-   "overload": "work is being triggered far more often than usual",
-   "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a single failed attempt that a retry would probably fix"
+   "expected": null,
+   "stale": null,
+   "conflict": null,
+   "duplicate": null,
+   "inconsistent": null,
+   "failing": null,
+   "slow": null,
+   "overload": null,
+   "unusual": null,
+   "transient": null
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do with this request?",
   "criteria": {
-   "send": "let the request go out as is",
-   "coalesce": "piggyback on the matching request already in flight",
-   "delay": "wait before sending, backing off so the service can recover",
-   "block": "do not send; fail this request immediately"
+   "send": null,
+   "coalesce": null,
+   "delay": null,
+   "block": null
   }
  }
 }
@@ -278,10 +239,10 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "send": 0.1764,
-   "coalesce": 0.5143,
-   "delay": 0.1516,
-   "block": 0.1578
+   "send": 0.2279,
+   "coalesce": 0.6655,
+   "delay": 0.0429,
+   "block": 0.0637
   }
  },
  "diagnosis": {
@@ -291,13 +252,13 @@ Labels:
 }
 ```
 
-Costs: {"send":270.863,"coalesce":261.5355,"delay":262.4495,"block":271.388}  
-Adjusted: {"send":9.077,"coalesce":0,"delay":0.914,"block":10.102}  
-Sim diagnosis: `duplicate`, best `coalesce`, subject {"kind":"op","how":"subject","ref":10}
+Costs: {"send":68.742,"coalesce":68.3375,"delay":68.8291,"block":68.3266}  
+Adjusted: {"send":0.154,"coalesce":0,"delay":0.492,"block":0.239}  
+Sim diagnosis: `duplicate`, best `coalesce`, subject {"kind":"op","how":"subject","ref":5}
 
 Cost parts:
 ```json
-{"send":{"area":34.122,"final_client":4.431,"final_server":225,"relation_s":0,"relation_final":0,"errors":9,"uncaught":0,"wasted":4,"latency_s":22.325},"coalesce":{"area":32.195,"final_client":4.431,"final_server":225,"relation_s":0,"relation_final":0,"errors":9,"uncaught":0,"wasted":3,"latency_s":22.3},"delay":{"area":34.135,"final_client":4.431,"final_server":225,"relation_s":0,"relation_final":0,"errors":9,"uncaught":0,"wasted":4,"latency_s":22.576},"block":{"area":32.192,"final_client":4.431,"final_server":225,"relation_s":0,"relation_final":0,"errors":10,"uncaught":0,"wasted":3,"latency_s":21.927}}
+{"send":{"area":4.679,"final_client":1.661,"final_server":50,"relation_s":0,"relation_final":0,"errors":1,"uncaught":0,"wasted":0,"latency_s":5.69},"coalesce":{"area":4.319,"final_client":1.661,"final_server":50,"relation_s":0,"relation_final":0,"errors":1,"uncaught":0,"wasted":0,"latency_s":5.8},"delay":{"area":4.729,"final_client":1.661,"final_server":50,"relation_s":0,"relation_final":0,"errors":1,"uncaught":0,"wasted":0,"latency_s":5.69},"block":{"area":4.314,"final_client":1.661,"final_server":50,"relation_s":0,"relation_final":0,"errors":1,"uncaught":0,"wasted":0,"latency_s":5.794}}
 ```
 
 ## 4. request — pharmacy — nav+search+settings/request
@@ -310,7 +271,7 @@ trigger: GET /overview/prescriptions (#66) is about to be sent.
 facts:
   - 3 identical GET /overview/prescriptions requests in the last 10s: #48 answered 200 6.37s ago; #49 answered 200 6.33s ago; #65 in flight (started 0.00s ago); #65 started 0.00s before this one, from the same user action (…
   - GET /overview/prescriptions was requested 4 times in the last 10s (no usual rate learned yet).
-  - GET /overview/prescriptions usually answers in 0.17s (p95 0.29s, 10 samples); error rate 0%.
+  - GET /overview/prescriptions usually answers in 0.17s (p95 0.29s, 10 samples); error rate 0% over 10 requests (0 failed).
   - This request comes from user navigated to link "Overview" (#64), started 0.00s ago.
   - GET is idempotent.
   - A cached 200 response from 6.33s ago exists for this request.
@@ -320,9 +281,8 @@ timeline: none
 state:
   - pageState.loading = true (v25, by #64 0.00s ago)
   - pageState.screen = "/overview" (v12, by #64 0.00s ago)
-  - pageState.content.prescriptions = 5 items [{id: "31711", drug: "amoxicillin", +5}, …] (v12, by #59 …
 stats:
-  - GET /overview/prescriptions: 10 done, median 0.17s, p95 0.29s, errors 0%, 4 in last 10s
+  - GET /overview/prescriptions: 10 done, median 0.17s, p95 0.29s, 0 of last 10 failed, 4 in last 10s
 ```
 
 Questions:
@@ -332,27 +292,27 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "normal behaviour, nothing is wrong",
-   "stale": "outdated data or an older operation is about to replace newer state",
-   "conflict": "concurrent operations are competing over the same state or resource",
-   "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the state contradicts itself or relationships it normally keeps",
-   "failing": "an operation keeps failing or its failures follow a pattern",
-   "slow": "an operation is far slower than usual",
-   "overload": "work is being triggered far more often than usual",
-   "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a one-off failure that is likely to succeed if tried again"
+   "expected": null,
+   "stale": null,
+   "conflict": null,
+   "duplicate": null,
+   "inconsistent": null,
+   "failing": null,
+   "slow": null,
+   "overload": null,
+   "unusual": null,
+   "transient": null
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do with this request?",
   "criteria": {
-   "send": "send the request now",
-   "coalesce": "do not send; reuse the result of the identical request that is in flight or just finished",
-   "delay": "send it later, after a pause",
-   "block": "do not send; fail this request immediately",
-   "serve_cached": "use the cached result instead of the network"
+   "send": null,
+   "coalesce": null,
+   "delay": null,
+   "block": null,
+   "serve_cached": null
   }
  }
 }
@@ -387,134 +347,51 @@ Cost parts:
 {"send":{"area":1.316,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":3.901},"coalesce":{"area":1.316,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":4.316},"delay":{"area":1.316,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":4.151},"block":{"area":1.999,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":3.73},"serve_cached":{"area":1.316,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":3.752}}
 ```
 
-## 5. failure — marketing — benign+board+form/failure
+## 5. failure — food — auth+editor+search/failure
 
-id `sim-1067-d18`, split `train`, chaos `flaky`, features ["board","form","benign"]
-
-```text
-app: Funnelr — /app
-trigger: PATCH /api/v1/audiences/:id {stage: "done"} (#109) failed (HTTP 500) and the app has not seen the failure yet.
-facts:
-  - The request #109 failed: HTTP 500 after 0.98s; the app has not seen the failure yet.
-  - This is the 1st PATCH /api/v1/audiences/:id failure in a row (recent outcomes: 503, 200, 200, 200, 500; last success 2.10s ago); error rate 32% over 24 requests.
-  - Before this failure its chain wrote pipeline.entries, pipeline.tally.doing, pipeline.tally.done.
-  - PATCH /api/v1/audiences/:id was requested 14 times in the last 10s (no usual rate learned yet).
-  - PATCH /api/v1/audiences/:id usually answers in 0.97s (p95 3.65s, 17 samples); error rate 32%.
-  - 2 other PATCH /api/v1/audiences/:id requests with different input are in flight: #103  {stage: "todo"} (started 0.99s before #109); #112  {stage: "doing"} (started 0.96s after #109).
-  - This request comes from user changed item "Audience users" to "done" (#108), started 0.98s ago.
-  - PATCH is not idempotent; its body (16 bytes) can be replayed.
-in_flight:
-  - PATCH /api/v1/audiences/:id {stage: "todo"} (#103) 1.97s so far, by #102
-  - PATCH /api/v1/audiences/:id {stage: "doing"} (#112) 0.02s so far, by #111
-timeline:
-  - -0.02s user changed item "Audience lapsed" to "doing" (#111)
-  - -0.02s write pipeline.entries: 7 items, 1 changed: {id: "car_2szj8qfwak4gmm", +5} → {id: "car_2szj8qfwak4gmm", +5}; …
-  - -0.02s start PATCH /api/v1/audiences/:id {stage: "doing"} (#112, by #111)
-  - -0.00s end PATCH /api/v1/audiences/:id {stage: "done"} (#109): 500 in 0.98s
-state:
-  - pipeline.entries = 7 items [{id: "car_9j1svvnwowwpbi", name: "new", +4}, …] (v59, by #111 0.02s ago)
-  - pipeline.tally.doing = 2 (v33, by #111 0.02s ago)
-  - pipeline.tally.done = 2 (v26, by #111 0.02s ago)
-  - pipeline.tally.todo = 3 (v22, by #107 1.06s ago)
-  - pipeline.err = "Server error (503)" (v5, by #83 4.89s ago)
-stats:
-  - PATCH /api/v1/audiences/:id: 24 done, median 0.97s, p95 3.65s, errors 32%, 14 in last 10s
-```
-
-Questions:
-```json
-{
- "diagnosis": {
-  "type": "choice",
-  "instructions": "What is happening here?",
-  "criteria": {
-   "expected": "normal behaviour, nothing is wrong",
-   "stale": "outdated data or an older operation is about to replace newer state",
-   "conflict": "concurrent operations are competing over the same state or resource",
-   "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the state contradicts itself or relationships it normally keeps",
-   "failing": "an operation keeps failing or its failures follow a pattern",
-   "slow": "an operation is far slower than usual",
-   "overload": "work is being triggered far more often than usual",
-   "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a one-off failure that is likely to succeed if tried again"
-  }
- },
- "action": {
-  "type": "choice",
-  "instructions": "What should the runtime do with this failed request?",
-  "criteria": {
-   "deliver": "pass the error through unchanged",
-   "retry": "try the request again after a short wait"
-  }
- }
-}
-```
-
-Labels:
-```json
-{
- "action": {
-  "type": "choice",
-  "dist": {
-   "deliver": 0.0195,
-   "retry": 0.9805
-  }
- },
- "diagnosis": {
-  "type": "choice",
-  "label": "transient"
- }
-}
-```
-
-Costs: {"deliver":57.1147,"retry":55.917}  
-Adjusted: {"deliver":0.698,"retry":0}  
-Sim diagnosis: `transient`, best `retry`, subject {"kind":"op","how":"subject","ref":38}
-
-Cost parts:
-```json
-{"deliver":{"area":3.808,"final_client":1.707,"final_server":43,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":3,"latency_s":35.002},"retry":{"area":3.856,"final_client":1.707,"final_server":43,"relation_s":0,"relation_final":0,"errors":1,"uncaught":0,"wasted":4,"latency_s":36.244}}
-```
-
-## 6. failure — health — benign+poll+settings/failure
-
-id `sim-1008-d27`, split `train`, chaos `degraded`, features ["poll","settings","benign"]
+id `sim-1041-d256`, split `train`, chaos `flaky`, features ["search","auth","editor"]
 
 ```text
-app: MediBoard — /appointments
-trigger: POST /v1/heartbeat {status: "active"} (#93) failed (network error) and the app has not seen the failure yet.
+app: GrubHub — /deliveries
+trigger: GET /api/deliveries/query?query=D- D-1440 D-902D-  (#1072) failed (HTTP 500) and the app has not seen the failure yet.
 facts:
-  - The request #93 failed: network error (Failed to fetch) after 3.95s; the app has not seen the failure yet.
-  - 1 identical POST /v1/heartbeat request in the last 10s: #79 ended timed out 4.95s ago; #79 started 5.00s before this one, neither from a user action.
-  - This is the 4th POST /v1/heartbeat failure in a row (recent outcomes: 200, 500, timeout, timeout, network error; last success 23.0s ago); error rate 34% over 6 requests.
-  - This request comes from interval 5.00s (#92), started 3.95s ago.
-  - POST is not idempotent; its body (19 bytes) can be replayed.
+  - The request #1072 failed: HTTP 500 after 0.30s; the app has not seen the failure yet.
+  - This is the 1st GET /api/deliveries/query failure in a row (recent outcomes: 200, 200, 200, 200, 500; last success 0.21s ago); error rate 15% over 20 requests (3 failed).
+  - Before this failure its chain wrote deliveryLookup.keyword, deliveryLookup.busy.
+  - GET /api/deliveries/query was requested 14 times in the last 10s; usually 10.72 per 10s (1.3×).
+  - GET /api/deliveries/query usually answers in 0.30s (p95 0.42s, 64 samples); error rate 15% over 20 requests (3 failed).
+  - 3 other GET /api/deliveries/query requests with different input are in flight: #1074 ?query=D- D-1440 D-902D- (started 0.08s after #1072); #1076 ?query=D- D-1440 D-902D (started 0.18s after #1072); #1079 ?query=D- D-1440 D-902 (started 0.26s after #1072).
+  - This request comes from user typed "D- D-1440 D-902D- " into input "Look up deliveries" (#1071), started 0.30s ago.
+  - GET is idempotent.
+  - A cached 200 response from 26.9s ago exists for this request.
 in_flight:
-  - GET /v1/summary?range=6h (#109) 0.14s so far, by #108
+  - GET /api/deliveries/query?query=D- D-1440 D-902D- (#1074) 0.22s so far, by #1073
+  - GET /api/deliveries/query?query=D- D-1440 D-902D (#1076) 0.12s so far, by #1075
+  - GET /api/deliveries/query?query=D- D-1440 D-902 (#1079) 0.04s so far, by #1078
 timeline:
-  - -9.95s end POST /v1/heartbeat {status: "active"} (#61): timed out in 4.00s
-  - -9.38s user changed select "Time window" to "6h" (#76)
-  - -8.95s start interval 5.00s (#78)
-  - -8.95s start POST /v1/heartbeat {status: "active"} (#79, by #78)
-  - -7.79s user changed switch "Share with doctor" to "off" (#82)
-  - -5.50s user clicked link "What's new" (#86)
-  - -5.26s user clicked button "Update now" (#88)
-  - -5.17s user changed switch "Share with doctor" to "on" (#90)
-  - -4.95s end POST /v1/heartbeat {status: "active"} (#79): timed out in 4.00s
-  - -3.95s start interval 5.00s (#92)
-  - -3.95s start POST /v1/heartbeat {status: "active"} (#93, by #92)
-  - -2.70s user changed switch "Reminders" to "on" (#96)
-  - -2.21s user changed switch "Reminders" to "off" (#98)
-  - -1.90s user changed switch "Reminders" to "on" (#102)
-  - -0.43s user clicked button "Update now" (#104)
-  - -0.00s end POST /v1/heartbeat {status: "active"} (#93): network error in 3.95s
+  - -0.30s start GET /api/deliveries/query?query=D- D-1440 D-902D-  (#1072, by #1071)
+  - -0.29s end GET /api/deliveries/query?query=D- D-1440 D-902D- D- (#1066): 200 in 0.33s
+  - -0.28s write deliveryLookup.busy: true → false (by #1066)
+  - -0.22s write deliveryLookup.keyword: "D- D-1440 D-902D- " → "D- D-1440 D-902D-" (by #1073, user)
+  - -0.22s write deliveryLookup.busy: false → true (by #1073, user)
+  - -0.22s start GET /api/deliveries/query?query=D- D-1440 D-902D- (#1074, by #1073)
+  - -0.21s end GET /api/deliveries/query?query=D- D-1440 D-902D- D (#1069): 200 in 0.34s
+  - -0.21s write deliveryLookup.busy: true → false (by #1069)
+  - -0.12s write deliveryLookup.keyword: "D- D-1440 D-902D-" → "D- D-1440 D-902D" (by #1075, user)
+  - -0.12s write deliveryLookup.busy: false → true (by #1075, user)
+  - -0.12s start GET /api/deliveries/query?query=D- D-1440 D-902D (#1076, by #1075)
+  - -0.12s user typed "Recipe D-881 D-902 D-1440 thai D-2071 p…" into input "Title" (#1077)
+  - -0.04s user typed "D- D-1440 D-902" into input "Look up deliveries" (#1078)
+  - -0.04s write deliveryLookup.keyword: "D- D-1440 D-902D" → "D- D-1440 D-902" (by #1078, user)
+  - -0.04s start GET /api/deliveries/query?query=D- D-1440 D-902 (#1079, by #1078)
+  - -0.00s end GET /api/deliveries/query?query=D- D-1440 D-902D-  (#1072): 500 in 0.30s
 state:
-  - presenceInfo.live = false (v1, by #45 18.1s ago)
-  - presenceInfo.othersOnline = 3 (v1, by #13 28.2s ago)
+  - deliveryLookup.keyword = "D- D-1440 D-902" (v181, by #1078 0.04s ago)
+  - deliveryLookup.busy = true (v203, by #1075 0.12s ago)
+  - deliveryLookup.lastError = null (v35, by #1048 1.91s ago)
+  - deliveryLookup.data = 0 items (v22, by #838 37.8s ago)
 stats:
-  - POST /v1/heartbeat: 6 done, errors 34%, 2 in last 10s
-  - GET /v1/summary: 26 done, median 0.22s, p95 0.52s, errors 20%, 10 in last 10s (usual 7.1)
+  - GET /api/deliveries/query: 174 done, median 0.30s, p95 0.42s, 3 of last 20 failed, 14 in last 10s (usual 10.72)
 ```
 
 Questions:
@@ -541,7 +418,8 @@ Questions:
   "instructions": "What should the runtime do with this failed request?",
   "criteria": {
    "deliver": "pass the failure to the application as it is",
-   "retry": "retry the request after a short backoff"
+   "retry": "retry the request after a short backoff",
+   "serve_cached": "use the cached result instead of the network"
   }
  }
 }
@@ -553,137 +431,59 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "deliver": 1,
-   "retry": 0
+   "deliver": 0,
+   "retry": 0.1419,
+   "serve_cached": 0.8581
   }
  },
  "diagnosis": {
   "type": "choice",
-  "label": "failing"
+  "label": "transient"
  }
 }
 ```
 
-Costs: {"deliver":17.0533,"retry":17.0533}  
-Adjusted: {"deliver":0,"retry":1.5}  
-Sim diagnosis: `failing`, best `deliver`, subject {"kind":"op","how":"subject","ref":47}
+Costs: {"deliver":29.2496,"retry":27.9506,"serve_cached":27.7502}  
+Adjusted: {"deliver":0.999,"retry":0.2,"serve_cached":0}  
+Sim diagnosis: `transient`, best `serve_cached`, subject {"kind":"op","how":"subject","ref":308}
 
 Cost parts:
 ```json
-{"deliver":{"area":3.819,"final_client":0,"final_server":6,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":28,"latency_s":1.977},"retry":{"area":3.819,"final_client":0,"final_server":6,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":28,"latency_s":1.977}}
+{"deliver":{"area":0.972,"final_client":0,"final_server":18,"relation_s":0,"relation_final":0,"errors":4,"uncaught":0,"wasted":3,"latency_s":18.009},"retry":{"area":0.958,"final_client":0,"final_server":18,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":4,"latency_s":18.619},"serve_cached":{"area":0.972,"final_client":0,"final_server":18,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":3,"latency_s":18.007}}
 ```
 
-## 7. stall — education — auth+benign+form+toggle/stall
+## 6. failure — project — benign+search/failure
 
-id `sim-1103-d17`, split `train`, chaos `flaky`, features ["form","toggle","auth","benign"]
+id `sim-1040-d32`, split `train`, chaos `normal`, features ["search","benign"]
 
 ```text
-app: LearnLoop — /workspace
-trigger: GET /api/v1/me/courses (#167) has been waiting 1.61s for a response.
+app: Kanbo — /tasks
+trigger: GET /api/v1/tasks/search?term=doc tefl shredolo migrf (#130) failed (HTTP 429) and the app has not seen the failure yet.
 facts:
-  - The request #167 has been in flight for 1.61s; GET /api/v1/me/courses usually takes 0.39s (p95 0.81s, 7 samples), 4.1× the median.
-  - 3 identical GET /api/v1/me/courses requests in the last 10s: #126 answered 401 6.68s ago; #132 answered 200 6.22s ago; #141 answered 200 4.09s ago; #141 started 2.90s before this one; they come from separate user action…
-  - Recent GET /api/v1/me/courses outcomes: 200, 200, 401, 200, 200.
-  - GET /api/v1/me/courses was requested 4 times in the last 10s; usually 3.22 per 10s (1.2×).
-  - This request comes from user clicked button "Reload" (#165), started 1.61s ago.
+  - The request #130 failed: HTTP 429 after 0.20s; the app has not seen the failure yet.
+  - This is the 3rd GET /api/v1/tasks/search failure in a row (recent outcomes: 200, 200, 429, 429, 429; last success 0.26s ago); error rate 35% over 20 requests (7 failed).
+  - Before this failure its chain wrote task_finder.query, task_finder.loading.
+  - GET /api/v1/tasks/search was requested 17 times in the last 10s; usually 11.25 per 10s (1.5×).
+  - GET /api/v1/tasks/search usually answers in 0.80s (p95 3.19s, 23 samples); error rate 35% over 20 requests (7 failed).
+  - 5 other GET /api/v1/tasks/search requests with different input are in flight: #116 ?term=doc tefl shredolo migrf… (started 0.65s before #130); #124 ?term=doc tefl shredolo migrf… (started 0.32s before #130); #126 ?term=doc tefl shredolo…
+  - This request comes from user typed "doc tefl shredolo migrf" into input "Search tasks" (#129), started 0.20s ago.
   - GET is idempotent.
-in_flight: none
-timeline: none
-state:
-  - accountData.panels.assignments = 3 items [{id: "ca8e5074-1748-40bf-afc9…", +6}, {id: "0f5b6076-c332…
-  - accountData.panels = undefined (v1, by #4 31.4s ago)
-stats:
-  - GET /api/v1/me/courses: 9 done, median 0.39s, p95 0.81s, errors 11%, 4 in last 10s (usual 3.22)
-```
-
-Questions:
-```json
-{
- "diagnosis": {
-  "type": "choice",
-  "instructions": "What is happening here?",
-  "criteria": {
-   "expected": "no problem here; the app behaves normally",
-   "stale": "an earlier operation finishing late would replace more recent state",
-   "conflict": "two in-progress operations are fighting over the same data",
-   "duplicate": "a repeated submission of something already sent",
-   "inconsistent": "the state contradicts itself or relationships it normally keeps",
-   "failing": "an operation keeps failing or its failures follow a pattern",
-   "slow": "an operation is far slower than usual",
-   "overload": "too much work is being triggered, far above the usual rate",
-   "unusual": "this operation behaved differently from its usual pattern",
-   "transient": "a momentary glitch, not a pattern; trying again would likely succeed"
-  }
- },
- "action": {
-  "type": "choice",
-  "instructions": "What should the runtime do with this slow request?",
-  "criteria": {
-   "wait": "let the request continue",
-   "serve_cached": "use the cached result instead of the network",
-   "hedge": "send a second identical request and use whichever answers first"
-  }
- }
-}
-```
-
-Labels:
-```json
-{
- "action": {
-  "type": "choice",
-  "dist": {
-   "wait": 0.714,
-   "hedge": 0.2482,
-   "serve_cached": 0.0377
-  }
- },
- "diagnosis": {
-  "type": "choice",
-  "label": "slow"
- }
-}
-```
-
-Costs: {"wait":52.3156,"hedge":52.0661,"serve_cached":52.1096}  
-Adjusted: {"wait":0,"hedge":0.25,"serve_cached":0.294}  
-Sim diagnosis: `slow`, best `wait`, subject {"kind":"op","how":"subject","ref":67}
-
-Cost parts:
-```json
-{"wait":{"area":13.849,"final_client":2.607,"final_server":24,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":0,"latency_s":12.812},"hedge":{"area":13.514,"final_client":2.607,"final_server":24,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":0,"latency_s":12.139},"serve_cached":{"area":13.849,"final_client":2.607,"final_server":24,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":0,"latency_s":11.988}}
-```
-
-## 8. inconsistency — energy — benign+board/inconsistency
-
-id `sim-1021-d2`, split `train`, chaos `normal`, features ["board","benign"]
-
-```text
-app: PowerDeck — /meters
-trigger: The relation sessionInfo.othersOnline ∈ board.hits[*].version no longer holds now that the app is settled.
-facts:
-  - The learned relation sessionInfo.othersOnline ∈ board.hits[*].version no longer holds: sessionInfo.othersOnline = 3, not among board.hits[*].version. It held at 8 settled points before.
-  - The last consistent state is 1.18s old; 1 field write happened since.
-  - board.hits was written 0.06s ago by WS message app.example.test/ws/board-events (#63): 6 items, 1 changed: {id: "9092", serial: "MTR-301", +5} → {id: "9092", serial: "MTR-301", +5}.
-  - No operations are in flight (the app is settled).
-in_flight: none
+  - A cached 200 response from 10.3s ago exists for this request.
+in_flight:
+  - GET /api/v1/tasks/search?term=doc tefl shredolo migrfl shwrl (#116) 0.85s so far, by #115
+  - GET /api/v1/tasks/search?term=doc tefl shredolo migrfl s (#124) 0.52s so far, by #123
+  - GET /api/v1/tasks/search?term=doc tefl shredolo migrfl  (#126) 0.39s so far, by #125
+  - GET /api/v1/tasks/search?term=doc tefl shredolo migr (#132) 0.15s so far, by #131
 timeline:
-  - -1.62s start POST /v1/ping {status: "active"} (#59, by #58)
-  - -1.58s event ws.message {id: "790545", column: "fault", version: 4, +1} (#60)
-  - -1.58s write board.hits: 6 items, 1 changed: {id: "790545", +6} → {id: "790545", +6} (by #60)
-  - -1.40s end POST /v1/ping {status: "active"} (#59): 200 in 0.22s
-  - -1.24s event ws.message {id: "790545", column: "offline", version: 5, +1} (#61)
-  - -1.24s write board.hits: 6 items, 1 changed: {id: "790545", +6} → {id: "790545", +6} (by #61)
-  - -0.55s user changed ticket "Meter MTR-301" to "fault" (#62)
-  - -0.06s event ws.message {id: "9092", column: "offline", version: 4, +1} (#63)
-  - -0.06s write board.hits: 6 items, 1 changed: {id: "9092", serial: "MTR-301", +5} → {id: "9092", serial: "MTR-301", +…
+  - -0.02s write task_finder.loading: true → false (by #128)
+  - -0.00s end GET /api/v1/tasks/search?term=doc tefl shredolo migrf (#130): 429 in 0.20s
 state:
-  - sessionInfo.othersOnline = 3 (v1, by #5 16.2s ago)
-  - board.hits = 6 items [{id: "499214", serial: "MTR-01", +5}, {id: "695913", serial: "MTR-77", +5}, …] (v27, by #63 0.06s …
-  - board.tally.fault = 2 (v7, by #56 1.76s ago)
-  - board.tally.offline = 1 (v7, by #56 1.76s ago)
-  - board.tally.online = 3 (v11, by #53 2.39s ago)
-stats: none
+  - task_finder.loading = false (v30, by #128 0.02s ago)
+  - task_finder.query = "doc tefl shredolo mig" (v41, by #137 0.08s ago)
+  - task_finder.items = 0 items (v3, by #24 25.9s ago)
+  - task_finder.problem = null (v0)
+stats:
+  - GET /api/v1/tasks/search: 36 done, median 0.80s, p95 3.19s, 7 of last 20 failed, 17 in last 10s (usual 11.25)
 ```
 
 Questions:
@@ -707,6 +507,191 @@ Questions:
  },
  "action": {
   "type": "choice",
+  "instructions": "What should the runtime do with this failed request?",
+  "criteria": {
+   "deliver": "pass the failure to the application as it is",
+   "retry": "try the request again after a short wait",
+   "serve_cached": "answer with the last successful response for this request instead"
+  }
+ }
+}
+```
+
+Labels:
+```json
+{
+ "action": {
+  "type": "choice",
+  "dist": {
+   "deliver": 0.9995,
+   "retry": 0.0005,
+   "serve_cached": 0
+  }
+ },
+ "diagnosis": {
+  "type": "choice",
+  "label": "overload"
+ }
+}
+```
+
+Costs: {"deliver":9.0803,"retry":9.3451,"serve_cached":9.0803}  
+Adjusted: {"deliver":0,"retry":0.765,"serve_cached":1.5}  
+Sim diagnosis: `overload`, best `deliver`, subject {"kind":"op","how":"subject","ref":65}
+
+Cost parts:
+```json
+{"deliver":{"area":2.015,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":4,"latency_s":26.979},"retry":{"area":2.012,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":5,"latency_s":27.732},"serve_cached":{"area":2.015,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":4,"latency_s":26.979}}
+```
+
+## 7. stall — finance — cart+editor+poll/stall
+
+id `sim-1016-d111`, split `train`, chaos `storm`, features ["editor","poll","cart"]
+
+```text
+app: Tally — /home
+trigger: GET /api/status?range=1h (#644) has been waiting 2.59s for a response.
+facts:
+  - The request #644 has been in flight for 2.59s; GET /api/status usually takes 0.45s (p95 1.53s, 64 samples), 5.7× the median.
+  - 2 identical GET /api/status requests in the last 10s: #639 answered 200 4.61s ago; #642 answered 200 3.59s ago; #642 started 1.47s before this one, neither from a user action.
+  - Recent GET /api/status outcomes: 200, 200, 200, 200, 200.
+  - GET /api/status was requested 7 times in the last 10s; usually 8.98 per 10s (0.8×).
+  - This request comes from timer 1.00s (#643), started 2.59s ago; its chain began with timer 1.00s (#5).
+  - GET is idempotent.
+  - A cached 200 response from 3.59s ago exists for this request.
+in_flight:
+  - PATCH /api/reports/:id {summary: "Report food housing tra…", +2} (#655) 0.51s so far, by #654
+timeline:
+  - -4.07s start GET /api/status?range=1h (#642, by #641)
+  - -3.59s end GET /api/status?range=1h (#642): 200 in 0.47s
+  - -2.59s start timer 1.00s (#643, by #642)
+  - -2.59s start GET /api/status?range=1h (#644, by #643)
+  - -1.97s user typed "Report food housing travel rent salary …" into textarea "Body" (4 keystrokes, #645–#648)
+  - -1.55s user clicked button "Add salary" (#649)
+  - -1.41s user typed "Report food housing travel rent salary …" into textarea "Body" (3 keystrokes, #651–#653)
+  - -1.37s end GET /api/status?range=24h (#608): 200 in 6.00s
+  - -0.09s user typed "Report food housing travel rent salary …" into textarea "Body" (2 keystrokes, #656–#657)
+state:
+  - liveStats.gauges.spendToday = 724 (v15, by #639 4.61s ago)
+  - liveStats.gauges.burnRate = 475 (v14, by #639 4.61s ago)
+  - liveStats.range = "1h" (v11, by #638 4.92s ago)
+  - liveStats.isLoading = true (v37, by #613 6.09s ago)
+  - liveStats.state = "ok" (v15, by #477 22.1s ago)
+stats:
+  - GET /api/status: 110 done, median 0.45s, p95 1.53s, 0 of last 20 failed, 7 in last 10s (usual 8.98)
+  - PATCH /api/reports/:id: 25 done, median 0.76s, p95 2.40s, 4 of last 20 failed, 6 in last 10s (usual 3.67)
+```
+
+Questions:
+```json
+{
+ "diagnosis": {
+  "type": "choice",
+  "instructions": "What is happening here?",
+  "criteria": {
+   "expected": "everything is working as intended",
+   "stale": "this is out of date: newer information already exists",
+   "conflict": "two in-progress operations are fighting over the same data",
+   "duplicate": "the same change or request is happening again without a new intent",
+   "inconsistent": "state values disagree with each other",
+   "failing": "requests keep failing in a pattern",
+   "slow": "an operation is far slower than usual",
+   "overload": "work is being triggered far more often than usual",
+   "unusual": "this differs from how the same operation normally behaves",
+   "transient": "a momentary glitch, not a pattern; trying again would likely succeed"
+  }
+ },
+ "action": {
+  "type": "choice",
+  "instructions": "What should the runtime do with this slow request?",
+  "criteria": {
+   "wait": "keep waiting for the request",
+   "hedge": "send a second identical request and use whichever answers first",
+   "serve_cached": "answer with the last successful response for this request instead"
+  }
+ }
+}
+```
+
+Labels:
+```json
+{
+ "action": {
+  "type": "choice",
+  "dist": {
+   "wait": 0.2166,
+   "hedge": 0.0571,
+   "serve_cached": 0.7263
+  }
+ },
+ "diagnosis": {
+  "type": "choice",
+  "label": "slow"
+ }
+}
+```
+
+Costs: {"wait":135.5697,"hedge":131.9712,"serve_cached":130.2946}  
+Adjusted: {"wait":4.775,"hedge":1.677,"serve_cached":0}  
+Sim diagnosis: `slow`, best `serve_cached`, subject {"kind":"op","how":"subject","ref":191}
+
+Cost parts:
+```json
+{"wait":{"area":27.523,"final_client":3.6,"final_server":56,"relation_s":7.065,"relation_final":0,"errors":2,"uncaught":0,"wasted":2,"latency_s":13.091},"hedge":{"area":27.103,"final_client":3.3,"final_server":56,"relation_s":6.992,"relation_final":0,"errors":2,"uncaught":0,"wasted":2,"latency_s":12.628},"serve_cached":{"area":26.5,"final_client":3.3,"final_server":56,"relation_s":7.031,"relation_final":0,"errors":2,"uncaught":0,"wasted":2,"latency_s":12.538}}
+```
+
+## 8. inconsistency — sports — chat+form/inconsistency
+
+id `sim-1079-d6`, split `train`, chaos `degraded`, features ["form","chat"]
+
+```text
+app: LeagueLine — /app
+trigger: The relation players.records[*].name unique (and 1 more) no longer holds now that the app is settled.
+facts:
+  - The learned relation players.records[*].name unique no longer holds: players.records[*].name has duplicates. It held at 3 settled points before.
+  - The learned relation players.records[*].goals unique no longer holds: players.records[*].goals has duplicates. It held at 3 settled points before.
+  - The last consistent state is 1.12s old; 12 field writes happened since.
+  - players.records was written 0.06s ago by GET /api/players (#78): 7 → 8 items: added {id: "880358", name: "novak", +2}.
+  - players.records was written 0.06s ago by GET /api/players (#78): 7 → 8 items: added {id: "880358", name: "novak", +2}.
+  - No operations are in flight (the app is settled).
+in_flight: none
+timeline:
+  - -1.18s user typed "32" into input "Goals" (#69)
+  - -0.74s user clicked button "Send" (#70)
+  - -0.74s user submitted button "Add player" (#72)
+  - -0.74s start POST /api/players {name: "novak", goals: 32} (#73, by #72)
+  - -0.58s user clicked button "Send" (#74)
+  - -0.32s end POST /api/players {name: "novak", goals: 32} (#73): 201 in 0.42s
+  - -0.32s start GET /api/players (#78, by #73)
+  - -0.06s end GET /api/players (#78): 200 in 0.26s
+  - -0.06s write players.records: 7 → 8 items: added {id: "880358", name: "novak", +2} (by #78)
+state:
+  - players.records = 8 items [{id: "767537", name: "j.", goals: 28, +4}, …] (v4, by #78 0.06s ago)
+  - players.size = 0 (v0)
+stats: none
+```
+
+Questions:
+```json
+{
+ "diagnosis": {
+  "type": "choice",
+  "instructions": "What is happening here?",
+  "criteria": {
+   "expected": "no problem here; the app behaves normally",
+   "stale": "this is out of date: newer information already exists",
+   "conflict": "simultaneous changes from different sources collide",
+   "duplicate": "the same change or request is happening again without a new intent",
+   "inconsistent": "the app's state is internally contradictory",
+   "failing": "requests keep failing in a pattern",
+   "slow": "the request is unusually slow",
+   "overload": "requests are being fired in a storm",
+   "unusual": "the result has an unexpected shape compared with previous runs",
+   "transient": "a single failed attempt that a retry would probably fix"
+  }
+ },
+ "action": {
+  "type": "choice",
   "instructions": "What should the runtime do about this inconsistent state?",
   "criteria": {
    "ignore": "leave the state as it is",
@@ -723,9 +708,9 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "ignore": 1,
-   "rollback": 0,
-   "resync": 0
+   "ignore": 0.9975,
+   "rollback": 0.0002,
+   "resync": 0.0023
   }
  },
  "diagnosis": {
@@ -735,54 +720,34 @@ Labels:
 }
 ```
 
-Costs: {"ignore":4.8066,"rollback":9.8766,"resync":7.5456}  
-Adjusted: {"ignore":0,"rollback":5.57,"resync":3.239}  
+Costs: {"ignore":127.2425,"rollback":127.5924,"resync":127.348}  
+Adjusted: {"ignore":0,"rollback":0.85,"resync":0.605}  
 Sim diagnosis: `inconsistent`, best `ignore`, subject {"kind":"invariant","how":"subject"}
 
 Cost parts:
 ```json
-{"ignore":{"area":0.114,"final_client":0.5,"final_server":0,"relation_s":0.187,"relation_final":1,"errors":0,"uncaught":0,"wasted":0,"latency_s":2.17},"rollback":{"area":5.025,"final_client":0.5,"final_server":0,"relation_s":0.187,"relation_final":1,"errors":0,"uncaught":0,"wasted":1,"latency_s":2.489},"resync":{"area":1.166,"final_client":0.5,"final_server":0,"relation_s":2.196,"relation_final":1,"errors":0,"uncaught":0,"wasted":1,"latency_s":2.17}}
+{"ignore":{"area":11.861,"final_client":1.017,"final_server":100,"relation_s":10,"relation_final":1,"errors":0,"uncaught":0,"wasted":2,"latency_s":4.619},"rollback":{"area":12.211,"final_client":1.017,"final_server":100,"relation_s":10,"relation_final":1,"errors":0,"uncaught":0,"wasted":2,"latency_s":4.619},"resync":{"area":11.846,"final_client":1.017,"final_server":100,"relation_s":10,"relation_final":1,"errors":0,"uncaught":0,"wasted":3,"latency_s":4.78}}
 ```
 
-## 9. inconsistency — devops — board/inconsistency
+## 9. inconsistency — travel — board+editor/inconsistency
 
-id `sim-1009-d11`, split `train`, chaos `flaky`, features ["board"]
+id `sim-1017-d1`, split `train`, chaos `degraded`, features ["editor","board"]
 
 ```text
-app: Pipeline — /home
-trigger: The relation lanes.counts.mitigated ∈ lanes.rows[*].severity (and 1 more) no longer holds now that the app is settled.
+app: Roamr — /editor
+trigger: The relation itineraryDoc.etag ∈ board.entries[*].version no longer holds now that the app is settled.
 facts:
-  - The learned relation lanes.counts.mitigated ∈ lanes.rows[*].severity no longer holds: lanes.counts.mitigated = 5, not among lanes.rows[*].severity. It held at 13 settled points before.
-  - The learned relation lanes.counts.resolved ∈ lanes.rows[*].version no longer holds: lanes.counts.resolved = 4, not among lanes.rows[*].version. It held at 4 settled points before.
-  - The last consistent state is 1.19s old; 5 field writes happened since.
-  - lanes.rows was written 0.06s ago by WS message app.example.test/ws/updates-events (#55): 12 items, 1 changed: {id: "364288", title: "cert", +4} → {id: "364288", title: "cert", +4}.
-  - lanes.rows was written 0.22s ago by WS message app.example.test/ws/updates-events (#54): 12 items, 1 changed: {id: "364288", title: "cert", +4} → {id: "364288", title: "cert", +4}.
-  - lanes.rows was written 0.06s ago by WS message app.example.test/ws/updates-events (#55): 12 items, 1 changed: {id: "364288", title: "cert", +4} → {id: "364288", title: "cert", +4}.
-  - lanes.rows was written 0.22s ago by WS message app.example.test/ws/updates-events (#54): 12 items, 1 changed: {id: "364288", title: "cert", +4} → {id: "364288", title: "cert", +4}.
+  - The learned relation itineraryDoc.etag ∈ board.entries[*].version no longer holds: itineraryDoc.etag = 3, not among board.entries[*].version. It held at 4 settled points before.
+  - The last consistent state is 0.31s old; 7 field writes happened since.
+  - itineraryDoc.etag was written 0.07s ago by PUT /api/itinerarys/:id {title: "Itinerary lisbon kyoto …", +1} (#27): 2 → 3.
   - No operations are in flight (the app is settled).
 in_flight: none
 timeline:
-  - -2.38s end PATCH /api/v1/incidents/:id {lane: "resolved"} (#47): 200 in 0.17s
-  - -1.45s user changed item "Incident spike 5xx" to "resolved" (#49)
-  - -1.45s write lanes.rows: 12 items, 1 changed: {id: "742859", title: "spike 5xx", +4} → {id: "742859", title: "spike 5xx", … (by #49, user)
-  - -1.45s start PATCH /api/v1/incidents/:id {lane: "resolved"} (#50, by #49)
-  - -1.27s event ws.message {id: "742859", lane: "resolved", version: 2, +1} (#51)
-  - -1.27s write lanes.rows: 12 items, 1 changed: {id: "742859", title: "spike 5xx", +4} → {id: "742859", title: "spike 5xx", … (by #51)
-  - -1.25s end PATCH /api/v1/incidents/:id {lane: "resolved"} (#50): 200 in 0.20s
-  - -0.34s user changed item "Incident cert" to "mitigated" (#52)
-  - -0.34s write lanes.rows: 12 items, 1 changed: {id: "364288", title: "cert", +4} → {id: "364288", title: "cert", +4}; lanes… (by #52, user)
-  - -0.34s start PATCH /api/v1/incidents/:id {lane: "mitigated"} (#53, by #52)
-  - -0.22s event ws.message {id: "364288", lane: "open", version: 5, +1} (#54)
-  - -0.22s write lanes.rows: 12 items, 1 changed: {id: "364288", title: "cert", +4} → {id: "364288", title: "cert", +4} (by #54)
-  - -0.12s end PATCH /api/v1/incidents/:id {lane: "mitigated"} (#53): 200 in 0.22s
-  - -0.06s event ws.message {id: "364288", lane: "mitigated", version: 6, +1} (#55)
-  - -0.06s write lanes.rows: 12 items, 1 changed: {id: "364288", title: "cert", +4} → {id: "364288", title: "cert", +4} (by #55)
+  - -0.06s write itineraryDoc.notes: "Itinerary lisbon kyoto oslo hanoi … → "Itinerary lisbon kyoto osl…
 state:
-  - lanes.counts.mitigated = 5 (v15, by #52 0.34s ago)
-  - lanes.rows = 12 items [{id: "24985", title: "api", severity: 2, +3}, …] (v41, by #55 0.06s ago)
-  - lanes.counts.resolved = 4 (v11, by #49 1.45s ago)
-  - lanes.counts.open = 3 (v18, by #52 0.34s ago)
-  - lanes.errorMessage = "Request timed out" (v2, by #24 7.94s ago)
+  - itineraryDoc.etag = 3 (v2, by #27 0.07s ago)
+  - board.entries = 8 items [{id: "fc5e995e-512f-43a0-a280…", +6}, {id: "a4bd13ea-cf4c-4543-a945…", +6}…
+  - itineraryDoc.notes = "Itinerary lisbon kyoto oslo hanoi BA28" (v11, by #28 0.06s ago)
 stats: none
 ```
 
@@ -793,24 +758,23 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "everything is working as intended",
-   "stale": "outdated data or an older operation is about to replace newer state",
-   "conflict": "concurrent operations are competing over the same state or resource",
-   "duplicate": "a repeated submission of something already sent",
-   "failing": "an operation is failing again and again",
-   "slow": "latency is far above its usual level",
-   "overload": "requests are being fired in a storm",
-   "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a one-off failure that is likely to succeed if tried again"
+   "expected": null,
+   "stale": null,
+   "conflict": null,
+   "inconsistent": null,
+   "failing": null,
+   "slow": null,
+   "unusual": null,
+   "transient": null
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do about this inconsistent state?",
   "criteria": {
-   "ignore": "leave the state as it is",
-   "rollback": "restore the state to its last consistent snapshot",
-   "resync": "resynchronise the store"
+   "ignore": "do not change the state",
+   "rollback": null,
+   "resync": null
   }
  }
 }
@@ -822,8 +786,8 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "ignore": 1,
-   "rollback": 0,
+   "ignore": 0.9973,
+   "rollback": 0.0027,
    "resync": 0
   }
  },
@@ -834,52 +798,132 @@ Labels:
 }
 ```
 
-Costs: {"ignore":22.841,"rollback":24.3672,"resync":28.6081}  
-Adjusted: {"ignore":0,"rollback":2.026,"resync":6.267}  
+Costs: {"ignore":13.9882,"rollback":14.0793,"resync":15.8329}  
+Adjusted: {"ignore":0,"rollback":0.591,"resync":2.345}  
 Sim diagnosis: `expected`, best `ignore`, subject {"kind":"invariant","how":"subject"}
 
 Cost parts:
 ```json
-{"ignore":{"area":3.426,"final_client":0.333,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.328},"rollback":{"area":4.285,"final_client":0.5,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.328},"resync":{"area":7.113,"final_client":0.833,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":1,"latency_s":0.328}}
+{"ignore":{"area":0.93,"final_client":0.12,"final_server":6,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":3,"latency_s":13.353},"rollback":{"area":1.021,"final_client":0.12,"final_server":6,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":3,"latency_s":13.353},"resync":{"area":2.603,"final_client":0.12,"final_server":6,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":5,"latency_s":13.4}}
 ```
 
-## 10. transition — rides — nav+poll+toggle/transition
+## 10. transition — insurance — editor+poll/transition
 
-id `sim-1028-d100`, split `train`, chaos `calm`, features ["poll","toggle","nav"]
+id `sim-1104-d20`, split `train`, chaos `normal`, features ["editor","poll"]
 
 ```text
-app: Hopin — /workspace
-trigger: user clicked button "Favorite yuki" (#754) completed with a state change unlike its usual ones.
+app: PolicyPal — /workspace
+trigger: user typed "Claim statement PO-77 PO-102 PO-388 CL-…" into textarea "Statement" (#108) completed with a state change unlike its usual ones.
 facts:
-  - In the previous 29 completions of user clicked button "Favorite yuki" its chain wrote driversBoard.favoriteCount and driversBoard.hits (29 of 29 times); this time it wrote driversBoard.favoriteCount, driversBoard.hits and driversBoard.lastError.
-  - The last consistent state from before #754 started is 0.22s old; 4 field writes happened since.
-  - The completed user action #754 comes from user clicked button "Favorite yuki" (#754), started 0.07s ago.
-  - driversBoard.hits is now 7 items [{id: "ite_6ydxsfq41do010", name: "ali", +4}, …].
-  - driversBoard.favoriteCount is now 2.
-  - driversBoard.lastError is now "Server error (503)".
+  - In the previous 30 completions of user typed "Claim statement PO-77 PO-102 PO-388 CL-…" into textarea "Statement" its chain wrote statementDoc.statement (30 of 30 times); this time it wrote statementDoc.revision, statem…
+  - The last consistent state from before #108 started is 2.60s old; 12 field writes happened since.
+  - The completed user action #108 comes from user typed "Claim statement PO-77 PO-102 PO-388 CL-…" into textarea "Statement" (#108), started 1.17s ago.
+  - statementDoc.statement is now "Claim statement PO-77 PO-102 PO-388 CL-4417 PO-…".
+  - statementDoc.syncing is now false.
+  - statementDoc.revision is now 7.
+in_flight: none
+timeline: none
+state:
+  - statementDoc.statement = "Claim statement PO-77 PO-102 PO-388 CL-4417 PO-…" (v39, by #110 0.07s ago)
+stats: none
+```
+
+Questions:
+```json
+{
+ "diagnosis": {
+  "type": "choice",
+  "instructions": "What is happening here?",
+  "criteria": {
+   "expected": null,
+   "stale": null,
+   "conflict": null,
+   "duplicate": null,
+   "inconsistent": null,
+   "failing": null,
+   "slow": null,
+   "overload": null,
+   "unusual": null,
+   "transient": null
+  }
+ },
+ "action": {
+  "type": "choice",
+  "instructions": "What should the runtime do about this unusual state change?",
+  "criteria": {
+   "ignore": null,
+   "rollback": null,
+   "resync": null
+  }
+ }
+}
+```
+
+Labels:
+```json
+{
+ "action": {
+  "type": "choice",
+  "dist": {
+   "ignore": 0.997,
+   "rollback": 0,
+   "resync": 0.003
+  }
+ },
+ "diagnosis": {
+  "type": "choice",
+  "label": "failing"
+ }
+}
+```
+
+Costs: {"ignore":20.5101,"rollback":20.5059,"resync":20.5901}  
+Adjusted: {"ignore":0,"rollback":1.5,"resync":0.58}  
+Sim diagnosis: `failing`, best `ignore`, subject {"kind":"chain","how":"chain"}
+
+Cost parts:
+```json
+{"ignore":{"area":10.403,"final_client":1,"final_server":6,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.43},"rollback":{"area":10.401,"final_client":1,"final_server":6,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.418},"resync":{"area":10.403,"final_client":1,"final_server":6,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":1,"latency_s":0.43}}
+```
+
+## 11. error — hr — benign+search/error
+
+id `sim-1006-d5`, split `train`, chaos `flaky`, features ["search","benign"]
+
+```text
+app: Staffly — /leaves
+trigger: An uncaught HttpError was thrown: search si failed with 503
+facts:
+  - Uncaught HttpError: search si failed with 503 (at unhandledrejection).
+  - The last consistent state from before #16 started is 0.34s old; 3 field writes happened since.
+  - Its chain wrote leave_lookup.q, leave_lookup.busy before the error.
+  - It was thrown while GET /api/v2/leaves/query?search=si (#17) was active, 0.27s after it started; that chain began with user typed "si" into input "Search leaves" (#16).
 in_flight: none
 timeline:
-  - -1.07s user clicked button "Favorite ivan" (#746)
-  - -1.07s write driversBoard.hits: 7 items, 1 changed: {id: "ite_1p1l3c46anm5t0", +5} → {id: "ite_1p1l3c46anm5t0", +5}; drive… (by #746, user)
-  - -1.07s start PATCH /api/v1/drivers/:id {favorite: false} (#747, by #746)
-  - -0.91s end PATCH /api/v1/drivers/:id {favorite: false} (#747): 200 in 0.16s
-  - -0.82s user clicked button "Favorite yuki" (#748)
-  - -0.82s write driversBoard.hits: 7 items, 1 changed: {id: "ite_5r1bqotlvoq24l", +5} → {id: "ite_5r1bqotlvoq24l", +5}; drive… (by #748, user)
-  - -0.82s start PATCH /api/v1/drivers/:id {favorite: true} (#749, by #748)
-  - -0.63s end PATCH /api/v1/drivers/:id {favorite: true} (#749): 200 in 0.19s
-  - -0.16s user clicked button "Update now" (#752)
-  - -0.07s user clicked button "Favorite yuki" (#754)
-  - -0.07s write driversBoard.hits: 7 items, 1 changed: {id: "ite_5r1bqotlvoq24l", +5} → {id: "ite_5r1bqotlvoq24l", +5}; drive… (by #754, user)
-  - -0.07s start PATCH /api/v1/drivers/:id {favorite: false} (#755, by #754)
-  - -0.06s end PATCH /api/v1/drivers/:id {favorite: false} (#755): blocked in 0.01s
-  - -0.06s GenClass Did not send PATCH /api/v1/drivers/:id {favorite: false} (#755); answered 503 (x-genclass: blocked).
-  - -0.06s write driversBoard.hits: 7 items, 1 changed: {id: "ite_5r1bqotlvoq24l", +5} → {id: "ite_5r1bqotlvoq24l", +5} (by #755)
-  - -0.06s write driversBoard.lastError: null → "Server error (503)" (by #755)
+  - -5.82s error Error: ResizeObserver loop completed with undelivered notifications. (during #6)
+  - -2.23s start interval 2.50s (#11)
+  - -2.23s start POST /api/v2/telemetry {event: "tick"} (#12, by #11)
+  - -1.96s end POST /api/v2/telemetry {event: "tick"} (#12): 204 in 0.27s
+  - -0.73s start interval 3.00s (#13)
+  - -0.73s start POST /api/v2/ping {status: "active"} (#14, by #13)
+  - -0.59s end POST /api/v2/ping {status: "active"} (#14): 200 in 0.14s
+  - -0.59s write session_info.connected: false → true (by #14)
+  - -0.40s user typed "si" into input "Search leaves" (2 keystrokes, #15–#16)
+  - -0.40s write leave_lookup.q: "" → "s" (by #15, user)
+  - -0.27s write leave_lookup.q: "s" → "si" (by #16, user)
+  - -0.27s write leave_lookup.busy: false → true (by #16, user)
+  - -0.27s start GET /api/v2/leaves/query?search=si (#17, by #16)
+  - -0.01s end GET /api/v2/leaves/query?search=si (#17): 503 in 0.27s
+  - -0.00s write leave_lookup.busy: true → false (by #17)
+  - -0.00s error HttpError: search si failed with 503 (during #17)
 state:
-  - driversBoard.hits = 7 items [{id: "ite_6ydxsfq41do010", name: "ali", +4}, …] (v174, by #755 0.06s ago)
-  - driversBoard.favoriteCount = 2 (v171, by #754 0.07s ago)
-  - driversBoard.lastError = "Server error (503)" (v1, by #755 0.06s ago)
-stats: none
+  - leave_lookup.busy = false (v2, by #17 0.00s ago)
+  - leave_lookup.q = "si" (v2, by #16 0.27s ago)
+  - leave_lookup.results = 0 items (v0)
+  - leave_lookup.errorMessage = null (v0)
+  - leave_lookup.totalCount = 0 (v0)
+stats:
+  - GET /api/v2/leaves/query: 1 done, 1 of last 1 failed, 1 in last 10s
 ```
 
 Questions:
@@ -891,89 +935,6 @@ Questions:
   "criteria": {
    "expected": "normal behaviour, nothing is wrong",
    "stale": "an earlier operation finishing late would replace more recent state",
-   "conflict": "concurrent operations are competing over the same state or resource",
-   "duplicate": "the same work is being done twice by accident",
-   "inconsistent": "derived values no longer match the data they come from",
-   "failing": "an operation is failing again and again",
-   "slow": "an operation is far slower than usual",
-   "overload": "the app is hammering the service much more than normal",
-   "unusual": "a normally consistent operation produced an atypical outcome",
-   "transient": "an isolated failure that should work if retried"
-  }
- },
- "action": {
-  "type": "choice",
-  "instructions": "What should the runtime do about this unusual state change?",
-  "criteria": {
-   "ignore": "leave the state as it is",
-   "rollback": "restore the affected state to its last consistent snapshot",
-   "resync": "reload the affected state from its source"
-  }
- }
-}
-```
-
-Labels:
-```json
-{
- "action": {
-  "type": "choice",
-  "dist": {
-   "ignore": 0.9967,
-   "rollback": 0,
-   "resync": 0.0033
-  }
- },
- "diagnosis": {
-  "type": "choice",
-  "label": "unusual"
- }
-}
-```
-
-Costs: {"ignore":24.4852,"rollback":24.4364,"resync":24.5563}  
-Adjusted: {"ignore":0,"rollback":1.5,"resync":0.571}  
-Sim diagnosis: `unusual`, best `ignore`, subject {"kind":"chain","how":"chain"}
-
-Cost parts:
-```json
-{"ignore":{"area":7.295,"final_client":1.071,"final_server":12,"relation_s":0.051,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":3.456},"rollback":{"area":7.276,"final_client":1.071,"final_server":12,"relation_s":0.013,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":3.456},"resync":{"area":7.292,"final_client":1.071,"final_server":12,"relation_s":0.044,"relation_final":0,"errors":0,"uncaught":0,"wasted":1,"latency_s":3.456}}
-```
-
-## 11. error — fleet — nav+toggle/error
-
-id `sim-1019-d4`, split `train`, chaos `normal`, features ["nav","toggle"]
-
-```text
-app: Garagely — /vehicles/recent
-trigger: An uncaught HttpError was thrown: load /vehicles/recent failed with 502
-facts:
-  - Uncaught HttpError: load /vehicles/recent failed with 502 (at unhandledrejection).
-  - The last consistent state from before #89 started is 2.93s old; 3 field writes happened since.
-  - Its chain wrote screenState.busy before the error (last 0.00s ago).
-  - It was thrown while GET /api/vehicles_recent/recent (#91) was active, 0.88s after it started; that chain began with user navigated to link "Vehicles recent" (#89).
-in_flight: none
-timeline:
-  - -0.00s end GET /api/vehicles_recent/recent (#91): 200 in 0.88s
-  - -0.00s write screenState.busy: true → false (by #91)
-  - -0.00s error HttpError: load /vehicles/recent failed with 502 (during #91)
-state:
-  - screenState.busy = false (v26, by #91 0.00s ago)
-  - screenState.view = "/vehicles/recent" (v16, by #89 0.88s ago)
-  - screenState.payload.repairs = 3 items [{id: "655639", job: "brakes", +4}, …] (v10, by #78 8.52s ago)
-stats:
-  - GET /api/vehicles_recent/recent: 4 done, errors 0%, 1 in last 10s (usual 1.29)
-```
-
-Questions:
-```json
-{
- "diagnosis": {
-  "type": "choice",
-  "instructions": "What is happening here?",
-  "criteria": {
-   "expected": "normal behaviour, nothing is wrong",
-   "stale": "outdated data or an older operation is about to replace newer state",
    "conflict": "concurrent operations are competing over the same state or resource",
    "duplicate": "the same change or request is happening again without a new intent",
    "inconsistent": "the state contradicts itself or relationships it normally keeps",
@@ -989,7 +950,7 @@ Questions:
   "instructions": "What should the runtime do about this error?",
   "criteria": {
    "ignore": "leave the state as it is",
-   "rollback": "restore the affected state to its last consistent snapshot"
+   "rollback": "revert the affected state"
   }
  }
 }
@@ -1012,13 +973,13 @@ Labels:
 }
 ```
 
-Costs: {"ignore":52.3334,"rollback":53.6533}  
-Adjusted: {"ignore":0,"rollback":1.82}  
+Costs: {"ignore":3.2294,"rollback":3.2655}  
+Adjusted: {"ignore":0,"rollback":1.5}  
 Sim diagnosis: `failing`, best `ignore`, subject {"kind":"error","how":"subject"}
 
 Cost parts:
 ```json
-{"ignore":{"area":20.171,"final_client":1.5,"final_server":24,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":4.649},"rollback":{"area":21.491,"final_client":1.5,"final_server":24,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":4.649}}
+{"ignore":{"area":1.688,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":2.166},"rollback":{"area":1.724,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":2.166}}
 ```
 
 ## 12. mutation — pharmacy — nav+search+settings/mutation
@@ -1030,17 +991,15 @@ app: Rxly — /prescriptions
 trigger: A write to refillSearch.records, refillSearch.matches from GET /refills/find?search=R (#156) is about to be applied.
 facts:
   - An identical change to refillSearch.records, refillSearch.matches (added 20 items {id: "832611", reference: "RF-210", +4}) was applied 0.48s ago by GET /refills/find?search=RF- (#146); they come from separate user actio…
-  - refillSearch.records has not changed since this write's cause (#156) started (v4).
-  - refillSearch.matches has not changed since this write's cause (#156) started (v4).
+  - refillSearch.records has not changed since this write's cause (#156) started (version 4).
+  - refillSearch.matches has not changed since this write's cause (#156) started (version 4).
   - This write's cause (#156) took 0.05s, 1.5× its usual 0.03s (p95 0.07s).
   - This write comes from GET /refills/find?search=R (#156), started 0.05s ago, ended 0.00s ago with 200; its chain began with user typed "R" into input "Search refills" (#155).
-  - This write would change refillSearch.records: 0 items → 20 items [{id: "832611", reference: "RF-210….
 in_flight: none
 timeline: none
-state:
-  - refillSearch.records = 0 items (v4, by #154 0.31s ago)
+state: none
 stats:
-  - GET /refills/find: 18 done, median 0.03s, p95 0.07s, errors 0%, 15 in last 10s
+  - GET /refills/find: 18 done, median 0.03s, p95 0.07s, 0 of last 18 failed, 15 in last 10s
 ```
 
 Questions:
@@ -1050,25 +1009,25 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "normal behaviour, nothing is wrong",
-   "stale": "outdated data or an older operation is about to replace newer state",
-   "conflict": "concurrent operations are competing over the same state or resource",
-   "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the state contradicts itself or relationships it normally keeps",
-   "failing": "an operation keeps failing or its failures follow a pattern",
-   "slow": "an operation is far slower than usual",
-   "overload": "work is being triggered far more often than usual",
-   "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a one-off failure that is likely to succeed if tried again"
+   "expected": null,
+   "stale": null,
+   "conflict": null,
+   "duplicate": null,
+   "inconsistent": null,
+   "failing": null,
+   "slow": null,
+   "overload": null,
+   "unusual": null,
+   "transient": null
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do with this write?",
   "criteria": {
-   "apply": "let this write update the state now",
+   "apply": null,
    "discard": "drop the incoming change",
-   "defer": "wait for the related requests to finish before deciding on this write"
+   "defer": null
   }
  }
 }
@@ -1101,53 +1060,38 @@ Cost parts:
 {"apply":{"area":2.566,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":6.734},"discard":{"area":2.847,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":6.735},"defer":{"area":2.623,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":6.727}}
 ```
 
-## 13. mutation — health — benign+poll+settings/mutation
+## 13. request — iot — auth/request
 
-id `sim-1008-d17`, split `train`, chaos `degraded`, features ["poll","settings","benign"]
+id `sim-1001-d24`, split `train`, chaos `calm`, features ["auth"]
 
 ```text
-app: MediBoard — /appointments
-trigger: A write to monitorStats.numbers.waitingPatients, monitorStats.numbers.bedOccupancy, monitorStats.numbers.avgWait from GET /v1/summary?range=6h (#77) is about to be applied.
+app: Thermia — /devices
+trigger: GET /rest/me/rules (#192) is about to be sent.
 facts:
-  - This write's cause (#77) took 0.73s, 3.7× its usual 0.20s (p95 0.73s).
-  - monitorStats.numbers.waitingPatients has not changed since this write's cause (#77) started (v5).
-  - monitorStats.numbers.bedOccupancy has not changed since this write's cause (#77) started (v5).
-  - monitorStats.numbers.avgWait has not changed since this write's cause (#77) started (v3).
-  - This write comes from GET /v1/summary?range=6h (#77), started 0.73s ago, ended 0.00s ago with 200; its chain began with user changed select "Time window" to "6h" (#76).
-  - This write would change monitorStats.numbers.waitingPatients: 938 → 2814.
-  - This write would change monitorStats.numbers.bedOccupancy: 782 → 2346.
-  - This write would change monitorStats.numbers.avgWait: 381 → 1143.
+  - 3 identical GET /rest/me/rules requests in the last 10s: #183 answered 401 5.35s ago; #186 answered 401 2.91s ago; #189 answered 401 0.80s ago; #189 started 0.88s before this one; they come from separate user actions 0.88s apart.
+  - GET /rest/me/rules was requested 4 times in the last 10s; usually 3.35 per 10s (1.2×).
+  - GET /rest/me/rules usually answers in 0.11s (p95 0.21s, 52 samples); error rate 0% over 20 requests (0 failed).
+  - This request comes from user clicked button "Reload" (#190), started 0.00s ago.
+  - GET is idempotent.
+  - A cached 200 response from 75.3s ago exists for this request.
 in_flight:
-  - POST /v1/heartbeat {status: "active"} (#79) 0.31s so far, by #78
+  - GET /rest/me/devices (#191) 0.00s so far, by #190
 timeline:
-  - -5.17s end GET /v1/summary?range=15m (#63): 200 in 0.13s
-  - -5.01s user changed switch "Units" to "off" (#64)
-  - -3.97s user clicked link "Pricing" (#66)
-  - -3.31s start interval 2.00s (#68)
-  - -3.31s start GET /v1/summary?range=15m (#69, by #68)
-  - -3.08s end GET /v1/summary?range=15m (#69): 200 in 0.23s
-  - -3.08s write monitorStats.numbers.bedOccupancy: 791 → 782 (by #69)
-  - -2.78s user changed switch "Reminders" to "on" (#70)
-  - -2.30s user changed switch "Reminders" to "off" (#72)
-  - -1.31s start interval 2.00s (#74)
-  - -1.31s start GET /v1/summary?range=15m (#75, by #74)
-  - -1.13s end GET /v1/summary?range=15m (#75): 200 in 0.18s
-  - -0.73s user changed select "Time window" to "6h" (#76)
-  - -0.73s write monitorStats.range: "15m" → "6h" (by #76, user)
-  - -0.73s start GET /v1/summary?range=6h (#77, by #76)
-  - -0.00s end GET /v1/summary?range=6h (#77): 200 in 0.73s
+  - -2.86s end GET /rest/me/devices (#185): 401 in 0.13s
+  - -0.88s user clicked button "Reload" (#187)
+  - -0.88s start GET /rest/me/devices (#188, by #187)
+  - -0.88s start GET /rest/me/rules (#189, by #187)
+  - -0.81s end GET /rest/me/devices (#188): 401 in 0.07s
+  - -0.80s end GET /rest/me/rules (#189): 401 in 0.08s
+  - -0.00s user clicked button "Reload" (#190)
+  - -0.00s start GET /rest/me/devices (#191, by #190)
+  - -0.00s start GET /rest/me/rules (#192, by #190)
 state:
-  - monitorStats.numbers.waitingPatients = 938 (v5, by #57 5.80s ago)
-  - monitorStats.numbers.bedOccupancy = 782 (v5, by #69 3.08s ago)
-  - monitorStats.numbers.avgWait = 381 (v3, by #57 5.80s ago)
-  - monitorStats.range = "6h" (v3, by #76 0.73s ago)
-  - monitorStats.status = "ok" (v3, by #11 20.9s ago)
-  - monitorStats.errorMessage = null (v2, by #11 20.9s ago)
-  - monitorStats.numbers = undefined (v1, by #1 25.2s ago)
-  - monitorStats.pending = false (v2, by #1 25.2s ago)
+  - profileData.sections.rules = 1 item [{id: "b0124125-2bbd-4ec0-a7c8…", +5}] (v1, by #2 156.0s ago)
+  - profileData.sections.devices = 3 items [{id: "d0e4afa8-84b1-416b-a4e3…", +5}, {id: "079faf90-2a9f-4080-a159…", +5}, …] (…
 stats:
-  - GET /v1/summary: 19 done, median 0.20s, p95 0.73s, errors 2%, 8 in last 10s
-  - POST /v1/heartbeat: 4 done, errors 19%, 2 in last 10s
+  - GET /rest/me/rules: 52 done, median 0.11s, p95 0.21s, 0 of last 20 failed, 4 in last 10s (usual 3.35)
+  - GET /rest/me/devices: 59 done, median 0.10s, p95 0.19s, 0 of last 20 failed, 4 in last 10s (usual 3.83)
 ```
 
 Questions:
@@ -1171,11 +1115,12 @@ Questions:
  },
  "action": {
   "type": "choice",
-  "instructions": "What should the runtime do with this write?",
+  "instructions": "What should the runtime do with this request?",
   "criteria": {
-   "discard": "drop this write and keep the current state",
-   "defer": "hold this write until the related in-flight operations finish, then decide again",
-   "apply": "let this write update the state now"
+   "send": "proceed with this request",
+   "coalesce": "reuse the response of the identical request instead of sending another",
+   "delay": "back off before sending so the service can recover",
+   "serve_cached": "use the cached result instead of the network"
   }
  }
 }
@@ -1187,62 +1132,54 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "apply": 0.9999,
-   "discard": 0.0001,
-   "defer": 0
+   "send": 0.7724,
+   "coalesce": 0.178,
+   "delay": 0.0339,
+   "serve_cached": 0.0156
   }
  },
  "diagnosis": {
   "type": "choice",
-  "label": "stale"
+  "label": "failing"
  }
 }
 ```
 
-Costs: {"apply":17.3015,"discard":17.9448,"defer":17.3226}  
-Adjusted: {"apply":0,"discard":0.893,"defer":1.5}  
-Sim diagnosis: `stale`, best `apply`, subject {"kind":"write","how":"subject","ref":61}
+Costs: {"send":37.9779,"coalesce":37.8787,"delay":38.0404,"block":37.8787,"serve_cached":37.8787}  
+Adjusted: {"send":0,"coalesce":0.151,"delay":0.313,"block":0.401,"serve_cached":0.401}  
+Sim diagnosis: `failing`, best `send`, subject {"kind":"op","how":"subject","ref":121}
 
 Cost parts:
 ```json
-{"apply":{"area":2.426,"final_client":0.1,"final_server":6,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":31,"latency_s":5.983},"discard":{"area":3.069,"final_client":0.1,"final_server":6,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":31,"latency_s":5.983},"defer":{"area":2.448,"final_client":0.1,"final_server":6,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":31,"latency_s":5.978}}
+{"send":{"area":14,"final_client":1.4,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":1,"latency_s":0.998},"coalesce":{"area":14,"final_client":1.4,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.9},"delay":{"area":14,"final_client":1.4,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":1,"latency_s":1.248},"block":{"area":14,"final_client":1.4,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.9},"serve_cached":{"area":14,"final_client":1.4,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.9}}
 ```
 
-## 14. error — health — benign+poll+settings/error
+## 14. error — project — benign+search/error
 
-id `sim-1008-s5`, split `train`, chaos `degraded`, features ["poll","settings","benign"]
+id `sim-1040-s0`, split `train`, chaos `normal`, features ["search","benign"]
 
 ```text
-app: MediBoard — /appointments
-trigger: An uncaught Error was thrown: ResizeObserver loop completed with undelivered notifications.
+app: Kanbo — /tasks
+trigger: An uncaught TypeError was thrown: Cannot read properties of null (reading 'postMessage') at analytics.js:1:2210
 facts:
-  - Uncaught Error: ResizeObserver loop completed with undelivered notifications. (at window.onerror).
-  - The last consistent state from before #22 started is 1.71s old; 7 field writes happened since.
+  - Uncaught TypeError: Cannot read properties of null (reading 'postMessage') at analytics.js:1:2210 (at window.onerror).
+  - The last consistent state from before #10 started is 0.68s old; 2 field writes happened since.
   - Its chain wrote no state before the error.
-  - It was thrown while timer 6.17s (#22) was active, 0.00s after it started.
+  - It was thrown while timer 4.85s (#10) was active, 0.00s after it started.
 in_flight:
-  - POST /v1/analytics {event: "view"} (#19) 0.30s so far, by #18
-  - GET /v1/summary?range=1h (#21) 0.17s so far, by #20
+  - GET /api/v1/tasks/search?term=d (#9) 0.05s so far, by #8
 timeline:
-  - -2.88s user changed switch "Reminders" to "off" (#6)
-  - -0.48s user changed switch "Share with doctor" to "on" (#14)
-  - -0.39s user changed select "Time window" to "1h" (#16)
-  - -0.39s write monitorStats.range: "15m" → "1h" (by #16, user)
-  - -0.39s start GET /v1/summary?range=1h (#17, by #16)
-  - -0.36s end POST /v1/heartbeat {status: "active"} (#13): 200 in 0.80s
-  - -0.36s write presenceInfo.othersOnline: 0 → 3 (by #13)
-  - -0.30s user clicked link "Docs" (#18)
-  - -0.30s start POST /v1/analytics {event: "view"} (#19, by #18)
-  - -0.23s end GET /v1/summary?range=1h (#17): 200 in 0.16s
-  - -0.23s write monitorStats.numbers.waitingPatients: 789 → 1578; monitorStats.numbers.bedOccupancy: 791 → 1582; monitorStats… (by #17)
-  - -0.17s start interval 2.00s (#20)
-  - -0.17s start GET /v1/summary?range=1h (#21, by #20)
-  - -0.01s end PATCH /v1/settings {shareWithDoctor: true} (#15): 502 in 0.47s
-  - -0.00s start timer 6.17s (#22)
-  - -0.00s error Error: ResizeObserver loop completed with undelivered notifications. (during #22)
+  - -0.85s start POST /api/v1/ping {status: "active"} (#7, by #6)
+  - -0.79s end POST /api/v1/track {event: "tick"} (#5): 204 in 0.06s
+  - -0.74s end POST /api/v1/ping {status: "active"} (#7): 200 in 0.11s
+  - -0.05s user typed "d" into input "Search tasks" (#8)
+  - -0.05s write task_finder.query: "" → "d" (by #8, user)
+  - -0.05s write task_finder.loading: false → true (by #8, user)
+  - -0.05s start GET /api/v1/tasks/search?term=d (#9, by #8)
+  - -0.00s start timer 4.85s (#10)
+  - -0.00s error TypeError: Cannot read properties of null (reading 'postMessage') at analytics.js:1:2210 (during #10)
 state: none
-stats:
-  - GET /v1/summary: 5 done, errors 8%, 6 in last 10s
+stats: none
 ```
 
 Questions:
@@ -1277,71 +1214,46 @@ Labels:
 }
 ```
 
-## 15. ask — health — benign+poll+settings/ask
+## 15. ask — pharmacy — nav+search+settings/ask
 
-id `sim-1008-a0`, split `train`, chaos `degraded`, features ["poll","settings","benign"]
+id `sim-1000-a0`, split `train`, chaos `calm`, features ["search","settings","nav"]
 
 ```text
-app: MediBoard — /appointments
+app: Rxly — /overview
 trigger: The developer asks about the app right now.
 facts:
-  - An identical change to prefs.pendingSave was applied 3 times in the last 10s.
-  - An identical change to prefs.pendingSave was applied twice in the last 10s.
-  - The last 2 POST /v1/heartbeat requests failed in a row (200, 200, 500, timeout).
-  - The last 1 POST /v1/analytics request failed in a row (204, 204, 503).
-  - 2 operations are in flight; the oldest is POST /v1/heartbeat {status: "active"} (#79) (1.02s).
-in_flight:
-  - POST /v1/heartbeat {status: "active"} (#79) 1.02s so far, by #78
-  - GET /v1/summary?range=6h (#81) 0.02s so far, by #80
+  - An identical change to pageState.screen was applied 4 times in the last 10s.
+  - An identical change to pageState.loading was applied 8 times in the last 10s.
+  - An identical change to pageState.content.prescriptions,pageState.content.refills,pageState.content.stats,pageState.loading was applied twice in the last 10s.
+  - An identical change to refillSearch.term was applied twice in the last 10s.
+  - An identical change to settings.writing was applied 4 times in the last 10s.
+  - An identical change to settings.writing was applied 4 times in the last 10s.
+in_flight: none
 timeline:
-  - -13.7s user changed switch "Units" to "off" (#38)
-  - -11.8s user clicked link "What's new" (#42)
-  - -10.5s user changed switch "Units" to "on" (#46)
-  - -10.2s user changed switch "Units" to "off" (#48)
-  - -9.60s user clicked button "Update now" (#52)
-  - -6.70s user changed select "Time window" to "15m" (#56)
-  - -6.09s user changed switch "Units" to "on" (#58)
-  - -5.73s user changed switch "Units" to "off" (#64)
-  - -4.69s user clicked link "Pricing" (#66)
-  - -3.49s user changed switch "Reminders" to "on" (#70)
-  - -3.01s user changed switch "Reminders" to "off" (#72)
-  - -1.45s user changed select "Time window" to "6h" (#76)
-  - -0.71s end GET /v1/summary?range=6h (#77): 200 in 0.73s
-  - -0.69s write monitorStats.numbers.waitingPatients: 938 → 2814; monitorStats.numbers.bedOccupancy: 782 → 2346; monitorStats… (by #77)
-  - -0.02s start interval 2.00s (#80)
-  - -0.02s start GET /v1/summary?range=6h (#81, by #80)
+  - -0.58s user typed "RFRF RF-7" into input "Search refills" (5 keystrokes, #188–#196)
 state:
-  - monitorStats.numbers.waitingPatients = 2814 (v6, by #77 0.69s ago)
-  - monitorStats.numbers.bedOccupancy = 2346 (v6, by #77 0.69s ago)
-  - monitorStats.numbers.avgWait = 1143 (v4, by #77 0.69s ago)
-  - monitorStats.range = "6h" (v3, by #76 1.45s ago)
-  - prefs.pendingSave = false (v14, by #71 1.87s ago)
-  - prefs.options.reminders = false (v3, by #72 3.01s ago)
-  - prefs.options.units = false (v5, by #64 5.73s ago)
-  - presenceInfo.live = false (v1, by #45 10.2s ago)
-stats:
-  - POST /v1/heartbeat: 4 done, errors 19%, 2 in last 10s
-  - GET /v1/summary: 19 done, median 0.20s, p95 0.73s, errors 2%, 8 in last 10s
+  - refillSearch.term = "RFRF RF-7" (v27, by #196 0.10s ago)
+  - pageState.loading = false (v54, by #186 0.23s ago)
+  - pageState.content.prescriptions = 4 items [{id: "525303", drug: "amoxicillin", +5}, …] (v27, by #18…
+stats: none
 ```
 
 Questions:
 ```json
 {
- "q_write_inflight": {
-  "type": "noul",
-  "instructions": "Is any write request (POST, PUT, PATCH or DELETE) still in flight?",
-  "criteria": {
-   "true": "yes, a write is in flight",
-   "false": "no write is in flight"
-  }
- },
- "q_user_recent": {
-  "type": "noul",
-  "instructions": "Has the user interacted in the last 1 seconds?"
- },
  "q_user_waiting": {
   "type": "noul",
-  "instructions": "Has the user waited over 1 seconds on something they started?"
+  "instructions": "Has the user waited over 3 seconds on something they started?"
+ },
+ "q_last_failed": {
+  "type": "choice",
+  "instructions": "Which endpoint failed most recently?",
+  "criteria": {
+   "e1": "GET /prescriptions/stats",
+   "e2": "GET /prescriptions/refills",
+   "e3": "GET /home/refills",
+   "none": "nothing failed recently"
+  }
  }
 }
 ```
@@ -1349,61 +1261,38 @@ Questions:
 Labels:
 ```json
 {
- "q_write_inflight": {
-  "type": "noul",
-  "p": 1
- },
- "q_user_recent": {
-  "type": "noul",
-  "p": 0
- },
  "q_user_waiting": {
   "type": "noul",
   "p": 0
+ },
+ "q_last_failed": {
+  "type": "choice",
+  "label": "none"
  }
 }
 ```
 
-## 16. ask — health — benign+poll+settings/ask
+## 16. ask — pharmacy — nav+search+settings/ask
 
-id `sim-1008-a1`, split `train`, chaos `degraded`, features ["poll","settings","benign"]
+id `sim-1000-a1`, split `train`, chaos `calm`, features ["search","settings","nav"]
 
 ```text
-app: MediBoard — /appointments
+app: Rxly — /overview
 trigger: The developer asks about the app right now.
 facts:
-  - An identical change to prefs.pendingSave was applied 5 times in the last 10s.
-  - An identical change to prefs.options.reminders was applied twice in the last 10s.
-  - An identical change to prefs.pendingSave was applied 5 times in the last 10s.
-  - The last 3 POST /v1/analytics requests failed in a row (204, 204, 503, timeout, network error).
-  - No operations are in flight.
+  - An identical change to settings.prefs.pickupReminders was applied twice in the last 10s.
+  - An identical change to settings.writing was applied 6 times in the last 10s.
+  - An identical change to pageState.screen was applied 4 times in the last 10s.
+  - An identical change to pageState.loading was applied 7 times in the last 10s.
+  - An identical change to settings.writing was applied 6 times in the last 10s.
+  - An identical change to pageState.content.activity,pageState.content.prescriptions,pageState.content.prescriptions1,pageState.content.refills,pageState.loading was applied 4 times in the last 10s.
 in_flight: none
 timeline:
-  - -5.33s user clicked button "Update now" (#178)
-  - -5.27s user clicked button "Update now" (#180)
-  - -4.78s user changed switch "Units" to "on" (#184)
-  - -4.11s user changed switch "Units" to "off" (#186)
-  - -3.84s write prefs.pendingSave: true → false (by #187)
-  - -2.83s start interval 5.00s (#188)
-  - -2.83s start POST /v1/heartbeat {status: "active"} (#189, by #188)
-  - -2.83s start interval 2.00s (#190)
-  - -2.83s start GET /v1/summary?range=6h (#191, by #190)
-  - -2.57s end GET /v1/summary?range=6h (#191): 200 in 0.26s
-  - -2.57s write monitorStats.numbers.avgWait: 1518 → 1632 (by #191)
-  - -2.20s end POST /v1/heartbeat {status: "active"} (#189): 200 in 0.63s
-  - -2.20s write presenceInfo.live: false → true (by #189)
-  - -0.83s start interval 2.00s (#192)
-  - -0.83s start GET /v1/summary?range=6h (#193, by #192)
-  - -0.70s end GET /v1/summary?range=6h (#193): 200 in 0.13s
+  - -0.48s user changed switch "Generic ok" to "off" (#266)
 state:
-  - presenceInfo.live = true (v2, by #189 2.20s ago)
-  - monitorStats.numbers.avgWait = 1632 (v7, by #191 2.57s ago)
-  - prefs.pendingSave = false (v30, by #187 3.84s ago)
-  - prefs.options.units = false (v7, by #186 4.11s ago)
-  - monitorStats.status = "ok" (v5, by #183 4.62s ago)
-  - monitorStats.errorMessage = null (v37, by #183 4.62s ago)
-  - monitorStats.pending = false (v10, by #181 5.13s ago)
-  - prefs.options.reminders = false (v9, by #138 7.44s ago)
+  - settings.writing = false (v60, by #267 0.39s ago)
+  - settings.prefs.genericOk = false (v11, by #266 0.48s ago)
+  - refillSearch.records = 14 items [{id: "198768", reference: "RF-402", +4}, …] (v14, by #265 0.72s ag…
 stats: none
 ```
 
@@ -1414,15 +1303,25 @@ Questions:
   "type": "score",
   "instructions": "How many requests are pending?",
   "criteria": [
-   "0 requests",
-   "1 request",
-   "2 requests",
-   "3+ requests"
+   "none",
+   "one",
+   "two",
+   "three or more"
   ]
  },
- "q_recent_failure": {
+ "q_any_inflight": {
   "type": "noul",
-  "instructions": "Any failed requests in the last 5 seconds?"
+  "instructions": "Are requests still pending?"
+ },
+ "q_last_failed": {
+  "type": "choice",
+  "instructions": "What is the most recent failing endpoint?",
+  "criteria": {
+   "e1": "GET /overview/activity",
+   "e2": "PATCH /me_settings",
+   "e3": "GET /prescriptions/refills",
+   "none": "nothing failed recently"
+  }
  }
 }
 ```
@@ -1434,9 +1333,13 @@ Labels:
   "type": "score",
   "level": 0
  },
- "q_recent_failure": {
+ "q_any_inflight": {
   "type": "noul",
   "p": 0
+ },
+ "q_last_failed": {
+  "type": "choice",
+  "label": "none"
  }
 }
 ```

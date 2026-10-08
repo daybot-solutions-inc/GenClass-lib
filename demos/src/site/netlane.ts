@@ -3,6 +3,7 @@
 import type { LogEntry } from "../shared/protocol.ts";
 import { epochNow, type ServerLink } from "../shared/server.ts";
 import { h } from "./dom.ts";
+import { nativeClearInterval, nativeSetInterval } from "../shared/native.ts";
 
 const WINDOW_MS = 10000;
 const ROWS = 8;
@@ -127,12 +128,12 @@ export function mountNetLane(link: ServerLink): HTMLElement {
   };
   const startPolling = () => {
     void poll();
-    pollTimer = window.setInterval(poll, 300);
+    pollTimer = nativeSetInterval(poll, 300);
   };
   startPolling();
   requestAnimationFrame(loop);
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) clearInterval(pollTimer);
+    if (document.hidden) nativeClearInterval(pollTimer);
     else startPolling();
   });
   return el;

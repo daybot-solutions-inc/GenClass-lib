@@ -1,7 +1,7 @@
 // Worker thread: receives seed batches, generates trajectories, appends rows to its own shard files and reports
 // compact statistics to the parent.
 
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parentPort, workerData } from "node:worker_threads";
 import { createFakeRuntime } from "../run/fake-runtime.js";
@@ -30,10 +30,16 @@ async function main(): Promise<void> {
   const opts: GenOptions = { factory, runtimeName, maxPoints: init.maxPoints, askRows: init.askRows, testKeep: init.testKeep, exploreScale: init.exploreScale };
   const dir = join(init.out, "shards");
   mkdirSync(dir, { recursive: true });
-  parentPort!.on("message", async (msg: { seeds?: number[]; stop?: boolean }) => {
+  const partsDir = join(init.out, "parts");
+  parentPort!.on("message", async (msg: { seeds?: number[]; stop?: boolean; part?: number }) => {
     if (msg.stop) {
       process.exit(0);
     }
+    // Parts mode: all rows of this seed range go to part files, renamed into place only when the part is complete.
+    const part = msg.part;
+    const partRows: Record<string, number> = {};
+    const partName = part === undefined ? "" : `part-${String(part).padStart(6, "0")}`;
+    if (part !== undefined) mkdirSync(partsDir, { recursive: true });
     for (const seed of msg.seeds ?? []) {
       let res;
       try {
@@ -44,7 +50,12 @@ async function main(): Promise<void> {
       }
       const bySplit: Record<string, string[]> = {};
       for (const r of res.rows) (bySplit[r.split] ??= []).push(JSON.stringify(r));
-      for (const [split, lines] of Object.entries(bySplit)) appendFileSync(join(dir, `${split}.w${init.id}.jsonl`), lines.join("\n") + "\n");
+      for (const [split, lines] of Object.entries(bySplit)) {
+        if (part !== undefined) {
+          appendFileSync(join(partsDir, `${partName}.${split}.jsonl.tmp`), lines.join("\n") + "\n");
+          partRows[split] = (partRows[split] ?? 0) + lines.length;
+        } else appendFileSync(join(dir, `${split}.w${init.id}.jsonl`), lines.join("\n") + "\n");
+      }
       const lens = res.rows.map((r) => Math.round((JSON.stringify(r.state).length + JSON.stringify(r.questions).length) / 3.6));
       parentPort!.postMessage({
         type: "traj",
@@ -68,6 +79,15 @@ async function main(): Promise<void> {
         domain: res.rows[0]?.meta.domain ?? null,
         family: res.rows[0]?.meta.family ?? null,
       });
+    }
+    if (part !== undefined) {
+      for (const split of Object.keys(partRows)) {
+        const tmp = join(partsDir, `${partName}.${split}.jsonl.tmp`);
+        if (existsSync(tmp)) renameSync(tmp, join(partsDir, `${partName}.${split}.jsonl`));
+      }
+      const seeds = msg.seeds ?? [];
+      writeFileSync(join(partsDir, `${partName}.json`), JSON.stringify({ part, seeds: [seeds[0], seeds[seeds.length - 1]], rows: partRows }));
+      parentPort!.postMessage({ type: "part-done", part, rows: partRows });
     }
     parentPort!.postMessage({ type: "idle" });
   });

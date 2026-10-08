@@ -10,7 +10,8 @@ every outcome against the user's intended outcome. Output is CONTRACT-D jsonl
 Observers on: `fetch`, `timers` and `websocket`. User actions go through `runtime.user()`, uncaught errors through
 `runtime.reportError()`, and the route through `CreateOptions.app()`. Nothing in the runtime knows about the sim. The sim sees only the public API plus the seams CORE added for it:
 `hooks.opCreated/mutationProposed` and `EvaluateRequest.subject`, which correlate decisions with app-level
-operations, `vocabulary` (wording randomisation), and `policy.requireDiagnosis: false`. The demos (`demos/`) were
+operations, `vocabulary` (wording randomisation), and `policy.requireDiagnosis: false` (with gate thresholds of 0.5: the decider puts probability 1 on the forced action, so
+exactly that action runs under the summed-mass gate). The demos (`demos/`) were
 not read or modelled.
 
 ## Run it (on the VM; never on the Mac)
@@ -25,11 +26,21 @@ scripts/vm.sh exec sim 'cd sim && python3 scripts/analyze.py out/r300k'         
 ```
 
 Committed samples (`samples/`): `sample.jsonl` (200 rows, stratified over trigger × diagnosis × passive/act),
-`EXAMPLES.md` (16 pretty-printed rows covering every trigger), `sample-stats.json`, and `stats-v20k.json` (stats of
-a 20k-row validation run). Regenerate all data whenever the runtime's situation text changes.
+`EXAMPLES.md` (16 pretty-printed rows covering every trigger), `sample-stats.json`, and `stats-final-a.json` (stats of
+final phase A: 600k rows on the frozen runtime). Regenerate all data whenever the runtime's situation text changes.
 
-**Throughput and the big run.** With adaptive K = 3 futures and 15% long sessions: about 188 rows/s on 40 workers
-(train VM). A 1M-row run is therefore about 90 min on the VM alone. To split it across machines, give each one a
+**Final datasets (runtime frozen at tag `situation-v1`).** `bash sim/scripts/final.sh a` writes phase A (600k rows,
+seeds from 10,000,000) to `sim/out/final-a/{train,dev,test}.jsonl` with `stats.json`. `bash sim/scripts/final.sh b`
+writes phase B (1.4M rows, seeds from 50,000,000) as resumable parts: `sim/out/final-b/parts/part-NNNNNN.<split>.jsonl`,
+each a complete, usable file, with a `part-NNNNNN.json` marker once finished. If B is interrupted (the VM shuts down
+at 03:00 UTC), run `final.sh b` again: finished parts are skipped, half-written `*.tmp` parts are regenerated, and it
+stops at 1.4M rows in total. `final.sh merge-b` concatenates the parts into `train/dev/test.jsonl`, or read
+`parts/*.train.jsonl` directly. `python3 sim/scripts/analyze.py sim/out/final-b` works on parts too. The gate
+thresholds and the correlation header (`x-request-id`, excluded from request identity) were adjusted for the frozen
+runtime.
+
+**Throughput and the big run.** With adaptive K = 3 futures and 15% long sessions: about 245 rows/s on 56 workers
+(train VM; phase A: 600k rows in 41 min). To split it across machines, give each one a
 disjoint seed range, e.g. VM `--seed 1 --rows 500000` and a c-node `--seed 50000001 --rows 500000` (about 5.7 rows
 per trajectory, so the ranges never meet). Concatenate the `train/dev/test.jsonl` files: splits are per scenario, so
 they stay consistent across machines.
@@ -51,7 +62,7 @@ scale, default 1), `--no-ask`, `--sample`, `--allow-fake` (test double, never fo
 | network | `src/net/network.ts` | `fetch` returns real `Response` objects after virtual latency, honours `AbortSignal`, and network errors are `TypeError`. Latency is lognormal per endpoint kind, with per-endpoint personalities, spikes, slow periods, capacity overload (503/429/latency), per-endpoint rate limits with or without `retry-after`, outages (503/500/502, network error, hang until the gateway timeout, empty lists), replica lag, server bugs (dropped/null fields, empty lists, HTML instead of JSON) and transient 5xx (some after the write committed). Live updates use a `WebSocket` class on `global` (`wss://host/ws/<path>`, messages in order per topic), so the runtime's websocket observer attributes push-driven writes to their message. |
 | apps | `src/app/**` | Programs built from 15 feature combinators: real `async` code against the runtime-instrumented `fetch`, runtime atoms and timers. |
 | users | `src/app/feature.ts` (`UserModel`), `features/*.session` | Personas with per-key typing (lognormal, bursts, typos with backspace), think times, accidental double clicks, impatient re-clicks (only while the operation is still pending), intentional repeats (adding the same thing twice, quick corrections, rapid +1 clicks), navigation and idle stretches. |
-| scenario | `src/world/scenario.ts` | seed → domain, 1–3 features (+30% background noise), naming, API envelope style, id style, chaos level, persona, session (20–75 s, or 2–5 min for 15% of scenarios, with a calm warm-up of 30–60% so baselines, invariants and transition profiles get learned), external events (other users, metric drift; some correlated with the user's own edits), ask-probe times, wording, and the situation size `situation.budget` (40% 3,200 chars for WebGPU, 30% 2,000 for WASM ≥ 4 threads, 30% 1,100 for single-thread WASM; recorded in `meta.budget`, with per-budget stats in `stats.json` under `by_budget`). |
+| scenario | `src/world/scenario.ts` | seed → domain, 1–3 features (+30% background noise), naming, API envelope style, id style, chaos level, persona, session (20–75 s, or 2–5 min for 15% of scenarios, with a calm warm-up of 30–60% so baselines, invariants and transition profiles get learned), external events (other users, metric drift; some correlated with the user's own edits), ask-probe times, wording, and the situation size `situation.budget` (40% 3,200 chars for WebGPU, 30% 2,000 for WASM ≥ 4 threads, 30% 1,000 for single-thread WASM (compact questions at ≤ 1,400); recorded in `meta.budget`, with per-budget stats in `stats.json` under `by_budget`). |
 
 ### Program space
 
@@ -223,7 +234,7 @@ Splits are per trajectory, so all of a scenario's rows share one split (`src/wor
     slightly harmful;
   - exact ties → passive.
 - Row validity over 40 random trajectories: labels reference real options, distributions sum to 1, no sim
-  correlation header in any state, passive is best on a healthy share of rows.
+  correlation header (`x-request-id`) value in any state, passive is best on a healthy share of rows.
 
 ## Known limitations (label-quality risks)
 
@@ -248,5 +259,5 @@ Splits are per trajectory, so all of a scenario's rows share one split (`src/wor
    inconsistency rows and about 4% of mutation rows.
 7. **Ask answers** are exact with respect to the trace. Evidence checks are heuristic (endpoint path in the
    situation text), and borderline timings are skipped.
-8. **Token lengths are estimates** (characters/3.6). The situation budget (1,100 / 2,000 / 3,200 characters) bounds
+8. **Token lengths are estimates** (characters/3.6). The situation budget (1,000 / 2,000 / 3,200 characters) bounds
    the state.

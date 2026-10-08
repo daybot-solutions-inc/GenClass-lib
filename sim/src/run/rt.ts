@@ -64,7 +64,10 @@ export function createOptions(o: RuntimeOptions): Record<string, unknown> {
     report: "silent",
     observe: { fetch: true, timers: true, websocket: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false },
     triage: "salient",
-    policy: { thresholds: { report: 0, guard: 0, heal: 0 }, holdBudgetMs: 1e9, maxActionsPerMinute: 1e9, requireDiagnosis: false },
+    // Summed-mass gate (CONTRACT §8): the sim answers with probability 1 on the forced action, so the permitted
+    // non-passive mass is 1 when a non-passive action is forced and 0 when passive is. A threshold of 0.5 runs exactly
+    // the forced action (with 0, the gate would run the argmax non-passive action even when passive is forced).
+    policy: { thresholds: { report: 0, guard: 0.5, heal: 0.5 }, holdBudgetMs: 1e9, maxActionsPerMinute: 1e9, requireDiagnosis: false },
     historySize: 500,
     app: o.app,
   };

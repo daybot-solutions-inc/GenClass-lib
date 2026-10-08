@@ -87,6 +87,7 @@ export class TrialHarness {
       driver,
       error,
       ...score,
+      ...(this.gcs.trace ? { trace: this.gcs.trace } : {}),
     };
   }
 

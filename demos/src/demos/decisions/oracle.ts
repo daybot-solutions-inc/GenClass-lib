@@ -6,6 +6,7 @@ import type { LogEntry } from "../../shared/protocol.ts";
 import { epochNow } from "../../shared/server.ts";
 import type { Score } from "../../shared/types.ts";
 import type { JournalVersion } from "../../server/worlds/decisions.ts";
+import { nativeClearInterval, nativeSetInterval } from "../../shared/native.ts";
 
 const LEVELS = ["failing", "poor", "fair", "good", "excellent"];
 
@@ -34,7 +35,7 @@ export function decisionsOracle(ctx: OracleContext): Oracle {
     start() {
       ctx.el.addEventListener("keydown", onKey, true);
       ctx.el.addEventListener("input", onKey, true);
-      timer = setInterval(() => texts.push({ t: epochNow(), text: ($("journal-body") as HTMLTextAreaElement | null)?.value ?? "" }), 25);
+      timer = nativeSetInterval(() => texts.push({ t: epochNow(), text: ($("journal-body") as HTMLTextAreaElement | null)?.value ?? "" }), 25);
     },
     check(cond) {
       if (cond === "loaded") return (($("journal-body") as HTMLTextAreaElement | null)?.value.length ?? 0) > 0;
@@ -44,7 +45,7 @@ export function decisionsOracle(ctx: OracleContext): Oracle {
       return false;
     },
     async finish(): Promise<Score> {
-      clearInterval(timer);
+      nativeClearInterval(timer);
       ctx.el.removeEventListener("keydown", onKey, true);
       ctx.el.removeEventListener("input", onKey, true);
       const truth = await ctx.link.truth<{ history: JournalVersion[] }>();

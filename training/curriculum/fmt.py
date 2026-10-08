@@ -21,6 +21,17 @@ KEY_VARIANTS = {
 }
 
 
+def js_numbers(x):
+    """MODEL NEEDS 8: numbers as JavaScript prints them -- integral floats become ints (25.0 -> 25)."""
+    if isinstance(x, float):
+        return int(x) if x.is_integer() and abs(x) < 2**53 else x
+    if isinstance(x, dict):
+        return {k: js_numbers(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [js_numbers(v) for v in x]
+    return x
+
+
 def held_count(n: int) -> int:
     return max(1, round(n * 0.2)) if n >= 4 else 0
 

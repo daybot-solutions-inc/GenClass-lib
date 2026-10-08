@@ -3,7 +3,8 @@
 //   guard -> GenClass.init({ mode: "guard", model: { baseUrl } }) (the default)
 //   heal  -> GenClass.init({ mode: "heal",  model: { baseUrl } })
 import { GenClass } from "@genclass/runtime";
-import type { ActionRecord, Decision, Plugin, Report, Runtime } from "@genclass/runtime";
+import type { ActionRecord, Decision, InitOptions, Plugin, Report, Runtime } from "@genclass/runtime";
+import { attachTrace, newTrace, traceHooks, type Trace } from "./trace.ts";
 import type { GcMode, GcStats } from "./types.ts";
 
 declare const __RUNTIME_KIND__: string;
@@ -18,20 +19,32 @@ export interface GcSession {
   reports: Report[];
   initAt: number;
   readyAt: number | null;
+  trace: Trace | null;
 }
 
-export function startGenClass(mode: GcMode, opts: { baseUrl?: string; plugins?: Plugin[]; debug?: boolean; holdBudgetMs?: number }): GcSession {
+export function startGenClass(
+  mode: GcMode,
+  opts: { baseUrl?: string; plugins?: Plugin[]; debug?: boolean; holdBudgetMs?: number; trace?: boolean },
+): GcSession {
   const policy = opts.holdBudgetMs ? { holdBudgetMs: opts.holdBudgetMs } : undefined;
+  // Investigation only: the runtime's creation hooks (CreateOptions.hooks), forwarded by GenClass.init.
+  const trace = opts.trace ? newTrace() : null;
+  const extra = (trace ? { hooks: traceHooks(trace) } : {}) as Partial<InitOptions>;
   const gc =
     mode === "off"
-      ? GenClass.init({ mode: "observe", model: false, plugins: opts.plugins, policy })
+      ? GenClass.init({ mode: "observe", model: false, plugins: opts.plugins, policy, ...extra })
       : GenClass.init({
           mode,
           model: { ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}), preload: "eager" },
           plugins: opts.plugins,
           debug: opts.debug,
           policy,
+          ...extra,
         });
+  if (trace) {
+    attachTrace(gc, trace);
+    window.__gcTrace = trace;
+  }
   const s: GcSession = {
     gc,
     mode,
@@ -41,6 +54,7 @@ export function startGenClass(mode: GcMode, opts: { baseUrl?: string; plugins?: 
     reports: [],
     initAt: performance.now(),
     readyAt: null,
+    trace,
   };
   gc.on("decide", (d) => s.decisions.push(d));
   gc.on("detect", (d) => s.detections.push(d));

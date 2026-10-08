@@ -40,6 +40,8 @@ export interface Score {
   bug: boolean;
   reasons: string[];
   metrics: Record<string, number>;
+  /** Oracle details for investigations (e.g. which cards ended in the wrong column). */
+  details?: Record<string, unknown>;
 }
 
 export interface InterventionSummary {
@@ -79,4 +81,6 @@ export interface TrialResult extends Score {
   gc: GcStats;
   driver: "synthetic" | "playwright";
   error?: string;
+  /** Present only in trace runs (?trace=1). */
+  trace?: unknown;
 }

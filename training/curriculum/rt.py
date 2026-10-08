@@ -11,6 +11,7 @@ Scenario facts that CORE cannot compute are dropped; scenarios whose label would
 from __future__ import annotations
 
 import json
+import math
 import re
 
 from world import Op, Trace
@@ -113,8 +114,24 @@ _HEX = re.compile(r"^(?=[0-9a-f]*\d)[0-9a-f]{8,}$", re.I)
 _TOK = re.compile(r"^(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{16,}$")
 
 
+def _is_slug_id(seg: str) -> bool:
+    if len(seg) < 4 or not re.fullmatch(r"[A-Za-z0-9_-]+", seg) or not re.search(r"\d", seg) or not re.search(r"[A-Za-z]", seg):
+        return False
+    if re.fullmatch(r"v\d+([a-z]+\d*)?", seg, re.I):
+        return False
+    for part in re.split(r"[-_]", seg):
+        if not part or not re.search(r"\d", part) or not re.search(r"[A-Za-z]", part):
+            continue
+        if part[0].isdigit():
+            return True
+        if len(re.findall(r"[A-Za-z](?=\d)|\d(?=[A-Za-z])", part)) >= 2:
+            return True
+    return len(seg) >= 6 and bool(re.search(r"[a-z]", seg)) and bool(re.search(r"[A-Z]", seg)) and bool(re.search(r"\d", seg))
+
+
 def is_id(seg: str) -> bool:
-    return bool(seg) and (seg.isdigit() or bool(_UUID.match(seg)) or bool(_HEX.match(seg)) or bool(_TOK.match(seg)))
+    return bool(seg) and (seg.isdigit() or bool(_UUID.match(seg)) or bool(_HEX.match(seg)) or bool(_TOK.match(seg))
+                          or _is_slug_id(seg))
 
 
 def signature(method: str, url: str) -> str:
@@ -208,10 +225,11 @@ def user_of(tr: Trace, op: Op) -> Op | None:
 
 
 def started_rel(w: Op, ref: Op) -> str:
+    """CORE (situation-v1): "started 0.09s after #6"."""
     d = w.start - ref.start
     if abs(d) < 0.5:
-        return "which started at the same time as it"
-    return f"which started {secs(abs(d))} {'after' if d > 0 else 'before'} it"
+        return f"started at the same time as #{ref.id}"
+    return f"started {secs(abs(d))} {'after' if d > 0 else 'before'} #{ref.id}"
 
 
 def user_relation(tr: Trace, ref: Op, w: Op) -> str:
@@ -245,12 +263,12 @@ def provenance(tr: Trace, what: str, op: Op | None) -> tuple:
     now = tr.now
     if op is None:
         return F(f"{what} has no known cause: no operation was active when it started.", "provenance", True)
-    p = f"{what} comes from {label(op)}, which started {secs(now - op.start)} ago"
+    p = f"{what} comes from {label(op)}, started {secs(now - op.start)} ago"
     if op.kind != "user" and op.end is not None and op.end <= now and op.end != op.start:
-        p += f" and ended {secs(now - op.end)} ago ({status_text(op)})"
+        p += f", ended {secs(now - op.end)} ago with {status_text(op)}"
     root = tr.root_of(op)
     if root.id != op.id:
-        p += f"; its chain began with {label(root)} {secs(now - root.start)} ago"
+        p += f"; its chain began with {label(root)}"
     return F(p + ".", "provenance", True)
 
 
@@ -268,7 +286,7 @@ def mutation_facts(tr: Trace, spec: dict) -> list:
             if others:
                 last = others[-1]
                 w = tr.ops.get(last.op)
-                wt = (f"{label(w)}, {started_rel(w, C)}{user_relation(tr, C, w)}" if w is not None else "a user action")
+                wt = (f"{label(w)}, which {started_rel(w, C)}{user_relation(tr, C, w)}" if w is not None else "a user action")
                 out.append(F(f"{path} was written {times(len(others))} by other operations since {ref} started (version "
                              f"{v0} → {vn}), last {secs(now - last.t)} ago by {wt}.", "versions", False))
             elif since:
@@ -291,16 +309,20 @@ def mutation_facts(tr: Trace, spec: dict) -> list:
         for p, hs in sorted(moved.items(), key=key)[:2]:
             first, last = hs[0], hs[-1]
             w = tr.ops.get(last.op)
-            by = f"{label(w)} {secs(max(0.0, last.t - C.start))} after it started" if w else "an untracked writer"
-            out.append(F(f"{p} changed since {ref} started: {value_before(tr, p, first.t)} → {tr.value(p)}, last by {by}"
-                         f"{f' ({len(hs)} writes)' if len(hs) > 1 else ''}.", "inputs", p.split(".")[0] != store))
+            by = f"{label(w)} {secs(max(0.0, last.t - C.start))} after #{C.id} started" if w else "an untracked writer"
+            n = len(hs)
+            before, cur = value_before(tr, p, first.t), tr.value(p)
+            if before == cur:
+                what = f"{p} changed {times(n)} since {ref} started and is back to {cur}"
+            else:
+                what = f"{p} changed since {ref} started: {before} → {cur}{f' ({n} writes)' if n > 1 else ''}"
+            out.append(F(f"{what}, last by {by}.", "inputs", p.split(".")[0] != store))
         chain = {C.id} | {a.id for a in ancestors(tr, C)}
         others = [o for o in tr.in_flight() if o.id not in chain and not is_anc_or_self(tr, C, o)]
         same = [o for o in others if o.kind == C.kind and o.sig == C.sig]
         if same:
             newer = [o for o in same if o.start > C.start]
-            items = "; ".join(f"#{o.id} {truncate(detail(o), 30)} {started_rel(o, C).replace('which ', '')}".replace("  ", " ")
-                              for o in same[:3])
+            items = "; ".join(" ".join(f"#{o.id} {truncate(detail(o), 30)} {started_rel(o, C)}".split()) for o in same[:3])
             cname = signature(C.method, C.url) if C.kind == "fetch" else C.sig
             out.append(F(f"{plural(len(same), f'other {cname} operation')} "
                          f"{'is' if len(same) == 1 else 'are'} in flight ({len(newer)} newer than {ref}): {items}.",
@@ -314,6 +336,29 @@ def mutation_facts(tr: Trace, spec: dict) -> list:
                              f"(p95 {secs(b.p95)}).", "baseline", not slow))
             if C.status == "error":
                 out.append(F(f"{ref[0].upper() + ref[1:]} failed ({status_text(C)}) before this write.", "outcome", True))
+    # CORE (situation-v1): a pending local change -- a user action wrote this field recently and an op of that
+    # action is still in flight
+    my_root = (C.root if C.root is not None else C.id) if C is not None else None
+    for path in paths[:3]:
+        hist = [w for w in tr.writes if w.path == path and w.t <= now and now - w.t <= WINDOW]
+        for w in reversed(hist):
+            wo = tr.ops.get(w.op)
+            if wo is None:
+                continue
+            root = tr.root_of(wo)
+            if root.kind != "user" or root.id == my_root:
+                continue
+            pending = next((o for o in tr.in_flight() if o.root == root.id and o.kind != "user"), None)
+            if pending is None:
+                continue
+            if C is not None:
+                rel_ = "which started after that user action" if C.start > root.start else "which started before that user action"
+                tail = f"comes from {label(C)}, {rel_}"
+            else:
+                tail = "has no known cause"
+            out.append(F(f"{path} has a pending local change: {label(root)} wrote it {secs(now - w.t)} ago and its "
+                         f"{label(pending)} is still in flight; this write {tail}.", "versions", False))
+            break
     rep = spec.get("repetition")
     if rep:
         w = rep["writer"]
@@ -352,6 +397,27 @@ def err_rate(tr: Trace, sig_key: str, spec: dict, outs: list[str] | None = None)
     return e
 
 
+def failure_counts(tr: Trace, sig_key: str, spec: dict, outs: list[str] | None = None) -> tuple[int, int]:
+    """CORE (situation-v1): real counts over the last <= 20 outcomes of the signature. The trace only holds the most
+    recent ones; older session outcomes (the baseline's samples) fill the window at the baseline's error rate."""
+    o = (outs if outs is not None else outcomes_of(tr, sig_key))[-20:]
+    b = tr.baselines.get(sig_key)
+    rate = float(spec["err_rate"]) if spec.get("err_rate") is not None else (b.err_rate if b else 0.0)
+    if spec.get("err_rate") is not None and o:  # scenario-level override (e.g. long-polls: mostly 504 by design)
+        of = min(20, max(len(o), b.n if b else len(o)))
+        return round(rate * of), of
+    failed = sum(1 for x in o if not (x.isdigit() and int(x) < 400))
+    older = max(0, min(20, (b.n if b else 0) + len(o)) - len(o)) if b else 0
+    return failed + round(rate * older), len(o) + older
+
+
+def error_rate_text(tr: Trace, sig_key: str, spec: dict, outs: list[str] | None = None) -> str:
+    failed, of = failure_counts(tr, sig_key, spec, outs)
+    if not of:
+        return "no completed requests yet"
+    return f"error rate {round(failed / of * 100)}% over {plural(of, 'request')} ({failed} failed)"
+
+
 def streak_of(outs: list[str]) -> int:
     n = 0
     for x in reversed(outs):
@@ -382,7 +448,7 @@ def request_common(tr: Trace, trigger: str, op: Op, spec: dict) -> list:
                 items.append(f"#{o.id} {'answered' if o.status == 'ok' else 'ended'} {status_text(o)} {secs(now - o.end)} ago")
         last = ident[-1]
         u1, u2 = user_of(tr, op), user_of(tr, last)
-        r = f"#{last.id} started {secs(abs(op.start - last.start))} before this one"
+        r = f"#{last.id} started {secs(abs(op.start - last.start))} {'after' if last.start > op.start else 'before'} this one"
         if u1 and u2 and u1.id == u2.id:
             r += f", from the same user action (#{u1.id})"
         elif u1 and u2:
@@ -395,7 +461,7 @@ def request_common(tr: Trace, trigger: str, op: Op, spec: dict) -> list:
                      (not close) if trigger == "request" else True))
     same_sig = [o for o in tr.in_flight() if o.id != op.id and signature(o.method, o.url) == sig and o.identity != op.identity]
     if same_sig:
-        items = "; ".join(f"#{o.id}{(' ' + truncate(detail(o), 30)) if detail(o) else ''} ({started_rel(o, op).replace('which ', '')})"
+        items = "; ".join(f"#{o.id}{(' ' + truncate(detail(o), 30)) if detail(o) else ''} ({started_rel(o, op)})"
                           for o in same_sig[:3])
         out.append(F(f"{plural(len(same_sig), f'other {sig} request')} with different input {'is' if len(same_sig) == 1 else 'are'} "
                      f"in flight: {items}.", "concurrency", True))
@@ -420,8 +486,8 @@ def request_common(tr: Trace, trigger: str, op: Op, spec: dict) -> list:
     elif recent >= 3:
         out.append(F(f"{sig} was requested {times(recent)} in the last 10s (no usual rate learned yet).", "baseline", True))
     if b and trigger != "stall":
-        out.append(F(f"{sig} usually answers in {secs(b.med)} (p95 {secs(b.p95)}, {b.n} samples); error rate "
-                     f"{round(err_rate(tr, op.sig, spec, outs) * 100)}%.", "baseline", True))
+        out.append(F(f"{sig} usually answers in {secs(b.med)} (p95 {secs(b.p95)}, {b.n} samples); "
+                     f"{error_rate_text(tr, op.sig, spec, outs)}.", "baseline", True))
     if spec.get("cached") and op.method == "GET":
         out.append(F(f"A cached 200 response from {secs(spec.get('cached_ago', 30000))} ago exists for this request.", "cache", True))
     idem = op.method in ("GET", "HEAD", "PUT", "DELETE", "OPTIONS")
@@ -433,7 +499,9 @@ def request_common(tr: Trace, trigger: str, op: Op, spec: dict) -> list:
 def failure_text(op: Op) -> str:
     from world import STATUS_TEXT
     if op.code is not None:
-        return f"HTTP {op.code}{(' ' + STATUS_TEXT[op.code]) if op.code in STATUS_TEXT else ''}"
+        # Response.statusText is empty for most HTTP/2 responses (and in SIM's server): CORE then prints "HTTP 503"
+        with_text = op.code in STATUS_TEXT and (op.id * 2654435761) % 10 < 3
+        return f"HTTP {op.code}{(' ' + STATUS_TEXT[op.code]) if with_text else ''}"
     if op.err == "timeout":
         return "timed out"
     return "network error (Failed to fetch)"
@@ -448,11 +516,8 @@ def failure_facts(tr: Trace, op: Op, spec: dict) -> list:
     st = max(1, streak_of(outs))
     oks = [o for o in tr.requests() if o.sig == op.sig and o.status == "ok" and o.end is not None and o.end <= now]
     ls = f"last success {secs(now - oks[-1].end)} ago" if oks else "no success yet"
-    err = err_rate(tr, op.sig, spec, outs)
-    b = tr.baselines.get(op.sig)
-    count = b.n if b else len(outs)
     out.append(F(f"This is the {ordinal(st)} {sig} failure in a row (recent outcomes: {', '.join(outs[-5:])}; {ls}); "
-                 f"error rate {round(err * 100)}% over {plural(count, 'request')}.", "outcome", True))
+                 f"{error_rate_text(tr, op.sig, spec, outs)}.", "outcome", True))
     return out + request_common(tr, "failure", op, {**spec, "outcomes": outs})
 
 
@@ -528,8 +593,9 @@ def error_facts(tr: Trace, spec: dict) -> list:
         ws = [w for w in tr.writes if w.t >= op.start and same_chain(tr, op, w.op)]
         if ws:
             ps = list(dict.fromkeys(w.path for w in ws))
-            out.append(F(f"Its chain wrote {', '.join(ps[:4])} before the error (last {secs(now - max(w.t for w in ws))} ago).",
-                         "versions", True))
+            over = sum(1 for p in ps if (lw := tr.last_write(p)) is not None and not same_chain(tr, op, lw.op))
+            out.append(F(f"Its chain wrote {', '.join(ps[:4])} before the error"
+                         f"{f' ({over} of them overwritten since by other operations)' if over else ''}.", "versions", True))
         else:
             out.append(F("Its chain wrote no state before the error.", "versions", True))
     else:
@@ -650,8 +716,8 @@ def stats_lines(tr: Trace, subj: Op | None, spec: dict) -> list[str]:
         recent = spec.get("recent_count") if subj is not None and s == subj.sig and spec.get("recent_count") else \
             sum(1 for o in tr.requests() if o.sig == s and now - o.start <= WINDOW)
         usual = spec.get("usual_per_10s") if subj is not None and s == subj.sig else None
-        er = err_rate(tr, s, spec if subj is not None and s == subj.sig else {})
-        parts = [f"{b.n} done", f"median {secs(b.med)}", f"p95 {secs(b.p95)}", f"errors {round(er * 100)}%",
+        failed, of = failure_counts(tr, s, spec if subj is not None and s == subj.sig else {})
+        parts = [f"{b.n} done", f"median {secs(b.med)}", f"p95 {secs(b.p95)}", f"{failed} of last {of} failed",
                  f"{recent} in last 10s{f' (usual {fmt_num(round(usual, 2))})' if usual is not None else ''}"]
         rep = next((o for o in tr.requests() if o.sig == s), None)
         sig_txt = signature(rep.method, rep.url) if rep is not None else s
@@ -663,26 +729,45 @@ BUDGETS = ((3200, 0.35), (2000, 0.3), (1000, 0.35))  # the runtime's "auto" devi
 COMPACT_QUESTIONS_MAX = 1400  # CORE: at budgets <= 1,400 chars options are bare labels / names (criteria null)
 
 
+COMPACT_BUDGET, MIN_BUDGET = 1100, 500
+
+
+def section_limits(budget: int) -> dict:
+    """CORE (situation-v1) serialize.sectionLimits: compact at <= 1,100 chars, full at >= 3,200, linear between."""
+    r = min(1.0, max(0.0, (budget - COMPACT_BUDGET) / (STATE_CHAR_BUDGET - COMPACT_BUDGET)))
+
+    def lerp(a, b):  # JS Math.round (half up)
+        return int(math.floor(a + (b - a) * r + 0.5))
+
+    return {"facts": lerp(6, 12), "in_flight": lerp(2, 6), "timeline": lerp(3, 16), "state": lerp(3, 8), "stats": lerp(1, 4),
+            "line": {"app": lerp(60, 120), "trigger": lerp(180, 240), "facts": lerp(220, 260), "in_flight": lerp(90, 120),
+                     "timeline": lerp(100, 140), "state": lerp(100, 150), "stats": lerp(110, 140)}}
+
+
 def to_state(parts: dict, budget: int = STATE_CHAR_BUDGET) -> dict:
-    p = {"app": truncate(parts["app"] or "unknown", LINE["app"]), "trigger": truncate(parts["trigger"], LINE["trigger"]),
-         "facts": [truncate(s, LINE["facts"]) for s in parts["facts"][: LIMITS["facts"]]],
-         "in_flight": [truncate(s, LINE["in_flight"]) for s in parts["in_flight"][: LIMITS["in_flight"]]],
-         "timeline": [truncate(s, LINE["timeline"]) for s in parts["timeline"][-LIMITS["timeline"]:]],
-         "state": [truncate(s, LINE["state"]) for s in parts["state"][: LIMITS["state"]]],
-         "stats": [truncate(s, LINE["stats"]) for s in parts["stats"][: LIMITS["stats"]]]}
+    b = max(MIN_BUDGET, int(round(budget)))
+    L = section_limits(b)
+    ln = L["line"]
+    p = {"app": truncate(parts["app"] or "unknown", ln["app"]), "trigger": truncate(parts["trigger"], ln["trigger"]),
+         "facts": [truncate(x, ln["facts"]) for x in parts["facts"][: L["facts"]]],
+         "in_flight": [truncate(x, ln["in_flight"]) for x in parts["in_flight"][: L["in_flight"]]],
+         "timeline": [truncate(x, ln["timeline"]) for x in (parts["timeline"][-L["timeline"]:] if L["timeline"] else [])],
+         "state": [truncate(x, ln["state"]) for x in parts["state"][: L["state"]]],
+         "stats": [truncate(x, ln["stats"]) for x in parts["stats"][: L["stats"]]]}
 
     def build():
         return {k: (v if not isinstance(v, list) else (list(v) if v else "none")) for k, v in p.items()}
 
-    def size(st):
-        return sum(len(k) + 2 + len("\n".join(v) if isinstance(v, list) else str(v)) + 1 for k, v in st.items())
-
     st = build()
     for key, from_start, floor in (("timeline", True, 0), ("state", False, 0), ("facts", False, 1), ("in_flight", False, 0),
                                    ("stats", False, 0)):
-        while size(st) > budget and len(p[key]) > floor:
+        while size_chars(st) > b and len(p[key]) > floor:
             p[key].pop(0 if from_start else -1)
             st = build()
+    if size_chars(st) > b and isinstance(st.get("facts"), list):  # pathological: one over-long fact
+        over = size_chars(st) - b
+        p["facts"] = [truncate(f, max(40, len(f) - over)) for f in p["facts"]]
+        st = build()
     return st
 
 
@@ -734,10 +819,6 @@ def render(sc, app, rng) -> tuple[dict, dict] | None:
     forced = os.environ.get("GC_RT_BUDGET")  # analysis: render every row at one budget
     budget = int(forced) if forced else (spec.get("budget") or rng.choices([b for b, _ in BUDGETS], [w for _, w in BUDGETS])[0])
     state = to_state(parts, budget)
-    if size_chars(state) > budget:  # pathological: one over-long fact; cut lines like the runtime does
-        over = size_chars(state) - budget
-        if isinstance(state.get("facts"), list):
-            state["facts"] = [truncate(f, max(40, len(f) - over)) for f in state["facts"]]
     acts = [a for a in TRIGGER_ACTIONS[trig] if a in sc.actions]
     compact = budget <= COMPACT_QUESTIONS_MAX
     questions = {"diagnosis": {"type": "choice", "instructions": DIAG_INSTR,

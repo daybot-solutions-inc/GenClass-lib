@@ -1,6 +1,6 @@
 // Mock server core: one "world" per page session (the interactive page and every trial iframe get their own),
 // a tiny router, the chaos/latency model and live event streams. Runs inside the Service Worker.
-import { Rng } from "../shared/rng.ts";
+import { Rng, hashString } from "../shared/rng.ts";
 import { CALM, mergeChaos, resolveChaos, sampleEventDelay, sampleTiming, type Chaos } from "../shared/chaos.ts";
 import type { DemoId, EventEntry, LogEntry } from "../shared/protocol.ts";
 
@@ -68,7 +68,14 @@ export function json(status: number, data: unknown, headers: Record<string, stri
 
 export class World<S = unknown> {
   readonly created = now();
-  readonly rng: Rng;
+  /**
+   * Randomness for route handlers. During a request this is that request's own generator (see rngFor), so
+   * handlers draw from it too; outside requests it is the world's base generator.
+   */
+  rng: Rng;
+  private readonly baseRng: Rng;
+  /** Occurrence counters for common random numbers (see rngFor). */
+  private occurrences = new Map<string, number>();
   /** Separate stream for world scripts (teammates, incidents) so request timing does not shift them. */
   readonly scriptRng: Rng;
   state: S;
@@ -94,7 +101,8 @@ export class World<S = unknown> {
     readonly params: Record<string, unknown>,
     chaos: Partial<Chaos> | undefined,
   ) {
-    this.rng = new Rng(seed ^ 0x5eed);
+    this.baseRng = new Rng(seed ^ 0x5eed);
+    this.rng = this.baseRng;
     this.scriptRng = new Rng(seed ^ 0xc0ffee);
     this.chaos = mergeChaos({ ...CALM, routes: {} }, chaos);
     this.state = def.create(new Rng(seed), params);
@@ -110,6 +118,18 @@ export class World<S = unknown> {
 
   setChaos(patch: Partial<Chaos>, replace = false): void {
     this.chaos = replace ? mergeChaos({ ...CALM, routes: {} }, patch) : mergeChaos(this.chaos, patch);
+  }
+
+  /**
+   * Common random numbers: the n-th occurrence of the same logical request (or live event) gets the same draws in
+   * every run of a seed, whatever else happened before it. So when GenClass shifts timing (holding a write or a
+   * request), the network's behaviour for each request stays the same and paired comparisons measure GenClass,
+   * not a re-rolled network.
+   */
+  rngFor(key: string): Rng {
+    const n = (this.occurrences.get(key) ?? 0) + 1;
+    this.occurrences.set(key, n);
+    return new Rng(hashString(`${this.seed}|${key}|${n}`));
   }
 
   /** Timers owned by the world (cleared on dispose). */
@@ -136,17 +156,21 @@ export class World<S = unknown> {
     });
   }
 
-  /** Publish a live event to every open stream, each delivery delayed independently (may reorder). */
-  publish(type: string, data: Record<string, unknown>): EventEntry {
+  /**
+   * Publish a live event to every open stream, each delivery delayed independently (may reorder). `key` identifies
+   * the logical event for common random numbers (default: its type and data).
+   */
+  publish(type: string, data: Record<string, unknown>, key?: string): EventEntry {
     const entry: EventEntry = { seq: ++this.eventSeq, type, t: now(), data, deliveredAt: [] };
     this.events.push(entry);
     if (this.events.length > 2000) this.events.splice(0, this.events.length - 2000);
     const c = resolveChaos(this.chaos, `${this.def.demo}/events`);
     const payload = enc.encode(`id: ${entry.seq}\ndata: ${JSON.stringify({ seq: entry.seq, type, ...data })}\n\n`);
+    const erng = this.rngFor(`event ${type} ${key ?? JSON.stringify(data)}`);
     for (const s of this.streams) {
       if (s.closed) continue;
       this.pendingDeliveries++;
-      this.after(sampleEventDelay(this.rng, c), () => {
+      this.after(sampleEventDelay(erng, c), () => {
         this.pendingDeliveries--;
         if (s.closed) return;
         try {
@@ -278,9 +302,19 @@ export class World<S = unknown> {
       /* signal not supported */
     }
 
+    // Every random draw for this request, made up front from its own generator (common random numbers).
+    const rrng = this.rngFor(`${method} ${path}${url.search} ${raw}`);
+    const t = sampleTiming(rrng, c);
+    const draw = {
+      fail: rrng.float(),
+      failCode: rrng.pick([500, 502, 503]),
+      commitFail: rrng.float(),
+      commitCode: rrng.pick([502, 504]),
+      hang: rrng.float(),
+      handlerSeed: Math.floor(rrng.float() * 4294967296),
+    };
     this.inflight++;
     try {
-      const t = sampleTiming(this.rng, c);
       entry.spike = t.spike;
       if (c.offline) {
         await sleep(Math.min(t.up, 150));
@@ -297,8 +331,8 @@ export class World<S = unknown> {
         entry.tEnd = now();
         return json(503, { error: "Service unavailable" });
       }
-      if (c.failRate > 0 && this.rng.chance(c.failRate)) {
-        const code = this.rng.pick([500, 502, 503]);
+      if (c.failRate > 0 && draw.fail < c.failRate) {
+        const code = draw.failCode;
         await sleep(t.down);
         entry.status = code;
         entry.outcome = "rejected";
@@ -307,6 +341,7 @@ export class World<S = unknown> {
       }
 
       let res: Res;
+      this.rng = new Rng(draw.handlerSeed);
       try {
         res = found.route.handle!(this, {
           method,
@@ -320,20 +355,22 @@ export class World<S = unknown> {
         });
       } catch (e) {
         res = { status: 500, json: { error: String(e) } };
+      } finally {
+        this.rng = this.baseRng;
       }
       entry.tHandled = now();
       entry.effect = res.effect;
       let down = t.down + (res.work ?? 0) * (t.spike ? Math.max(1, c.spikeFactor) : 1);
 
-      if (res.status < 400 && c.commitFailRate > 0 && this.rng.chance(c.commitFailRate)) {
-        const code = this.rng.pick([502, 504]);
+      if (res.status < 400 && c.commitFailRate > 0 && draw.commitFail < c.commitFailRate) {
+        const code = draw.commitCode;
         await sleep(code === 504 ? Math.max(down, c.hangMs * 0.5) : down);
         entry.status = code;
         entry.outcome = "lost";
         entry.tEnd = now();
         return json(code, { error: code === 504 ? "Gateway timeout" : "Bad gateway" });
       }
-      if (c.timeoutRate > 0 && this.rng.chance(c.timeoutRate)) down += c.hangMs;
+      if (c.timeoutRate > 0 && draw.hang < c.timeoutRate) down += c.hangMs;
       await sleep(down);
       entry.status = res.status;
       entry.outcome = res.status < 400 ? "ok" : "client-error";

@@ -8,7 +8,7 @@ import random
 
 import prims as P
 from app import App, rand_token
-from fmt import Style, pick_from
+from fmt import Style, js_numbers, pick_from
 from vocab import COMPONENTS, FILE_EXT, THIRD_PARTY
 
 
@@ -57,7 +57,8 @@ def json_invariants(rng: random.Random, app: App, st: Style) -> dict:
             items[rng.randrange(k)]["qty"] = -rng.randint(1, 3)
             true_total = round(sum(it["price"] * it["qty"] for it in items), 2)
             total = true_total
-    data = {"items": items, "total": total, "count": count, "selectedId": selected}
+    items = js_numbers(items)
+    data = js_numbers({"items": items, "total": total, "count": count, "selectedId": selected})
     fmt = rng.random()
     if fmt < 0.4:
         state = {store: data}

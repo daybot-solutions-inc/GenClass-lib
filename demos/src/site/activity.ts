@@ -4,6 +4,7 @@ import type { ActionRecord, Decision, Explanation, Report, Runtime } from "@genc
 import type { GcMode } from "../shared/types.ts";
 import { ago, esc, fmtMs, h, toast } from "./dom.ts";
 import { icon } from "./icons.ts";
+import { nativeSetInterval, nativeSetTimeout } from "../shared/native.ts";
 
 const ACTION_TITLE: Record<string, string> = {
   discard: "Dropped a write",
@@ -125,7 +126,7 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
   if (overlayHost && shieldHost) overlayHost.appendChild(shieldHost);
 
   const items: { at: number; time: HTMLTimeElement }[] = [];
-  setInterval(() => {
+  nativeSetInterval(() => {
     const now = performance.now();
     for (const it of items) it.time.textContent = ago(now - it.at);
   }, 5000);
@@ -206,7 +207,7 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
     row.append(h("div", { class: "act-main" }, h("div", { class: "act-title" }, titleFor(r), time), h("div", { class: "act-msg" }, body(r)), meta));
     empty.remove();
     list.prepend(row);
-    setTimeout(() => row.classList.remove("fresh"), 2500);
+    nativeSetTimeout(() => row.classList.remove("fresh"), 2500);
 
     if (r.kind === "intervene" && overlayHost) {
       overlayHost.classList.remove("gc-flash");
@@ -240,9 +241,9 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
         if (closed) return;
         closed = true;
         card.classList.add("leaving");
-        setTimeout(() => card.remove(), 240);
+        nativeSetTimeout(() => card.remove(), 240);
       };
-      setTimeout(close, 7000);
+      nativeSetTimeout(close, 7000);
     }
   };
 
@@ -262,7 +263,7 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
     else dec.mode++;
     decDirty = true;
   });
-  setInterval(() => {
+  nativeSetInterval(() => {
     if (!decDirty) return;
     decDirty = false;
     const sorted = dec.lat.slice().sort((a, b) => a - b);
@@ -288,7 +289,7 @@ export function mountActivity(gc: Runtime, mode: GcMode, overlayHost: HTMLElemen
     else if (e.kind === "user") seen.user++;
     dirty = true;
   });
-  setInterval(() => {
+  nativeSetInterval(() => {
     if (!dirty) return;
     dirty = false;
     observed.textContent = `Observed ${seen.user} user actions · ${seen.requests} requests · ${seen.writes} state writes · ${seen.events} events`;

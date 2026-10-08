@@ -4,6 +4,7 @@ import type { Oracle, OracleContext } from "../../shared/demo-def.ts";
 import { epochNow } from "../../shared/server.ts";
 import type { Score } from "../../shared/types.ts";
 import { searchCities } from "../../server/data/cities.ts";
+import { nativeClearInterval, nativeSetInterval } from "../../shared/native.ts";
 
 /** Display may lag a fresh answer by this much (rendering, or a write held for a decision) before it counts. */
 const GRACE_MS = 350;
@@ -34,7 +35,7 @@ export function searchOracle(ctx: OracleContext): Oracle {
 
   return {
     start() {
-      timer = setInterval(sample, 20);
+      timer = nativeSetInterval(sample, 20);
     },
     check(cond) {
       if (cond === "settled") {
@@ -45,7 +46,7 @@ export function searchOracle(ctx: OracleContext): Oracle {
     },
     async finish(): Promise<Score> {
       sample();
-      clearInterval(timer);
+      nativeClearInterval(timer);
       const { log } = await ctx.link.log(0);
       const ok = log.filter((e) => e.route === "search" && e.outcome === "ok" && e.tEnd);
       const deliveries = ok.map((e) => ({ q: new URLSearchParams(e.query).get("q") ?? "", t0: e.t0, tEnd: e.tEnd! }));

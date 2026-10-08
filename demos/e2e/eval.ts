@@ -46,6 +46,9 @@ const SITE = `http://127.0.0.1:${PORT}${BASE}`;
 const BUDGET = opt("budget", "");
 /** Free-form label for a run (e.g. the model under test): results-<tag>.json / .md, not shipped with the site. */
 const TAG = opt("tag", "").replace(/[^a-zA-Z0-9._-]+/g, "-");
+/** Investigation: record every proposed/applied write and decision per trial (written to e2e/.out/traces*.json). */
+const TRACE = flag("trace");
+const KINDS = opt("kinds", "chaos,clean").split(",").filter(Boolean) as TrialKind[];
 const SUFFIX = [TAG ? `-${TAG}` : "", BUDGET ? `-budget${BUDGET}` : ""].join("");
 
 interface Job {
@@ -173,6 +176,7 @@ function trialUrl(j: Job): string {
   u.searchParams.set("run", Math.random().toString(36).slice(2, 9));
   u.searchParams.set("model", MODEL);
   if (BUDGET) u.searchParams.set("budget", BUDGET);
+  if (TRACE) u.searchParams.set("trace", "1");
   return u.href;
 }
 
@@ -223,8 +227,8 @@ function planJobs(): Job[] {
   const jobs: Job[] = [];
   for (let i = 0; i < Math.max(N, CLEAN); i++) {
     for (const demo of DEMOS) {
-      if (i < N) for (const mode of MODES) jobs.push({ demo, mode, kind: "chaos", seed: SEED_BASE + i });
-      if (i < CLEAN) for (const mode of MODES) jobs.push({ demo, mode, kind: "clean", seed: SEED_BASE + 500 + i });
+      if (i < N && KINDS.includes("chaos")) for (const mode of MODES) jobs.push({ demo, mode, kind: "chaos", seed: SEED_BASE + i });
+      if (i < CLEAN && KINDS.includes("clean")) for (const mode of MODES) jobs.push({ demo, mode, kind: "clean", seed: SEED_BASE + 500 + i });
     }
   }
   return jobs;
@@ -409,7 +413,14 @@ function mdDemo(s: DemoSummary, results: TrialResult[]): string {
   return lines.join("\n");
 }
 
-async function writeReports(results: TrialResult[]) {
+async function writeReports(all: TrialResult[]) {
+  if (TRACE) {
+    const traces = all.map((r) => ({ demo: r.demo, mode: r.mode, kind: r.kind, seed: r.seed, label: r.label, bug: r.bug, reasons: r.reasons, metrics: r.metrics, details: r.details, error: r.error, trace: r.trace }));
+    await mkdir(`${ROOT}e2e/.out`, { recursive: true });
+    await writeFile(`${ROOT}e2e/.out/traces${SUFFIX}.json`, JSON.stringify(traces));
+    log(`wrote e2e/.out/traces${SUFFIX}.json (${traces.length} traced trials)`);
+  }
+  const results = all.map(({ trace: _t, ...r }) => r as TrialResult);
   const summaries = DEMOS.map((d) => summarizeDemo(d, results));
   const meta = modelNote(results);
   const json = {

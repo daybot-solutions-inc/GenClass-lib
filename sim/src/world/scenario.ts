@@ -46,7 +46,7 @@ export interface Scenario {
   actionWords: Record<string, string> | null;
   /** Model latency (virtual ms) median for the recording decider. */
   modelMs: number;
-  /** Situation size in characters (runtime `situation.budget`): 3,200 WebGPU, 2,000 WASM ≥4 threads, 1,100 WASM 1 thread. */
+  /** Situation size in characters (runtime `situation.budget`): 3,200 WebGPU, 2,000 WASM ≥4 threads, 1,000 WASM 1 thread. */
   budget: number;
 }
 
@@ -282,7 +282,7 @@ export function buildScenario(seed: number, opts: BuildOptions = {}): Scenario {
     diagnoses: diagVocab(R.fork("vocab")),
     actionWords: actionVocab(R.fork("action-vocab")),
     modelMs: R.fork("model").float(6, 25),
-    budget: R.fork("budget").weighted([[3200, 40], [2000, 30], [1100, 30]] as const),
+    budget: R.fork("budget").weighted([[3200, 40], [2000, 30], [1000, 30]] as const),
   };
 }
 

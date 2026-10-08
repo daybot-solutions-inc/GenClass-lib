@@ -20,11 +20,18 @@ budget_rows = collections.Counter()
 budget_pb = collections.defaultdict(lambda: [0, 0])
 budget_chars = collections.defaultdict(list)
 nrows = 0
+import glob
+def files_for(split):
+    merged = os.path.join(d, f"{split}.jsonl")
+    if os.path.exists(merged):
+        return [merged]
+    return sorted(glob.glob(os.path.join(d, "parts", f"part-*.{split}.jsonl")))
+def lines_for(split):
+    for p in files_for(split):
+        for line in open(p):
+            yield line
 for split in ("train", "dev", "test"):
-    p = os.path.join(d, f"{split}.jsonl")
-    if not os.path.exists(p):
-        continue
-    for line in open(p):
+    for line in lines_for(split):
         r = json.loads(line)
         nrows += 1
         m = r["meta"]

@@ -154,3 +154,23 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
 
 ### Cost estimate so far ≈ $215
 - c01 ≈ 10.2 node-hours (incl. ≈ 6 h idle during outages) ≈ $56; c02–c11 ≈ 29 node-hours (17:55–20:49) ≈ $158.
+
+### 23:05–23:35 Pilot results; runtime frozen (`situation-v1`, 1a77558); final-round prep
+- Pilot SIM evaluation (20k random rows of r300k test, temperatures from r300k dev): R32-s2 action 77.5% /
+  diagnosis 90.8%, R17-s2 78.3% / 91.1%; heal-mode FIR 0.06% / 0.08% but recall ≈ 1.3% (precise, almost never
+  confident enough to act: pre-freeze labels were soft); mean cost heal policy 33.99 / 33.97 vs always-passive 34.03
+  vs oracle 32.88. Details in EVAL.md ("Stage 2 pilot").
+- `rt.py` re-ported to the frozen wording: "started 0.09s after #6" relations, "comes from X, started …, ended …
+  with 200; its chain began with Y", inputs-moved "… is back to …" variant and "after #N started", "#id … started
+  … after #N" concurrency items, "pending local change" fact, error-rate text "error rate X% over N requests
+  (F failed)" over the last ≤ 20 outcomes, stats "F of last N failed", errors "(k of them overwritten since …)",
+  slug-id signature normalisation, budget-shaped sections (`sectionLimits`: compact ≤ 1,100 chars, full ≥ 3,200,
+  linear between; MIN 500; same shrink order), compact questions at ≤ 1,400 chars, `transient`.
+- MODEL NEEDS 8 fixed: integral floats are written as ints everywhere in curriculum rows (also inside JSON strings).
+- `cur4` = 300k rows (seed 5, 80% runtime-exact, frozen wording) as the final replay set.
+- Frozen SIM rows checked (phase A shards): `meta.budget` present (1000/2000/3200), compact questions at 1000,
+  sharp labels (most action dists put 1.0 on one action), `transient` diagnosis.
+- Final round 1 tooling: `import_final.sh` (pull + shard + eval subsets + bundle), `configs/mix_final1.json`
+  (simA 0.85, cur4 0.12, cur1 0.02, gen 0.01), `launch_final1.sh` (R32 on c02–c07 rank 0 c02; R17 on c09 c10 c11 c08,
+  rank 0 c09 — rank 0 must hold the stage-1c state), `final_post.sh` (on each rank-0 node: SIM eval with dev-fitted
+  temperatures, then export with them), per-budget metrics in `eval_runtime.py` (`meta.budget`).

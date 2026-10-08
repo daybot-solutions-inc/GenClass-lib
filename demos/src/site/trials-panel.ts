@@ -6,6 +6,7 @@ import { DEMO_BY_ID } from "../shared/demos.ts";
 import { MODES, type DemoId, type GcMode, type TrialKind, type TrialResult } from "../shared/types.ts";
 import { esc, fmtMs, h, pct, toast } from "./dom.ts";
 import { icon } from "./icons.ts";
+import { nativeClearInterval, nativeClearTimeout, nativeSetInterval, nativeSetTimeout } from "../shared/native.ts";
 
 const MODE_LABEL: Record<GcMode, string> = { off: "Off", guard: "Guard", heal: "Heal" };
 
@@ -39,34 +40,34 @@ function runInFrame(stage: HTMLElement, job: Job, timeoutMs: number): Promise<Tr
     stage.querySelector("iframe")?.remove();
     stage.appendChild(frame);
     let done = false;
-    const timer = setTimeout(() => {
+    const timer = nativeSetTimeout(() => {
       if (done) return;
       done = true;
       reject(new Error(`trial timed out after ${Math.round(timeoutMs / 1000)} s`));
     }, timeoutMs);
-    const poll = setInterval(async () => {
+    const poll = nativeSetInterval(async () => {
       const w = frame.contentWindow;
       if (!w || done) return;
       if (w.__trialError) {
-        clearInterval(poll);
-        clearTimeout(timer);
+        nativeClearInterval(poll);
+        nativeClearTimeout(timer);
         done = true;
         reject(new Error(w.__trialError));
         return;
       }
       if (!w.__trialReady) return;
-      clearInterval(poll);
+      nativeClearInterval(poll);
       try {
         const harness = await w.__trialReady;
         const r = await harness.runSynthetic();
         if (done) return;
         done = true;
-        clearTimeout(timer);
+        nativeClearTimeout(timer);
         resolve(r);
       } catch (e) {
         if (done) return;
         done = true;
-        clearTimeout(timer);
+        nativeClearTimeout(timer);
         reject(e instanceof Error ? e : new Error(String(e)));
       }
     }, 50);

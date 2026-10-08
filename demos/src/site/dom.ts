@@ -1,4 +1,5 @@
 // Tiny DOM helpers for the site chrome (the apps write their own DOM code the way their stacks would).
+import { nativeSetTimeout } from "../shared/native.ts";
 
 type Child = Node | string | number | null | undefined | false | Child[];
 type Attrs = Record<string, string | number | boolean | null | undefined | EventListener | Partial<CSSStyleDeclaration>>;
@@ -67,8 +68,8 @@ export function toast(message: string, ms = 3200): void {
   }
   const t = h("div", { class: "toast" }, message);
   host.appendChild(t);
-  setTimeout(() => {
+  nativeSetTimeout(() => {
     t.classList.add("leaving");
-    setTimeout(() => t.remove(), 220);
+    nativeSetTimeout(() => t.remove(), 220);
   }, ms);
 }

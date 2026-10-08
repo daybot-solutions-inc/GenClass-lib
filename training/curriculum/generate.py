@@ -29,7 +29,7 @@ import scen_state  # noqa: E402
 import scenarios  # noqa: E402
 import standalone as S  # noqa: E402
 from app import App  # noqa: E402
-from fmt import Style  # noqa: E402
+from fmt import Style, js_numbers  # noqa: E402
 from vocab import DOMAINS, TEST_DOMAINS  # noqa: E402
 
 TRIGGERS = {"mutation": (scenarios.mutation, 0.26), "request": (scen_ops.request, 0.20),
@@ -107,8 +107,8 @@ def work(args: tuple) -> dict:
                 stats["bad"][bad[:80]] += 1
                 continue
             rid = f"cur-{split}-{chunk:05d}-{i:06d}"
-            out = {"id": rid, "split": split, "family": row["family"], "state": row["state"],
-                   "questions": row["questions"], "labels": row["labels"], "meta": row["meta"]}
+            out = {"id": rid, "split": split, "family": row["family"], "state": js_numbers(row["state"]),
+                   "questions": js_numbers(row["questions"]), "labels": row["labels"], "meta": row["meta"]}
             f.write(json.dumps(out, ensure_ascii=False) + "\n")
             i += 1
             m = row["meta"]

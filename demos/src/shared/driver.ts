@@ -13,7 +13,7 @@ export interface DriverHooks {
   onTimeout?(cond: string): void;
 }
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
+import { sleep } from "./native.ts";
 
 type TextEl = HTMLInputElement | HTMLTextAreaElement;
 
