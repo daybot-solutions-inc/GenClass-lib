@@ -362,10 +362,8 @@ export function changeText(c: Pick<FieldChange, "before" | "after" | "path"> & {
     if (removedK.length) parts.push(`removed ${removedK.slice(0, 2).join(", ")}${removedK.length > 2 ? ` and ${removedK.length - 2} more` : ""}`);
     return `${b.len} → ${a.len} entries${parts.length ? `: ${parts.join("; ")}` : ""}`;
   }
-  if (typeof c.before === "string" && typeof c.after === "string" && Object.is(redact(c.path, c.after), c.after) && Object.is(redact(c.path, c.before), c.before)) {
-    const d = stringDiff(c.before, c.after);
-    if (d) return d.text;
-  }
+  const d = redactedStringDiff(c.path, c.before, c.after, redact);
+  if (d) return d.text;
   return `${describe(c.before, c.path, redact, 36)} → ${describe(c.after, c.path, redact, 36)}`;
 }
 
@@ -396,6 +394,16 @@ export function stringDiff(before: string, after: string, width = 30): StringDif
   const q = (x: string) => JSON.stringify(truncate(x, 28));
   const what = !added ? `removes ${q(removed)}` : !removed ? `inserts ${q(added)}` : `replaces ${q(removed)} with ${q(added)}`;
   return { removed, added, text: `${win(before)} → ${win(after)} (${what})` };
+}
+
+/**
+ * stringDiff of two values at `path`, only when both are strings the redactor leaves unchanged: a diff-centred
+ * preview would otherwise print the characters the redactor hides. Null otherwise (callers fall back to describe()).
+ */
+export function redactedStringDiff(path: string, before: unknown, after: unknown, redact: Redactor): StringDiff | null {
+  if (typeof before !== "string" || typeof after !== "string") return null;
+  if (!Object.is(redact(path, after), after) || !Object.is(redact(path, before), before)) return null;
+  return stringDiff(before, after);
 }
 
 // ------------------------------------------------------------------------------------------------ patches

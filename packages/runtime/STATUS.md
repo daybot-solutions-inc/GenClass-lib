@@ -39,6 +39,36 @@ observe mode on the same scenario (`debug.js --interference`):
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
 
+## Fix after 0.1.0-alpha.1: two redaction leaks (privacy)
+
+Model-visible text changes only for values the redactor hides; everything else renders byte-for-byte as before.
+- F2 ("would replace text the user typed"): `src/situation/content.ts` -> `contentFacts` diffed the raw strings, so
+  the diff-centred preview printed characters of a redacted field. It now uses the shared helper
+  `src/state/fields.ts` -> `redactedStringDiff` (also used by `changeText`): a diff only when both values pass the
+  redactor unchanged (`Object.is(redact(path, v), v)`), otherwise both sides render through `describe()`
+  (`[redacted] → [redacted]`, or a custom redactor's replacement).
+- Default redactor (`src/util.ts` -> `isSensitivePath` / `defaultRedact`): under a strong (non-broad) secret-named
+  container, numbers, bigints and arrays are now redacted as well as strings (`payment.cvv.value = 123`,
+  `login.otp.code = 123456`, `lock.pin.value = 1234`, `account.password.history = [...]`). Booleans, null and
+  undefined stay visible, plain objects are still judged key by key, and broad containers (`auth`, `session`,
+  `cookie`) still redact only opaque credential-looking strings. Side effect: numbers under a container whose name
+  is a secret word in another sense are hidden too (`map.pin.lat`, `boarding.pass.seat`), as their strings already
+  were.
+- Tests: `test/redaction-v2.test.ts` (F2 on a secret field with the default and a custom redactor, an unredacted
+  field keeps its diff, the container cases above).
+- Training data: SIM rows are rendered by the runtime itself and follow automatically. The curriculum's Python
+  port (`training/curriculum/rt.py` -> `content_facts`, `string_diff`, `change_text`) has the F2 diff but no
+  redactor anywhere (every fact prints the scenario's value summaries), so it was not changed: gating only F2 would
+  not make it match the runtime. Secret names there (`training/curriculum/vocab.py` -> `DOMAINS`): the banking
+  domain's `iban` text field, and the nouns `pin` (maps) and `pass` (bike sharing), which become store names
+  through `training/curriculum/app.py` -> `App.item` (`pin.total`, `pass.content`, ...); the runtime renders
+  values under those as `[redacted]` (strings before this fix, now numbers and arrays too), the curriculum prints
+  them. Porting `isSensitivePath` or renaming those words is a curriculum follow-up.
+- Known gaps, not changed here (they would change other model-visible text): a container named by a secret
+  word pair (`cardNumber`, `apiKey`, `creditCard`) counts as broad, so `payment.cardNumber.value = "4111 1111 ..."`
+  (or a number) is still shown; and the "changed since X started ... is back to V" fact (`src/situation/facts.ts`)
+  compares rendered text, so two different redacted values read as "back to [redacted]".
+
 ## Fix after batch 5: situation() purity (REAL report, oss-svelte-conduit)
 
 - New regression test `test/situation-purity.test.ts`: a mixed app raises every trigger kind (triage "always":
@@ -1031,7 +1061,8 @@ questions:
 - Error/transition `rollback` restores only the fields the op's own chain wrote (the contract's "last consistent
   snapshot" would also revert other chains' writes, e.g. user input); inconsistency rollback uses the snapshot.
 - Default redaction is by word-level secret names (approved SIM request a), not the §2 regex, and (batch 5) by the
-  leaf field only, with the container rules above; booleans and null are never redacted.
+  leaf field only, with the container rules above; booleans and null are never redacted. After 0.1.0-alpha.1, a
+  strong secret-named container hides numbers, bigints and arrays too, and F2 never diffs a redacted value.
 - `situation(trigger)` returns the last situation built for that trigger (an "ask about now" one otherwise).
 - Batch 4 salience: a user action that changed a field is not, by itself, a version conflict (see Batch 4, contract
   deltas). XHR `on*` getters return GenClass's wrapper of the app's handler (needed so XHR implementations that call

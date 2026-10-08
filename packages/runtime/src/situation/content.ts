@@ -12,7 +12,7 @@
 
 import type { Fact } from "../types.js";
 import type { FieldHist } from "../state/hub.js";
-import { leafOf, stringDiff } from "../state/fields.js";
+import { leafOf, redactedStringDiff } from "../state/fields.js";
 import type { OpRec } from "../trace/ops.js";
 import { describe, isIdSegment, isPlainObject, kindOf, plural, secs } from "../util.js";
 import { opLabel } from "./describe.js";
@@ -391,7 +391,7 @@ export function contentFacts(env: SitEnv, x: OpRec, cmps: Cmp[], subject: "The r
       continue;
     }
     if (c.user) {
-      const d = typeof c.current === "string" && typeof c.incoming === "string" ? stringDiff(c.current, c.incoming) : null;
+      const d = redactedStringDiff(c.path, c.current, c.incoming, env.redact);
       const change = d ? d.text : `${show(env, c.path, c.current)} → ${show(env, c.path, c.incoming)}`;
       const last = c.user.last;
       out.push(fact(`${subject} would replace text the user typed into ${c.path} after #${x.id} started (${plural(c.user.n, "user write")}, the last ${secs(now - last.t)} ago): ${change}.`, "versions", false));

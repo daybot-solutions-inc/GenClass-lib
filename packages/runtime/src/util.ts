@@ -245,8 +245,9 @@ const PATH_LIKE = /^[^\s."']+(\.[^\s."']+)*$/;
  * Whether the value at `path` is a secret, decided by the leaf field's name, never by the store's or a container's
  * name alone: `auth.token`, `form.password`, `payment.card.number` (a secret pair across the last two segments) are
  * secrets; `auth.loading`, `auth.user.name` are not. Array indices are skipped (`users.3.password`). Plain objects
- * are never redacted whole: their keys are judged one by one. Under a container whose name means a secret, string
- * values are redacted too (`credentials.password.value`), and under a broad one (`auth`, `session`, `cookie`) only
+ * are never redacted whole: their keys are judged one by one. Under a container whose name means a secret, strings,
+ * numbers, bigints and arrays are redacted too (`credentials.password.value`, `payment.cvv.value = 123`,
+ * `login.otp.code`, `account.password.history = [...]`), and under a broad one (`auth`, `session`, `cookie`) only
  * opaque credential-looking strings (`auth.tokens.access = "eyJ…"`). Booleans, null and undefined are never secrets.
  * Free text (an element description, a header line) is a secret when any of its words names one.
  */
@@ -263,11 +264,11 @@ export function isSensitivePath(path: string, value?: unknown): boolean {
     const b = words(leaf);
     if (a.length && b.length && isSecretPair(a[a.length - 1], b[0])) return true;
   }
-  if (typeof value !== "string" && typeof value !== "number") return false;
+  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint" && !Array.isArray(value)) return false;
   for (let i = 0; i < segs.length - 1; i++) {
     if (!isSensitiveName(segs[i])) continue;
     const broad = words(segs[i]).every((w) => WEAK_CONTAINER.has(w) || !SECRET_WORDS.has(w));
-    if (!broad && typeof value === "string") return true;
+    if (!broad) return true;
     if (typeof value === "string" && OPAQUE.test(value)) return true;
   }
   return false;
