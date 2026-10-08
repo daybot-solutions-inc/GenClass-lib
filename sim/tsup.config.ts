@@ -9,6 +9,6 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   dts: false,
-  external: ["@genclass/runtime"],
+  external: ["@genclass/runtime", "onnxruntime-node", "onnxruntime-web"],
   banner: { js: "" },
 });

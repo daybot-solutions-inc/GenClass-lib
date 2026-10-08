@@ -56,7 +56,7 @@ const stats = {
   runMs: 0,
   wallMs: 0,
   byTrigger: {} as Record<string, { n: number; passiveBest: number; best: Record<string, number>; diagnosis: Record<string, number>; harm: Record<string, number[]> }>,
-  byApp: {} as Record<string, { trajectories: number; rows: number; decisions: number; stepsRan: number; stepsSkipped: number; dead: number }>,
+  byApp: {} as Record<string, { trajectories: number; rows: number; decisions: number; stepsRan: number; stepsSkipped: number; dead: number; nearlyDead?: number }>,
   diagnosisOnly: 0,
   errors: [] as string[],
 };
@@ -95,6 +95,7 @@ function record(t: TrajectoryOut): void {
     a.stepsRan += t.steps.ran;
     a.stepsSkipped += t.steps.skipped;
     if (t.steps.ran === 0) a.dead++;
+    else if (t.steps.skipped > 3 * t.steps.ran && t.steps.idealSkipped * 2 < t.steps.ran + t.steps.skipped) a.nearlyDead = (a.nearlyDead ?? 0) + 1;
   }
   a.rows += t.rows.filter((r) => !(r.meta as { unlabeled?: boolean }).unlabeled).length;
   a.decisions += t.decisions;
@@ -156,12 +157,29 @@ await new Promise<void>((resolveAll) => {
   const launch = (wi: number) => {
     const ch = fork(join(HERE, "worker.js"), [], { env: { ...process.env, RW_PORT: String(port), RW_OPTS: JSON.stringify(opts) }, stdio: ["ignore", "inherit", "inherit", "ipc"] });
     children.push(ch);
+    // watchdog: a worker silent for 15 min (a hung browser) is killed; its seed is skipped (resumable runs retry it)
+    let current: number | undefined;
+    let killed = false;
+    let lastMsg = Date.now();
+    const dog = setInterval(() => {
+      if (current !== undefined && Date.now() - lastMsg > 15 * 60 * 1000) {
+        stats.errors.length < 50 && stats.errors.push(`${current}: worker hung for 15 min, killed`);
+        current = undefined;
+        killed = true;
+        ch.kill("SIGKILL");
+      }
+    }, 30000);
+    dog.unref();
+    ch.on("exit", () => clearInterval(dog));
     const give = () => {
+      lastMsg = Date.now();
       if (next >= todo.length) {
+        current = undefined;
         ch.send({ type: "stop" });
         return;
       }
-      ch.send({ type: "seed", seed: todo[next++] });
+      current = todo[next++];
+      ch.send({ type: "seed", seed: current });
     };
     ch.on("message", (m: { type: string; out?: TrajectoryOut; seed?: number; error?: string }) => {
       if (m.type === "ready") give();
@@ -177,7 +195,8 @@ await new Promise<void>((resolveAll) => {
     });
     ch.on("exit", () => {
       active--;
-      if (active === 0) resolveAll();
+      if (killed && next < todo.length) launch(wi); // replace a hung worker
+      else if (active === 0) resolveAll();
     });
     active++;
     void wi;

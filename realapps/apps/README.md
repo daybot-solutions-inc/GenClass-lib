@@ -83,6 +83,18 @@ for wizards and modal flows), and follow-ups (`then`) are skipped at once when t
 `kind: "key"` affordances press the chosen `values` entry (e.g. ["ArrowDown", "Enter", "Escape"]). Collections can
 declare `unique: [fields]` (409 on a clash) and `required: [fields]` (422 when missing).
 
+Harness additions (wave 4 feedback):
+- `after` is also enforced at run time: a step whose `after` affordances never actually ran is skipped ("after").
+- `requires` is re-checked for 300 ms (virtual) before a step is skipped ("precondition"), so a few-ms difference in
+  when a response lands cannot flip the session.
+- List endpoints accept generic operators on any field: `f__in=a,b`, `f__gt|gte|lt|lte=v` (numbers or ISO strings),
+  `f__ne=v`, `f__empty=true|false`; cursor pagination with `?cursor=<last id>` (or `?after=`), answered with
+  `nextCursor` (or an `x-next-cursor` header for bare arrays).
+- External events: `where` accepts `{ field: { $gt, $gte, $lt, $lte, $ne, $in } }`.
+- `debug.js --traj --app a,b,c --seed 1-5` prints one line per (app, seed) and flags DEAD / NEARLY DEAD sessions
+  (> 75% of base steps skipped while the ideal run is healthy).
+- The page never scrolls (scroll events are real-time): apps must not load data on scroll.
+
 ## Determinism rules (the harness virtualises time and network; avoid what it cannot)
 OK: setTimeout/setInterval/rAF/requestIdleCallback/MessageChannel/queueMicrotask, fetch, XMLHttpRequest (axios,
 $.ajax, superagent), WebSocket, AbortController, AbortSignal.timeout, Date, Math.random, crypto.randomUUID.

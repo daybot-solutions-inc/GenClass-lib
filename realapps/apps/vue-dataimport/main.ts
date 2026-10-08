@@ -73,7 +73,11 @@ async function upload() {
     const n = Math.ceil(rows / BATCH);
     const last: Promise<void>[] = [];
     for (let i = 0; i < n; i++) {
-      if (VALIDATE_WHEN === "early" && i === n - 1) last.push(sendBatch(i));
+      if (VALIDATE_WHEN === "early" && i === n - 1) {
+        const p = sendBatch(i);
+        p.catch(() => undefined); // awaited after validation starts
+        last.push(p);
+      }
       else await sendBatch(i);
     }
     putJob(await api<Job>(`/api/imports/${job.id}/validate`, "POST"));

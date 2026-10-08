@@ -97,7 +97,7 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 
 | node(s) | claimed by | until | for |
 |---|---|---|---|
-| c01–c23 | free (all deallocated 01:56) | — | TRAIN restarts its claim when situation-v2 data lands (teacher on c12–c23, students on c02–c11, workbench c01) |
+| c01–c23 | **see the TRAIN v2 rows below (05:10 →)** — c02–c09, c12–c23 are TRAIN's; c01, c10, c11 REAL | — | — |
 | train, data | SIM / REAL | — | generation |
 | data | SIM | from 00:55 UTC, open-ended | scaled generation (gold / unlabeled / on-policy); deallocated when idle |
 | train | SIM | until phase B ends (≈ 01:45 UTC), then shared with REAL | phase B + bundle server (10.0.0.4:8810) |
@@ -140,10 +140,10 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
   sim/SEPARABILITY.md; 46 features, 115 domains; held-out lists unchanged: TEST_DOMAINS, family hash,
   TEST_PATTERNS, TEST_FEATURES):**
   - **gold** `train:/data/sim-out/v2-gold/` — 10,423,855 rows (train 7,560,367 / dev 317,732 / test 2,545,756), 23 gz
-    shards + `manifest.json`, 44 GB; seeds 11e9 + NN·1e8 (NN = node). Raw per-future costs in `meta.cost_futures`;
+    shards + `manifest.json`, 5.0 GB gz; seeds 11e9 + NN·1e8 (NN = node). Raw per-future costs in `meta.cost_futures`;
     S1 rule in `meta.diagnosis_s1`.
   - **unlabeled** `train:/data/sim-out/v2-unl/` — 51,272,078 rows (train 37,243,384 / dev 1,533,254 / test
-    12,495,440), 104 gz shards + `manifest.json`; seeds 16e9 + NN·1e8.
+    12,495,440), 104 gz shards + `manifest.json`, 16 GB gz; seeds 16e9 + NN·1e8.
   - Throughput: gold ≈ 278 rows/s per F80 (20 nodes ≈ 5.5k rows/s, 31 min); unlabeled ≈ 21k rows/s per F80
     (2 min). Global dedupe test-first dropped < 0.001 %.
   - On-policy: waits for TRAIN's first v2 export (`--on-policy <dir>`).
@@ -191,8 +191,16 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
       `meta.diagnosis_subject` keep the subject-only verdict;
     - ask probes now run in every real run of a trajectory (a probe changed later op ids in one app: see note).
     Batches (all on `train:/data/real-out/` once pulled; the pulling job deallocates each node after a verified copy):
-    - **`v2c1..v2c4` (USE THESE)**: fixed labels, 96 apps, 4 × 20k trajectories (c01, c10, c11, data; seeds
-      11M/12M/13M/14M+), expected ≈ 530k gold + ≈ 500k unlabeled.
+    - **`v2c1..v2c4` (USE THESE; landed 06:07 UTC)**: `train:/data/real-out/v2c{1,2,3,4}/`, fixed labels, 96 apps,
+      4 × 20k trajectories (seeds 11M/12M/13M/14M+): **gold 511,333** (train 467,323 / dev 18,245 / test 25,765)
+      + **unlabeled 439,006** (`unlabeled-*.jsonl`). Drops: 113 prefix mismatches (0.1% of points; a real-time
+      scroll-event race, fixed afterwards: the page no longer scrolls), 5 base errors; dead sessions 0.4%.
+    - **`v2d1..v2d2` (top-up; landed 06:30 UTC)**: `train:/data/real-out/v2d{1,2}/`, the 32 wave-4 apps only, 2 × 8k
+      trajectories (seeds 15M/16M+): gold 105,104 (train 99,083 / dev 2,535 / test 3,486) + unlabeled 84,096.
+      **Total v2 gold (v2c + v2d) = 616,437 rows over 128 apps.** All REAL nodes (c01, c10, c11, data) are deallocated.
+    - **Real-app eval set**: `train:/data/real-out/v2-eval/real_eval.jsonl` (16,600 rows from v2c, all splits,
+      `meta.eval_case`/`eval_expect`): clean-benign 4,000, benign-salient 4,000, duplicate-submit 4,000,
+      genuine-break 3,085, stale-overwrite 1,515. Report precision/recall on the `test`-split rows separately.
     - `v2b1..v2b3`: stopped at ≈ 20.5k trajectories each (≈ 380k gold), 66 apps, **pre-fix diagnosis labels**
       (no S1, no delivery-by-write, subset vocabularies): action labels valid; use diagnosis labels only where
       `meta.trigger` ∉ {delivery} and `meta.diag_why` != "rel-check", or not at all.

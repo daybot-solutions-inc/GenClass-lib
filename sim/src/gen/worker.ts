@@ -18,6 +18,7 @@ interface Init {
   exploreScale: number;
   mode?: "gold" | "unlabeled" | "onpolicy";
   modelDir?: string;
+  gate?: "shipping" | "explore";
 }
 
 const init = workerData as Init;
@@ -32,7 +33,10 @@ async function main(): Promise<void> {
   const opts: GenOptions = { factory, runtimeName, maxPoints: init.maxPoints, askRows: init.askRows, testKeep: init.testKeep, exploreScale: init.exploreScale, mode: init.mode ?? "gold" };
   if (init.mode === "onpolicy") {
     const { loadModelDecider } = await import("../run/onpolicy.js");
-    opts.model = await loadModelDecider(init.modelDir!);
+    const m = await loadModelDecider(init.modelDir!);
+    opts.model = m.host;
+    opts.modelName = m.name;
+    opts.gate = init.gate ?? "shipping";
   }
   const dir = join(init.out, "shards");
   mkdirSync(dir, { recursive: true });

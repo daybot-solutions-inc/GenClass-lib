@@ -6,7 +6,7 @@
 // for the previous location fills the list), holds never released (holdRelease=never: the car stays held for nobody),
 // bookings retried without an Idempotency-Key (bookKey=none: one booking stored twice), a Book button the machine
 // still accepts while booking (bookGuard=none) and the list kept when you come back (availability=stale: cars other
-// customers took meanwhile are still offered).
+// customers took meanwhile are still offered). Writes carry an 8 s deadline.
 import { assign, createActor, fromPromise, setup } from "xstate";
 import { rt, flag } from "../_shared/genclass";
 import { api, itemsOf, errText, HttpError } from "../_shared/w3-http";
@@ -36,6 +36,8 @@ const HOLD_RELEASE = flag("holdRelease", "on-exit");
 const BOOK_KEY = flag("bookKey", "per-hold");
 const BOOK_GUARD = flag("bookGuard", "state");
 const AVAILABILITY = flag("availability", "refetch-on-back");
+/** Writes give up after 8 s instead of waiting for the gateway. */
+const deadline = () => AbortSignal.timeout(8000);
 const DAYS = 3;
 const COVER: Record<string, number> = { none: 0, basic: 9, full: 19 };
 const totalOf = (car: Car | null, insurance: string) => (car ? (car.dayRate + COVER[insurance]!) * DAYS : 0);
@@ -46,12 +48,12 @@ const machine = setup({
   types: { context: {} as Ctx, events: {} as Ev },
   actors: {
     loadCars: fromPromise(({ input }: { input: string }) => fetchCars(input)),
-    holdCar: fromPromise(({ input }: { input: Car }) => api<Car>(`/api/cars/${input.id}`, "PATCH", { status: "held", holder: "you", version: input.version })),
+    holdCar: fromPromise(({ input }: { input: Car }) => api<Car>(`/api/cars/${input.id}`, "PATCH", { status: "held", holder: "you", version: input.version }, {}, deadline())),
     book: fromPromise(async ({ input }: { input: Ctx }) => {
       const body = { carId: input.car!.id, model: input.car!.model, location: input.location, insurance: input.insurance, total: input.total, days: DAYS };
-      const post = () => api<{ id: number }>(`/api/bookings`, "POST", body, input.bookKey ? { "Idempotency-Key": input.bookKey } : {});
+      const post = () => api<{ id: number }>(`/api/bookings`, "POST", body, input.bookKey ? { "Idempotency-Key": input.bookKey } : {}, deadline());
       const b = await post().catch((e) => (e instanceof HttpError && e.status > 0 && e.status < 500 ? Promise.reject(e) : post()));
-      await api<Car>(`/api/cars/${input.car!.id}`, "PATCH", { status: "booked", holder: "you" });
+      await api<Car>(`/api/cars/${input.car!.id}`, "PATCH", { status: "booked", holder: "you" }, {}, deadline());
       return b;
     }),
   },

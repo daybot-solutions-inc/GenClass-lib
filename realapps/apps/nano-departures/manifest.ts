@@ -30,8 +30,8 @@ const manifest: AppManifest = {
   },
   affordances: [
     { id: "search", kind: "type", sel: "input[name=q]", values: ["ki", "ott", "lon", "ham", "win"], clear: true, weight: 1.5, mode: "replace", key: "search" },
-    { id: "clearSearch", kind: "clear", sel: "input[name=q]", weight: 0.6, mode: "replace", key: "search", after: ["search"] },
-    { id: "more", kind: "click", sel: "button.more", weight: 2.5, mode: "accumulate", dblclickP: 0.15, impatientP: 0.2, requires: "button.more:not([disabled])" },
+    { id: "clearSearch", kind: "clear", sel: "input[name=q]", weight: 1, mode: "replace", key: "search", after: ["search"] },
+    { id: "more", kind: "click", sel: "button.more", weight: 1.8, mode: "accumulate", dblclickP: 0.15, impatientP: 0.2, requires: "button.more:not([disabled])" },
     { id: "alert", kind: "click", sel: "li.departure button.alert", nth: 6, weight: 2, mode: "accumulate", intent: "nth", dblclickP: 0.15, impatientP: 0.15, requires: "li.departure button.alert" },
   ],
   external: [

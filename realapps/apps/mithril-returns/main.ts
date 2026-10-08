@@ -38,7 +38,7 @@ async function loadTab() {
   const { tab, page } = desk.get();
   desk.update((d) => ({ ...d, loading: true, error: "" }));
   try {
-    const body = await m.request<{ data: Rma[]; meta: { total: number } }>({ url: "/api/rmas", params: { ...(tab === "all" ? { sort: "status" } : { status: tab }), page, limit: PER }, background: true });
+    const body = await m.request<{ data: Rma[]; meta: { total: number } }>({ url: "/api/rmas", params: { ...(tab === "all" ? { sort: "rma" } : { status: tab }), page, limit: PER }, background: true });
     if (TAB_SEQ === "latest" && my !== tabSeq) return;
     desk.update((d) => ({ ...d, rows: Array.isArray(body?.data) ? body.data : [], total: Number(body?.meta?.total ?? 0), loading: false }));
   } catch (e) {

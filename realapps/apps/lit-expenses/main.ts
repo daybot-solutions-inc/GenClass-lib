@@ -1,7 +1,7 @@
 // Expense report builder (Lit 3 element with shadow DOM; AtomController binds a runtime atom; fetch). The open draft
 // report collects receipts: attaching one is a two-step upload (POST /receipts, then POST /receipts/:id/ocr starts
 // text recognition), the OCR service marks it read or unreadable later, so the list polls while anything is scanning.
-// The report can be submitted once every receipt is read; then a new draft starts. Latent bugs by flag: a total
+// The report can be submitted once every receipt has been through OCR; then a new draft starts. Latent bugs by flag: a total
 // adjusted by hand that a failed attach never gives back (total=incremental), an Attach button that stays live while
 // the upload posts (attachGuard=none: the same receipt twice), Submit enabled while receipts are still scanning
 // (submit=early), polls that overwrite receipts with a removal in flight (poll=blind: a removed receipt comes back)
@@ -25,6 +25,9 @@ const SAMPLES = [
   { merchant: "Bistro 990", amount: 8675, category: "meals" },
   { merchant: "Staples", amount: 2199, category: "supplies" },
   { merchant: "Porter Airlines", amount: 19800, category: "travel" },
+  { merchant: "Via Rail", amount: 11450, category: "travel" },
+  { merchant: "Starbucks", amount: 875, category: "meals" },
+  { merchant: "Parking Plus", amount: 2400, category: "transport" },
 ];
 
 const exp = rt.atom("expenses", { reportId: 0, title: "", status: "draft", receipts: [] as Receipt[], total: 0, pick: SAMPLES[0]!.merchant, attaching: false, pending: [] as number[], submitting: false, error: "", notice: "" });
@@ -32,7 +35,8 @@ type X = ReturnType<typeof exp.get>;
 const sum = (rs: Receipt[]) => rs.reduce((a, r) => a + r.amount, 0);
 const withReceipts = (x: X, receipts: Receipt[], delta: number): X => ({ ...x, receipts, total: TOTAL === "derive" ? sum(receipts) : x.total + delta });
 const dollars = (c: number) => `$${(c / 100).toFixed(2)}`;
-const allRead = (x: X) => x.receipts.length > 0 && x.receipts.every((r) => r.status === "read");
+/** Every receipt has been through OCR (unreadable ones go to the manager flagged for review). */
+const allRead = (x: X) => x.receipts.length > 0 && x.receipts.every((r) => r.status === "read" || r.status === "unreadable");
 /** Receipts from the phone inbox not attached to this report yet. */
 const inbox = (x: X) => SAMPLES.filter((r) => !x.receipts.some((y) => y.merchant === r.merchant));
 
@@ -132,9 +136,11 @@ class ExpenseApp extends LitElement {
         (r) => html`<li class="receipt ${r.status}">${r.merchant} · ${r.category} · ${dollars(r.amount)} · ${r.status === "scanning" || r.status === "uploaded" ? "reading…" : r.status}
           ${x.status === "draft" ? html`<button type="button" class="remove" ?disabled=${x.pending.includes(r.id)} @click=${() => void remove(r)}>Remove</button>` : nothing}</li>`,
       )}</ul>
-      ${x.status === "draft"
+      ${x.status === "draft" && x.reportId
         ? html`<button type="button" class="submit" ?disabled=${!canSubmit} @click=${() => void submit()}>${x.submitting ? "Submitting…" : "Submit for approval"}</button>`
-        : html`<button type="button" class="new-report" @click=${() => void newReport()}>Start a new report</button>`}`;
+        : x.status !== "draft" || (!x.reportId && x.error)
+          ? html`<button type="button" class="new-report" @click=${() => void newReport()}>Start a new report</button>`
+          : nothing}`;
   }
 }
 customElements.define("expense-app", ExpenseApp);

@@ -103,7 +103,13 @@ export class Runner {
     } finally {
       this.totalRuns++;
       const t4 = Date.now();
-      await page.close().catch(() => undefined);
+      // a hung renderer can make close() wait forever: give up after 10 s and recycle the whole context
+      const closed = await Promise.race([page.close().then(() => true, () => true), new Promise<boolean>((r) => setTimeout(() => r(false), 10000))]);
+      if (!closed) {
+        const c = this.ctx;
+        this.ctx = null;
+        void c?.close().catch(() => undefined);
+      }
       this.phases.close += Date.now() - t4;
       this.realMs += Date.now() - t0;
     }

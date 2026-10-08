@@ -38,7 +38,7 @@ const sha = (b: Uint8Array | string) => createHash("sha256").update(b).digest("h
 const enc = new TextEncoder();
 
 /** An in-memory model directory served by a fake fetch that logs every request. */
-function modelDir(opts: { onnxBytes?: number; v01?: boolean } = {}) {
+function modelDir(opts: { onnxBytes?: number; v01?: boolean; gate?: unknown } = {}) {
   const tokenizer = {
     model: { type: "BPE", vocab: Object.fromEntries(bytesToUnicode().map((c, b) => [c, b])), merges: [] },
     added_tokens: ["[CLS]", "[SEP]", "[Q]", "[O]", "[L]", "[T]", "[F]"].map((c, i) => ({ id: 300 + i, content: c, special: true })),
@@ -53,6 +53,7 @@ function modelDir(opts: { onnxBytes?: number; v01?: boolean } = {}) {
     sep_id: 301,
     inputs: ["input_ids", "position_ids", "q_group", "i_group", "choice_q", "choice_items", "score_q", "score_items", "noul_q", "noul_t", "noul_f"],
     outputs: ["choice_logits", "score_logits", "noul_logits"],
+    ...(opts.gate !== undefined ? { gate: opts.gate } : {}),
   };
   const onnx = new Uint8Array(opts.onnxBytes ?? 300_000).map((_, i) => (i * 7) & 255);
   const fp16 = new Uint8Array(1000).fill(16);
@@ -293,6 +294,16 @@ describe("ModelBackend load", () => {
     expect(r.answers.n).toEqual({ type: "noul", noul: 1 / (1 + Math.exp(-2)) });
     // byte vocabulary, no merges: [CLS] "s" ":" "Ġ" "x" [SEP]
     expect(b.measure({ s: "x" }).stateTokens).toBe(6);
+  });
+
+  it("passes meta.json `gate` through in the ready status (CORE batch 6: data-derived gate thresholds)", async () => {
+    const gate = { report: 0.4, guard: { default: 0.55, byTrigger: { delivery: 0.5 } }, heal: { default: 0.45 } };
+    const { b, statuses } = backend(modelDir({ gate }), new FakeCacheStorage(), NO_GPU);
+    await b.load({ baseUrl: "https://cdn.test/model/" });
+    expect(statuses.at(-1)).toMatchObject({ state: "ready", gate });
+    const plain = backend(modelDir(), new FakeCacheStorage(), NO_GPU);
+    await plain.b.load({ baseUrl: "https://cdn.test/model/" });
+    expect(plain.statuses.at(-1)!.gate).toBeUndefined();
   });
 
   it("second load: everything from Cache Storage, no network for model files or the ORT wasm", async () => {

@@ -96,7 +96,7 @@ export interface RunOptions {
   /** Record the server state over time (ideal run: costs compare the server at decision + horizon). */
   serverTimeline?: boolean;
   /** On-policy: answers come from this model through the runtime's production gate (heal mode, default thresholds). */
-  onPolicy?: { model: DecisionProvider };
+  onPolicy?: { model: DecisionProvider; gate?: "shipping" | "explore" };
   /**
    * Re-seeded future: from decision `k` on (ideal runs: k = -1, i.e. from time `t`), network draws, push latencies,
    * model latencies and the times of other users' events after `t` use `salt`. The prefix stays byte-identical.
@@ -572,7 +572,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       ...(scn.diagnoses ? { diagnoses: scn.diagnoses } : {}),
       ...(scn.actionWords ? { actions: scn.actionWords } : {}),
       budget: scn.budget,
-      ...(o.onPolicy ? { production: true } : {}),
+      ...(o.onPolicy ? { production: true, gate: o.onPolicy.gate ?? "shipping" } : {}),
       // Exact correlation: the runtime creates the fetch op synchronously inside the app's fetch call and the
       // mutation synchronously inside atom.set, while the sim's ambient tag (callingOp / writing) is set.
       hooks: {

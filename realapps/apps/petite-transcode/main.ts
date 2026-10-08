@@ -69,7 +69,9 @@ async function upload() {
     const inflight: Promise<void>[] = [];
     for (let i = 0; i < job.chunks; i++) {
       if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
-      inflight.push(sendChunk(i).then(upsert));
+      const p = sendChunk(i).then(upsert);
+      p.catch(() => undefined); // failures surface through the awaits below
+      inflight.push(p);
       if (inflight.length >= 2) await inflight[inflight.length - 2];
     }
     if (FINALIZE === "after-all") await Promise.all(inflight);
