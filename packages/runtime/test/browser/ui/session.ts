@@ -266,6 +266,8 @@ export interface SessionOptions {
   warmupOnly?: boolean;
   status?: ModelStatus;
   turn?: () => Promise<void>;
+  /** Called with the runtime right after it is created (e.g. to poll it like the devtools overlay does). */
+  onRuntime?: (rt: Runtime) => void;
 }
 
 const OBSERVE = { fetch: true, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, timers: false };
@@ -278,6 +280,7 @@ export async function runStoreSession(opts: SessionOptions = {}): Promise<Sessio
   let route = "/search";
   const g: Record<string, unknown> = { fetch: backend.fetch, Response, location: { href: "https://acme.test/search", pathname: "/search", search: "" } };
   const rt = createRuntime({ clock, global: g, decider, mode: "guard", report: "silent", observe: OBSERVE, app: () => ({ title: "Acme Store", route }) });
+  opts.onRuntime?.(rt);
   const http = g.fetch as typeof fetch;
   const json = (path: string, init?: RequestInit) => http(path, init).then((r) => r.json());
 

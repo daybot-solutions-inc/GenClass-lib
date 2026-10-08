@@ -22,14 +22,39 @@
     "local-first",
     "genclass"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/auto.js",
+    "./dist/auto/*.js",
+    "./dist/genclass.global.js",
+    "./dist/genclass.global.min.js",
+    "./dist/cdn/*.js",
+    "./src/model/worker.ts"
+  ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "unpkg": "./dist/genclass.global.min.js",
+  "jsdelivr": "./dist/genclass.global.min.js",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./auto": {
+      "types": "./dist/auto.d.ts",
+      "import": "./dist/auto.js"
+    },
+    "./auto/observe": {
+      "types": "./dist/auto/observe.d.ts",
+      "import": "./dist/auto/observe.js"
+    },
+    "./auto/guard": {
+      "types": "./dist/auto/guard.d.ts",
+      "import": "./dist/auto/guard.js"
+    },
+    "./auto/heal": {
+      "types": "./dist/auto/heal.d.ts",
+      "import": "./dist/auto/heal.js"
     },
     "./react": {
       "types": "./dist/adapters/react.d.ts",

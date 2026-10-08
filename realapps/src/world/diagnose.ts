@@ -99,6 +99,21 @@ export function diagnose(p: Probe, trigger: string, subject: Record<string, unkn
       if (fromAsync && w) {
         const chain = p.chain(cause);
         const start = Math.min(...chain.map((o) => o.start));
+        // an older operation replacing newer data: the same elements were already written by an asynchronous
+        // operation that started after this write's operation (a newer response, poll or message)
+        const own = new Set(chain.map((o) => o.id));
+        for (const path of w.paths) {
+          if (weightOf(p, path) <= 0.1) continue;
+          const mine = w.keys?.[path] ?? "*";
+          for (const other of p.writes.values()) {
+            if (other.id === w.id || other.t < start || other.t > now || other.cause === undefined || own.has(other.cause)) continue;
+            if (!other.paths.includes(path) || !keysOverlap(other.keys?.[path] ?? "*", mine)) continue;
+            const oc = p.chain(other.cause);
+            const ostart = Math.min(...oc.map((o) => o.start));
+            const async = oc.some((o) => o.kind === "fetch" || o.kind === "xhr" || o.kind === "ws");
+            if (async && ostart > start && !oc.some((o) => own.has(o.id))) return { label: "stale", why: `newer-op-wrote ${path}` };
+          }
+        }
         const reads = nets.filter((r) => r.method === "GET");
         for (const path of w.paths) {
           if (weightOf(p, path) <= 0.1) continue; // busy/loading flags written by both the click and the completion

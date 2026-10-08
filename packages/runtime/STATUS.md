@@ -6,7 +6,7 @@ MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/ru
 ## State
 
 On the VM (`npm install` at the repo root; in packages/runtime with `GENCLASS_MODEL_DIR=~/gcl/model/.cache-model`
-and `NODE_OPTIONS=--expose-gc`): `tsc --noEmit` clean, `tsup` build OK, `vitest run`: **41 files, 346 tests, all
+and `NODE_OPTIONS=--expose-gc`): `tsc --noEmit` clean, `tsup` build OK, `vitest run`: **42 files, 348 tests, all
 passing** (UI's devtools fix from the lead's batch-4 commit included). Every `test/review-*.test.ts` passes
 unchanged; MODEL's pass. Perf (REVIEW's tests, shared VM): keystroke write with a 5,000-item array 0.22 ms; async
 write 0.14 ms; redux-style dispatch on 5,000 entities 0.71 ms (user) / 0.70 ms (async); settled point 0.3 ms (+2.3 ms
@@ -38,6 +38,27 @@ observe mode on the same scenario (`debug.js --interference`):
 | situation | `src/situation/*.ts` | facts, version conflicts (`conflicts.ts`), response content vs store (`content.ts`), evidence facts (`evidence.ts`), budget-shaped serializer, compact questions, triage, subject refs |
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
+
+## Fix after batch 5: situation() purity (REAL report, oss-svelte-conduit)
+
+- New regression test `test/situation-purity.test.ts`: a mixed app raises every trigger kind (triage "always":
+  delivery with a buffered JSON body, WebSocket message, mutation, request, failure, stall, inconsistency,
+  transition, error); at every probe point (inside a user handler, a timer callback with its lazy op ambient, a
+  fetch continuation, a message dispatch, a task) it calls `situation()`, `situation(kind)` for every kind and
+  rebuilds each kind's last situation from scratch, and asserts that the next op id, op count, event seq, decisions,
+  interventions, hub sequence, scheduled timers and provider calls are unchanged; the whole run (op ids, events,
+  decisions, provider requests, store values) is identical with and without probes. It fails if situation building
+  materialises a lazy timer op (checked by injecting `ctx.op()`). A second test polls the UI's store session like
+  the devtools overlay (situation, inflight, explain, interventions, history on every microtask turn): identical
+  decisions, holds, interventions, ops and events.
+- The runtime was already side-effect free on every path; one strictness fix: pruning of the recent-errors list no
+  longer happens inside situation building (it happens when errors are recorded). Facts still cache field versions
+  in `op.reads` (allowed by the contract; no ids, no events).
+- The oss-svelte-conduit id shift is harness nondeterminism, not the probe: with no ask probes, 2 of 3 identical base
+  runs of seed 24 differ from the first (an extra `GET /api/articles?tag=react&limit=10&offset=10` at t0 = 7,483 ms in
+  one run and 5,557 ms in another, absent in the first), which shifts every later op id by one; `--det 24-24` reports
+  a mismatch on some runs; and `--ask-check` over seeds 1–29 differs only on seed 24, at t = 13,183 ms, before its
+  only probe (32,259 ms).
 
 ## Batch 5 (done): situation text from REAL's apps, SIM's separability facts
 

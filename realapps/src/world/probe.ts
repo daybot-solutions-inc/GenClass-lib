@@ -167,6 +167,8 @@ export class Probe {
   streak = new Map<string, number>();
   // decisions ---------------------------------------------------------------------------------------------
   decisions: DecisionRec[] = [];
+  /** delivery decisions waiting for their first write (op id -> record). */
+  pendingDelivery = new Map<number, DecisionRec>();
   private k = 0;
   private forced: Map<number, string>;
   // snapshots ---------------------------------------------------------------------------------------------
@@ -293,6 +295,27 @@ export class Probe {
           }
         }
         const wi: WriteInfo = { id: m.id, store: m.store, paths: m.paths.slice(0, 16), t: this.loop.now, keys, ...(m.cause !== undefined ? { cause: m.cause } : {}) };
+        // a delivery decision is diagnosed by the first write its response or message makes (mutation rules)
+        if (m.cause !== undefined && this.pendingDelivery.size) {
+          for (const o of this.chain(m.cause)) {
+            const rec = this.pendingDelivery.get(o.id);
+            if (!rec) continue;
+            this.pendingDelivery.delete(o.id);
+            try {
+              const d = diagnose(this, "mutation", { mutation: m.id, cause: m.cause }, this.loop.now);
+              if (d.label && (rec.diagWhy === "rel-check" || rec.diagnosis === undefined)) {
+                if (d.label !== "expected" || d.why !== "rel-check") {
+                  rec.diagnosis = d.label;
+                  rec.diagWhy = `write:${d.why}`;
+                } else rec.diagWhy = "rel-check";
+                if (d.trace) rec.diagTrace = d.trace;
+              }
+            } catch {
+              /* keep the delivery verdict */
+            }
+            break;
+          }
+        }
         if (m.cause !== undefined && this.ops.get(m.cause)?.kind === "user") {
           this.userMutations.add(m.id);
           for (const p of m.paths) this.addUserWrite(p, this.loop.now, keys[p] ?? "*");
@@ -388,6 +411,27 @@ export class Probe {
         rec.state = req.state;
         rec.questions = req.questions as Record<string, unknown>;
       }
+      // S1 inputs (labels are finished in Node): does the subject repeat an accidental user step; is there an
+      // identical request in flight or just answered
+      const subjOp = (subj.op as number | undefined) ?? (subj.cause as number | undefined) ?? (subj.mutation !== undefined ? this.writes.get(subj.mutation as number)?.cause : undefined);
+      const u = subjOp !== undefined ? this.rootUser(subjOp) : undefined;
+      const ust = u ? this.stepOf(u.step) : undefined;
+      if (ust && (ust.accidental || ust.repeatOf !== undefined)) rec.repeat = true;
+      if (req.trigger === "request" && subjOp !== undefined) {
+        const op = this.ops.get(subjOp);
+        if (op) {
+          let url = op.url ?? "";
+          try {
+            const x = new URL(url, this.w.location.origin + "/");
+            url = x.pathname + x.search;
+          } catch {
+            /* keep */
+          }
+          const method = (op.method ?? "GET").toUpperCase();
+          rec.twin = this.net.log.some((r) => r.method === method && r.url === url && r.rtOp !== op.id && (r.td === undefined || t - r.td < 10000));
+        }
+      }
+      if (req.trigger === "delivery" && subjOp !== undefined && (rec.diagWhy === "rel-check" || rec.diagnosis === undefined)) this.pendingDelivery.set(subjOp, rec);
       this.decisions.push(rec);
     }
     // the counterfactual future starts once decision k is answered: later draws use the future's salt

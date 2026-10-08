@@ -2,19 +2,19 @@
 
 [![npm](https://img.shields.io/npm/v/@genclass/runtime/latest?label=npm)](https://www.npmjs.com/package/@genclass/runtime)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+![runs](https://img.shields.io/badge/runs-100%25%20in%20the%20browser-brightgreen)
 
-**A runtime that watches your web app from the inside and, with a small local model, flags (and optionally
-prevents) stale responses, races, duplicate requests, inconsistent state and failure storms.**
+### Your app's race conditions, stale responses and double submits, caught while they happen.
+
+The bugs your tests never catch are the ones that depend on timing: a slow response landing after a fast one, a
+button clicked twice, a save racing an edit, an endpoint that starts failing at 2 a.m.
 
 GenClass Runtime records what your app does: user actions, async operations and their causes, fetch/XHR/WebSocket/
 EventSource traffic, store writes with per-field versions, errors and timing. It computes generic facts about each
 write, request and response. When a situation looks risky, a small GenClass model running in the browser (WebGPU or
 WASM, in a Web Worker) answers two questions: what is happening, and which of the available actions is best. The
-runtime has no list of known bugs: triage picks the situations, the model decides.
-
-```bash
-npm install @genclass/runtime
-```
+runtime has no list of known bugs: triage picks the situations, the model decides. By default it only reports; in
+`guard` mode it can also stop the failure before your users see it.
 
 ```ts
 import { GenClass } from "@genclass/runtime";
@@ -32,15 +32,19 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 >   with `GenClassUnavailableError`.
 > - The only trained models so far (round 1) read the previous format (`situation-v1`) and do not match this
 >   runtime. Do not self-host them with this version.
-> - This is `0.1.0-alpha.1`. `0.1.0-alpha.0`, the first version on npm, is the older v1 runtime: guard by default, holds store writes, and
->   can crash when app state contains `NaN` (fixed since). Use a later version.
+> - **Versions.** `0.1.0-alpha.1` is the current `latest` on npm: the v2 runtime, observe by default, with the
+>   `NaN` fix. It does **not** include the one-command install, the `@genclass/runtime/auto` entries or the script
+>   tag described under [Install](#install); those are in this repository and ship in the next release.
+>   `0.1.0-alpha.0`, the first version on npm, is the older v1 runtime: guard by default, holds store writes, and
+>   can crash when app state contains `NaN`. Do not use it.
 >
 > Progress: [OPEN_TASKS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/OPEN_TASKS.md) ·
 > measured results: [RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md).
 
 ## Contents
 
-[Modes](#modes) · [What it looks for](#what-it-looks-for) · [State it can protect](#state-it-can-protect) ·
+[Install](#install) · [Why it's an easy yes](#why-its-an-easy-yes-measured) · [Modes](#modes) ·
+[What it looks for](#what-it-looks-for) · [State it can protect](#state-it-can-protect) ·
 [Ask it questions](#ask-it-questions) · [Observability](#observability) · [Extend it](#extend-it) ·
 [Model quality](#model-quality) · [Performance](#performance) · [Privacy](#privacy) ·
 [Known limitations](#known-limitations) · [API reference](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md)
@@ -67,6 +71,104 @@ background instead:
 started (version 1 → 2), … Not acted on (would have done discard 0.97): observe mode never changes execution. (stale, 0.97)
 ```
 
+## Install
+
+### Today: `0.1.0-alpha.1` (npm `latest`)
+
+```bash
+npm install @genclass/runtime
+```
+
+```ts
+// first thing in your entry file
+import { GenClass } from "@genclass/runtime";
+
+const rt = GenClass.init(); // observe; GenClass.init({ mode: "guard" }) to let it act once a model exists
+```
+
+### Next release: one command, one import or one script tag
+
+These three paths are built and tested in this repository but are **not in `0.1.0-alpha.1`**; they ship in the next
+release. All three start the same runtime, in observe mode unless you choose otherwise.
+
+**1. One command.** `init` finds your framework and package manager, installs the package, adds one import as the
+first line of your entry file (plus a line that loads the devtools overlay in development only), and shows you the
+diff before writing anything. Running it again changes nothing.
+
+```bash
+npx @genclass/runtime init            # shows the diff, asks, then writes
+npx @genclass/runtime init --yes      # no questions
+npx @genclass/runtime init --dry-run  # show the diff, write nothing
+npx @genclass/runtime remove          # undo exactly what init added
+```
+
+Other flags: `--no-install`, `--no-devtools`, `--cwd <dir>`, `remove --keep-package`. `init` sets up observe mode;
+to let GenClass act, change the import it added to `@genclass/runtime/auto/guard` (see the next path).
+
+Tested end to end on fresh projects from each framework's own generator: Vite 8 (React with npm and pnpm, Vue,
+Svelte), Next.js 16.4 (App and Pages Router, plus the paths for Next < 15.3), Create React App 5, SvelteKit, Astro,
+Nuxt 4.6, React Router 8 (framework mode), Angular 20 and plain HTML. In all 15 projects the app built and ran in
+Chromium after `init` (production build where the project has one; model loaded in a worker, overlay only in
+development, no console errors on a warm load), and `remove` left every file byte-identical to the scaffold
+(node_modules, lockfiles and build output excluded).
+Remix, Solid, Preact and Next.js before 15.3 are detected but were not scaffolded with their own generators.
+Details: [test/install/RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/test/install/RESULTS.md).
+Those runs predate the switch to observe as the default; the files `init` writes are the same.
+
+**2. One import** (any bundler), first in your entry file so stores created at import time see the runtime:
+
+```ts
+import "@genclass/runtime/auto";          // observe (the default)
+import "@genclass/runtime/auto/guard";    // or guard
+import "@genclass/runtime/auto/heal";     // or heal (experimental)
+import "@genclass/runtime/auto/observe";  // observe, explicitly
+
+import rt from "@genclass/runtime/auto";  // the same, and the runtime it started
+```
+
+Optional page configuration, read once: `<meta name="genclass" content="mode=guard, devtools=local">` or
+`window.GENCLASS_CONFIG = { mode: "guard", devtools: true }` (any `InitOptions`), set before the import runs. During
+SSR or in Node, `/auto` installs nothing and returns an inert runtime.
+
+**3. One script tag** (no build step), first in `<head>`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime" data-mode="observe" data-devtools="local"></script>
+```
+
+It exposes `window.GenClass` and loads the model worker, ONNX Runtime Web and the overlay on demand from the same
+version on the CDN. `data-mode` takes `observe` (the default), `guard` or `heal`; `data-devtools="local"` shows the
+overlay only on localhost; `data-manual` skips the automatic `GenClass.init()`. Pin a version in production (the
+plain-HTML path of `init` writes a pinned jsDelivr URL with SRI). Until the next release, the unversioned URL serves
+`0.1.0-alpha.1`, which has no script-tag build.
+
+`npx genclass-runtime init` will be a short alias for the same CLI (the `genclass-runtime` package, not on npm yet).
+
+## Why it's an easy yes (measured)
+
+These hold for the runtime; whether the model's decisions are good is a separate question (see
+[Model quality](#model-quality)).
+
+- **It is not expected to make a working app worse.** Decisions about responses happen at the network boundary,
+  which looks like ordinary latency to your app, and the default never holds or reorders your app's own store
+  writes. With a model that never intervenes (heal mode, compared against observe mode), GenClass changed the
+  outcome in **0 of 396** clean runs across **66 real apps in 23 frameworks** (React, Vue, Svelte, Solid, Angular,
+  Ember, Elm, Lit, Redux, Zustand, MobX, TanStack Query and more, including 14 unmodified open-source RealWorld
+  front-ends), 6 seeds each. What that check does and does not compare is under [Model quality](#model-quality).
+- **Normal traffic costs little.** Facts are computed for every write and request; the model is consulted only for
+  salient situations. Clean in-order typeahead makes no model calls and holds nothing. A keystroke write to a store
+  holding a 5,000-item array takes about 0.22 ms.
+- **No app data leaves the browser.** The model runs locally in a Web Worker on WebGPU or WASM and is cached after
+  the first load. No telemetry, no server, no API key. Typed values of password and payment fields are never
+  recorded (other redaction has gaps; see [Privacy](#privacy)).
+- **You can see what it did.** Every detection and action gets one plain-English console line with the evidence
+  behind it, and `rt.explain(id)` shows exactly what the model read. Discards and rollbacks can be undone; responses
+  it changed carry an `x-genclass` header.
+- **Off in one step.** `?genclass=off` in the URL installs nothing, and observe (the default) never changes
+  execution.
+- **Small.** The main entry is about 83 KB gzip (minified, without the optional devtools). The only round-1 model
+  export so far is 9.6 MB; the size of the coming `situation-v2` model is not known yet.
+
 ## Modes
 
 | mode | what it does | non-passive actions | gate |
@@ -84,17 +186,32 @@ are also limited to 60 per minute (`policy.maxActionsPerMinute`). A held decisio
 the passive action; a background write decision can still revert the write late. Thresholds and the `allow` / `deny`
 lists are in `policy`. Switch at runtime with `rt.setMode(mode)`, or stop consulting the model with `rt.pause()` / `rt.resume()`.
 
-**The default changed.** Earlier versions defaulted to `guard`. Now `GenClass.init()` with no `mode` observes only;
-pass `mode: "guard"` to let it act.
+**The default changed.** `0.1.0-alpha.0` defaulted to `guard`. Now `GenClass.init()` with no `mode` (and
+`@genclass/runtime/auto`, and the script tag without `data-mode`) observes only; pass `mode: "guard"` to let it act.
 
 **Kill switch.** Append `?genclass=off` to the URL, or set `localStorage.genclass = "off"`, and nothing is installed.
-`?genclass=observe|guard|heal` (or the same localStorage value) overrides the mode.
+`?genclass=observe|guard|heal` (or the same localStorage value) overrides the mode, including the mode of the `/auto`
+entries and the script tag.
 
 `GenClass.init()` never throws, and a second call returns the first runtime (its options are ignored). Outside a
 browser (SSR, Node) it returns a runtime with no observers and no model. For tests and headless use, call
 `createRuntime(options)` instead.
 
 ## What it looks for
+
+At a glance (actions other than flagging need `guard` or `heal`, and a published model):
+
+| situation | example | what GenClass can do |
+|---|---|---|
+| Stale response | an old search response lands after a newer one | deliver it but drop its writes over newer data, or defer it (guard) |
+| Race / conflict | a server echo would overwrite what the user just typed | drop the stale part, defer (guard) |
+| Duplicate | a double click sends the same order twice | reuse the first response (`coalesce`, guard) |
+| Inconsistent state | the cart total no longer equals the sum of the lines | roll back or resync (heal) |
+| Failure pattern | an endpoint fails 5 times in a row | serve the last good response (heal) |
+| Transient failure | a one-off 503 | retry (heal) |
+| Slow or flooding | 8× slower than usual; a render loop hammering an API | hedge (heal), delay (guard) |
+| Unusual behaviour | an operation writes different fields than it usually does | flag; roll back (heal) |
+| Your own question | "is now a good moment to start the upload?" | `rt.ask()` / `rt.decide()` |
 
 The runtime decides at nine **triggers**. Only salient ones (a conflict, a repeat, a failure, an anomaly, a broken
 relation, an error) reach the model; everything else is a cheap fact computation.
@@ -146,10 +263,14 @@ cover:
 - values known to be stale;
 - read-your-writes.
 
+It catches runtime failures that leave evidence: ordering, staleness, duplicates, broken relations, failure patterns.
+It does not catch logic that is consistently wrong, CSS or security bugs, and it never rewrites your code.
+
 ## State it can protect
 
 Fetch, XHR, WebSocket, EventSource, DOM user events, errors, navigation, storage, long tasks and timers are observed
-automatically. Store writes are traced (and can be dropped or reverted) only when the store goes through GenClass:
+automatically, with no code. Store writes are traced (and can be dropped or reverted) only when the store goes
+through GenClass. Each option is one line:
 
 ```ts
 const rt = GenClass.init({ mode: "guard" });
@@ -164,7 +285,7 @@ const [results, setResults] = useGenClassState("searchResults", []);
 
 // Redux / Redux Toolkit (put the enhancer last in compose())
 import { genclassEnhancer } from "@genclass/runtime/redux";
-const store = createStore(reducer, genclassEnhancer(rt, { name: "app" }));
+const store = configureStore({ reducer, enhancers: (e) => e().concat(genclassEnhancer(rt, { name: "app" })) });
 
 // Zustand
 import { genclass } from "@genclass/runtime/zustand";
@@ -218,8 +339,10 @@ Standing questions ride along with built-in decisions: `rt.question({ id, on: ["
   `rollback` and chain reverts, plus custom actions that register `onUndo`. `defer`, `coalesce`, `delay`, `block`,
   `serve_cached`, `retry`, `hedge` and `resync` cannot be undone; their record says what changed.
 - **Altered responses** carry an `x-genclass` header: `coalesced`, `cached` or `blocked`.
-- **Devtools overlay:** interventions, detections, a live activity log and a "what GenClass sees now" view, with
-  evidence and undo. About 52 KB minified / 17 KB gzip, so load it in development only:
+- **Devtools overlay** with four views: **Interventions** (what GenClass did, with Undo where it exists),
+  **Detections** (what it noticed but did not act on), **Activity** (a live log of requests, writes, user actions and
+  errors with their causal links) and **Now** (what the model would see at this moment). About 52 KB minified /
+  17 KB gzip, so load it in development only (`init` does this for you):
 
 ```ts
 if (import.meta.env.DEV) {
@@ -230,14 +353,11 @@ if (import.meta.env.DEV) {
 
 ## Extend it
 
+Plugins can add their own observers, facts, actions and questions:
+
 ```ts
 rt.use({
-  name: "visibility",
-  setup(api) {
-    const onChange = () => api.emit("visibility", { hidden: document.hidden });
-    document.addEventListener("visibilitychange", onChange);
-    return () => document.removeEventListener("visibilitychange", onChange);
-  },
+  name: "sync",
   actions: [{
     name: "pause_sync",
     description: "pause background sync until the page is visible again",
@@ -270,9 +390,9 @@ There are no numbers yet for a model that matches this runtime.
 R17 was precise but timid. The analysis found the limit was in the situation text and the labels, not the model
 size: many clear cases had benign twins with identical visible facts, and some labels were wrong.
 
-**Round 2 (`situation-v2`, this runtime)** adds measured facts aimed at those twins, plus relabelled data. It is
-being generated and trained now (~10M simulated rows, ~50M unlabeled rows for teacher labelling, ~0.5M rows from
-real apps in headless Chromium). Results will be published with the model package.
+**Round 2 (`situation-v2`, this runtime)** adds measured facts aimed at those twins, plus relabelled data. The data is
+generated from simulated apps (10.4M labelled rows and 51.3M unlabeled rows for teacher labelling), rows from real
+apps driven in headless Chromium are being added, and the models are training now. Results will be published with the model package.
 
 The "never make a correct app worse" check uses an always-passive model in heal mode, compared against observe mode,
 on 66 real apps (6 seeds each). **0 of 396 clean runs** changed, measured on final page text (inputs and alerts
@@ -294,7 +414,8 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
 
 - **Bundle:** the main entry is about 240 KB minified / 83 KB gzip, measured with esbuild and onnxruntime-web
   external. ONNX Runtime Web (the only dependency) is loaded by the model worker on demand: about 2.7 MB brotli for
-  the WASM-only path, 4.7 MB with WebGPU.
+  the WASM-only path, 4.7 MB with WebGPU. The script-tag file (next release) is 253 KB / 86 KB gzip without ONNX
+  Runtime; its model worker (16 KB gzip) and ONNX Runtime glue (25–39 KB gzip) load on demand.
 - **Model size:** the round-1 R17 export (pruned 16k vocabulary, int8) is 9.6 MB. On single-thread WASM it took about
   0.18 s per decision on a 500-token situation, measured in Node.
 - **Holds are bounded.** A held response or request waits at most the hold budget, then proceeds unchanged. The
@@ -306,10 +427,11 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
 - **Situation size by device:** 2,400 characters on WebGPU; on WASM, 1,000 (1 thread) to 2,000 (4 threads).
   Override with `situation: { budget }`.
 - **Threads:** serving the page with `Cross-Origin-Opener-Policy: same-origin` and
-  `Cross-Origin-Embedder-Policy: require-corp` enables WASM threads.
+  `Cross-Origin-Embedder-Policy: require-corp` enables WASM threads (about 3× faster with 4 threads in Chromium,
+  measured with a round-1 model).
 - **Loading:** the model loads at idle after page load (`model.preload: "idle"`). It is cached in Cache Storage and
-  checked with sha256. `model: { baseUrl }` points at a self-hosted model directory (`npx genclass-runtime fetch-model
-  <dir>` downloads one); there is none for this runtime yet.
+  checked with sha256. `model: { baseUrl }` points at a self-hosted model directory
+  (`npx @genclass/runtime fetch-model <dir>` downloads one); there is none for this runtime yet.
 
 ## Privacy
 
@@ -367,6 +489,9 @@ model ships and you opt into `guard` or `heal`, unless a bullet says otherwise.
   This is best effort; wrap important work in `rt.op(name, fn)` for exact attribution.
 - **Store state** is visible and protectable only through GenClass-aware stores. Other state is seen only through
   its effects.
+- **React Router dev server (next-release install).** On the very first dev start after `init`, Vite discovers the
+  new imports late, re-optimizes and reloads the page, logging a few "Outdated Optimize Dep" errors once. Later
+  loads are clean.
 - **The model can be wrong.** It is trained on simulated apps and real apps driven in a headless browser. It is not
   a substitute for tests. That is why the default only observes, guard acts only at ≥ 0.9, and every action is
   logged.

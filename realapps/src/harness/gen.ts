@@ -56,7 +56,7 @@ const stats = {
   runMs: 0,
   wallMs: 0,
   byTrigger: {} as Record<string, { n: number; passiveBest: number; best: Record<string, number>; diagnosis: Record<string, number>; harm: Record<string, number[]> }>,
-  byApp: {} as Record<string, { trajectories: number; rows: number; decisions: number }>,
+  byApp: {} as Record<string, { trajectories: number; rows: number; decisions: number; stepsRan: number; stepsSkipped: number; dead: number }>,
   diagnosisOnly: 0,
   errors: [] as string[],
 };
@@ -87,9 +87,15 @@ function record(t: TrajectoryOut): void {
     if (k !== "test-subsample" && stats.errors.length < 50) stats.errors.push(`${t.seed} ${t.app}: ${t.skipped.slice(0, 300)}`);
   }
   for (const [k, v] of Object.entries(t.drops)) stats.drops[k] = (stats.drops[k] ?? 0) + v;
+  for (const m of t.mismatchInfo ?? []) if (stats.errors.length < 50) stats.errors.push(`prefix-mismatch ${m}`);
   for (const [k, v] of Object.entries(t.notes ?? {})) stats.notes[k] = (stats.notes[k] ?? 0) + v;
-  const a = (stats.byApp[t.app] ??= { trajectories: 0, rows: 0, decisions: 0 });
+  const a = (stats.byApp[t.app] ??= { trajectories: 0, rows: 0, decisions: 0, stepsRan: 0, stepsSkipped: 0, dead: 0 });
   a.trajectories++;
+  if (t.steps) {
+    a.stepsRan += t.steps.ran;
+    a.stepsSkipped += t.steps.skipped;
+    if (t.steps.ran === 0) a.dead++;
+  }
   a.rows += t.rows.filter((r) => !(r.meta as { unlabeled?: boolean }).unlabeled).length;
   a.decisions += t.decisions;
   for (const r of t.rows) {

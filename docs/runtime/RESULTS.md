@@ -89,9 +89,9 @@ trained v2 model once it exists.
 |---|---|---|
 | Curriculum (cur1–cur4) | ~1.9M | done |
 | Sim v1 phase A / phase B | 600k / 1.4M | done (v1, superseded) |
-| Sim v2 gold (S1+S2 labels, 46 features, 115 domains) | ~10M target | generating, 20 nodes |
-| Sim v2 unlabeled (for teacher labelling) | ~50M target | generating |
-| Real-browser v2 gold (66 → ~96 apps, 23 stacks) | ~495k target | generating, 3 nodes |
+| Sim v2 gold (S1+S2 labels, 46 features, 115 domains) | **10,423,855** (7.56M train / 318k dev / 2.55M test) | done, 20 nodes in ~31 min |
+| Sim v2 unlabeled (for teacher labelling) | **51,272,078** | done (~21k rows/s per node) |
+| Real-browser v2 gold (96 apps, 40+ stacks) | ~495k target | generating, 3 nodes |
 | Real-app eval set (unambiguous) | 366 rows (v1 pilot) | rebuilt on v2 |
 
 ## 7. Training log (summary)

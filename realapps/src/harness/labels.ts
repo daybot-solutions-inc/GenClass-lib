@@ -8,7 +8,7 @@
 
 import type { AppManifest } from "../shared/manifest.js";
 import type { DecisionRec } from "../shared/types.js";
-import { relationBroken, stateAt, type State } from "./cost.js";
+import { relationBroken, stateAt, valueDist, type State } from "./cost.js";
 
 function fieldRefs(text: string): string[] {
   const out = new Set<string>();
@@ -88,4 +88,54 @@ export function finishDiagnosis(d: DecisionRec, app: AppManifest, base: State[],
     return rels.some((r) => relationBroken(r, now.stores)) ? "unusual" : "expected";
   }
   return d.diagnosis ?? "expected";
+}
+
+/** Minimum adjusted gap (premiums included) for S1 (same as sim/src/gen/trajectory.ts S1_GAP). */
+export const S1_GAP = 1.0;
+
+/** "store.field" paths (weight > 0.1) that differ from the ideal run at time t; "dom" when only the DOM differs. */
+export function divergedAt(base: State[], ideal: State[], t: number, app: AppManifest): string[] {
+  const a = stateAt(base, t);
+  const b = stateAt(ideal, t);
+  const w = app.weights ?? {};
+  const out: string[] = [];
+  for (const store of new Set([...Object.keys(a.stores), ...Object.keys(b.stores)])) {
+    const x = a.stores[store] as Record<string, unknown> | undefined;
+    const y = b.stores[store] as Record<string, unknown> | undefined;
+    if (x && y && typeof x === "object" && typeof y === "object" && !Array.isArray(x)) {
+      for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) {
+        if ((w[`${store}.${k}`] ?? w[store] ?? 1) <= 0.1) continue;
+        if (valueDist(x[k], y[k]) > 0) out.push(`${store}.${k}`);
+      }
+    } else if (valueDist(x, y) > 0 && (w[store] ?? 1) > 0.1) out.push(store);
+  }
+  if (!out.length && valueDist(a.dom, b.dom) > 0) out.push("dom");
+  return out;
+}
+
+/**
+ * S1 (sim's diagnosisFromOutcome): never `expected` where acting clearly wins; name what the action repairs or
+ * prevents.
+ *   a) fields already wrong at the decision (vs the ideal run): the verdict of the latest non-expected
+ *      mutation/delivery decision that wrote them;
+ *   b) the subject repeats an accidental user step: duplicate;
+ *   c) coalesce/block of a request with an identical one in flight or just answered: duplicate;
+ *   d) fields already wrong with no named cause: inconsistent (inconsistency/transition) or stale;
+ *   e) otherwise: unusual.
+ */
+export function diagnosisFromOutcome(d: DecisionRec, decisions: DecisionRec[], base: State[], ideal: State[], app: AppManifest, best: string): { diag: string; source: string } {
+  const fields = divergedAt(base, ideal, d.t, app);
+  let found: DecisionRec | undefined;
+  for (const x of decisions) {
+    if (x.t > d.t || x.k === d.k || !x.diagnosis || x.diagnosis === "expected") continue;
+    if (x.trigger !== "mutation" && x.trigger !== "delivery") continue;
+    const paths = ((x.subject.paths as string[] | undefined) ?? []).map((q) => q.split(".").slice(0, 2).join("."));
+    const store = String(x.subject.store ?? "");
+    if (fields.some((f) => paths.includes(f) || (store && f.startsWith(store + "."))) && (!found || x.t >= found.t)) found = x;
+  }
+  if (found) return { diag: found.diagnosis!, source: "a-write" };
+  if (d.repeat) return { diag: "duplicate", source: "b-repeat" };
+  if (d.trigger === "request" && (best === "coalesce" || best === "block") && d.twin) return { diag: "duplicate", source: "c-twin" };
+  if (fields.length) return { diag: d.trigger === "inconsistency" || d.trigger === "transition" ? "inconsistent" : "stale", source: "d-diverged" };
+  return { diag: "unusual", source: "e-other" };
 }

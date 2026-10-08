@@ -29,4 +29,4 @@ TIMEOUT=300 scripts/launch_run.sh "$RUN" "$MASTER" "${RANKS:-$R}" "${THREADS:-$T
   --stream-cache $G/cache/$RUN --mixture $G/training/configs/$MIX --runs-dir $G/runs --max-len 2048 --batch-tokens 8192 \
   --grad-accum "${GA_OVERRIDE:-$GA}" --balance --amp --no-grad-ckpt --device cpu --log-every 10 --ckpt-every 25 --seed 7 \
   --passes "$PASSES" --base $BASE --out $G/models/$RUN --lr "${LR_OVERRIDE:-$LR}" --head-lr "${HLR_OVERRIDE:-$HLR}" \
-  "${INIT_ARGS[@]}" --resume "$@"
+  ${INIT_ARGS[@]+"${INIT_ARGS[@]}"} --resume "$@"

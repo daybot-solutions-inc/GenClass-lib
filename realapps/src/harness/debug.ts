@@ -38,6 +38,22 @@ if (arg("det")) {
       n++;
       const same = r1.ok && r2.ok && hash2(r1.decisions.map((d) => d.fp)) === hash2(r2.decisions.map((d) => d.fp)) && hash2(r1.snapshots) === hash2(r2.snapshots) && hash2(r1.net) === hash2(r2.net) && hash2(r1.server) === hash2(r2.server);
       if (!same) {
+        const la = r1.stepLog ?? [];
+        const lb = r2.stepLog ?? [];
+        const di = la.findIndex((x, j) => x !== lb[j]);
+        if (di >= 0) console.log(`  first step difference: A ${la[di]} | B ${lb[di]}`);
+        const na = r1.net.map((r) => `${Math.round(r.t0)} ${r.method} ${r.url}`);
+        const nb = r2.net.map((r) => `${Math.round(r.t0)} ${r.method} ${r.url}`);
+        const ni = na.findIndex((x, j) => x !== nb[j]);
+        if (ni >= 0) {
+          console.log(`  first net difference: A ${na[ni]} | B ${nb[ni]}`);
+          const tt = Math.min(Number(na[ni]?.split(" ")[0] ?? 1e9), Number(nb[ni]?.split(" ")[0] ?? 1e9));
+          const near = (l: string[]) => l.filter((x) => Math.abs(Number(x.split("@")[1]!.split(" ")[0]) - tt) < 4000);
+          console.log(`  A steps near: ${near(la).join(" || ")}`);
+          console.log(`  B steps near: ${near(lb).join(" || ")}`);
+          console.log(`  A net near: ${na.filter((x) => Math.abs(Number(x.split(" ")[0]) - tt) < 4000).join(" || ")}`);
+          console.log(`  B net near: ${nb.filter((x) => Math.abs(Number(x.split(" ")[0]) - tt) < 4000).join(" || ")}`);
+        }
         bad++;
         console.log(`MISMATCH app=${app.name} seed=${sd} ok=${r1.ok}/${r2.ok} decisions=${r1.decisions.length}/${r2.decisions.length} err=${r1.error ?? ""}${r2.error ?? ""}`);
       }
@@ -93,7 +109,9 @@ if (arg("steps")) for (const s of scn.steps) console.log(`  step ${s.i} t=${Math
 const hash = (x: unknown) => createHash("sha1").update(JSON.stringify(x)).digest("hex").slice(0, 12);
 if (arg("traj")) {
   const t = await generateTrajectory(seed, APPS, runner, { maxPoints: 6, futures: 3, adaptive: true, testKeep: 1, ...(appName ? { apps: [appName] } : {}), ...(arg("clean") ? { clean: true } : {}) });
+  const st = t.steps;
   console.log(`traj runs=${t.runs} realMs=${t.realMs} runMs=${t.runMs} decisions=${t.decisions} rows=${t.rows.length} drops=${JSON.stringify(t.drops)} notes=${JSON.stringify(t.notes)} skipped=${t.skipped ?? ""}`);
+  if (st) console.log(`steps base ran=${st.ran} skipped=${st.skipped} ${JSON.stringify(st.why)}; ideal skipped=${st.idealSkipped} ${JSON.stringify(st.idealWhy)}${st.ran === 0 ? "  DEAD SESSION" : ""}`);
   for (const p of t.points) console.log(`   ${p.trigger} diag=${p.diagnosis} best=${p.best} npm=${p.nonPassiveMass} harm=${JSON.stringify(p.harm)} gain=${p.gain} K=${p.futures}`);
   for (const r of t.rows.slice(0, Number(arg("show", "3")))) {
     console.log("----", r.id, JSON.stringify(r.labels), JSON.stringify((r.meta as Record<string, unknown>).costs), (r.meta as Record<string, unknown>).diag_why);
@@ -110,7 +128,7 @@ if (arg("traj")) {
     for (const r of ideal.net.slice(0, 30)) console.log(`  net ${Math.round(r.t0)} ${r.method} ${r.url} -> ${r.status ?? r.outcome}`);
   }
   console.log(`ideal ok=${ideal.ok} err=${ideal.error ?? ""} tasks=${ideal.tasks} realMs=${ideal.realMs} snaps=${ideal.snapshots.length} net=${ideal.net.length} steps=${ideal.stepsRun}/${ideal.stepsSkipped} ${JSON.stringify(ideal.skipWhy ?? {})} internal=${ideal.internalErrors.slice(0, 3).join(" | ")}`);
-  const base = await runner.run(runConfig(scn, { runId: "base", record: true, explore: scn.explore, pins: ideal.pins ?? {}, ...(arg("mode") ? { mode: String(arg("mode")) } : {}) }));
+  const base = await runner.run(runConfig(scn, { runId: "base", record: true, explore: scn.explore, pins: ideal.pins ?? {}, ...(arg("ask-check") ? {} : { askTimes: scn.askTimes }), ...(arg("mode") ? { mode: String(arg("mode")) } : {}) }));
   console.log(`base ok=${base.ok} err=${base.error ?? ""} tasks=${base.tasks} realMs=${base.realMs} snaps=${base.snapshots.length} net=${base.net.length} decisions=${base.decisions.length} steps=${base.stepsRun}/${base.stepsSkipped} ${JSON.stringify(base.skipWhy ?? {})} ws=${base.wsMessages} uncaught=${base.uncaught.length} errEp=${base.errorEpisodes.length} internal=${base.internalErrors.slice(0, 3).join(" | ")}`);
   const trig: Record<string, number> = {};
   const diag: Record<string, number> = {};
@@ -134,7 +152,7 @@ if (arg("traj")) {
     const [k, a] = String(arg("force")).split(":");
     const d = base.decisions[Number(k)]!;
     const forced: [number, string][] = [...base.decisions.filter((x) => x.k < Number(k) && x.explored).map((x) => [x.k, x.chosen] as [number, string]), [Number(k), a!]];
-    const cf = await runner.run(runConfig(scn, { runId: "cf", forced, fpUpTo: Number(k), pins: ideal.pins ?? {}, tStop: Math.min(scn.tEnd, d.t + 15000) }));
+    const cf = await runner.run(runConfig(scn, { runId: "cf", forced, fpUpTo: Number(k), pins: ideal.pins ?? {}, askTimes: scn.askTimes, tStop: Math.min(scn.tEnd, d.t + 15000) }));
     const cst = states(cf);
     const ist = states(ideal);
     const bst = states(base);
@@ -144,7 +162,22 @@ if (arg("traj")) {
       console.log(`@${Math.round(t)} base : ${pick(bst)}`);
       console.log(`@${Math.round(t)} ${a}: ${pick(cst)}`);
     }
+    const cfd = cf.decisions.find((x) => x.k === Number(k));
+    console.log(`prefix: base fp ${d.fp} cf fp ${cfd?.fp} ${cfd?.fp === d.fp ? "SAME" : "DIFFERENT"} (cf decisions ${cf.decisions.length})`);
+    if (cfd && cfd.fp !== d.fp) console.log(`cf trigger: ${cfd.trigger} t=${Math.round(cfd.t)} subject=${JSON.stringify(cfd.subject)}`);
     console.log(`cf steps ${cf.stepsRun}/${cf.stepsSkipped} skippedAt ${JSON.stringify(cf.skippedAt)}; base skippedAt ${JSON.stringify(base.skippedAt)}; ideal skippedAt ${JSON.stringify(ideal.skippedAt)}`);
+  }
+  if (arg("ask-check")) {
+    // runtime.situation("ask") must be side-effect free: the same run with and without ask probes
+    const withAsk = await runner.run(runConfig(scn, { runId: "ask", record: true, explore: scn.explore, pins: ideal.pins ?? {}, askTimes: scn.askTimes }));
+    const a = base.decisions.map((d) => d.fp);
+    const b = withAsk.decisions.map((d) => d.fp);
+    const i = a.findIndex((x, j) => x !== b[j]);
+    console.log(`ask-check: probes at ${scn.askTimes.map(Math.round).join(",")}; decisions ${a.length} vs ${b.length}; first diff ${i}${i >= 0 ? ` at t=${Math.round(base.decisions[i]!.t)}` : ""}`);
+    if (i >= 0) {
+      console.log("without:", JSON.stringify(base.decisions[i]!.state).slice(0, 1500));
+      console.log("with   :", JSON.stringify(withAsk.decisions[i]!.state).slice(0, 1500));
+    }
   }
   if (arg("twice")) {
     const again = await runner.run(runConfig(scn, { runId: "base2", record: true, explore: scn.explore, pins: ideal.pins ?? {} }));

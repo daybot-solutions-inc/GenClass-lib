@@ -246,6 +246,10 @@ export interface DecisionRec {
   diagnosis?: string;
   diagWhy?: string;
   diagTrace?: string;
+  /** The subject repeats an accidental user step (double click, impatient re-click). */
+  repeat?: boolean;
+  /** request: an identical request is in flight or answered in the last 10 s. */
+  twin?: boolean;
   /** Hash of JSON([trigger, state, questions]). */
   fp: string;
   state?: Record<string, unknown>;
@@ -278,6 +282,8 @@ export interface RunResult {
   stepsSkipped: number;
   /** Skipped steps by reason (missing = blocked intent; precondition, chain, not-inflight = harmless). */
   skipWhy?: Record<string, number>;
+  /** Per step that ran: index, virtual time and the element it acted on (debugging). */
+  stepLog?: string[];
   internalErrors: string[];
   wsMessages: number;
   asks?: { t: number; state: Record<string, unknown>; facts: AskFacts }[];

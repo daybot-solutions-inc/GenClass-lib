@@ -107,10 +107,13 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 | 2–4 F80 nodes (e.g. c10, c11) | REAL (requested; lead please arbitrate with SIM) | from ≈ 03:10 | scaled real-browser generation (≈ 55 Chromium workers per node; ≥ 500k rows ≈ 5 node-hours); REAL deallocates when idle |
 
 | c12 | SIM | 03:05–03:20 UTC (done, **deallocated**) | situation-v2 pipeline check: 41.7k gold rows in 211 s, 265k unlabeled rows in 24 s on one F80; collected to `train:/data/sim-out/v2chk-{gold,unl}` (check data, batch-4 runtime) |
-| c02–c05, c08, c09 | **released to SIM 03:35 UTC** (TRAIN T1 runs stopped, resumable; nodes left running and idle for SIM's v2 share — SIM deallocates when done) | — | — |
-| c06, c07, c12 | free (TRAIN deallocated 03:32) | — | SIM v2 claim |
 | c01, c10, c11 | REAL (TRAIN processes killed 03:35; c01 clean) | — | real-browser rows |
-| c02–c09, c12–c23 (20 nodes) | SIM (claim) | from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
+| c02–c09, c12–c23 (20 nodes) | SIM (done 04:05–05:00 UTC, **all deallocated**) | was: from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
+
+| **c02** | **TRAIN workbench (v2)** | from 05:05 UTC | v2 import, curriculum replay, eval, export |
+| **c03–c09, c13** | **TRAIN `r17-v2a`** (R17 on v2 gold) | from ≈ 05:30 UTC, ≈ 1.5 h | first v2 R17 export |
+| **c12, c14–c23** | **TRAIN `t150-v2a`** (teacher on v2 gold) | from ≈ 05:30 UTC, ≈ 5 h | teacher for labelling/distillation |
+(TRAIN starts these after SIM's deallocation pass of 05:00 finishes; SIM: the nodes above are TRAIN's from then on.)
 
 SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
 
@@ -133,6 +136,17 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
 - gold-r1x (v1, situation-v1, 115 domains + round-2 personas/regimes/clean runs, original 15 features; stopped when
   bulk v1 was paused): `data:~/simdata/gold-r1x/` (832,279 rows: train 625,847 / dev 20,620 / test 185,812; gz shards
   + manifest; `data` is deallocated, start it to pull).
+- **Situation-v2 big runs (tag `situation-v2`, commit 6e5e86e; labels with S1 + S2, see sim/README.md and
+  sim/SEPARABILITY.md; 46 features, 115 domains; held-out lists unchanged: TEST_DOMAINS, family hash,
+  TEST_PATTERNS, TEST_FEATURES):**
+  - **gold** `train:/data/sim-out/v2-gold/` — 10,423,855 rows (train 7,560,367 / dev 317,732 / test 2,545,756), 23 gz
+    shards + `manifest.json`, 44 GB; seeds 11e9 + NN·1e8 (NN = node). Raw per-future costs in `meta.cost_futures`;
+    S1 rule in `meta.diagnosis_s1`.
+  - **unlabeled** `train:/data/sim-out/v2-unl/` — 51,272,078 rows (train 37,243,384 / dev 1,533,254 / test
+    12,495,440), 104 gz shards + `manifest.json`; seeds 16e9 + NN·1e8.
+  - Throughput: gold ≈ 278 rows/s per F80 (20 nodes ≈ 5.5k rows/s, 31 min); unlabeled ≈ 21k rows/s per F80
+    (2 min). Global dedupe test-first dropped < 0.001 %.
+  - On-policy: waits for TRAIN's first v2 export (`--on-policy <dir>`).
 - Distributed batches (gz shards + `manifest.json`, deduped, test-first): collected per run under
   `data:~/simdata/<run>/` — locations listed here as they land.
 
@@ -166,10 +180,22 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     harness is format-agnostic (records whatever the runtime hands the decider; passive actions come from the
     runtime's own `PASSIVE`; `delivery` diagnosed). Builds pin the runtime source to a git tag
     (`RW_RUNTIME_SRC`/`RW_RUNTIME_TAG`; `meta.runtime` in every row).
-16. **REAL production on `situation-v2` (tag 6e5e86e), started 2026-10-08.** Sweeps on v2: determinism 132/132
-    identical, interference 0/132 (the v1 Conduit breakage is gone). v2 pilot: `train:/data/real-out/v2-pilot/`
-    (400 trajectories, 2,519 gold incl. 135 `delivery` rows, 2,397 unlabeled, 0 drops). Production batches
-    (resumable, 30k trajectories each, `--test-keep 0.5`, 70 Chromium workers): `c01:~/gcl/real-out/v2b1/`
-    (seeds 1,000,000+), `c10:~/gcl/real-out/v2b2/` (2,000,000+), `c11:~/gcl/real-out/v2b3/` (3,000,000+); each has
-    `{train,dev,test}.jsonl`, `unlabeled-*.jsonl`, `stats.json`, `manifest.json`. REAL claims c01, c10, c11 until
-    these finish (target ≥ 500k gold), then copies them to `train:/data/real-out/` with the eval set and deallocates.
+16. **REAL production on `situation-v2` (tag 6e5e86e).** Sweeps: determinism 132/132, interference 0/132.
+    Label fixes before production (coordinator follow-ups):
+    - diagnosis vocabulary = the runtime's own `DEFAULT_DIAGNOSES` (imported from the pinned runtime), wording
+      paraphrased but **never a label subset**, so no row loses its diagnosis (`diagnosis-not-in-vocab` was always
+      `transient`, from the sim-mirrored subset sampling; now 0);
+    - `delivery` rows are diagnosed by the first write the response/message makes (mutation rules) plus a new
+      generic rule: an older operation's write over list elements already written by a newer async operation → `stale`;
+    - **S1** (as SIM): never `expected` where a non-passive action wins by ≥ 1; `meta.diagnosis_s1` (rule a–e) and
+      `meta.diagnosis_subject` keep the subject-only verdict;
+    - ask probes now run in every real run of a trajectory (a probe changed later op ids in one app: see note).
+    Batches (all on `train:/data/real-out/` once pulled; the pulling job deallocates each node after a verified copy):
+    - **`v2c1..v2c4` (USE THESE)**: fixed labels, 96 apps, 4 × 20k trajectories (c01, c10, c11, data; seeds
+      11M/12M/13M/14M+), expected ≈ 530k gold + ≈ 500k unlabeled.
+    - `v2b1..v2b3`: stopped at ≈ 20.5k trajectories each (≈ 380k gold), 66 apps, **pre-fix diagnosis labels**
+      (no S1, no delivery-by-write, subset vocabularies): action labels valid; use diagnosis labels only where
+      `meta.trigger` ∉ {delivery} and `meta.diag_why` != "rel-check", or not at all.
+    - v2 pilot (audit): `train:/data/real-out/v2-pilot4/` (400 trajectories, 92 apps, 2,631 gold).
+    Each batch: `{train,dev,test}.jsonl`, `unlabeled-*.jsonl`, `stats.json`, `manifest.json`. Eval set: built from
+    `v2c*` into `train:/data/real-out/v2-eval/` when they land.

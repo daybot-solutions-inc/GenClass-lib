@@ -10,7 +10,7 @@ import { transformQuestions } from "../../../sim/src/run/transform.js";
 import { askQuestions } from "../../../sim/src/ask/questions.js";
 import type { Runner } from "./browser.js";
 import { runCost, states, type CostBreakdown, type State } from "./cost.js";
-import { finishDiagnosis } from "./labels.js";
+import { diagnosisFromOutcome, finishDiagnosis, S1_GAP } from "./labels.js";
 import { buildScenario, type Scenario } from "./scenario.js";
 import type { AppManifest } from "../shared/manifest.js";
 import type { DecisionRec, RunConfig, RunResult } from "../shared/types.js";
@@ -52,6 +52,9 @@ export interface PointStat {
   app: string;
 }
 
+/** Prefix mismatches seen in this process (for stats.errors). */
+export const mismatches: string[] = [];
+
 export interface TrajectoryOut {
   seed: number;
   app: string;
@@ -60,7 +63,10 @@ export interface TrajectoryOut {
   points: PointStat[];
   drops: Record<string, number>;
   notes: Record<string, number>;
+  /** Base-run steps that ran / were skipped (by reason), and the ideal run's skips: dead sessions show up here. */
+  steps?: { ran: number; skipped: number; why: Record<string, number>; idealSkipped: number; idealWhy: Record<string, number> };
   runs: number;
+  mismatchInfo?: string[];
   decisions: number;
   realMs: number;
   runMs: number;
@@ -170,6 +176,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
     return out;
   }
   const baseStates = states(base);
+  out.steps = { ran: base.stepsRun, skipped: base.stepsSkipped, why: base.skipWhy ?? {}, idealSkipped: ideal.stepsSkipped, idealWhy: ideal.skipWhy ?? {} };
   const meta0 = {
     source: "realapps",
     seed,
@@ -224,7 +231,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
           cfStates = baseStates;
         } else {
           const forced: [number, string][] = [...forcedPrefix, [p.k, a]];
-          cf = await run(runConfig(scn, { runId: `${seed}-cf-${p.k}-${a}-${j}`, forced, fpUpTo: p.k, pins, tStop: Math.min(scn.tEnd, p.t + W.finalMs), snapFrom: Math.max(0, p.t - 1), ...(future ? { future } : {}) }));
+          cf = await run(runConfig(scn, { runId: `${seed}-cf-${p.k}-${a}-${j}`, forced, fpUpTo: p.k, pins, ...(o.ask === false ? {} : { askTimes: scn.askTimes }), tStop: Math.min(scn.tEnd, p.t + W.finalMs), snapFrom: Math.max(0, p.t - 1), ...(future ? { future } : {}) }));
           if (!cf.ok) {
             dropped = "cf-error";
             break;
@@ -232,6 +239,8 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
           const mine = cf.decisions.filter((d) => d.k <= p.k);
           if (mine.length !== p.k + 1 || mine.some((d) => d.fp !== base.decisions[d.k]?.fp)) {
             dropped = "prefix-mismatch";
+            const first = mine.find((d) => d.fp !== base.decisions[d.k]?.fp);
+            mismatches.push(`${scn.app.name} seed ${seed} k=${p.k} a=${a} j=${j} first-diff=${first?.k ?? (mine.length !== p.k + 1 ? `count ${mine.length}/${p.k + 1}` : "?")}`);
             break;
           }
           cfStates = states(cf);
@@ -253,13 +262,21 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
     const lab = actionLabel(costs, passive);
     const harm: Record<string, number> = {};
     for (const a of p.actions) if (a !== passive) harm[a] = Math.round((mean[a]! - mean[passive]!) * 1e3) / 1e3;
-    const diag = finishDiagnosis(p, scn.app, baseStates, passiveStates);
+    let diag = finishDiagnosis(p, scn.app, baseStates, passiveStates);
+    const diagSubject = diag;
+    // S1: never `expected` where acting clearly wins (sim/README.md "The oracle")
+    let diagS1: string | undefined;
+    if ((diag === undefined || diag === "expected") && !lab.passiveBest && (lab.adjusted[passive] ?? 0) >= S1_GAP) {
+      const c = diagnosisFromOutcome(p, base.decisions, baseStates, idealStates, scn.app, lab.best);
+      diag = c.diag;
+      diagS1 = c.source;
+    }
     const qs = p.questions as Record<string, never>;
     const tr = transformQuestions(qs, lab.dist, passive, lab.best, R.fork("transform", p.k));
     const labels: Record<string, unknown> = { action: { type: "choice", dist: tr.dist ?? lab.dist } };
     const dq = tr.questions.diagnosis as { type: string; criteria: Record<string, unknown> } | undefined;
     if (diag && dq && dq.type === "choice" && diag in dq.criteria) labels.diagnosis = { type: "choice", label: diag };
-    else if (diag && dq && !(diag in dq.criteria)) note("diagnosis-not-in-vocab");
+    else if (diag && dq && !(diag in dq.criteria)) note(`diagnosis-not-in-vocab:${diag}`);
     else if (!diag) note("diagnosis-uncorrelated");
     out.rows.push({
       id: `real-${scn.app.name}-${seed}-d${p.k}`,
@@ -288,6 +305,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
         diagnosis: diag ?? null,
         diag_why: p.diagWhy,
         ...(p.diagTrace ? { diag_trace: p.diagTrace } : {}),
+        ...(diagS1 ? { diagnosis_s1: diagS1, diagnosis_subject: diagSubject ?? null } : {}),
         subject: p.subject,
         transform: tr.variant,
       },
@@ -327,7 +345,7 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
         state: d.state!,
         questions: d.questions!,
         labels,
-        meta: { ...meta0, trigger: d.trigger, decision: d.k, t: Math.round(d.t), passive, unlabeled: true, diagnosis: diag ?? null, diag_why: d.diagWhy, explored_before: base.decisions.filter((x) => x.k < d.k && x.explored).length, base_choice: d.chosen, subject: d.subject },
+        meta: { ...meta0, trigger: d.trigger, decision: d.k, t: Math.round(d.t), passive, unlabeled: true, ...(d.repeat ? { repeat: true } : {}), diagnosis: diag ?? null, diag_why: d.diagWhy, explored_before: base.decisions.filter((x) => x.k < d.k && x.explored).length, base_choice: d.chosen, subject: d.subject },
       });
     }
   }
@@ -348,5 +366,6 @@ export async function generateTrajectory(seed: number, apps: AppManifest[], runn
     });
   }
   out.realMs = Date.now() - t0;
+  if (mismatches.length) out.mismatchInfo = mismatches.splice(0);
   return out;
 }

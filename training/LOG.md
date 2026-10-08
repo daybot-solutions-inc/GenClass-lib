@@ -264,3 +264,23 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
   resumable; no T1 result on v1 — rerun on v2 data later. c06, c07, c12 deallocated; c02–c05, c08, c09 released to
   SIM (idle, running); c01, c10, c11 left to REAL (TRAIN post scripts killed). Gain-head interim: loss 0.98 → 0.85 vs
   trivial predictors 0.97–1.01 (little learnable signal, consistent with SEPARABILITY).
+
+### 04:50–05:22 situation-v2: import, curriculum replay, R17 + teacher launched
+- `rt.py` v2 port (lead-committed d73d20c): reviewed (delivery trigger P 0.5 with deliver/discard/defer, v2
+  conflict/content/version/concurrency facts, stringDiff previews, budgets 2,400/2,000/1,667/1,333/1,000); full
+  curriculum tests on c02: 7 passed (prune tests skip there: no v1 checkpoint on the node). A curriculum delivery row
+  matches SIM's v2 delivery rows in trigger/fact/question wording.
+- SIM v2 gold collected 04:50 (`train:/data/sim-out/v2-gold`: train 7,560,367 / dev 317,732 / test 2,545,756; ≈ 2.7k
+  chars of state + questions per row). `training/import_v2.sh` + `prep_v2.py` on workbench c02 (≈ 1 min): 128 train
+  shards `data/s3/sim2` (heavy meta dropped), eval sets `sim2e` (20k held-out test + 8k dev) and `sim2f` (18,690
+  held-out-**feature** test rows: swcache/presence/cascade/saga/prefetch/permissions), v2 curriculum replay `cur5`
+  (300k rows, seed 15, 80% runtime-exact); 27 GB tar served from c02:8799, pulled by every node
+  (`v2_node_setup.sh`).
+- SIM deallocated its 20 nodes 04:55–05:10; TRAIN restarted them (`az vm start --no-wait`, one call at a time).
+- **`r17-v2a`** (05:14, c09 c03–c08 c13, 64 ranks): R17 from `r17-final1`, `mix_v2a` (sim2 0.86, cur5 0.11, cur1
+  0.02, gen 0.01), 4 × 500M tokens, ≈ 577k tok/s → ETA ≈ 06:20; `v2_post.sh` (detached on c09) evaluates sim2e +
+  sim2f + expected gain, exports q8/fp16 with the sim2e calibration and serves the tar.
+- **`t150-v2a`** (05:20, c12 c14–c23, 88 ranks): teacher, ettin-150m MIT base (pruned), fresh heads, `mix_t150v2`
+  (sim2 0.9, cur5 0.1), 2 × 500M tokens, ETA ≈ 08:30. REAL `v2c*` not landed yet → continuation run adds them.
+- Fix: `launch_student.sh` failed on macOS bash 3.2 with an empty INIT array under `set -u`.
+- Cost since 01:56 ≈ $50 (T1 runs 03:00–03:35 + smoke); running burn now 20 nodes ≈ $110/h. **Total ≈ $440.**

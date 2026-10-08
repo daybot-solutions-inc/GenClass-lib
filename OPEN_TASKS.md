@@ -1,11 +1,13 @@
 # Open tasks: @genclass/runtime
 
-Status as of 2026-10-08 (~04:15 UTC). New sessions: start with [HANDOFF.md](HANDOFF.md). Branches: `runtime`
-(the colleague's, at 74f17c0) and `mvp-v2` (= `runtime` + AI-agent docs, default mode `observe`, CI). Spec:
+Status as of 2026-10-08 (~05:45 UTC). New sessions: start with [HANDOFF.md](HANDOFF.md). Branches: `runtime`
+(the colleague's, at eff18cb) and `mvp-v2` (= `runtime` at 74f17c0 + AI-agent docs, default mode `observe`, CI, and
+release commit 806a296); `mvp-v2-merge` merges the two. Spec:
 [docs/runtime/CONTRACT.md](docs/runtime/CONTRACT.md). Results and numbers: [docs/runtime/RESULTS.md](docs/runtime/RESULTS.md).
 The runtime decides through a trained local model; nothing here is hardcoded per bug pattern.
 
-The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). No situation-v2 model exists yet.
+The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). No situation-v2 model is published yet (`@genclass/runtime-model` returns 404); the first
+v2 runs are training (In progress).
 
 ## Done
 
@@ -46,13 +48,18 @@ The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). No sit
   visible-text separability, v1 → v2 (RESULTS.md §3): failure look-alikes 40% → 17%, request 48% → 38%, stall
   31% → 5%, mutation 8% → 2%; inconsistency linear recall at 1% FIR 10% → 20%.
 - **Real-browser corpus** (`realapps/`, fcb8189 and later): real apps in 23 stacks in headless Chromium with the
-  sim's label semantics. 66 apps at the sweep; **91 apps in the tree now** (77 written + 14 open-source Conduit
-  front-ends). v2 pilot: 400 trajectories, 2,519 gold rows (135 `delivery`), 0 drops (`training/NEEDS.md` item 16).
+  sim's label semantics. 66 apps at the sweep; **96 apps in the tree now** (realapps wave 3, d53e836; includes 14
+  open-source Conduit front-ends). v2 pilot: 400 trajectories, 2,519 gold rows (135 `delivery`), 0 drops (`training/NEEDS.md` item 16).
   See [docs/agents/realapps.md](docs/agents/realapps.md).
 - **Curriculum ported to v2** (`training/curriculum/rt.py` mirrors the situation-v2 renderer; known divergences
   under Next).
-- **v2 data generation launched** (~04:00 UTC): SIM ~10M gold + ~50M unlabeled on 20 nodes; REAL ~495k
-  real-browser gold rows on 3 nodes (RESULTS.md §6–7).
+- **SIM v2 data done** (tag `situation-v2`; `training/NEEDS.md`, "Situation-v2 big runs"): gold
+  `train:/data/sim-out/v2-gold/` 10,423,855 rows (train 7,560,367 / dev 317,732 / test 2,545,756); unlabeled
+  `train:/data/sim-out/v2-unl/` 51,272,078 rows (train 37,243,384 / dev 1,533,254 / test 12,495,440). The 20 SIM
+  nodes were deallocated 04:55–05:10. Imported on c02 (`training/import_v2.sh`, `training/prep_v2.py`): 128 train
+  shards `sim2`, eval sets `sim2e` (held-out test + dev) and `sim2f` (18,690 held-out-feature rows), v2 curriculum
+  replay `cur5` (300k rows) (`training/LOG.md`, 04:50–05:22 entry).
+- **`situation()` purity regression test** across every trigger (29b7f28, on `runtime`).
 - **Model host** (`src/model`): TypeScript port of the GenClass engine (packing identical to Python on all 50
   fixtures), Web Worker with inline fallback, Cache Storage + sha256, WebGPU → WASM plans, idle/lazy preload,
   latency stats, WASM-only ORT build, CLI `genclass-runtime fetch-model | info`. R17/R32 q8 exports agree with
@@ -68,11 +75,28 @@ The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). No sit
 
 ## In progress
 
-1. **v2 data on Azure** (Mehar operates the cluster; nobody else touches Azure). SIM: ≥ 10M gold + ≥ 50M
-   unlabeled rows on c02–c09 and c12–c23 into `train:/data/sim-out/v2-*`. REAL: production batches `v2b1`/`v2b2`/
-   `v2b3` on c01, c10, c11 (30k trajectories each, target ≥ 500k gold), then copied to `train:/data/real-out/`.
-   Locations and manifests: `training/NEEDS.md`.
-2. **Demos** (DEMOS): six demos, Service Worker backend, Playwright trial harness. Current numbers use the
+Mehar operates the Azure cluster; nobody else touches Azure. The jobs below run on their own.
+
+1. **`r17-v2a`** (R17 on v2 gold, launched 05:14 UTC on c09, c03–c08, c13; 64 ranks): from `r17-final1`, mix
+   `mix_v2a` (sim2 0.86, cur5 0.11, cur1 0.02, gen 0.01), 4 × 500M tokens, ETA ≈ 06:20 UTC. `training/v2_post.sh`
+   (detached on c09) then evaluates `sim2e` + `sim2f` + expected gain and exports q8/fp16 with the `sim2e`
+   calibration. This is the first situation-v2 model; it is not distilled from a teacher.
+2. **`t150-v2a`** (150M teacher, launched 05:20 UTC on c12, c14–c23; 88 ranks): ettin-150m MIT base (pruned), fresh
+   heads, `mix_t150v2` (sim2 0.9, cur5 0.1), 2 × 500M tokens, ETA ≈ 08:30 UTC. SIM gold only; a continuation run
+   adds REAL `v2c*` once it lands.
+3. **REAL v2 data** (`training/NEEDS.md` item 16): `v2c1`..`v2c4` (fixed labels, 96 apps, 4 × 20k trajectories on
+   c01, c10, c11, data; expected ≈ 530k gold + ≈ 500k unlabeled) have not landed in `train:/data/real-out/` yet; the
+   real-app eval set `v2-eval` is built from them when they do. `v2b1`..`v2b3` stopped at ≈ 20.5k trajectories each
+   (≈ 380k gold, 66 apps) with pre-fix diagnosis labels: action labels valid, diagnosis labels only with the filter
+   in NEEDS.md or not at all.
+4. **One-command install** (f3a9dd1, on `runtime`, merged here; owner INSTALL, `packages/runtime/INSTALL-NEEDS.md`):
+   `npx @genclass/runtime init` / `remove` (`packages/runtime/bin/lib/*`), `@genclass/runtime/auto` entry
+   (`packages/runtime/src/auto.ts`), CDN script tag (`packages/runtime/src/cdn/*`, global builds in
+   `packages/runtime/tsup.config.ts`), install tests (`packages/runtime/test/install/*`), the unscoped
+   `genclass-runtime` alias (`packages/genclass-runtime`, unpublished, so `npx genclass-runtime init` fails today),
+   and the rewritten npm README. **Not in the published `0.1.0-alpha.1`** (that version number is taken by our
+   publish): it ships in the next release (Next).
+5. **Demos** (DEMOS): six demos, Service Worker backend, Playwright trial harness. Current numbers use the
    untrained v0.1 model and only validate the harness (RESULTS.md §5: guard executed 0 actions; heal took 156,
    which fixed nothing; 0 false interventions on clean runs).
 
@@ -81,40 +105,45 @@ The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). No sit
 The usual order (HANDOFF.md): v2 data collected → teacher → labels → distillation → DAgger → EVAL → model
 package → demos rerun → runtime release.
 
-3. **Check the v2 data before training on it** (from the review findings): SIM samples budget 3,200 for ~40% of
+6. **Check the v2 data before training on it** (from the review findings): SIM samples budget 3,200 for ~40% of
    trajectories (`sim/src/world/scenario.ts` → `budget`), above the v2 device budgets; unlabeled rows hard-label
    `expected` diagnoses that S1 would relabel (`sim/src/gen/trajectory.ts` → `unlabeledTrajectory`; a relabel pass
    can drop them); REAL manifests hardcode `situation-v1` (`realapps/src/harness/gen.ts` → `manifest`). Decide
    with Mehar whether to filter, relabel or regenerate.
-4. **150M teacher on v2 gold** (SIM + REAL).
-5. **Teacher labels on the unlabeled rows** (`training/label_cluster.sh`, `training/label_teacher.py`). Before
+7. **Evaluate `r17-v2a`** against the targets in item 11 (output of `training/v2_post.sh`), and the teacher
+   `t150-v2a` when it finishes; continue the teacher with REAL `v2c*` gold.
+8. **Teacher labels on the unlabeled rows** (`training/label_cluster.sh`, `training/label_teacher.py`). Before
    running: the script cannot read `.jsonl.gz` shards, marks itself done unconditionally, has no train-split
    filter and no gather step.
-6. **Distil R17 (default) and R32**, then the T1 expected-advantage target on v2 (the v1 T1 runs were stopped at
-   the freeze; `training/LOG.md`). `training/launch_student.sh` fails when INIT is omitted.
-7. **DAgger** via SIM `--on-policy` (on-policy runs use heal mode, while the default is observe and the precision
-   target is guard).
-8. **EVAL** (`training/EVAL.md`): guard/heal precision, false-intervention rate and regret per trigger and per
+9. **Distil R17 (default) and R32** from the teacher, then the T1 expected-advantage target on v2 (the v1 T1 runs
+   were stopped at the freeze; `training/LOG.md`). The empty-INIT failure of `training/launch_student.sh` is fixed
+   (LOG.md, 04:50–05:22 entry).
+10. **DAgger** via SIM `--on-policy` (waits for TRAIN's first v2 export; on-policy runs use heal mode, while the
+    default is observe and the precision target is guard).
+11. **EVAL** (`training/EVAL.md`): guard/heal precision, false-intervention rate and regret per trigger and per
    budget; calibration fit on dev, checked on held-out test; parity. `training/final_post.sh` and
    `training/eval_sim.sh` are hard-wired to the v1 eval set (`simAe`), and `training/eval_runtime.py` caches logits
-   by name only: fix before evaluating a v2 model. The real-app eval set (`realapps/scripts/evalset.py`) draws
+   by name only: fix before evaluating a v2 model (`v2_post.sh` evaluates on `sim2e`/`sim2f` instead). The real-app eval set (`realapps/scripts/evalset.py`) draws
    from the train split by default and ignores the `delivery` trigger. Targets (RESULTS.md §1): guard FIR ≤ 0.1%,
    heal FIR ≤ 0.5%, calibration error ≤ 0.02, diagnosis ≥ 95%, clear-case recall ≥ 80%.
-9. **Model package** `@genclass/runtime-model@0.1.0` (the runtime's default CDN URL) plus a GitHub release.
+12. **Model package** `@genclass/runtime-model@0.1.0` (the runtime's default CDN URL) plus a GitHub release.
    Device-based model selection in the host card (R17 everywhere unless R32 is clearly better on WebGPU).
-10. **Demo rerun with the trained model**: bug rate Off / Guard / Heal and false interventions on clean runs for
+13. **Demo rerun with the trained model**: bug rate Off / Guard / Heal and false interventions on clean runs for
     all six demos (RESULTS.md §5 is the v0.1 baseline). Investigate triage sensitivity on naturally concurrent apps
     (v0.1: typeahead was salient about 6 times per trial on clean runs; v2 reports 0 model calls on clean
     typeahead, RESULTS.md §4). The synthetic in-page driver records no user actions since `untrustedEvents`
     defaults to false.
-11. **Publish `@genclass/runtime@0.1.0`** without the alpha tag (2FA by the user), after `npm pack` smoke test; procedure in [RELEASE.md](RELEASE.md).
-12. **CI**: done on `mvp-v2` (`.github/workflows/ci.yml`); lands on `runtime`/`main` with the merge.
-13. **Docs**:
-    - `HANDOFF.md`, `realapps/README.md` and RESULTS.md say 66 apps; the tree has 91.
+14. **Next prerelease with the one-command install** (`0.1.0-alpha.2`, or a beta together with the model): resolve
+    the `npx genclass-runtime` naming question in `packages/runtime/INSTALL-NEEDS.md`, run the install tests and an
+    `npm pack` smoke test, then publish (2FA by the user) per [RELEASE.md](RELEASE.md).
+15. **Publish `@genclass/runtime@0.1.0`** without the alpha tag (2FA by the user), after `npm pack` smoke test; procedure in [RELEASE.md](RELEASE.md).
+16. **CI**: done on `mvp-v2` (`.github/workflows/ci.yml`); lands on `runtime`/`main` with the merge.
+17. **Docs**:
+    - `HANDOFF.md` and `realapps/README.md` say 66 apps; the tree has 96 (RESULTS.md already says 96).
     - `docs/runtime/CONTRACT.md` still describes the old substring redaction rule.
     - Still open from before: model card; honest results in the READMEs. Devtools ships as the separate
       `@genclass/runtime/devtools` entry; whether a dev-only lazy import is still needed is (unverified).
-14. **Review fixes** (adversarial review of `mvp-v2`, 2026-10-08; most change runtime behaviour, so coordinate
+18. **Review fixes** (adversarial review of `mvp-v2`, 2026-10-08; most change runtime behaviour, so coordinate
     with Mehar, and anything under `packages/runtime/src/situation/*` needs a new format tag):
     - delivery: discard is a silent no-op on redux/zustand stores but is recorded as a drop
       (`state/hub.ts` → `StoreHub.applyFilter`); a discard mark drops fresh writes of later ops chained from the
@@ -143,19 +172,24 @@ package → demos rerun → runtime release.
   things a runtime cannot observe (the user's next action, outage length, whether a failed write committed).
 - **Fixes, now in the v2 format and data:** facts F1–F9 and read-your-writes; S1 labelling; S2 futures. The
   expected-advantage target (T1) is still to be trained on v2.
-- **Round 2** (situation-v2): data generating; no result yet.
+- **Round 2** (situation-v2): SIM data done (10.4M gold, 51.3M unlabeled); `r17-v2a` and the teacher `t150-v2a`
+  are training; no result yet (first R17 eval ≈ 06:20 UTC).
 
 ## Needs the user
 
-- **2FA publishes:** `@genclass/runtime-model@0.1.0` and `@genclass/runtime@0.1.0` (`0.1.0-alpha.1` is done). Agents
+- **2FA publishes:** the next prerelease with the one-command install (`0.1.0-alpha.2` or a beta with the model;
+  Next item 14), `@genclass/runtime-model@0.1.0` and `@genclass/runtime@0.1.0` (`0.1.0-alpha.1` is done). Agents
   prepare the tarball and the exact command per [RELEASE.md](RELEASE.md).
 - **Push** `mvp-v2` (head = release commit 806a296) and tag `v0.1.0-alpha.1` to origin (needs an account with write access).
+- **Install on Polar Parts** (`MeharPro/Polar-Parts`) once the trained model is good (user OK'd). Start in
+  observe mode on a branch, verify the storefront is unchanged, then guard.
 - **Public demo hosting** (GitHub Pages on this repo): OK to publish?
 - **Merging into `main`**: `runtime` and/or `mvp-v2` when ready.
 - **Default mode decision:** `mvp-v2` defaults to `observe` (f3636b2); HANDOFF.md and the older published
   `0.1.0-alpha.0` say `guard` (`0.1.0-alpha.1`, now `latest`, defaults to `observe`). Pick one before 0.1.0.
 - **Re-enable the Azure auto-shutdown schedules when the training push ends** (disabled with the user's OK at
-  00:35 UTC; command in HANDOFF.md). Spend so far about $400 (RESULTS.md §7).
+  00:35 UTC; command in HANDOFF.md). Spend so far about $440, burning about $110/h with 20 training nodes
+  (`training/LOG.md`, 05:22).
 
 ## Known risks
 
@@ -167,6 +201,6 @@ package → demos rerun → runtime release.
   review findings above describe; fixing a runtime defect that changes situations or delivery behaviour means a
   new format tag and regenerated data.
 - **Never-worse claims are narrower than stated**: the interference sweep compares final visible text and server
-  content (not requests, stores, errors or input values), covers 66 of the 91 apps, never compares observe mode
+  content (not requests, stores, errors or input values), covers 66 of the 96 apps, never compares observe mode
   against no runtime, and the determinism check reruns only the base run. Chaos runs: 3/198 changed.
 - **Thin classes**: `conflict` and `transition` rows were thin on v1; unmeasured on v2.
