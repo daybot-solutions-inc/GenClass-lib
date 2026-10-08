@@ -17,7 +17,8 @@ diagnosis ≠ expected. Probabilities use the shipped calibration (per-kind temp
 Sources: `sim` = SIM gold rows; `real` = REAL's unambiguous-case eval set (meta.eval_case/eval_expect; `:notest` keeps
 rows whose original split is not test, `:test` only test-split rows = held-out apps/framework); `realc` = random REAL
 gold rows (harm only).
-Constraints (per tier, on the fit data): FIR = fired share of SIM passive-best rows and of REAL clean-benign +
+Constraints (per tier, on the fit data; each must hold for the one-sided 95% Wilson UPPER bound, because the test
+sets and real apps are held out / shifted relative to dev): FIR = fired share of SIM passive-best rows and of REAL clean-benign +
 benign-salient rows ≤ 0.1% (guard) / 0.5% (heal); harm = share of rows whose fired action costs ≥ 1 more than passive
 (meta.costs, else mean cost_futures) ≤ 0.2% / 1% (SIM and REAL separately). The guard tier is fitted in guard mode; the
 heal tier in heal mode with guard candidates at their fitted guard thresholds. Threshold = the lowest grid value t such
@@ -189,8 +190,13 @@ def metrics(T: Table, fired: np.ndarray, sel: np.ndarray, boot: int = 0, seed: i
         def rate(num, den):
             d = den.sum()
             return float((num & den).sum() / d) if d else None
+        def cnt(num, den):
+            return [int((num & den).sum()), int(den.sum())]
         orc = T.oracle[ix][sim].sum()
         return {
+            "_counts": {"fir_sim": cnt(f, sim & T.fir_row[ix]), "fir_real": cnt(f, real & T.fir_row[ix]),
+                        "harm_sim": cnt(f & T.harm[ix], sim & T.has_cost[ix]),
+                        "harm_real": cnt(f & T.harm[ix], (real | realc) & T.has_cost[ix])},
             "fir_sim": rate(f, sim & T.fir_row[ix]),
             "fir_real": rate(f, real & T.fir_row[ix]),
             "harm_sim": rate(f & T.harm[ix], sim & T.has_cost[ix]),
@@ -212,19 +218,33 @@ def metrics(T: Table, fired: np.ndarray, sel: np.ndarray, boot: int = 0, seed: i
         for _ in range(boot):
             s = stats(ix[rng.integers(0, len(ix), len(ix))])
             for k, v in s.items():
-                if v is not None:
+                if v is not None and not k.startswith("_"):
                     bs[k].append(v)
         base["ci95"] = {k: [round(float(np.percentile(v, 2.5)), 5), round(float(np.percentile(v, 97.5)), 5)]
                         for k, v in bs.items()}
     return base
 
 
+Z_UB = 1.645  # one-sided 95% Wilson upper bound: dev rows are in-distribution, test/real apps are not
+
+
+def wilson_upper(k: int, n: int, z: float = Z_UB) -> float:
+    if n == 0:
+        return 0.0
+    ph = k / n
+    den = 1 + z * z / n
+    c = ph + z * z / (2 * n)
+    return (c + z * np.sqrt(ph * (1 - ph) / n + z * z / (4 * n * n))) / den
+
+
 def ok(mt: dict, tier: str, use_real: bool) -> bool:
+    """The constraint must hold for the upper confidence bound, not just the point estimate."""
     L = LIMITS[tier]
-    checks = [(mt["fir_sim"], L["fir"]), (mt["harm_sim"], L["harm"])]
+    c = mt["_counts"]
+    checks = [(c["fir_sim"], L["fir"]), (c["harm_sim"], L["harm"])]
     if use_real:
-        checks += [(mt["fir_real"], L["fir"]), (mt["harm_real"], L["harm"])]
-    return all(v is None or v <= lim + 1e-12 for v, lim in checks)
+        checks += [(c["fir_real"], L["fir"]), (c["harm_real"], L["harm"])]
+    return all(n == 0 or wilson_upper(k, n) <= lim + 1e-12 for (k, n), lim in checks)
 
 
 def lowest_safe(T: Table, mode: str, tier: str, th: dict, sel: np.ndarray, trig: str | None, use_real: bool) -> float:
@@ -255,6 +275,8 @@ def fit(items: list[dict], min_passive: int, min_real: int) -> tuple[dict, dict]
             sel = T.trig == trig
             n_pb = int(((T.kind == "sim") & T.fir_row & sel).sum())
             n_rb = int(((T.kind == "real") & T.fir_row & sel).sum())
+            if not ((T.ctier == tier) & sel).any():
+                continue  # no candidate of this tier for this trigger: the threshold would be vacuous
             if n_pb < min_passive:
                 notes[f"{tier}:{trig}"] = f"default (only {n_pb} SIM passive-best fit rows)"
                 continue

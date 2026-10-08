@@ -13,7 +13,7 @@ const notams = [
   { id: 504, zone: 216, text: "Graduation ceremony crowds", floor: 0, kind: "advisory", active: true },
   { id: 505, zone: 217, text: "Wildfire aerial firefighting", floor: 0, kind: "restriction", active: false },
 ];
-const authorizations = [{ id: 7700, zoneId: 212, zone: "Old Quarry", altitude: 200, window: "09:00–10:00", pilot: "you", status: "completed", createdAt: "2026-03-28T09:00:00.000Z" }];
+const authorizations = [{ id: 7700, zoneId: 212, zone: "Old Quarry", altitude: 200, window: "Morning 09–10", pilot: "you", status: "completed", createdAt: "2026-03-28T09:00:00.000Z" }];
 
 const manifest: AppManifest = {
   name: "xstate-dronepermit",
@@ -40,12 +40,13 @@ const manifest: AppManifest = {
   },
   affordances: [
     { id: "altitude", kind: "select", sel: "select[name=altitude]", values: ["100", "200", "300", "400"], weight: 1, mode: "replace", requires: "select[name=altitude]:not([disabled])" },
-    { id: "window", kind: "select", sel: "select[name=window]", values: ["09:00–10:00", "12:00–13:00", "16:00–17:00"], weight: 0.6, mode: "replace", requires: "select[name=window]:not([disabled])" },
+    { id: "window", kind: "select", sel: "select[name=window]", values: ["Morning 09–10", "Midday 12–13", "Evening 16–17"], weight: 0.8, mode: "replace", requires: "select[name=window]:not([disabled])" },
     { id: "zone", kind: "click", sel: "li.zone button.pick", nth: 5, weight: 2.5, mode: "replace", key: "zone", requires: "li.zone button.pick:not([disabled])", then: ["requestNow"] },
     { id: "requestNow", kind: "click", sel: "section.plan button.request", weight: 0, mode: "accumulate", followOnly: true, dblclickP: 0.2, impatientP: 0.3 },
     { id: "request", kind: "click", sel: "section.plan button.request", weight: 1, mode: "accumulate", dblclickP: 0.2, impatientP: 0.3, requires: "section.plan button.request:not([disabled])" },
-    { id: "primary", kind: "click", sel: "footer button.primary", weight: 3, mode: "accumulate", dblclickP: 0.15, impatientP: 0.25, requires: "footer button.primary:not([disabled])" },
-    { id: "withdraw", kind: "click", sel: "section.auth button.withdraw", weight: 0.4, mode: "accumulate", requires: "section.auth button.withdraw" },
+    { id: "start", kind: "click", sel: "li.auth button.start", nth: 3, weight: 2, mode: "accumulate", intent: "nth", dblclickP: 0.15, impatientP: 0.25, requires: "li.auth button.start:not([disabled])" },
+    { id: "land", kind: "click", sel: "li.auth button.land", weight: 1.5, mode: "accumulate", dblclickP: 0.15, impatientP: 0.25, requires: "li.auth button.land" },
+    { id: "withdraw", kind: "click", sel: "li.auth button.withdraw", nth: 3, weight: 0.4, mode: "accumulate", intent: "nth", requires: "li.auth button.withdraw" },
   ],
   external: [
     { kind: "update", target: "authorizations", perMin: 12, where: { status: "pending" }, data: [{ status: "approved" }, { status: "approved" }, { status: "approved" }, { status: "denied", reason: "conflicts with a medevac corridor" }] },
@@ -60,9 +61,13 @@ const manifest: AppManifest = {
       check: (s) => !s.permit || !s.permit.check || (s.permit.check.for === s.permit.zoneId && s.permit.check.altitude === s.permit.altitude),
     },
     {
-      name: "the authorization in progress is for the planned flight",
-      fields: ["permit.auth", "permit.zoneId", "permit.altitude"],
-      check: (s) => !s.permit || !s.permit.auth || !["awaiting", "approved", "starting", "flying"].includes(s.permit.step) || (s.permit.auth.zoneId === s.permit.zoneId && s.permit.auth.altitude === s.permit.altitude),
+      name: "one open request per flight",
+      fields: ["permit.auths"],
+      check: (s) => {
+        if (!s.permit) return true;
+        const open = (s.permit.auths as { phase: string; zoneId: number; altitude: number; window: string }[]).filter((a) => ["pending", "withdrawing", "approved", "starting", "flying", "landing"].includes(a.phase)).map((a) => `${a.zoneId}|${a.altitude}|${a.window}`);
+        return new Set(open).size === open.length;
+      },
     },
   ],
   errorSelector: "[role=alert]",

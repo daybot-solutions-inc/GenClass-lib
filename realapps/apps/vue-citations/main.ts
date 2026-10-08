@@ -39,7 +39,7 @@ const library = rt.guard<Library>("library", {
       if (e.type === "updated" && e.query.queryKey[0] === "library" && e.action.type === "success") fn();
     }),
 });
-const ui = rt.atom("ui", { collections: [] as string[], editing: 0, tag: "", doi: "", title: "", collection: "reading", error: "", notice: "" });
+const ui = rt.atom("ui", { collections: [] as string[], editing: null as number | null, tag: "", doi: "", title: "", collection: "reading", error: "", notice: "" });
 type Ui = ReturnType<typeof ui.get>;
 
 const statusOf = (e: unknown) => (axios.isAxiosError(e) ? (e.response?.status ?? 0) : 0);
@@ -115,7 +115,7 @@ const App = defineComponent({
       queryFn: ({ pageParam }: { pageParam: string }) => fetchPage(ui.get().collections, pageParam),
       initialPageParam: "",
       getNextPageParam: (last: Page) => last.nextCursor ?? undefined,
-      refetchInterval: 12000, // lab mates add and tag papers too
+      refetchInterval: 6000, // lab mates add and tag papers too
     });
     const add = useMutation({
       mutationFn: (v: { doi: string; title: string; collection: string }) => http.post<Paper>("/papers", { ...v, authors: "Unknown authors", year: 2026, venue: "Preprint", tags: [], starred: false }).then((r) => r.data),
@@ -155,7 +155,7 @@ const App = defineComponent({
     function addTag() {
       const s = ui.get();
       const tag = s.tag.trim().toLowerCase();
-      if (!tag || !s.editing) return;
+      if (!tag || s.editing === null) return;
       set("tag", "");
       void saveTags(s.editing, (tags) => (tags.includes(tag) ? tags : [...tags, tag]), `tagging the paper “${tag}”`);
     }
@@ -183,7 +183,7 @@ const App = defineComponent({
       removeTag,
       set,
       openTags: (p: Paper) => ui.update((x) => ({ ...x, editing: p.id, tag: "", error: "" })),
-      closeTags: () => ui.update((x) => ({ ...x, editing: 0, tag: "" })),
+      closeTags: () => ui.update((x) => ({ ...x, editing: null, tag: "" })),
     };
   },
   template: `

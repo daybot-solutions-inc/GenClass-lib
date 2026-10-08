@@ -354,6 +354,7 @@ export function installXHR(host: NetHost): (() => void) | null {
     const hdr = [...st.headers].filter(([k]) => !VOLATILE.test(k)).sort(([a], [x]) => (a < x ? -1 : a > x ? 1 : 0));
     const parsed = parseRequest(host, st.method, st.url, b, hdr.length ? fnv1a(hdr.map(([k, v]) => `${k}:${v}`).join("\n")) : "");
     parsed.meta.transport = "xhr";
+    if (st.headers.size) parsed.meta.headers = [...st.headers.keys()];
     const req = parsed.meta;
     const op = host.startOp("xhr", req.signature, { detail: parsed.detail, identity: req.identity, method: req.method, url: req.url });
     st.op = op;

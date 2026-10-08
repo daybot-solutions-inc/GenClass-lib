@@ -40,20 +40,29 @@ const withRows = (a: R, rows: Rec[], counts?: Counts): R => ({ ...a, rows, count
 const bump = (c: Counts, from: string, to: string): Counts => ({ ...c, [from]: c[from as keyof Counts] - 1, [to]: c[to as keyof Counts] + 1 });
 
 let seq = 0;
+let writes = 0;
+let retries = 0;
 async function loadPeriod(background = false) {
   const my = background ? seq : ++seq;
+  const epoch = writes;
   const period = roll.get().period;
   if (!background) roll.update((a) => ({ ...a, loading: true, error: "" }));
   try {
     const rows = itemsOf<Rec>(await api(`/api/attendance?period=${period}&sort=student&limit=40`));
     if (PERIOD_SEQ === "latest" && (my !== seq || period !== roll.get().period)) return;
+    // a resync read before a mark was saved would bring the old mark back
+    if (background && epoch !== writes) return;
     roll.update((a) => {
       // students with a mark in flight keep the teacher's mark
       const merged = rows.map((x) => (a.pending.includes(x.id) ? (a.rows.find((y) => y.id === x.id) ?? x) : x));
       return { ...withRows(a, merged, background ? undefined : countOf(merged)), loading: background || my !== seq ? a.loading : false };
     });
+    retries = 0;
   } catch (e) {
-    if (!background && my === seq) roll.update((a) => ({ ...a, loading: false, error: errText(e, "loading the class list") }));
+    if (background || my !== seq) return;
+    roll.update((a) => ({ ...a, loading: false, error: `${errText(e, "loading the class list")} Retrying…` }));
+    // try again with backoff unless the teacher has moved on to another period
+    setTimeout(() => my === seq && void loadPeriod(), Math.min(15000, 2000 * 2 ** retries++));
   }
 }
 
@@ -85,6 +94,7 @@ async function save(r: Rec, status: string) {
   }
   const left = (outstanding.get(r.id) ?? 1) - 1;
   outstanding.set(r.id, left);
+  writes++;
   roll.update((a) => {
     const pending = left === 0 ? a.pending.filter((x) => x !== r.id) : a.pending;
     if (err) return { ...a, pending, error: errText(err, `marking ${r.student} ${status}`) };
@@ -105,6 +115,7 @@ async function restPresent() {
     const results = res?.results ?? [];
     const ok = new Set(BULK === "per-item" ? results.filter((x) => x.ok).map((x) => Number(x.id)) : ids);
     const failed = ids.length - results.filter((x) => x.ok).length;
+    writes++;
     roll.update((a) => {
       if (a.period !== a0.period) return { ...a, bulkBusy: false };
       const hit = a.rows.filter((r) => ok.has(r.id) && r.status === "unmarked").length;

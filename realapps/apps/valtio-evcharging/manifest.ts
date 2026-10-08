@@ -54,7 +54,7 @@ const manifest: AppManifest = {
     { kind: "update", target: "connectors", perMin: 0.5, where: { status: "available" }, data: [{ status: "faulted" }] },
     { kind: "update", target: "connectors", perMin: 1, where: { status: "faulted" }, data: [{ status: "available" }] },
   ],
-  weights: { "depot.error": 0, "depot.notice": 0, "depot.starting": 0.1, "depot.stopping": 0.1, "depot.live": 0.1, "depot.loading": 0.1, "depot.van": 0.3 },
+  weights: { "depot.error": 0, "depot.notice": 0, "depot.starting": 0.1, "depot.claimed": 0.1, "depot.stopping": 0.1, "depot.live": 0.1, "depot.loading": 0.1, "depot.van": 0.3 },
   relations: [
     { name: "energy delivered = sum of session energy", fields: ["depot.energy", "depot.sessions"], check: (s) => !s.depot || round1(s.depot.energy) === round1(s.depot.sessions.reduce((n: number, x: { kwh: number }) => n + Number(x.kwh || 0), 0)) },
   ],

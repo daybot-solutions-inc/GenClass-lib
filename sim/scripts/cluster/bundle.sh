@@ -11,8 +11,18 @@ cd "$SLOT"
 DIST="${DIST:-sim/dist}"
 test -f "$DIST/gen.js" && test -f "$DIST/model-host/host.js" && test -f packages/runtime/dist/index.js
 EX=()
-for m in onnxruntime-node playwright-core @playwright typescript happy-dom @rolldown 'lightningcss*' @esbuild esbuild vite vitest @vitest rollup @rollup tsup @types react-dom; do EX+=(--exclude="node_modules/$m"); done
-tar czf "$OUT/simbundle.tgz.tmp" "${EX[@]}" --transform "s,^${DIST},sim/dist," node_modules packages/runtime/dist packages/runtime/package.json "$DIST" sim/package.json sim/scripts -C "$HOME" node
+for m in playwright-core @playwright typescript happy-dom @rolldown 'lightningcss*' @esbuild esbuild vite vitest @vitest rollup @rollup tsup @types react-dom; do EX+=(--exclude="node_modules/$m"); done
+# onnxruntime-node (on-policy inference): only the linux-x64 binary.
+for p in darwin win32 linux/arm64; do EX+=(--exclude="node_modules/onnxruntime-node/bin/napi-v6/$p"); done
+# MODEL_DIR: a TRAIN export to ship as model/<MODEL_NAME> (on-policy runs: --on-policy ~/simgen/model/<MODEL_NAME>).
+MX=()
+if [ -n "${MODEL_DIR:-}" ]; then
+  MODEL_NAME="${MODEL_NAME:-$(basename "$MODEL_DIR")}"
+  STAGE="$OUT/stage"; rm -rf "$STAGE"; mkdir -p "$STAGE/model/$MODEL_NAME"
+  cp "$MODEL_DIR"/{model.json,meta.json,tokenizer.json,calibration.json} "$MODEL_DIR"/*-q8.onnx "$STAGE/model/$MODEL_NAME/"
+  MX=(-C "$STAGE" model)
+fi
+tar czf "$OUT/simbundle.tgz.tmp" "${EX[@]}" --transform "s,^${DIST},sim/dist," node_modules packages/runtime/dist packages/runtime/package.json "$DIST" sim/package.json sim/scripts -C "$HOME" node "${MX[@]}"
 mv "$OUT/simbundle.tgz.tmp" "$OUT/simbundle.tgz"
 sha256sum "$OUT/simbundle.tgz" | tee "$OUT/simbundle.sha256"
 ls -la "$OUT"

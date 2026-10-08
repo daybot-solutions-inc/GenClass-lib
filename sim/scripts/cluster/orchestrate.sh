@@ -27,7 +27,7 @@ case "$cmd" in
     for h in "$@"; do
       SEED=$((BASE + $(idx "$h") * 100000000))
       echo "== $h: $RUN $MODE seeds from $SEED"
-      timeout 1200 "$AZVM" "$h" "REFRESH=${REFRESH:-0} bash -s -- $RUN $MODE $SEED $ROWS" < "$HERE/node_start.sh" || echo "run on $h failed"
+      timeout 1200 "$AZVM" "$h" "REFRESH=${REFRESH:-0} GATE=${GATE:-} MAXP=${MAXP:-} bash -s -- $RUN $MODE $SEED $ROWS" < "$HERE/node_start.sh" || echo "run on $h failed"
     done ;;
   status) RUN="$1"; shift; for h in "$@"; do echo "== $h: $(timeout 40 "$AZVM" "$h" "tail -n 1 ~/simgen/out/$RUN.log 2>/dev/null; ls ~/simgen/out/$RUN/parts 2>/dev/null | grep -c '\.json\$'" 2>/dev/null | tr '\n' ' ')"; done ;;
   kill) RUN="$1"; shift; for h in "$@"; do timeout 40 "$AZVM" "$h" "pkill -f 'simgen/sim/dist/gen[.]js.*$RUN' || true"; done ;;

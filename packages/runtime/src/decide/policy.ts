@@ -21,7 +21,11 @@ export interface PolicyConfig {
   holdWrites: boolean;
   maxActionsPerMinute: number;
   requireDiagnosis: boolean;
+  /** Lower-cased header names that make a non-idempotent request safe to repeat. */
+  idempotencyHeaders: Set<string>;
 }
+
+export const DEFAULT_IDEMPOTENCY_HEADERS = ["Idempotency-Key", "X-Idempotency-Key"];
 
 export function policyConfig(p: PolicyOptions | undefined): PolicyConfig {
   const t = p?.thresholds ?? {};
@@ -36,6 +40,7 @@ export function policyConfig(p: PolicyOptions | undefined): PolicyConfig {
     holdWrites: p?.holdWrites ?? false,
     maxActionsPerMinute: p?.maxActionsPerMinute ?? 60,
     requireDiagnosis: p?.requireDiagnosis ?? true,
+    idempotencyHeaders: new Set((Array.isArray(p?.idempotencyHeaders) ? p!.idempotencyHeaders : DEFAULT_IDEMPOTENCY_HEADERS).filter((h) => typeof h === "string" && h.trim()).map((h) => h.trim().toLowerCase())),
   };
   if (p?.allow) c.allow = new Set(p.allow);
   return c;

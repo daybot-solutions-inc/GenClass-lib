@@ -1,6 +1,6 @@
 # @genclass/runtime: status (CORE)
 
-Updated: 2026-10-08 (batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
+Updated: 2026-10-08 (batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
 MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
 
 ## State
@@ -38,6 +38,28 @@ observe mode on the same scenario (`debug.js --interference`):
 | situation | `src/situation/*.ts` | facts, version conflicts (`conflicts.ts`), response content vs store (`content.ts`), evidence facts (`evidence.ts`), budget-shaped serializer, compact questions, triage, subject refs |
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
+
+## Batch 7 (done): retry by HTTP semantics (situation-v2.2)
+
+- SIM's on-policy round: the most harmful exploratory action was `retry` of a POST after a 500 the situation itself
+  said "may have applied" (a duplicate order). `retry` is now offered only when repeating is safe by HTTP semantics:
+  idempotent methods (GET, HEAD, OPTIONS, PUT, DELETE; TRACE too) always; any other method (POST, PATCH, ...) only
+  when the request carries an idempotency key header, from `policy.idempotencyHeaders` (default `Idempotency-Key`,
+  `X-Idempotency-Key`; case-insensitive; request ids and tracing headers such as `X-Request-Id` are not keys).
+  Headers are read from `init.headers` and Request objects (fetch) and `setRequestHeader` (XHR). `hedge` was already
+  GET-only and also goes through the same check. No other action repeats a request (`block`, `delay`, `coalesce`,
+  `serve_cached` never re-send).
+- Every built-in action that is not offered is listed with its reason in `Situation.notOffered` (debugging; never
+  sent to the model), e.g. `{ retry: "POST is not idempotent and the request has no idempotency key header
+  (idempotency-key, x-idempotency-key)" }`, `{ hedge: "only GET requests are hedged (POST)" }`, `{ serve_cached: "no
+  cached response exists for this request" }`. `SituationDraft.request.idempotencyKey` is set for plugins.
+- No new facts; situation text is unchanged. What changes is the action list: a failed POST/PATCH without a key now
+  offers only `deliver` (`serve_cached` is GET-only), so it is not held in heal mode (nothing could be done) and is
+  decided in the background.
+- Tests: `test/idempotency.test.ts` (POST without a key: no retry, one request, the reason; X-Request-Id is not a
+  key; Idempotency-Key on a headers object or a Request and x-idempotency-key on PATCH: retried; PUT/DELETE/GET
+  retried without a key; `policy.idempotencyHeaders` replaces the list; hedge reason for a POST stall). All suites on
+  the VM: 46 files, 381 tests, passing; tsc and tsup clean.
 
 ## Batch 6 (done): data-derived gate thresholds; no-baseline stalls
 
@@ -432,7 +454,7 @@ const rt = createRuntime({
 | delivery | deliver | discard (guard), defer (guard; only with related ops in flight, ≤ 2) | yes, when salient and an action is permitted and the model can answer within the hold budget |
 | mutation | apply | discard (guard), defer (guard; < 2 defers) | no by default (background; discard = late revert ≤ 2 s); yes with `policy.holdWrites` |
 | request | send | coalesce (guard, fetch), delay (guard), block (heal), serve_cached (heal, GET with a cached answer) | yes, when permitted |
-| failure | deliver | retry (heal, replayable fetch, < 4 attempts), serve_cached (heal) | fetch: when permitted; XHR: no |
+| failure | deliver | retry (heal, replayable fetch, < 4 attempts, and an idempotent method or an idempotency key header), serve_cached (heal) | fetch: when permitted; XHR: no |
 | stall | wait | hedge (heal, idempotent GET), serve_cached (heal) | no |
 | inconsistency | ignore | rollback (heal), resync (heal) | no |
 | transition | ignore | rollback (heal), resync (heal) | no |

@@ -317,6 +317,12 @@ export interface PolicyOptions {
   /** Default false. */
   holdUserWrites?: boolean;
   /**
+   * Request headers that make a non-idempotent request (POST, PATCH, ...) safe to repeat, so that `retry` may be
+   * offered for it (case-insensitive). Default ["Idempotency-Key", "X-Idempotency-Key"]. Request-id or tracing
+   * headers are not idempotency keys.
+   */
+  idempotencyHeaders?: string[];
+  /**
    * Default false: store writes are never held (decisions about responses and messages are taken at the network
    * boundary; salient writes not covered by such a decision are decided in the background and may be reverted
    * under the late-revert rules). true (opt-in): salient writes wait for the model, without ever reordering a
@@ -450,6 +456,8 @@ export interface Situation {
   questions: Record<string, Question>;
   /** Applicable actions, passive first. */
   actions: string[];
+  /** Built-in actions of this trigger that are not offered here, with the reason (debugging; not sent to the model). */
+  notOffered?: Record<string, string>;
   /** Whether triage would consult the model. */
   salient: boolean;
   facts: string[];
@@ -466,6 +474,8 @@ export interface RequestInfo {
   identity: string;
   idempotent: boolean;
   replayable: boolean;
+  /** The request carries one of `policy.idempotencyHeaders` (it may be repeated safely although its method is not idempotent). */
+  idempotencyKey?: boolean;
   /** Ops of identical requests in flight. */
   identicalInFlight: number[];
   /** A cached good response exists for this request. */

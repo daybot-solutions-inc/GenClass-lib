@@ -53,7 +53,8 @@ const manifest: AppManifest = {
     { id: "dec", kind: "click", sel: "tr.line button.dec", nth: 8, weight: 1.2, mode: "accumulate", intent: "nth", requires: "tr.line button.dec:not([disabled])" },
     { id: "remove", kind: "click", sel: "tr.line button.remove", nth: 8, weight: 0.5, mode: "accumulate", intent: "nth", requires: "tr.line button.remove:not([disabled])" },
     { id: "lock", kind: "click", sel: "button.lock", weight: 0.4, mode: "replace", dblclickP: 0.1, requires: "button.lock:not([disabled])", requiresText: "Lock order", then: ["reopen"] },
-    { id: "reopen", kind: "click", sel: "button.lock", weight: 0, mode: "replace", key: "lock", followOnly: true, requires: "button.lock:not([disabled])", requiresText: "Reopen order" },
+    { id: "reopen", kind: "click", sel: "button.lock", text: ["Reopen order"], weight: 0, mode: "replace", key: "lock", followOnly: true },
+    { id: "reopenAgain", kind: "click", sel: "button.lock", weight: 0.5, mode: "replace", key: "lock", requires: "button.lock:not([disabled])", requiresText: "Reopen order" },
   ],
   external: [
     { kind: "create", target: "lines", perMin: 2.5, data: [line("Marco", 4), line("Omar", 8), line("Aisha", 9), line("Wen", 6), line("Lena", 1), line("Dev", 2)] },

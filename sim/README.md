@@ -250,7 +250,7 @@ cost = 1.0 · ∫ D(t) dt                                  t ∈ [t_k, t_k+10 s]
 |---|---|---|---|---|
 | gold | `gen.js` (default) | Counterfactual action labels (K = 3 futures), gold diagnosis, ask rows | ~4.4 rows/s per worker | `costs`, `cost_futures`, `se`, `non_passive_mass`, `passive`, ... |
 | unlabeled | `--unlabeled` | Base run only: every decision point (≤ 40 per trajectory) with state/questions and the gold diagnosis, no action label; ask rows | ~150 rows/s per worker (~13k rows/s per F80) | `unlabeled: true`, `ran`, `actions` |
-| on-policy | `--on-policy <model dir>` | The model decides through the runtime's production gate (heal mode, default thresholds, diagnosis gate); points where it acted or stayed passive on a problem are counterfactual-labelled (DAgger) | ~0.1 rows/s per worker (WASM inference) | `on_policy: true`, `model_probs`, `model_choice`, `model_diagnosis`, `ran`, `false_intervention`, `miss` |
+| on-policy | `--on-policy <model dir> [--gate shipping\|explore]` | The model decides through the runtime's gate in heal mode: `shipping` = the runtime defaults (guard 0.9 / heal 0.8 on summed permitted mass, diagnosis gate; or the model's own `meta.json` `gate` once exports carry one), `explore` = 0.5 for guard and heal (diagnosis gate kept), which surfaces the interventions the model would make as thresholds come down. The model answers the first 80 decisions of a base run (later ones are passive and never labelled); points where it acted or stayed passive on a problem are counterfactual-labelled with S1 + S2 (DAgger) | ~0.4 rows/s per worker with native onnxruntime-node (~30–55 rows/s per F80; `SIM_ORT=web` forces WASM, 5× slower; parity on TRAIN's fixtures: 307/307 answers, max probability difference < 1e-4) | `on_policy: true`, `gate`, `policy_model`, `model_probs`, `model_choice`, `model_diagnosis`, `ran`, `false_intervention`, `miss`, `ran_harm` (mean cost of what ran minus passive) |
 
 On-policy mode loads the runtime's own model host (MODEL's `src/model/host.ts`, built unmodified into
 `sim/dist/model-host` by `npm run build:model-host`) inline in Node on onnxruntime-web WASM. A custom `fetch` serves
@@ -259,7 +259,7 @@ answer arrives after the scenario's virtual model latency, so runs stay determin
 actually ran at every earlier decision. Past decisions do not render in situations, so prefixes are byte-identical
 (checked).
 
-Every row also has `meta.program_family`, `meta.passive`, `meta.clean` (5% clean runs: calm network, no failures,
+Every row also has `meta.runtime_tag` (the runtime build, e.g. `situation-v2.1`), `meta.program_family`, `meta.passive`, `meta.clean` (5% clean runs: calm network, no failures,
 no accidental clicks, correct guards; any non-passive answer there is a false positive), `meta.persona` and
 `meta.chaos`.
 
@@ -283,6 +283,13 @@ no accidental clicks, correct guards; any non-passive answer there is a false po
      re-fetches the bundle);
    - `wait RUN NODES`;
    - `ips NODES` (the addresses collect.py needs).
+
+   On-policy: `MODEL_DIR=<export> MODEL_NAME=<name> bash sim/scripts/cluster/bundle.sh` ships the export (q8 +
+   tokenizer, calibration, meta) and onnxruntime-node (linux-x64 only) in the bundle; then
+   `bigrun.sh onpol RUN shipping|explore ROWS NODES` (seed bases 22·10⁹ / 24·10⁹ + NN·10⁸, `MAXP` points per
+   trajectory, default 10). `drain.sh RUN OUT host=ip …` pulls each node's parts as soon as it finishes, deallocates
+   it, then builds the merged shards and `scripts/onpolicy_report.py` (acts, false interventions, harm, misses by
+   gate and trigger, with the worst row ids).
 
    Collect on the train VM into `/data/sim-out/<run>` (1 TB disk). Measured on one F80 (c12, batch-4 runtime):
    gold about 200–250 rows/s, unlabeled about 11k rows/s.
