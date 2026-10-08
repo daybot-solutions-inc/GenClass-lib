@@ -36,7 +36,7 @@ describe("gate thresholds", () => {
 
   it("precedence: policy override, then the model's per-trigger value, then its default, then the defaults", () => {
     const none = policyConfig(undefined);
-    expect(effectiveGates(none, undefined, "delivery")).toEqual({ kind: "mass", trigger: "delivery", report: 0.6, guard: 0.9, heal: 0.8, source: { report: "default", guard: "default", heal: "default" } });
+    expect(effectiveGates(none, undefined, "delivery")).toEqual({ kind: "mass", aggressiveness: 0.5, level: "balanced", levelSource: "scaled", trigger: "delivery", report: 0.6, guard: 0.9, heal: 0.8, source: { report: "default", guard: "default", heal: "default" } });
     expect(effectiveGates(none, GATE, "delivery")).toMatchObject({ guard: 0.5, heal: 0.55, report: 0.4, source: { guard: "model", heal: "model", report: "model" } });
     expect(effectiveGates(none, GATE, "mutation")).toMatchObject({ guard: 0.6, heal: 0.55 });
     expect(effectiveGates(none, GATE)).toMatchObject({ guard: 0.6, heal: 0.55 });
@@ -196,5 +196,51 @@ describe("gain gate (meta.json gate.kind = \"gain\")", () => {
     // a large gain with the diagnosis "expected" does not act (requireDiagnosis)
     const exp = await write(probs({ discard: 0.6, defer: 0.3 }, "expected"), GAIN);
     expect(exp.d).toMatchObject({ executed: false, reason: "the model's diagnosis is expected" });
+  });
+});
+
+describe("aggressiveness (batch 11)", () => {
+  const P: ModelGate = {
+    profiles: {
+      cautious: { report: 0.7, guard: { default: 0.95 }, heal: { default: 0.9 } },
+      balanced: { report: 0.6, guard: { default: 0.8, byTrigger: { delivery: 0.7 } }, heal: { default: 0.7 } },
+      eager: { report: 0.5, guard: { default: 0.6 }, heal: { default: 0.5 } },
+    },
+  };
+  it("parses profiles and names levels", async () => {
+    const { aggressivenessLevel } = await import("../src/decide/policy.js");
+    expect(parseGate(P)?.profiles?.eager).toEqual({ report: 0.5, guard: { default: 0.6 }, heal: { default: 0.5 } });
+    expect([aggressivenessLevel("cautious"), aggressivenessLevel("eager"), aggressivenessLevel(0.3), aggressivenessLevel("0.8"), aggressivenessLevel("x"), aggressivenessLevel(7)]).toEqual([0, 1, 0.3, 0.8, 0.5, 1]);
+  });
+  it("named levels pick their profile; numbers interpolate between neighbours (report too)", () => {
+    const c = policyConfig(undefined);
+    expect(effectiveGates(c, P, "delivery", 0.5)).toMatchObject({ guard: 0.7, level: "balanced", levelSource: "profiles" });
+    expect(effectiveGates(c, P, "mutation", 1)).toMatchObject({ guard: 0.6, heal: 0.5, report: 0.5, level: "eager" });
+    const g = effectiveGates(c, P, "mutation", 0.25);
+    expect(g.guard).toBeCloseTo(0.875, 9);
+    expect(g.heal).toBeCloseTo(0.8, 9);
+    expect(g.report).toBeCloseTo(0.65, 9);
+    expect(g.level).toBeUndefined();
+  });
+  it("without profiles the single gate (or defaults) is shifted: ±0.05 thresholds, ±1 margins, clamped", () => {
+    const c = policyConfig(undefined);
+    expect(effectiveGates(c, undefined, "mutation", 0)).toMatchObject({ guard: 0.95, levelSource: "scaled" });
+    expect(effectiveGates(c, { guard: { default: 0.98 } }, "mutation", 0).guard).toBe(1);
+    expect(effectiveGates(c, undefined, "mutation", 1).guard).toBeCloseTo(0.85, 9);
+    expect(effectiveGates(c, { kind: "gain", guard: { default: 0.5 } }, "mutation", 1)).toMatchObject({ kind: "gain", guard: 0 });
+    expect(effectiveGates(c, { kind: "gain" }, "mutation", 0).guard).toBe(3);
+  });
+  it("explicit policy.thresholds still win", () => {
+    expect(effectiveGates(policyConfig({ thresholds: { guard: 0.99 } }), P, "mutation", 1)).toMatchObject({ guard: 0.99, source: { guard: "policy" } });
+  });
+  it("option, URL override and setAggressiveness; exposed in status, gates and explain", async () => {
+    const s = setup({ aggressiveness: "cautious" });
+    expect(s.rt.aggressiveness).toBe(0);
+    expect(s.rt.gates()).toMatchObject({ level: "cautious", guard: 0.95 });
+    s.rt.setAggressiveness("eager");
+    expect(s.rt.status.aggressiveness).toBe(1);
+    expect(s.rt.gates().guard).toBeCloseTo(0.85, 9);
+    const u = setup({ aggressiveness: "cautious", extraGlobal: { location: { href: "http://app.test/?genclass-aggr=eager", pathname: "/", search: "?genclass-aggr=eager" } } });
+    expect(u.rt.aggressiveness).toBe(1);
   });
 });

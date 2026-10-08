@@ -1,6 +1,6 @@
 # @genclass/runtime: status (CORE)
 
-Updated: 2026-10-08 (batch 10: gain gate kind; batch 9: EvaluateRequest.notOffered; batch 8: relation learner precision; batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
+Updated: 2026-10-08 (batch 11: aggressiveness; batch 10: gain gate kind; batch 9: EvaluateRequest.notOffered; batch 8: relation learner precision; batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
 MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
 
 ## State
@@ -38,6 +38,20 @@ observe mode on the same scenario (`debug.js --interference`):
 | situation | `src/situation/*.ts` | facts, version conflicts (`conflicts.ts`), response content vs store (`content.ts`), evidence facts (`evidence.ts`), budget-shaped serializer, compact questions, triage, subject refs |
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
+
+## Batch 11 (done): aggressiveness
+
+`InitOptions.aggressiveness` ("cautious" | "balanced" | "eager" | number 0–1, default "balanced"), URL override
+`?genclass-aggr=…` (wins over the option), `runtime.setAggressiveness(x)`, `runtime.aggressiveness`. meta.json
+`gate.profiles: { cautious, balanced, eager }` (each a full gate, mass or gain, report included; parsed per profile):
+a named level uses its profile; a number interpolates thresholds/margins (per trigger), report and tauGain linearly
+between the neighbouring profiles; profiles of different kinds → the nearer one. No profiles: the single gate (or the
+defaults) shifted by (0.5 − level) × 2 × 0.05 on thresholds / × 1 on margins, clamped ([0, 1] / ≥ 0). `policy.thresholds`
+still win. Exposed in `runtime.gates()` (`aggressiveness`, `level`, `levelSource`: profiles | scaled), `status.aggressiveness`,
+`explain(id).gates`, the devtools (a cautious/balanced/eager selector next to the mode switch; the Gates section shows
+the level), API.md and the README ("How eager should it be?"). Tests: `test/gates.test.ts` (parsing, interpolation,
+fallback shift and clamp, override precedence, option/URL/setAggressiveness/status), `test/gates-devtools.test.ts`
+(selector).
 
 ## Batch 10 (done): gain gate kind (selected by the model's meta.json)
 

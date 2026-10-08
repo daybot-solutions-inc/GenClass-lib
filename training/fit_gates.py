@@ -298,6 +298,7 @@ def metrics(T: Table, fired: np.ndarray, sel: np.ndarray, boot: int = 0, seed: i
 
 
 NOT_CERTIFIABLE = {"error"}
+FALLBACK = "pe"  # "pe": default if its point estimates hold, else never; "default": tier default (error keeps "pe")
 DEV_MARGIN = 0.8  # dev fits must meet 0.8 × each limit, so they hold on the shifted test sets (coordinator, 08:00)
 Z_UB = 1.645  # one-sided 95% Wilson upper bound: dev rows are in-distribution, test/real apps are not
 
@@ -393,6 +394,8 @@ def fit(items: list[dict], min_passive: int, min_real: int) -> tuple[dict, dict]
                 if v > th[tier]["default"]:
                     per[trig] = v
                 notes[f"{tier}:{trig}"] = f"max(default, SIM-certified {v}) — REAL cannot certify {bad} (n {nn})"
+            elif trig not in NOT_CERTIFIABLE and FALLBACK == "default":  # coordinator 15:50: tier default, never "never"
+                notes[f"{tier}:{trig}"] = f"default (cannot certify {bad}, n {nn})"
             else:  # too little evidence: the default if its point estimates hold on this trigger, else never
                 th2 = json.loads(json.dumps(th))
                 th2[tier]["byTrigger"] = {}
@@ -467,8 +470,16 @@ def main() -> None:
     ap.add_argument("--write-meta", type=Path, default=None)
     ap.add_argument("--kind", choices=["mass", "gain"], default="mass")
     ap.add_argument("--tau-gain", type=float, default=1.0)
+    ap.add_argument("--limits", default=None, help='JSON {"guard": {"fir": .., "harm": ..}, "heal": {...}}')
+    ap.add_argument("--margin", type=float, default=None, help="dev margin (default 0.8; 1.0 = certify at the limit)")
+    ap.add_argument("--fallback", choices=["pe", "default"], default="pe")
     a = ap.parse_args()
-    global KIND, TAU_GAIN, GRID
+    global KIND, TAU_GAIN, GRID, LIMITS, DEV_MARGIN, FALLBACK
+    if a.limits:
+        LIMITS = json.loads(a.limits)
+    if a.margin is not None:
+        DEV_MARGIN = a.margin
+    FALLBACK = a.fallback
     KIND, TAU_GAIN, GRID = a.kind, a.tau_gain, (GRID_GAIN if a.kind == "gain" else GRID_MASS)
     cal = json.loads(a.cal.read_text())
     fit_items = [x for s in a.fit for x in load(s, cal)]

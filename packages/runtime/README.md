@@ -114,6 +114,21 @@ behaves. A small local model then decides what's happening.
 | `guard` (default) | Also prevents failures with minimal, reversible actions (drop a stale response, reuse a duplicate's result, back off), and only when the model is at least 90% sure acting beats doing nothing. |
 | `heal` | Also recovers: retry, serve cached, roll back, resync, and your own actions (≥ 80%). |
 
+## How eager should it be?
+
+GenClass only acts when the model is confident enough. You choose how confident:
+
+```ts
+GenClass.init({ aggressiveness: "cautious" }); // "cautious" | "balanced" (default) | "eager", or a number 0–1
+GenClass.runtime.setAggressiveness("eager");   // change it later (the devtools have a selector too)
+```
+
+`cautious` acts less often (fewer interventions, almost never a wrong one); `eager` fixes more problems at a
+somewhat higher risk of acting when it did not need to. A number in between interpolates (0 = cautious,
+0.5 = balanced, 1 = eager). Try a level without redeploying with `?genclass-aggr=eager` in the URL. The model ships
+tuned thresholds for each level; explicit `policy.thresholds` still override them. `runtime.gates()` shows what is
+in force.
+
 ## Connect your state (optional)
 
 Network, user actions, errors and timing are observed with zero code. To let GenClass also protect your state

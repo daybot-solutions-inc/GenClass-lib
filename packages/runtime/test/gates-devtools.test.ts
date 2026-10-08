@@ -38,4 +38,18 @@ describe("devtools Now view: gates", () => {
     dt.unmount();
     s.rt.destroy();
   });
+
+  it("has an aggressiveness selector next to the mode switch", async () => {
+    const s = setup();
+    const dt = mountDevtools(s.rt, { collapsed: false });
+    const sr = dt.element!.shadowRoot!;
+    await frame();
+    const sel = sr.querySelector('[data-part="aggressiveness"]') as HTMLSelectElement;
+    expect(sel.value).toBe("balanced");
+    sel.value = "eager";
+    sel.dispatchEvent(new Event("change"));
+    expect(s.rt.aggressiveness).toBe(1);
+    dt.unmount();
+    s.rt.destroy();
+  });
 });

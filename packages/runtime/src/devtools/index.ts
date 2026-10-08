@@ -292,6 +292,7 @@ class Devtools {
       { class: "hd" },
       h("div", { class: "brand" }, mark(), h("span", { class: "bn", text: "GenClass" }), h("span", { class: "bt", text: "runtime" })),
       h("div", { class: "modes", role: "radiogroup", "aria-label": "Mode", onkeydown: (e: KeyboardEvent) => this.modeKey(e) }, this.modeBtns),
+      this.aggrSelect(),
       h("button", { class: "ib", type: "button", "aria-label": "Minimize", title: "Minimize (Alt+Shift+G)", "data-part": "minimize", onclick: () => this.close(true) }, icon("min")),
     );
     this.st = h("div", { class: "st", role: "status", "data-part": "status" }, h("span", { class: "dot" }), (this.stB = h("b")), (this.stM = h("span", { class: "sm" })), h("div", { class: "sb" }, (this.sbi = h("i"))));
@@ -1095,6 +1096,20 @@ class Devtools {
     );
   }
 
+  /** Aggressiveness selector next to the mode switch (cautious / balanced / eager). */
+  private aggrSelect(): HTMLElement {
+    const rt = this.rt as { aggressiveness?: number; setAggressiveness?: (a: string) => void };
+    const sel = h(
+      "select",
+      { class: "aggr", "data-part": "aggressiveness", "aria-label": "Aggressiveness", title: "How eagerly GenClass acts" },
+      ...["cautious", "balanced", "eager"].map((v) => h("option", { value: v, text: v })),
+    ) as HTMLSelectElement;
+    const cur = typeof rt.aggressiveness === "number" ? rt.aggressiveness : 0.5;
+    sel.value = cur <= 0.25 ? "cautious" : cur >= 0.75 ? "eager" : "balanced";
+    sel.addEventListener("change", () => safe(() => rt.setAggressiveness?.(sel.value), undefined));
+    return sel;
+  }
+
   /** The gate thresholds in force (CORE batch 6): defaults, plus per-trigger values the model ships. */
   private gateLines(): string[] {
     const gates = (this.rt as { gates?: (t?: TriggerKind) => EffectiveGates }).gates;
@@ -1104,6 +1119,7 @@ class Devtools {
     const lines: string[] = [];
     const all = safe(() => gates.call(this.rt), null as EffectiveGates | null);
     if (all) {
+      lines.push(`aggressiveness: ${all.level ?? all.aggressiveness} (${all.levelSource === "profiles" ? "model profiles" : "scaled gate"})`);
       lines.push(all.kind === "gain" ? `kind: gain (per-action gain over the passive action, τ ${all.tauGain ?? 1})` : "kind: mass (summed probability of the permitted actions)");
       lines.push(`default: ${fmt(all)}`);
     }

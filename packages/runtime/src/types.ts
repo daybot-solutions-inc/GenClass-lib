@@ -86,6 +86,8 @@ export interface ModelStatus {
   ort?: string;
   /** Data-derived gate thresholds shipped with the model (meta.json `gate`), validated. */
   gate?: ModelGate;
+  /** runtime.status only: the aggressiveness level in force (0 cautious … 1 eager). */
+  aggressiveness?: number;
 }
 
 /** Thresholds of one tier: a default and optional per-trigger values. */
@@ -101,6 +103,8 @@ export interface GateTier {
  */
 export interface ModelGate {
   kind?: GateKind;
+  /** Per-aggressiveness gates; when present they replace the top-level values (see InitOptions.aggressiveness). */
+  profiles?: GateProfiles;
   /** gain kind: τ, the scale from log-probability ratios to cost units (default 1). */
   tauGain?: number;
   report?: number;
@@ -109,6 +113,16 @@ export interface ModelGate {
 }
 
 export type GateKind = "mass" | "gain";
+
+/** How eagerly GenClass acts: a named level or a number in [0, 1] (0 cautious, 0.5 balanced, 1 eager). */
+export type Aggressiveness = "cautious" | "balanced" | "eager" | number;
+
+/** meta.json `gate.profiles`: one gate per named level (each mass or gain kind, report included). */
+export interface GateProfiles {
+  cautious?: ModelGate;
+  balanced?: ModelGate;
+  eager?: ModelGate;
+}
 
 /** Where an effective threshold comes from: the app's policy.thresholds, the model's meta gate, or the defaults. */
 export type GateSource = "policy" | "model" | "default";
@@ -119,6 +133,11 @@ export type GateSource = "policy" | "model" | "default";
  */
 export interface EffectiveGates {
   kind: GateKind;
+  /** The aggressiveness level in force (0 cautious … 1 eager) and its name when it is one of the three. */
+  aggressiveness: number;
+  level?: "cautious" | "balanced" | "eager";
+  /** "profiles": the model's per-level gates; "scaled": its single gate (or the defaults) shifted by the level. */
+  levelSource: "profiles" | "scaled";
   /** gain kind only. */
   tauGain?: number;
   trigger?: TriggerKind;
@@ -419,6 +438,12 @@ export interface InitOptions {
   vocabulary?: Vocabulary;
   /** Quiet time after the last mutation before a settled point (default 60 ms). */
   settleMs?: number;
+  /**
+   * How eagerly GenClass fixes client-side errors (default "balanced"). A number in [0, 1] interpolates (0 cautious,
+   * 0.5 balanced, 1 eager). Selects the model's gate profile; explicit policy.thresholds still win. The URL parameter
+   * `?genclass-aggr=cautious|balanced|eager|<number>` overrides it; `runtime.setAggressiveness()` changes it later.
+   */
+  aggressiveness?: Aggressiveness;
   /**
    * Size of the situation text the model reads, in characters. Default "auto": by device from the model status
    * (webgpu 2,400; wasm 1,000 at 1 thread to 2,000 at 4 threads, linear; unknown device 2,400).
@@ -730,6 +755,10 @@ export interface Runtime {
   situationBudget(): number;
   /** The gate thresholds in force for a trigger kind (policy overrides, else the model's meta gate, else defaults). */
   gates(trigger?: TriggerKind): EffectiveGates;
+  /** The aggressiveness level in force (0 cautious … 1 eager). */
+  readonly aggressiveness: number;
+  /** Change how eagerly GenClass acts (a named level or a number in [0, 1]). */
+  setAggressiveness(a: Aggressiveness): void;
   setMode(mode: Mode): void;
   pause(): void;
   resume(): void;

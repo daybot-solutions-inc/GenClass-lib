@@ -178,7 +178,14 @@ def main() -> None:
     ap.add_argument("--test", action="append", required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--write-meta", type=Path, default=None)
+    ap.add_argument("--limits", default=None, help='JSON {"real_benign": .., "sim_expected": ..}')
+    ap.add_argument("--margin", type=float, default=None)
     a = ap.parse_args()
+    global LIM, DEV_MARGIN
+    if a.limits:
+        LIM = json.loads(a.limits)
+    if a.margin is not None:
+        DEV_MARGIN = a.margin
     cal = json.loads(a.cal.read_text())
     fit_sets = {f"{n}#{i}": it for i, (n, it) in enumerate(load(s, cal) for s in a.fit)}  # names may repeat
     test_sets = {}

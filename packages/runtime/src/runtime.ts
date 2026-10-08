@@ -40,6 +40,7 @@ import type {
   UserAction,
   Vocabulary,
   EffectiveGates,
+  Aggressiveness,
 } from "./types.js";
 import { browserClock } from "./clock.js";
 import { GenClassUnavailableError } from "./errors.js";
@@ -63,7 +64,7 @@ import { opLabel } from "./situation/describe.js";
 import { BUILTIN_ACTIONS, diagnosisVocabulary, PASSIVE } from "./situation/questions.js";
 import { STATE_CHAR_BUDGET, stateText } from "./situation/serialize.js";
 import { DeciderQueue } from "./decide/decider.js";
-import { effectiveGates, gate, holdBudget, parseGate, permittedActions, policyConfig, RateLimiter, restriction, type PolicyConfig } from "./decide/policy.js";
+import { aggressivenessLevel, effectiveGates, gate, holdBudget, parseGate, permittedActions, policyConfig, RateLimiter, restriction, type PolicyConfig } from "./decide/policy.js";
 import { decisionLine, detectionLine, interventionLine, Reporter } from "./decide/report.js";
 import type { ActionEffect, Controller, EndOpts, NetHost, TriggerOpts } from "./decide/exec.js";
 import { ResponseCache } from "./observe/cache.js";
@@ -214,6 +215,18 @@ export class RuntimeImpl implements Runtime {
     this.vocab = o.vocabulary;
     this.hooks = o.hooks ?? {};
     this.settleMs = o.settleMs ?? 60;
+    // aggressiveness: the URL override (?genclass-aggr=…) wins over the option
+    let aggr: Aggressiveness | string | undefined = o.aggressiveness;
+    try {
+      const search = (this.global.location as { search?: unknown } | undefined)?.search;
+      if (typeof search === "string" && search) {
+        const v = new URLSearchParams(search).get("genclass-aggr");
+        if (v) aggr = v;
+      }
+    } catch {
+      /* no URL */
+    }
+    this._aggr = aggressivenessLevel(aggr);
     this.budgetOpt = o.situation?.budget ?? "auto";
     this.appFn = o.app;
     this.debug = !!o.debug;
@@ -1590,12 +1603,24 @@ export class RuntimeImpl implements Runtime {
   }
 
   get status(): ModelStatus {
-    return this.decider ? this.decider.status : { state: "off" };
+    return { ...(this.decider ? this.decider.status : { state: "off" as const }), aggressiveness: this._aggr };
   }
 
   /** The gate thresholds in force for a trigger kind: policy overrides, else the model's meta gate, else defaults. */
   gates(trigger?: TriggerKind): EffectiveGates {
-    return effectiveGates(this.policy, parseGate(this.decider?.status.gate), trigger);
+    return effectiveGates(this.policy, parseGate(this.decider?.status.gate), trigger, this._aggr);
+  }
+
+  private _aggr = 0.5;
+
+  get aggressiveness(): number {
+    return this._aggr;
+  }
+
+  setAggressiveness(a: Aggressiveness): void {
+    this._aggr = aggressivenessLevel(a);
+    this.reporter.emit({ kind: "status", message: `[GenClass] Aggressiveness set to ${this._aggr}.` });
+    this.fire("status", this.status);
   }
 
   get mode(): Mode {

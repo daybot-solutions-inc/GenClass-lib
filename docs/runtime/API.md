@@ -61,6 +61,7 @@ interface InitOptions {
   historySize?: number;                                 // events kept, default 500
   debug?: boolean;                                      // console.debug every decision
   learn?: { persist?: boolean };                        // keep transition profiles in localStorage
+  aggressiveness?: "cautious" | "balanced" | "eager" | number; // how eagerly to act (default "balanced"; see Policy)
   vocabulary?: { diagnoses?: Record<string, string>; actions?: Record<string, string> };
   settleMs?: number;                                    // quiet time that makes a settled point, default 60
   situation?: { budget?: number | "auto" };             // size of what the model reads, in characters (default "auto")
@@ -313,6 +314,13 @@ meta.json, visible as `runtime.status.gate`). Two gate kinds exist:
   probable permitted action a, ĝ(a) = tauGain · ln(p(a) / p(passive)) estimates its gain over the passive action in
   cost units; a runs when ĝ(a) is above its tier's margin (defaults 2 / 2; tauGain default 1). Probabilities are
   clamped to ≥ 1e-6; when the model gives no probability for the passive action, the mass it left over is used.
+Aggressiveness (`InitOptions.aggressiveness`: "cautious" | "balanced" | "eager" | 0–1, default "balanced";
+`runtime.setAggressiveness(x)`; URL `?genclass-aggr=…`) selects the gate: when meta.json has `gate.profiles: {
+cautious, balanced, eager }` (each a gate of either kind, report included), a named level uses its profile and a
+number interpolates thresholds/margins, report and tauGain linearly between the neighbouring profiles (the nearer
+profile's kind when they differ). Without profiles the single gate (or the defaults) is shifted: cautious +0.05 on
+thresholds / +1 on margins, eager −0.05 / −1 (linear in between, clamped). `runtime.aggressiveness`,
+`runtime.status.aggressiveness` and `runtime.gates()` (`aggressiveness`, `level`, `levelSource`) show the level.
 For each trigger kind the effective value is your `policy.thresholds` value when set, read in the active kind
 (probabilities for "mass", margins for "gain"; `report` is always a probability), else the model's value for that
 trigger kind, else its tier default, else the defaults. `runtime.gates(trigger?)` returns the kind, values and where
