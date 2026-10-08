@@ -42,6 +42,19 @@ export class DeciderQueue {
   private since = 0;
   private overdue = false;
   disposed = false;
+  /** model.maxDecisionsPerMinute (OPTIONS-SPEC §4.17): evaluations per sliding minute; Infinity = no limit. */
+  perMinute = Infinity;
+  private evals: number[] = [];
+  private dropped = 0;
+  /** Called (at most once a minute) when an evaluation is dropped by the budget. */
+  onBudget?: (b: { decisionsLastMinute: number; dropped: number }) => void;
+  private budgetWarnedAt = -Infinity;
+
+  budget(): { decisionsLastMinute: number; dropped: number } {
+    const now = this.clock.now();
+    this.evals = this.evals.filter((t) => now - t < 60_000);
+    return { decisionsLastMinute: this.evals.length, dropped: this.dropped };
+  }
 
   constructor(
     private readonly clock: Clock,
@@ -138,6 +151,24 @@ export class DeciderQueue {
       if (hit && now - hit.t <= CACHE_TTL) {
         item.resolve({ answers: hit.answers, latencyMs: 0, waitMs: now - item.t0, cached: true });
         continue;
+      }
+      if (Number.isFinite(this.perMinute)) {
+        this.evals = this.evals.filter((t) => now - t < 60_000);
+        if (this.evals.length >= this.perMinute) {
+          // over the budget: fail open now (held subjects are released unchanged, background ones dropped)
+          this.dropped++;
+          item.resolve(null);
+          if (now - this.budgetWarnedAt >= 60_000) {
+            this.budgetWarnedAt = now;
+            try {
+              this.onBudget?.({ decisionsLastMinute: this.evals.length, dropped: this.dropped });
+            } catch {
+              /* ignore */
+            }
+          }
+          continue;
+        }
+        this.evals.push(now);
       }
       this.dispatch(p, item, key, now);
     }

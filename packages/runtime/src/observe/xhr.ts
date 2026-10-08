@@ -14,6 +14,7 @@
 
 import type { ActionEffect, Controller, NetHost } from "../decide/exec.js";
 import type { ReqMeta } from "../situation/env.js";
+import type { OpScope } from "../types.js";
 import type { OpRec } from "../trace/ops.js";
 import { opLabel } from "../situation/describe.js";
 import { fnv1a, secs } from "../util.js";
@@ -349,6 +350,24 @@ export function installXHR(host: NetHost): (() => void) | null {
   const wSend = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
     const st = disabled ? undefined : states.get(this);
     if (!st) return send.call(this, body as XMLHttpRequestBodyInit | null | undefined);
+    let scope: OpScope | undefined;
+    if (host.scopeOf) {
+      let abs = st.url;
+      try {
+        abs = new URL(st.url, host.baseHref() ?? "http://localhost/").href;
+      } catch {
+        /* keep raw */
+      }
+      const sc = host.scopeOf({ url: abs, method: st.method.toUpperCase(), channel: "xhr", headers: Object.fromEntries(st.headers) });
+      if (sc === "ignore") {
+        // requests.ignore: pass-through, no op
+        st.op = undefined;
+        st.req = undefined;
+        st.dlv = "open";
+        return send.call(this, body as XMLHttpRequestBodyInit | null | undefined);
+      }
+      scope = sc;
+    }
     const b = bodyInfo(body, host);
     if (b.key === undefined) b.key = host.uniqueId(); // a Blob body: not read for XHR identities
     const hdr = [...st.headers].filter(([k]) => !VOLATILE.test(k)).sort(([a], [x]) => (a < x ? -1 : a > x ? 1 : 0));
@@ -356,7 +375,7 @@ export function installXHR(host: NetHost): (() => void) | null {
     parsed.meta.transport = "xhr";
     if (st.headers.size) parsed.meta.headers = [...st.headers.keys()];
     const req = parsed.meta;
-    const op = host.startOp("xhr", req.signature, { detail: parsed.detail, identity: req.identity, method: req.method, url: req.url });
+    const op = host.startOp("xhr", req.signature, { detail: parsed.detail, identity: req.identity, method: req.method, url: req.url, ...(scope ? { scope } : {}) });
     st.op = op;
     st.req = req;
     st.failed = undefined;

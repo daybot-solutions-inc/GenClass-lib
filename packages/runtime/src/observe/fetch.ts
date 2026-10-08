@@ -12,6 +12,7 @@
 // Whatever an action does, the app's promise always settles: a failed action falls back to sending.
 
 import type { NetHost, Controller, ActionEffect } from "../decide/exec.js";
+import type { OpScope } from "../types.js";
 import type { ReqMeta, FailureInfo } from "../situation/env.js";
 import type { OpRec } from "../trace/ops.js";
 import { opLabel } from "../situation/describe.js";
@@ -335,6 +336,26 @@ export function installFetch(host: NetHost): (() => void) | null {
     } catch {
       return nativeFetch(input, init);
     }
+    // requests.ignore / crossOrigin "ignore": pass-through before anything else (no op, no added microtask)
+    let scope: OpScope | undefined;
+    if (host.scopeOf) {
+      let abs = rawUrl;
+      try {
+        abs = new URL(rawUrl, host.baseHref() ?? "http://localhost/").href;
+      } catch {
+        /* keep raw */
+      }
+      const hm = new Map<string, string>();
+      try {
+        if (isRequestLike(input)) headerPairs(input.headers, hm);
+        if (init && "headers" in init) headerPairs(init.headers, hm);
+      } catch {
+        /* ignore */
+      }
+      const sc = host.scopeOf({ url: abs, method: method.toUpperCase(), channel: "fetch", headers: Object.fromEntries(hm) });
+      if (sc === "ignore") return nativeFetch(input, init);
+      scope = sc;
+    }
     let parsed: ParsedRequest;
     let template: Request | null = null;
     try {
@@ -372,7 +393,7 @@ export function installFetch(host: NetHost): (() => void) | null {
       return nativeFetch(input, init);
     }
     const req = parsed.meta;
-    const op = host.startOp("fetch", req.signature, { detail: parsed.detail, method: req.method, url: req.url, ...(req.identity ? { identity: req.identity } : {}) });
+    const op = host.startOp("fetch", req.signature, { detail: parsed.detail, method: req.method, url: req.url, ...(req.identity ? { identity: req.identity } : {}), ...(scope ? { scope } : {}) });
     return runRequest(op, parsed, input, init, template, !keepalive);
   }
 

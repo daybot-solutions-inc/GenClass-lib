@@ -94,7 +94,7 @@ describe("policy gate (CONTRACT §8)", () => {
     }
     const ds = rt.decisions().filter((d) => d.trigger === "request");
     expect(ds.map((d) => d.executed)).toEqual([true, true, false, false]);
-    expect(ds[2].reason).toMatch(/rate limit/);
+    expect(ds[2].reason).toMatch(/limit:perMinute/);
     expect(rt.interventions().length).toBe(2);
     // the window slides
     await clock.advance(61_000);

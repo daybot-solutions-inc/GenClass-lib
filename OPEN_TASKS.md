@@ -103,6 +103,10 @@ The runtime decides through a trained local model; nothing here is hardcoded per
 
 ## Known risks
 
+- **Query-value redaction in model input** (OPTIONS-SPEC §8.6) is deferred: it changes the model's input, so it needs a new
+  situation tag, regenerated data and retraining. For now only sink evidence redacts URLs. Also `model.inlineFallback: false`
+  is passed through but the model host doesn't read it yet.
+
 - **Stall detection for requests with no latency history** (realapps wave 4): a hung non-GET request with no
   baseline produced zero decisions, because `stall` needs at least 5 latency samples. Consider a generic
   no-baseline fallback (e.g. a long absolute timeout) as an additional trigger condition. This is not a format change.

@@ -65,8 +65,48 @@ interface InitOptions {
   vocabulary?: { diagnoses?: Record<string, string>; actions?: Record<string, string> };
   settleMs?: number;                                    // quiet time that makes a settled point, default 60
   situation?: { budget?: number | "auto" };             // size of what the model reads, in characters (default "auto")
+
+  // batch 12 (docs/runtime/OPTIONS-SPEC.md); defaults in brackets
+  enabled?: boolean | (() => boolean | Promise<boolean>) | { get(): boolean | Promise<boolean>; subscribe?(cb: () => void): () => void };
+                                                        // [true]; false: nothing installed, model never downloaded; a predicate/source forces preload "lazy"
+  sample?: number;                                      // [1] fraction of sessions that act (stable per session); the rest observe
+  routes?: { match: string | RegExp | ((route: string) => boolean); mode?: Mode | "off"; aggressiveness?: Aggressiveness }[];
+                                                        // first match wins; demote only
+  requests?: {
+    ignore?: RequestMatcher[];                          // not observed at all (native pass-through)
+    protect?: RequestMatcher[];                         // observed, never held/retried/cached/discarded; a throwing predicate = protected
+    crossOrigin?: "observe" | "ignore";                 // ["observe"]; cross-origin is always passive
+    labels?: { match: RequestMatcher; label: string }[];// names for reports/sinks ([A-Za-z0-9 _-], ≤ 5 words, ≤ 40 chars)
+    labelsToModel?: boolean;                            // [false] labels appear in situation text only when true
+    correlate?: (r: { url: string; method: string; headers: Record<string, string> }) => string | undefined; // redacted, ≤ 128 chars
+  };
+  breaker?: { undos?: number; errorsAfterAction?: number; attributionMs?: number; windowMs?: number; downgradeTo?: "observe" | "guard"; persist?: "session" | false } | false;
+                                                        // [{2, 3, 5000, 600000, "observe", "session"}]
+  shadow?: "guard" | "heal" | false;                    // [false] dry-run gate at a higher mode; Decision.shadow, "shadow" event
+  onBeforeAction?: (a: ActionRequest) => boolean | void;// final sync veto (false or throw); counts against the hold budget
+  vetoMode?: "enforce" | "report";                      // ["enforce"]; "report" records would-veto and runs the action
+  sinks?: (SinkFn | { send: SinkFn; kinds?: SinkKind[]; sampleRate?: number; evidence?: boolean; flush?(): Promise<void> })[];
+  session?: { id?: string; tags?: Record<string, string | number | boolean> }; // never shown to the model
+  redact?: (path: string, value: unknown, kind?: "state" | "url" | "header" | "input") => unknown; // runs after built-in redaction; a throw → "[redacted]"
+  report?: "console" | "interventions" | "silent" | ((r: Report) => void);    // "interventions": console prints interventions, undos, breaker only
+  learn?: { persist?: boolean | "local" | "session"; key?: string; version?: string }; // version defaults to session.tags.release; mismatch discards
+  // model: also loadIf [{ saveData: "lazy" }], inlineFallback [true], threads ["auto"], timeoutMs [10000],
+  //        maxDecisionsPerMinute [30], unloadAfterIdleMs [false]
 }
 ```
+
+Runtime additions: `rt.disable({ undo? })` (permanent; `undo: true` rolls back the last minute's actions),
+`rt.summary(): SessionSummary`, `rt.setSession({ id?, tags? })`, `rt.breaker.{tripped, reset()}`, `rt.learn.clear()`,
+events `shadow`, `breaker`, `limit`, `modelBudget`. `status` adds `effectiveMode`, `sampled`, `breaker`, `scope`,
+`modelBudget`, and states `"disabled" | "skipped" | "unloaded"`.
+
+Gate order (each request/decision): protected → cross-origin → op scope (created under off/observe) →
+mode/allow/deny/requireDiagnosis (at the effective mode) → thresholds → `policy.actionLimits`
+(`limit:perMinute|perSubject|perSession`; defaults 60/5/200) → `onBeforeAction` (`vetoed`, `would-veto`, or
+`limit:hold` past the budget) → execute. effectiveMode = min(mode, sample cap, breaker cap, route rule); URL overrides
+(`?genclass`, `?genclass-mode`, `?genclass-aggr`, `?genclass-sample`) only demote unless `debug: true`.
+`policy.holdBudgetMs` is a hard ceiling that includes defers and the veto hook. Hidden tabs skip background
+evaluation and release held items unevaluated.
 
 Performance: GenClass computes cheap facts for every write and request, and asks the model only about salient ones.
 The situation the model reads is sized to the device (`situation.budget: "auto"`): 2,400 characters (about 1,000

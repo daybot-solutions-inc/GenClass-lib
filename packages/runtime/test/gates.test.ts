@@ -241,6 +241,9 @@ describe("aggressiveness (batch 11)", () => {
     expect(s.rt.status.aggressiveness).toBe(1);
     expect(s.rt.gates().guard).toBeCloseTo(0.85, 9);
     const u = setup({ aggressiveness: "cautious", extraGlobal: { location: { href: "http://app.test/?genclass-aggr=eager", pathname: "/", search: "?genclass-aggr=eager" } } });
-    expect(u.rt.aggressiveness).toBe(1);
+    // URL overrides only demote (OPTIONS-SPEC §3), unless debug
+    expect(u.rt.aggressiveness).toBe(0);
+    const d = setup({ aggressiveness: "cautious", debug: true, extraGlobal: { location: { href: "http://app.test/?genclass-aggr=eager", pathname: "/", search: "?genclass-aggr=eager" } } });
+    expect(d.rt.aggressiveness).toBe(1);
   });
 });

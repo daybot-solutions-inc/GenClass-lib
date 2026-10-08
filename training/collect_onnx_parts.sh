@@ -22,3 +22,5 @@ done
 IP=$(hostname -I | awk '{print $1}')
 ss -ltn | grep -q ':8808 ' || (setsid nohup python3 -m http.server 8808 --bind "$IP" --directory /home/azureuser/gcl-train/out/records/parts > /tmp/x8808.log 2>&1 < /dev/null &)
 touch out/.oparts-done-$MQ-$I
+SETTAG=$(echo "$SETS" | tr ' :' '_-')
+touch out/records/parts/${MQ}__done__${SETTAG}.$I  # served: the gathering node polls it

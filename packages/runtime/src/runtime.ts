@@ -41,7 +41,19 @@ import type {
   Vocabulary,
   EffectiveGates,
   Aggressiveness,
+  ActionRequest,
+  ModeOrOff,
+  OpScope,
+  RouteRule,
+  RequestScope,
+  SessionSummary,
+  SinkRecord,
+  SinkKind,
+  EnabledSource,
 } from "./types.js";
+import { Breaker, breakerConfig } from "./decide/breaker.js";
+import { SinkDispatcher, SummaryTracker } from "./decide/summary.js";
+import { compileMatchers, compileValued, hash32, routeMatches, sanitizeLabel, type CompiledMatcher, type MatchInput } from "./util/match.js";
 import { browserClock } from "./clock.js";
 import { GenClassUnavailableError } from "./errors.js";
 import { EventLog } from "./trace/events.js";
@@ -108,6 +120,36 @@ interface ExplainRec {
 
 type Listeners = { [K in keyof RuntimeEvents]: Set<(v: RuntimeEvents[K]) => void> };
 
+const MODE_RANK: Record<ModeOrOff, number> = { off: 0, observe: 1, guard: 2, heal: 3 };
+function minMode(a: ModeOrOff, b: ModeOrOff): ModeOrOff {
+  return MODE_RANK[a] <= MODE_RANK[b] ? a : b;
+}
+/** Actions this recent can still be rolled back by rt.disable({ undo: true }). */
+const UNDO_WINDOW_MS = 60_000;
+
+/** Query and fragment values of URLs in free text → "…" (sink evidence, OPTIONS-SPEC §4.10). */
+export function redactUrlText(t: string): string {
+  return String(t).replace(/([?&#][^=&#\s"]+)=([^&#\s"]*)/g, (_m, k: string) => `${k}=…`);
+}
+
+/** The op a decision's subject is about (its trigger op, a write's cause, an error's ambient op). */
+function subjectOpOf(spec: SubjectSpec): OpRec | null {
+  switch (spec.trigger) {
+    case "mutation":
+      return spec.m.cause ?? null;
+    case "request":
+    case "failure":
+    case "stall":
+    case "delivery":
+    case "transition":
+      return spec.op;
+    case "error":
+      return spec.op ?? null;
+    default:
+      return null;
+  }
+}
+
 export interface RuntimeInternals {
   readonly hub: StoreHub;
   readonly ops: OpRegistry;
@@ -153,7 +195,44 @@ export class RuntimeImpl implements Runtime {
   private decider: DecisionProvider | null;
   private _ready: Promise<void> | null = null;
   private readonly ownsDecider: boolean;
-  private listeners: Listeners = { detect: new Set(), decide: new Set(), act: new Set(), event: new Set(), status: new Set(), report: new Set() };
+  private listeners: Listeners = {
+    detect: new Set(),
+    decide: new Set(),
+    act: new Set(),
+    event: new Set(),
+    status: new Set(),
+    report: new Set(),
+    shadow: new Set(),
+    breaker: new Set(),
+    limit: new Set(),
+    modelBudget: new Set(),
+  };
+  // ---- configuration extensions (OPTIONS-SPEC)
+  /** "on", "pending" (an async enabled predicate: pass-through), "off" (an EnabledSource flipped off), "disabled". */
+  private enabledState: "on" | "pending" | "off" | "disabled" = "on";
+  private sampled = true;
+  private routes: RouteRule[] = [];
+  private routeScope: { route?: string; rule?: number; mode: ModeOrOff; aggressiveness: number } = { mode: "heal", aggressiveness: 1 };
+  private requestsOpt: RequestScope = {};
+  private mIgnore!: CompiledMatcher<true>;
+  private mProtect!: CompiledMatcher<true>;
+  private mLabels!: CompiledMatcher<string>;
+  private breakerImpl: Breaker | null = null;
+  private shadowMode: "guard" | "heal" | false = false;
+  private onBeforeAction: ((a: ActionRequest) => boolean | void) | undefined;
+  private vetoMode: "enforce" | "report" = "enforce";
+  private hookWarnedAt = -Infinity;
+  private limitWarned = new Map<string, number>();
+  private sinks!: SinkDispatcher;
+  private sum!: SummaryTracker;
+  private sessionId = "";
+  private sessionTags: Record<string, string | number | boolean> = {};
+  /** Held subjects' passive callbacks: released unchanged on disable, breaker trip, hidden tab. */
+  private heldPassives = new Set<() => void>();
+  private learnStore: "local" | "session" | null = null;
+  private learnKey = "genclass:learn";
+  private learnVersion: string | undefined;
+  private reportMode: "console" | "interventions" | "silent" | "fn" = "console";
   private uninstall: (() => void)[] = [];
   private plugins = new Map<Plugin, { cleanup?: () => void }>();
   private customActions: ActionDef[] = [];
@@ -199,7 +278,18 @@ export class RuntimeImpl implements Runtime {
     this.global = (o.global ?? globalThis) as Record<string, unknown>;
     this.events = new EventLog(o.historySize ?? 500);
     this.ctx = new Context(this.clock);
-    this.redactFn = o.redact ?? defaultRedact;
+    // built-in secret-name redaction always runs first; a custom function can only redact further (OPTIONS-SPEC §4.10)
+    const custom = o.redact;
+    this.redactFn = custom
+      ? (path: string, value: unknown, kind?: "state" | "url" | "header" | "input") => {
+          const b = defaultRedact(path, value);
+          try {
+            return custom(path, b, kind);
+          } catch {
+            return "[redacted]";
+          }
+        }
+      : defaultRedact;
     this.hub = new StoreHub(this.clock, this.ctx, this.events, () => this.redactFn);
     this.miner = new InvariantMiner(
       () => this.redactFn,
@@ -209,28 +299,32 @@ export class RuntimeImpl implements Runtime {
     this.policy = policyConfig(o.policy);
     this.hub.holdUserWrites = this.policy.holdUserWrites;
     this.hub.holdWrites = this.policy.holdWrites;
-    this.rate = new RateLimiter(() => this.policy.maxActionsPerMinute);
+    this.rate = new RateLimiter(() => this.policy.actionLimits);
+    this.debug = !!o.debug;
+    // URL overrides only demote, unless debug (OPTIONS-SPEC §3)
+    const url = this.urlParams();
     this._mode = o.mode ?? "guard";
+    const um = url.get("genclass-mode");
+    if (um === "observe" || um === "guard" || um === "heal") if (this.debug || MODE_RANK[um] <= MODE_RANK[this._mode]) this._mode = um;
+    if (o.policy?.maxActionsPerMinute !== undefined && o.policy?.actionLimits?.perMinute !== undefined) this.warn("policy.maxActionsPerMinute is deprecated and ignored when actionLimits.perMinute is set.");
     this.triage = o.triage ?? "salient";
     this.vocab = o.vocabulary;
     this.hooks = o.hooks ?? {};
     this.settleMs = o.settleMs ?? 60;
-    // aggressiveness: the URL override (?genclass-aggr=…) wins over the option
-    let aggr: Aggressiveness | string | undefined = o.aggressiveness;
-    try {
-      const search = (this.global.location as { search?: unknown } | undefined)?.search;
-      if (typeof search === "string" && search) {
-        const v = new URLSearchParams(search).get("genclass-aggr");
-        if (v) aggr = v;
-      }
-    } catch {
-      /* no URL */
+    // aggressiveness: the URL override (?genclass-aggr=…) may only lower it, unless debug
+    this._aggr = aggressivenessLevel(o.aggressiveness);
+    const ua = url.get("genclass-aggr");
+    if (ua) {
+      const v = aggressivenessLevel(ua);
+      if (this.debug || v <= this._aggr) this._aggr = v;
     }
-    this._aggr = aggressivenessLevel(aggr);
     this.budgetOpt = o.situation?.budget ?? "auto";
     this.appFn = o.app;
-    this.debug = !!o.debug;
     this.persist = !!o.learn?.persist;
+    this.learnStore = o.learn?.persist === "session" ? "session" : o.learn?.persist ? "local" : null;
+    if (o.learn?.key) this.learnKey = o.learn.key;
+    const rel = o.session?.tags?.release;
+    this.learnVersion = o.learn?.version ?? (rel !== undefined ? String(rel) : undefined);
     this.decider = o.decider ?? null;
     this.ownsDecider = !!o.ownsDecider;
     this.queue = new DeciderQueue(this.clock, () => this.decider, (e) => {
@@ -238,7 +332,47 @@ export class RuntimeImpl implements Runtime {
       if ((e as { code?: string })?.code === "max_tokens_exceeded") this.budgetScale = Math.max(0.5, this.budgetScale * 0.8);
       this.log("model error", e);
     });
-    this.reporter = new Reporter(o.report ?? "console", this.clock, (id) => this.explain(id), (r) => this.fire("report", r));
+    // model.maxDecisionsPerMinute: default 30 for the built-in model; custom providers only when set
+    const mo = o.model && typeof o.model === "object" ? o.model : undefined;
+    const mdpm = mo?.maxDecisionsPerMinute ?? (mo && o.ownsDecider ? 30 : undefined);
+    if (typeof mdpm === "number" && mdpm > 0) this.queue.perMinute = mdpm;
+    this.queue.onBudget = (b) => {
+      this.sum.s.model.dropped = b.dropped;
+      this.fire("modelBudget", b);
+    };
+    this.reportMode = typeof o.report === "function" ? "fn" : (o.report ?? "console");
+    this.reporter = new Reporter(o.report === "interventions" ? "console" : o.report ?? "console", this.clock, (id) => this.explain(id), (r) => this.fire("report", r));
+    // session, sinks, summary
+    this.sum = new SummaryTracker(this.clock);
+    this.sessionId = typeof o.session?.id === "string" && o.session.id ? o.session.id.slice(0, 128) : this.newSessionId();
+    this.sessionTags = this.cleanTags(o.session?.tags ?? {});
+    this.sinks = new SinkDispatcher(o.sinks, this.clock, this.global, (m) => this.warn(m));
+    // sample: the session's bucket is decided once and frozen (sessionStorage)
+    this.sampled = this.sampleBucket(o.sample, url.get("genclass-sample"));
+    // routes, requests
+    this.routes = Array.isArray(o.routes) ? o.routes : [];
+    this.requestsOpt = o.requests ?? {};
+    this.mIgnore = compileMatchers(this.requestsOpt.ignore as never, "nomatch");
+    this.mProtect = compileMatchers(this.requestsOpt.protect as never, "match");
+    const labels: { match: never; value: string }[] = [];
+    let labelWarned = false;
+    for (const l of this.requestsOpt.labels ?? []) {
+      const { label, changed } = sanitizeLabel(l?.label ?? "");
+      if (changed && !labelWarned) {
+        labelWarned = true;
+        this.warn("requests.labels: labels are names only ([A-Za-z0-9 _-], ≤ 5 words, ≤ 40 chars); other characters were stripped.");
+      }
+      if (label) labels.push({ match: l.match as never, value: label });
+    }
+    this.mLabels = compileValued(labels, "nomatch");
+    // breaker, shadow, veto
+    const bc = breakerConfig(o.breaker);
+    if (bc)
+      this.breakerImpl = new Breaker(bc, this.clock, () => this.storage("session"), (t, counts) => this.onBreakerTrip(t.reason, t.decisionIds, counts));
+    this.shadowMode = o.shadow === "guard" || o.shadow === "heal" ? o.shadow : false;
+    this.onBeforeAction = typeof o.onBeforeAction === "function" ? o.onBeforeAction : undefined;
+    this.vetoMode = o.vetoMode === "report" ? "report" : "enforce";
+    this.computeScope();
     this.env = this.makeEnv();
     this.hub.hooks = {
       gate: (m) => this.gateMutation(m),
@@ -269,15 +403,426 @@ export class RuntimeImpl implements Runtime {
     if (this.decider?.onStatus) {
       const off = this.decider.onStatus((s) => {
         this.fire("status", s);
-        if (s.state === "ready") this.reporter.emit({ kind: "status", message: `[GenClass] Model ready (${[s.model, s.device, s.variant].filter(Boolean).join(", ")}${s.loadMs !== undefined ? `, ${secs(s.loadMs)}` : ""}). Mode: ${this._mode}.` });
-        if (s.state === "error") this.reporter.emit({ kind: "status", message: `[GenClass] Model unavailable (${s.error ?? "error"}); observing only.` });
+        if (s.state === "ready") this.emitReport({ kind: "status", message: `[GenClass] Model ready (${[s.model, s.device, s.variant].filter(Boolean).join(", ")}${s.loadMs !== undefined ? `, ${secs(s.loadMs)}` : ""}). Mode: ${this._mode}.` });
+        if (s.state === "error") this.emitReport({ kind: "status", message: `[GenClass] Model unavailable (${s.error ?? "error"}); observing only.` });
       });
       this.uninstall.push(off);
     }
     if (this.persist) this.loadProfiles();
+    // enabled (OPTIONS-SPEC §4.1): false installs nothing; a predicate, Promise or flag runs pass-through until true
+    const en = o.enabled;
+    if (en === false) {
+      this.enabledState = "disabled";
+      return;
+    }
     this.installObservers(o.observe ?? {});
     for (const p of o.plugins ?? []) this.use(p);
+    if (en !== undefined && en !== true) this.followEnabled(en);
+    const g = this.global as { addEventListener?: (t: string, fn: () => void) => void; removeEventListener?: (t: string, fn: () => void) => void };
+    if (typeof g.addEventListener === "function") {
+      let sent = false;
+      const end = () => {
+        if (sent) return;
+        sent = true;
+        this.emitSummary();
+      };
+      const vis = () => {
+        if (this.hidden()) end();
+      };
+      try {
+        g.addEventListener("pagehide", end);
+        (this.global.document as EventTarget | undefined)?.addEventListener?.("visibilitychange", vis);
+        this.uninstall.push(() => {
+          g.removeEventListener?.("pagehide", end);
+          (this.global.document as EventTarget | undefined)?.removeEventListener?.("visibilitychange", vis);
+        });
+      } catch {
+        /* ignore */
+      }
+    }
   }
+
+  // ------------------------------------------------------------------- configuration extensions (OPTIONS-SPEC)
+
+  private urlParams(): URLSearchParams {
+    try {
+      const search = (this.global.location as { search?: unknown } | undefined)?.search;
+      if (typeof search === "string" && search) return new URLSearchParams(search);
+    } catch {
+      /* no URL */
+    }
+    return new URLSearchParams();
+  }
+
+  private warn(msg: string): void {
+    const con = (this.global.console as Console | undefined) ?? (globalThis as { console?: Console }).console;
+    con?.warn?.(`[GenClass] ${msg}`);
+  }
+
+  private storage(kind: "local" | "session"): Storage | undefined {
+    try {
+      return (kind === "local" ? this.global.localStorage : this.global.sessionStorage) as Storage | undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private newSessionId(): string {
+    try {
+      const c = this.global.crypto as { randomUUID?: () => string } | undefined;
+      if (typeof c?.randomUUID === "function") return c.randomUUID();
+    } catch {
+      /* fall through */
+    }
+    return `s${hash32(`${this.clock.now()}:${String(this.global.location ? (this.global.location as { href?: string }).href : "")}`).toString(36)}`;
+  }
+
+  /** Session tags: redacted by name, ≤ 20 keys, keys and values ≤ 64 chars. */
+  private cleanTags(t: Record<string, string | number | boolean>): Record<string, string | number | boolean> {
+    const out: Record<string, string | number | boolean> = {};
+    for (const [k0, v] of Object.entries(t ?? {})) {
+      if (Object.keys(out).length >= 20) break;
+      if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean") continue;
+      const k = k0.slice(0, 64);
+      const r = this.redactFn(`session.tags.${k}`, v, "state");
+      out[k] = typeof r === "string" ? r.slice(0, 64) : typeof r === "number" || typeof r === "boolean" ? r : "[redacted]";
+    }
+    return out;
+  }
+
+  /** The session's act/observe bucket (OPTIONS-SPEC §4.2): hash(session id) < sample, frozen in sessionStorage. */
+  private sampleBucket(sample: number | undefined, urlSample: string | null): boolean {
+    if (urlSample === "0") return false;
+    if (urlSample === "1" && this.debug) return true;
+    if (sample === undefined) return true;
+    let p = Number(sample);
+    if (!Number.isFinite(p) || p < 0 || p > 1) {
+      this.warn(`sample must be between 0 and 1 (got ${sample}); clamped.`);
+      p = Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : 1;
+    }
+    if (p >= 1) return true;
+    const ss = this.storage("session");
+    try {
+      const saved = ss?.getItem("genclass:bucket");
+      if (saved === "act" || saved === "observe") return saved === "act";
+    } catch {
+      /* deterministic within the page */
+    }
+    const act = hash32(this.sessionId) / 4294967296 < p;
+    try {
+      ss?.setItem("genclass:bucket", act ? "act" : "observe");
+    } catch {
+      /* ignore */
+    }
+    return act;
+  }
+
+  private currentRoute(): string {
+    const loc = this.global.location as { pathname?: string } | undefined;
+    return typeof loc?.pathname === "string" ? loc.pathname : "/";
+  }
+
+  /** Route scope (OPTIONS-SPEC §4.3): the first matching rule, demote only. Recomputed on navigation. */
+  computeScope(): void {
+    const route = this.currentRoute();
+    let mode: ModeOrOff = "heal";
+    let aggr = 1;
+    let rule: number | undefined;
+    for (let i = 0; i < this.routes.length; i++) {
+      const r = this.routes[i];
+      if (!r || !routeMatches(r.match, route)) continue;
+      rule = i;
+      if (r.mode === "off" || r.mode === "observe" || r.mode === "guard" || r.mode === "heal") {
+        if (MODE_RANK[r.mode] > MODE_RANK[this._mode]) {
+          if (!this.routeWarned.has(i)) {
+            this.routeWarned.add(i);
+            this.warn(`routes[${i}] asks for mode ${r.mode} above the global mode ${this._mode}: route rules can only lower it.`);
+          }
+        } else mode = r.mode;
+      }
+      if (r.aggressiveness !== undefined) aggr = aggressivenessLevel(r.aggressiveness);
+      break;
+    }
+    this.routeScope = { route, ...(rule !== undefined ? { rule } : {}), mode, aggressiveness: aggr };
+  }
+  private routeWarned = new Set<number>();
+
+  /** min(global mode, sample cap, breaker cap): the session-wide part of the effective mode. */
+  private sessionMode(): ModeOrOff {
+    if (this.enabledState !== "on") return "off";
+    let m: ModeOrOff = this._mode;
+    if (!this.sampled) m = minMode(m, "observe");
+    if (this.breakerImpl?.tripped) m = minMode(m, this.breakerImpl.cfg.downgradeTo);
+    return m;
+  }
+
+  /** The effective mode for a subject: the session part and the op's snapshotted route scope. */
+  effectiveMode(op?: OpRec | null): ModeOrOff {
+    return minMode(this.sessionMode(), op?.scope?.mode ?? this.routeScope.mode);
+  }
+
+  /** The effective aggressiveness for a subject: min(global, route scope). */
+  private effectiveAggr(op?: OpRec | null): number {
+    return Math.min(this._aggr, op?.scope?.aggressiveness ?? this.routeScope.aggressiveness);
+  }
+
+  /** Scope of a new op (snapshotted). Network ops pass what their observer computed. */
+  private defaultScope(): OpScope {
+    const rs = this.routeScope;
+    return { mode: rs.mode, aggressiveness: rs.aggressiveness, protected: false, crossOrigin: false, ...(rs.route ? { route: rs.route } : {}) };
+  }
+
+  /** A network request's scope, or "ignore" (pass-through, OPTIONS-SPEC §4.4). */
+  scopeOf(r: MatchInput & { headers?: Record<string, string> }): OpScope | "ignore" {
+    const cross = this.isCrossOrigin(r.url);
+    if (cross && this.requestsOpt.crossOrigin === "ignore") return "ignore";
+    if (this.mIgnore.match(r)) return "ignore";
+    const sc = this.defaultScope();
+    sc.crossOrigin = cross;
+    sc.protected = !!this.mProtect.match(r);
+    const label = this.mLabels.match(r);
+    if (label) {
+      sc.label = label;
+      if (this.requestsOpt.labelsToModel === true) sc.labelToModel = true;
+    }
+    if (this.requestsOpt.correlate) {
+      try {
+        const v = this.requestsOpt.correlate({ url: r.url, method: r.method, headers: r.headers ?? {} });
+        if (typeof v === "string" && v) {
+          const red = this.redactFn("correlationId", v, "header");
+          sc.correlationId = String(red).slice(0, 128);
+        }
+      } catch {
+        /* undefined */
+      }
+    }
+    return sc;
+  }
+
+  private isCrossOrigin(url: string): boolean {
+    try {
+      const loc = this.global.location as { href?: string } | undefined;
+      if (!loc?.href) return false;
+      const base = new URL(loc.href);
+      const u = new URL(url, base);
+      if (/^wss?:$/.test(u.protocol)) return u.host !== base.host;
+      return u.origin !== base.origin;
+    } catch {
+      return false;
+    }
+  }
+
+  private hidden(): boolean {
+    try {
+      return (this.global.document as { visibilityState?: string } | undefined)?.visibilityState === "hidden";
+    } catch {
+      return false;
+    }
+  }
+
+  /** Release every held subject unchanged (disable, breaker trip, hidden tab). */
+  private releaseHolds(): void {
+    for (const p of [...this.heldPassives]) {
+      try {
+        p();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.heldPassives.clear();
+    for (const s of this.hub.stores.values()) if (s.queue.length) this.hub.flushQueue(s);
+  }
+
+  private followEnabled(en: Exclude<NonNullable<CreateOptions["enabled"]>, boolean>): void {
+    const set = (on: boolean) => {
+      if (this.destroyed || this.enabledState === "disabled") return;
+      if (on) {
+        this.enabledState = "on";
+        this.fire("status", this.status);
+        return;
+      }
+      this.enabledState = "off";
+      this.releaseHolds();
+      this.fire("status", this.status);
+    };
+    if (typeof en === "function") {
+      this.enabledState = "pending";
+      let r: boolean | Promise<boolean>;
+      try {
+        r = en();
+      } catch (e) {
+        this.warn(`enabled() threw (${(e as Error)?.message ?? e}); GenClass stays disabled.`);
+        this.enabledState = "off";
+        return;
+      }
+      if (r && typeof (r as Promise<boolean>).then === "function")
+        (r as Promise<boolean>).then(
+          (v) => set(!!v),
+          (e) => {
+            this.warn(`enabled() rejected (${(e as Error)?.message ?? e}); GenClass stays disabled.`);
+            set(false);
+          },
+        );
+      else set(!!r);
+      return;
+    }
+    const src = en as EnabledSource;
+    try {
+      set(!!src.get());
+      const off = src.subscribe((v) => set(!!v));
+      if (typeof off === "function") this.uninstall.push(off);
+    } catch (e) {
+      this.warn(`enabled source failed (${(e as Error)?.message ?? e}); GenClass stays disabled.`);
+      this.enabledState = "off";
+    }
+  }
+
+  private onBreakerTrip(reason: "undos" | "errors", ids: string[], counts: { undos: number; errors: number }): void {
+    this.releaseHolds();
+    this.fire("breaker", { tripped: true, reason, decisionIds: ids, counts });
+    const msg = `[GenClass] Circuit breaker tripped (${reason}: ${counts.undos} undos, ${counts.errors} errors after actions); mode capped at ${this.breakerImpl?.cfg.downgradeTo}. rt.breaker.reset() clears it.`;
+    this.warn(msg.replace(/^\[GenClass\] /, ""));
+    this.emitReport({ kind: "breaker", message: msg });
+    this.fire("status", this.status);
+  }
+
+  /** Subject keys an action or an error is attributed to (breaker, perSubject limits): op signatures and stores. */
+  private subjectKeys(spec: SubjectSpec): string[] {
+    const keys: string[] = [];
+    const op = subjectOpOf(spec);
+    if (op) keys.push(op.name);
+    if (spec.trigger === "mutation") keys.push(`store:${spec.m.store}`);
+    return keys;
+  }
+
+  /** Every report goes through here: decorated (mode, session, labels), printed, counted and sent to sinks. */
+  private emitReport(r: Report, op?: OpRec | null): void {
+    const sub = op ?? (r.decision ? this.opOfDecision(r.decision) : null);
+    const out: Report = { ...r, mode: r.decision?.effectiveMode ?? this.effectiveMode(sub), session: { id: this.sessionId, tags: { ...this.sessionTags } } };
+    if (sub?.scope?.correlationId) out.correlationId = sub.scope.correlationId;
+    if (sub?.scope?.label) out.label = sub.scope.label;
+    if (this.reportMode === "interventions" && !(r.kind === "intervene" || r.kind === "undo" || r.kind === "breaker" || r.kind === "error")) this.fire("report", out);
+    else this.reporter.emit(out);
+    if (r.kind === "detect" && r.decision) this.sum.inc(this.sum.s.detections, r.decision.diagnosis);
+    if (r.kind === "intervene" && r.action) {
+      this.sum.inc(this.sum.s.interventions, r.action.action);
+      if (r.action.late) this.sum.s.lateReverts++;
+    }
+    if (r.kind === "undo") this.sum.s.undos++;
+    if (r.kind === "error") this.sum.s.errors++;
+    const kind: SinkKind | null = r.kind === "detect" ? "detection" : r.kind === "intervene" ? "intervention" : r.kind === "status" ? null : r.kind;
+    if (kind) this.sinks.push(this.toSinkRecord(kind, out, sub));
+  }
+
+  private opOfDecision(d: Decision): OpRec | null {
+    const id = d.subjectRef?.op ?? d.subjectRef?.cause;
+    return typeof id === "number" ? this.ops.get(id) ?? null : null;
+  }
+
+  private toSinkRecord(kind: SinkKind, r: Report, op: OpRec | null | undefined): SinkRecord {
+    const d = r.decision;
+    const a = r.action;
+    const rec: SinkRecord = { schema: 1, kind, id: this.sinks.nextId(), ts: this.clock.now(), sessionId: this.sessionId, tags: { ...this.sessionTags }, mode: r.mode ?? this.sessionMode(), sampled: this.sampled };
+    if (r.correlationId) rec.correlationId = r.correlationId;
+    if (r.label) rec.label = r.label;
+    if (d) {
+      rec.diagnosis = d.diagnosis;
+      rec.p = d.confidence;
+      rec.trigger = d.trigger;
+      if (d.reason) rec.reason = d.reason;
+      if (d.shadow) rec.shadow = { ...d.shadow };
+    }
+    if (a) {
+      rec.action = a.action;
+      rec.tier = a.tier;
+      const paths = a.dropped ?? (d?.subjectRef?.paths ?? []);
+      if (paths.length) rec.changed = [...paths];
+    }
+    if (kind === "undo") rec.undone = true;
+    if (this.sinks.wantsEvidence()) {
+      const ex = a ? this.explain(a.id) : d ? this.explain(d.id) : null;
+      rec.evidence = {
+        message: redactUrlText(r.message),
+        ...(d ? { trigger: d.trigger, subject: redactUrlText(d.subject) } : {}),
+        ...(ex ? { timeline: ex.timeline.map(redactUrlText) } : {}),
+      };
+    }
+    void op;
+    return rec;
+  }
+
+  private emitSummary(): void {
+    const summary = this.summary();
+    this.sinks.push({ schema: 1, kind: "summary", id: this.sinks.nextId(), ts: this.clock.now(), sessionId: this.sessionId, tags: { ...this.sessionTags }, mode: this.sessionMode(), sampled: this.sampled, summary });
+    void this.sinks.flush();
+  }
+
+  summary(): SessionSummary {
+    const s = this.sum.snapshot(this.decider?.status.state ?? "off");
+    s.model.dropped = this.queue.budget().dropped;
+    return s;
+  }
+
+  setSession(p: { id?: string; tags?: Record<string, string | number | boolean> }): void {
+    if (typeof p?.id === "string" && p.id) this.sessionId = p.id.slice(0, 128);
+    if (p?.tags) this.sessionTags = this.cleanTags({ ...this.sessionTags, ...p.tags });
+  }
+
+  get breaker(): { reset(): void; readonly tripped: boolean } {
+    const b = this.breakerImpl;
+    return {
+      reset: () => {
+        if (!b) return;
+        const was = !!b.tripped;
+        b.reset();
+        if (was) {
+          this.fire("breaker", { tripped: false, reason: "reset", decisionIds: [], counts: { undos: 0, errors: 0 } });
+          this.fire("status", this.status);
+        }
+      },
+      get tripped() {
+        return !!b?.tripped;
+      },
+    };
+  }
+
+  get learn(): { clear(): void } {
+    return {
+      clear: () => {
+        this.profiles.bySig.clear();
+        for (const k of ["local", "session"] as const) {
+          try {
+            this.storage(k)?.removeItem(this.learnKey);
+          } catch {
+            /* ignore */
+          }
+        }
+      },
+    };
+  }
+
+  /** Turn GenClass off for this page (OPTIONS-SPEC §4.1). `undo: true` rolls back actions still in their undo window. */
+  disable(o: { undo?: boolean } = {}): void {
+    if (this.enabledState === "disabled" && this.destroyed) return;
+    if (o.undo) {
+      const now = this.clock.now();
+      for (const a of [...this.actionsBuf].reverse()) {
+        if (!a.undo || now - a.at > UNDO_WINDOW_MS) continue;
+        this.internalUndo = true;
+        try {
+          a.undo();
+        } catch {
+          /* ignore */
+        } finally {
+          this.internalUndo = false;
+        }
+      }
+    }
+    this.releaseHolds();
+    this.enabledState = "disabled";
+    this.destroy();
+  }
+  private internalUndo = false;
 
   // ------------------------------------------------------------------------------------------ observers
 
@@ -320,7 +865,13 @@ export class RuntimeImpl implements Runtime {
         }),
       );
     if (on("errors")) tryAdd("errors", () => installErrors(g, this));
-    if (on("nav")) tryAdd("nav", () => installNav(g, this, (route) => this.events.push(this.clock.now(), "nav", route, { data: { route } })));
+    if (on("nav"))
+      tryAdd("nav", () =>
+        installNav(g, this, (route) => {
+          this.events.push(this.clock.now(), "nav", route, { data: { route } });
+          this.computeScope();
+        }),
+      );
     if (on("storage")) tryAdd("storage", () => installStorage(g, (area, op, key) => this.onStorage(area, op, key)));
     if (on("perf")) tryAdd("perf", () => installPerf(g, (name, duration) => this.events.push(this.clock.now(), "perf", name, { data: { duration } })));
   }
@@ -338,7 +889,8 @@ export class RuntimeImpl implements Runtime {
       },
       startOp: (kind, name, o) => this.startOp(kind, name, o),
       endOp: (op, status, o) => this.endOp(op, status, o),
-      gated: (op) => !this.paused && !this.destroyed && !op.genclass,
+      gated: (op) => !this.paused && !this.destroyed && !op.genclass && this.enabledState === "on" && op.scope?.mode !== "off",
+      scopeOf: (r) => this.scopeOf(r),
       trigger: (spec, ctl, opts) => this.trigger(spec, ctl, opts),
       watchStall: (op, req, ctl) => this.watchStall(op, req, ctl),
       failureStreak: (sig) => this.base.stats(sig)?.failStreak ?? 0,
@@ -367,6 +919,7 @@ export class RuntimeImpl implements Runtime {
     return {
       global: this.global,
       ctx: this.ctx,
+      scopeOf: (r: MatchInput) => this.scopeOf(r),
       redact: () => this.redactFn,
       baseHref: () => (this.global.location as { href?: string } | undefined)?.href,
       startOp: (name: string, o: Omit<StartOpts, "startSeq" | "t">) => this.startOp("ws", name, o),
@@ -390,6 +943,7 @@ export class RuntimeImpl implements Runtime {
     const t = this.clock.now();
     const cause = o.cause !== undefined ? o.cause : this.ctx.op();
     const op = this.ops.start(kind, name, { ...o, cause, startSeq: this.hub.seq, t });
+    op.scope = o.scope ?? this.defaultScope();
     // instant user / ws-message / GenClass ops have their own events (user, custom, action)
     if (!op.instant || kind === "timer" || kind === "task") {
       const data: Record<string, unknown> = { kind };
@@ -427,6 +981,8 @@ export class RuntimeImpl implements Runtime {
       const outcome = status === "aborted" ? "aborted" : o.code !== undefined ? String(o.code) : status;
       const ok = status === "ok" && (typeof o.code !== "number" || o.code < 400);
       this.base.end(op.name, t, t - op.start, ok, outcome, !!o.failure);
+      // breaker: a failed request (≥ 500 or a network error) on a recently acted-on subject
+      if (o.failure && (typeof o.code !== "number" || o.code >= 500)) this.breakerImpl?.error([op.name]);
       if (status !== "aborted") {
         this.outcomesBuf.push({ t, sig: op.name, host: hostOfSig(op.name), ok: !o.failure, outcome });
         while (this.outcomesBuf.length > 128 || (this.outcomesBuf.length && t - this.outcomesBuf[0].t > 30_000)) this.outcomesBuf.shift();
@@ -504,7 +1060,7 @@ export class RuntimeImpl implements Runtime {
 
   /** Whether triggers should even be built: a provider exists and could answer now or lazily. */
   private consultable(): boolean {
-    if (this.paused || this.destroyed || !this.decider) return false;
+    if (this.paused || this.destroyed || !this.decider || this.enabledState !== "on") return false;
     const st = this.decider.status.state;
     return st === "ready" || st === "off";
   }
@@ -521,6 +1077,15 @@ export class RuntimeImpl implements Runtime {
       }
     };
     if (!this.consultable()) return passive();
+    const subjectOp = subjectOpOf(spec);
+    const effMode = this.effectiveMode(subjectOp);
+    // a route scope "off": ops there are recorded, never decided
+    if (effMode === "off") return passive();
+    // hidden tab: held subjects are released at once, background situations are not evaluated (OPTIONS-SPEC §5.1)
+    if (this.hidden() && spec.trigger !== "ask") {
+      if (!opts.hold) this.sum.s.model.hiddenSkipped++;
+      return passive();
+    }
     let built: BuiltSituation;
     try {
       // cheap first pass: facts only; the full situation is built only when it will be used
@@ -540,17 +1105,30 @@ export class RuntimeImpl implements Runtime {
       void this.ready;
       return passive();
     }
+    // gate steps 1–3: protected, cross-origin or off/observe-scoped subjects are never acted on (nor held)
+    const block = this.blockOf(subjectOp);
+    if (block) {
+      const no: Record<string, string> = { ...(built.situation.notOffered ?? {}) };
+      for (const a of built.actions) if (a.tier !== "passive") no[a.name] = block;
+      built.situation.notOffered = no;
+    }
     // Never hold when no non-passive action is permitted for this trigger in this mode (and policy): the subject
     // proceeds at once and the decision is still made in the background, for detection.
-    const permitted = permittedActions(this.policy, this._mode, built.actions);
+    const permitted = block ? [] : permittedActions(this.policy, effMode as Mode, built.actions);
+    // holdBudgetMs is a hard ceiling on a subject's total added latency, deferred re-decisions included
+    const t0 = this.clock.now();
+    const budget = Math.min(this.holdBudgetMs(), opts.heldSince !== undefined ? this.holdBudgetMs() - (t0 - opts.heldSince) : Infinity);
+    if (opts.hold && opts.heldSince !== undefined && budget <= 0) {
+      this.sum.inc(this.sum.s.denied, "limit:hold");
+      return passive();
+    }
     // Never hold when nothing could be done, or when the model is not expected to answer within the hold budget
     // (decide in the background instead: detection, late revert)
-    const waits = opts.hold && permitted.length > 0 && !this.paused && this.expectedLatency() <= this.holdBudgetMs();
+    const waits = opts.hold && permitted.length > 0 && !this.paused && this.expectedLatency() <= budget;
     if (!waits) passive();
+    else this.heldPassives.add(passive);
     let expired = false;
     let budgetTimer: unknown = null;
-    const t0 = this.clock.now();
-    const budget = this.holdBudgetMs();
     if (waits) {
       budgetTimer = this.clock.setTimeout(() => {
         expired = true;
@@ -576,9 +1154,12 @@ export class RuntimeImpl implements Runtime {
       )
       .then((res) => {
         if (budgetTimer !== null) this.clock.clearTimeout(budgetTimer);
+        this.heldPassives.delete(passive);
+        if (waits) this.sum.held(this.clock.now() - (opts.heldSince ?? t0));
         if (this.destroyed) return passive();
         if (!res) return passive();
-        this.onDecision(built, res.answers, this.clock.now() - t0, ctl, passive, { waits, expired, passiveRan: () => passiveRan, hold: opts.hold });
+        this.sum.decision(res.latencyMs);
+        this.onDecision(built, res.answers, this.clock.now() - t0, ctl, passive, { waits, expired, passiveRan: () => passiveRan, hold: opts.hold, budget, block, subjectOp });
       })
       .catch((e) => {
         this.log("decision failed", e);
@@ -592,9 +1173,12 @@ export class RuntimeImpl implements Runtime {
     latencyMs: number,
     ctl: Controller,
     passive: () => void,
-    st: { waits: boolean; expired: boolean; passiveRan: () => boolean; hold: boolean },
+    st: { waits: boolean; expired: boolean; passiveRan: () => boolean; hold: boolean; budget?: number; block?: "protected" | "cross-origin" | "scope" | null; subjectOp?: OpRec | null },
   ): void {
     const trigger = built.spec.trigger;
+    const subjectOp = st.subjectOp ?? subjectOpOf(built.spec);
+    const effMode = this.effectiveMode(subjectOp);
+    const subjectKey = this.subjectKeys(built.spec)[0];
     const passiveName = PASSIVE[trigger];
     const act = answers.action as ChoiceAnswer | undefined;
     const dg = answers.diagnosis as ChoiceAnswer | undefined;
@@ -605,19 +1189,35 @@ export class RuntimeImpl implements Runtime {
     const diagnosisConfidence = diagnosisProbabilities[diagnosis] ?? dg?.confidence ?? 0;
     const now = this.clock.now();
     const offered = built.actions.map((a) => ({ name: a.name, tier: a.tier }));
-    const gates = this.gates(trigger);
-    const g = gate(this.policy, this.rate, {
+    const gates = this.gatesAt(trigger, this.effectiveAggr(subjectOp));
+    const gin = {
       actions: offered,
       probabilities,
       top,
       diagnosis,
-      mode: this._mode,
+      mode: (effMode === "off" ? "observe" : effMode) as Mode,
       paused: this.paused,
       now,
       thresholds: { guard: gates.guard, heal: gates.heal },
       kind: gates.kind,
       ...(gates.tauGain !== undefined ? { tauGain: gates.tauGain } : {}),
-    });
+      ...(st.block ? { block: st.block } : {}),
+      ...(subjectKey !== undefined ? { subject: subjectKey } : {}),
+    };
+    const g = gate(this.policy, this.rate, gin);
+    // shadow (OPTIONS-SPEC §4.6): the same answer through gate steps 1–6 at a higher mode, dry run
+    let shadow: Decision["shadow"];
+    if (this.shadowMode && MODE_RANK[this.shadowMode] > MODE_RANK[effMode]) {
+      const scopeBlock = subjectOp?.scope && (subjectOp.scope.mode === "off" || subjectOp.scope.mode === "observe") ? "scope" : null;
+      const sg = gate(this.policy, this.rate, { ...gin, mode: this.shadowMode, ...(st.block ?? scopeBlock ? { block: (st.block ?? scopeBlock)! } : {}) });
+      const sa = sg.candidate ?? top;
+      const stier = built.actions.find((a) => a.name === sa)?.tier ?? "passive";
+      if (stier !== "passive" || sg.run) {
+        shadow = { action: sa, tier: stier, wouldPass: !!sg.run, ...(sg.reason ? { reason: sg.reason } : {}) };
+        this.sum.inc(this.sum.s.shadow, sg.run ? `would-${sa}` : `blocked:${sg.reason ?? "gate"}`);
+      }
+    }
+    if (g.limitKind) this.onLimit(g.limitKind, subjectKey ?? built.situation.subject);
     let reason: string | null = g.reason;
     let run: string | null = g.run;
     let late = false;
@@ -641,15 +1241,47 @@ export class RuntimeImpl implements Runtime {
         run = null;
       }
     }
-    if (reason?.startsWith("rate limit") && now - this.rateWarnedAt > 60_000) {
+    if (reason?.startsWith("limit:perMinute") && now - this.rateWarnedAt > 60_000) {
       this.rateWarnedAt = now;
-      this.reporter.emit({ kind: "status", message: `[GenClass] Rate limit reached (${this.policy.maxActionsPerMinute} actions/minute): running passive actions until it clears.` });
+      this.emitReport({ kind: "status", message: `[GenClass] Rate limit reached (${this.policy.actionLimits.perMinute} actions/minute): running passive actions until it clears.` });
     }
+    const decisionId = `d${++this.nextDecision}`;
+    // onBeforeAction (OPTIONS-SPEC §4.7): the app's synchronous last veto; its time counts against the hold budget
+    if (run && this.onBeforeAction) {
+      const rtier = (built.actions.find((a) => a.name === run)?.tier ?? "guard") as "guard" | "heal";
+      const req: ActionRequest = { action: run, tier: rtier, trigger, subject: built.situation.subject, diagnosis, p: probabilities[run] ?? 0, decisionId };
+      if (subjectOp?.scope?.route) req.route = subjectOp.scope.route;
+      if (subjectOp?.scope?.label) req.label = subjectOp.scope.label;
+      const h0 = this.clock.now();
+      let veto = false;
+      try {
+        const r = this.onBeforeAction(req);
+        if (r === false) veto = true;
+        else if (r !== true && r !== undefined) this.warnOnce("hook-return", "onBeforeAction must return true, false or undefined synchronously; the action proceeds.");
+      } catch (e) {
+        veto = true;
+        this.warn(`onBeforeAction threw (${(e as Error)?.message ?? e}); the action is vetoed.`);
+      }
+      const hookMs = this.clock.now() - h0;
+      if (hookMs > 5 && this.clock.now() - this.hookWarnedAt > 60_000) {
+        this.hookWarnedAt = this.clock.now();
+        this.warn(`onBeforeAction took ${hookMs} ms (keep it under 5 ms: it adds latency to held requests).`);
+      }
+      if (veto && this.vetoMode === "enforce") {
+        run = null;
+        reason = "vetoed";
+      } else if (veto) reason = "would-veto";
+      if (run && st.waits && !late && st.budget !== undefined && latencyMs + hookMs > st.budget) {
+        run = null;
+        reason = "limit:hold";
+      }
+    }
+    if (!run && reason) this.sum.inc(this.sum.s.denied, reason.split(" ")[0]);
     const action = run ?? top;
     const opt = built.actions.find((a) => a.name === action);
     const tier: Tier = opt?.tier ?? "passive";
     const decision: Decision = {
-      id: `d${++this.nextDecision}`,
+      id: decisionId,
       trigger,
       subject: built.situation.subject,
       at: now,
@@ -670,6 +1302,8 @@ export class RuntimeImpl implements Runtime {
       mass: g.mass,
     };
     if (g.candidate) decision.candidate = g.candidate;
+    decision.effectiveMode = effMode;
+    if (shadow) decision.shadow = shadow;
     decision.gateKind = gates.kind;
     if (g.threshold !== undefined && g.thresholdTier) {
       if (gates.kind === "gain") {
@@ -690,6 +1324,10 @@ export class RuntimeImpl implements Runtime {
     this.events.push(now, "decision", trigger, { data: { id: decision.id, diagnosis, action, executed: decision.executed } });
     if (this.debug) this.log(`decision ${decision.id}`, decision);
     this.fire("decide", decision);
+    if (shadow) {
+      this.fire("shadow", { decisionId: decision.id, ...shadow });
+      if (this.debug) this.log(`shadow ${this.shadowMode}: ${shadow.wouldPass ? `would run ${shadow.action}` : `would not act (${shadow.reason ?? "gate"})`}`);
+    }
     const detected = diagnosis !== "expected" && diagnosisConfidence >= gates.report;
     if (detected) this.fire("detect", decision);
     // standing questions
@@ -705,11 +1343,12 @@ export class RuntimeImpl implements Runtime {
     }
     if (!run) {
       passive();
-      if (detected) this.reporter.emit({ kind: "detect", message: detectionLine(decision), decision });
+      if (detected) this.emitReport({ kind: "detect", message: detectionLine(decision), decision });
       return;
     }
     // execute the non-passive action
-    this.rate.take(now);
+    this.rate.take(now, subjectKey);
+    this.breakerImpl?.action(decision.id, this.subjectKeys(built.spec));
     const def = opt?.custom;
     const finish = (eff: ActionEffect | null, err?: unknown) => {
       const record: ActionRecord = {
@@ -734,6 +1373,9 @@ export class RuntimeImpl implements Runtime {
           undone = true;
           this.runAsGenClass("undo", () => undo());
           this.events.push(this.clock.now(), "action", "undo", { data: { text: `undid ${action} (${record.id})`, id: record.id } });
+          this.emitReport({ kind: "undo", message: `[GenClass] Undid ${action} (${record.id}).`, decision, action: record }, subjectOp);
+          // an undo by the app or the user is a signal for the breaker (not rt.disable({ undo: true }))
+          if (!this.internalUndo) this.breakerImpl?.undo(decision.id);
         };
       }
       this.actionsBuf.push(record);
@@ -742,7 +1384,7 @@ export class RuntimeImpl implements Runtime {
       this.explainMap.set(record.id, rec);
       this.events.push(record.at, "action", action, { data: { text: record.changed, id: record.id, decision: decision.id, ok: record.ok } });
       this.fire("act", record);
-      this.reporter.emit({ kind: "intervene", message: interventionLine(decision, record), decision, action: record });
+      this.emitReport({ kind: "intervene", message: interventionLine(decision, record), decision, action: record });
     };
     try {
       let r: ActionEffect | Promise<ActionEffect>;
@@ -781,11 +1423,14 @@ export class RuntimeImpl implements Runtime {
         }
         // the same policy as the model's own choices: mode tier, deny/allow, rate limit; and the subject must not
         // have proceeded already (a write that applied cannot be discarded by a custom action)
-        if (this.paused || restriction(this.policy, this._mode, { name, tier: b.tier }) !== null) return false;
+        const sop = subjectOpOf(built.spec);
+        const em = this.effectiveMode(sop);
+        if (this.paused || em === "off" || this.blockOf(sop) || restriction(this.policy, em as Mode, { name, tier: b.tier }) !== null) return false;
         if (ctl.proceeded?.()) return false;
         const t = this.clock.now();
-        if (this.rate.full(t)) return false;
-        this.rate.take(t);
+        const key = this.subjectKeys(built.spec)[0];
+        if (this.rate.check(t, key)) return false;
+        this.rate.take(t, key);
         const eff = await ctl.run(name);
         tookOver = true;
         if (!changed) changed = eff.changed;
@@ -948,6 +1593,7 @@ export class RuntimeImpl implements Runtime {
     o: { op: OpRec; channel: "response" | "websocket" | "eventsource"; req?: ReqMeta; status?: number; message?: { path: string; summary: string }; queuedAhead?: number; body?: () => Promise<unknown> },
     release: () => void,
     defers = 0,
+    heldSince?: number,
   ): void {
     let released = false;
     const rel = () => {
@@ -956,7 +1602,9 @@ export class RuntimeImpl implements Runtime {
       release();
     };
     const op = o.op;
-    if (!this.consultable() || this.paused || this.destroyed || op.genclass) return rel();
+    // protected / ignored-scope / off-scope subjects pass at once: no body read, no hold, zero added latency
+    if (!this.consultable() || this.paused || this.destroyed || op.genclass || op.scope?.protected || op.scope?.mode === "off") return rel();
+    const since = heldSince ?? this.clock.now();
     const now = this.clock.now();
     const predicted = predictedWrites(this.env, op);
     const matched = matchFields(this.env, predicted.patterns);
@@ -1009,8 +1657,13 @@ export class RuntimeImpl implements Runtime {
         if (action === "defer") {
           const related = relatedInFlight(this.env, op, matched);
           const t0 = this.clock.now();
-          return this.waitOps(related).then(() => {
-            this.runDelivery(o, release, defers + 1);
+          // the wait is part of the hold: it never exceeds what is left of the hold budget
+          const remaining = Math.max(0, this.holdBudgetMs() - (t0 - since));
+          return this.waitOps(related, remaining).then(() => {
+            if (this.clock.now() - since >= this.holdBudgetMs()) {
+              this.sum.inc(this.sum.s.denied, "limit:hold");
+              rel();
+            } else this.runDelivery(o, release, defers + 1, since);
             return { changed: `Held ${what} for ${secs(this.clock.now() - t0)} until ${plural(related.length, "related operation")} finished, then decided again.` };
           });
         }
@@ -1018,7 +1671,7 @@ export class RuntimeImpl implements Runtime {
       },
     };
     const go = () => {
-      if (!released) this.trigger(spec, ctl, { hold: true, priority: 2 });
+      if (!released) this.trigger(spec, ctl, { hold: true, priority: 2, ...(defers > 0 ? { heldSince: since } : {}) });
     };
     // text fields the user typed into after this op started: salient only if the body would replace that text (F2)
     const typed = matched.filter((p) => typeof this.hub.valueAt(p) === "string" && this.hub.writesSince(p, op.startSeq).some((h) => h.user && !this.inChainOf(op, h.writer)));
@@ -1202,7 +1855,7 @@ export class RuntimeImpl implements Runtime {
   }
 
   /** Resolves when all these ops ended (10 s at most). */
-  private waitOps(ops: OpRec[]): Promise<void> {
+  private waitOps(ops: OpRec[], maxMs: number = LONG_RUNNING_MS): Promise<void> {
     const pending = new Set(ops.filter((o) => o.end === undefined));
     if (!pending.size) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1218,7 +1871,7 @@ export class RuntimeImpl implements Runtime {
         pending.delete(op);
         if (!pending.size) finish();
       });
-      const timer = this.clock.setTimeout(finish, LONG_RUNNING_MS);
+      const timer = this.clock.setTimeout(finish, Math.min(maxMs, LONG_RUNNING_MS));
     });
   }
 
@@ -1603,12 +2256,55 @@ export class RuntimeImpl implements Runtime {
   }
 
   get status(): ModelStatus {
-    return { ...(this.decider ? this.decider.status : { state: "off" as const }), aggressiveness: this._aggr };
+    const base: ModelStatus = this.decider ? this.decider.status : { state: "off" };
+    const out: ModelStatus = {
+      ...base,
+      aggressiveness: this._aggr,
+      effectiveMode: this.effectiveMode(),
+      sampled: this.sampled,
+      breaker: this.breakerImpl?.tripped ? { tripped: true, at: this.breakerImpl.tripped.at, reason: this.breakerImpl.tripped.reason } : { tripped: false },
+      scope: { ...(this.routeScope.route ? { route: this.routeScope.route } : {}), mode: this.routeScope.mode, aggressiveness: this.routeScope.aggressiveness },
+      modelBudget: this.queue.budget(),
+    };
+    if (this.enabledState === "disabled" || this.enabledState === "off") {
+      out.state = "disabled";
+      out.reason = this.enabledState === "off" ? "enabled is false" : "disabled";
+    }
+    return out;
   }
 
   /** The gate thresholds in force for a trigger kind: policy overrides, else the model's meta gate, else defaults. */
   gates(trigger?: TriggerKind): EffectiveGates {
-    return effectiveGates(this.policy, parseGate(this.decider?.status.gate), trigger, this._aggr);
+    return this.gatesAt(trigger, this.effectiveAggr());
+  }
+
+  private gatesAt(trigger: TriggerKind | undefined, level: number): EffectiveGates {
+    return effectiveGates(this.policy, parseGate(this.decider?.status.gate), trigger, level);
+  }
+
+  /** Gate steps 1–3 for a subject op: protected, cross-origin, or created under an off/observe route scope. */
+  private blockOf(op: OpRec | null | undefined): "protected" | "cross-origin" | "scope" | null {
+    const sc = op?.scope;
+    if (!sc) return null;
+    if (sc.protected) return "protected";
+    if (sc.crossOrigin) return "cross-origin";
+    if (sc.mode === "off" || sc.mode === "observe") return "scope";
+    return null;
+  }
+
+  private onLimit(kind: "perMinute" | "perSubject" | "perSession", subject: string): void {
+    this.fire("limit", { kind, subject });
+    const now = this.clock.now();
+    if (now - (this.limitWarned.get(kind) ?? -Infinity) < 60_000) return;
+    this.limitWarned.set(kind, now);
+    this.warn(`action limit reached (${kind}); running passive actions until it clears.`);
+  }
+
+  private warned = new Set<string>();
+  private warnOnce(key: string, msg: string): void {
+    if (this.warned.has(key)) return;
+    this.warned.add(key);
+    this.warn(msg);
   }
 
   private _aggr = 0.5;
@@ -1619,7 +2315,7 @@ export class RuntimeImpl implements Runtime {
 
   setAggressiveness(a: Aggressiveness): void {
     this._aggr = aggressivenessLevel(a);
-    this.reporter.emit({ kind: "status", message: `[GenClass] Aggressiveness set to ${this._aggr}.` });
+    this.emitReport({ kind: "status", message: `[GenClass] Aggressiveness set to ${this._aggr}.` });
     this.fire("status", this.status);
   }
 
@@ -1831,7 +2527,7 @@ export class RuntimeImpl implements Runtime {
     const a: UserAction = { ...action, kind: action.kind ?? (action as { action?: string }).action ?? "action" };
     const target = a.target ?? "";
     let value = a.value;
-    if (value !== undefined && (a.sensitive || this.redactFn(target, value) !== value)) value = "[redacted]";
+    if (value !== undefined && (a.sensitive || this.redactFn(target, value, "input") !== value)) value = "[redacted]";
     const detail = value !== undefined ? JSON.stringify(truncate(String(value), 40)) : undefined;
     const name = `${a.kind}${target ? ` ${target}` : ""}`;
     const op = this.startOp("user", name, { cause: null, instant: true, ...(detail ? { detail } : {}), meta: { action: { ...a, ...(value !== undefined ? { value } : {}) } } });
@@ -1873,6 +2569,7 @@ export class RuntimeImpl implements Runtime {
         throw new Error(`unsupported action ${action}`);
       },
     };
+    if (op) this.breakerImpl?.error([op, ...this.ops.ancestors(op, 8)].map((x) => x.name));
     this.trigger({ trigger: "error", error: e, op: op ?? null }, ctl, { hold: false, priority: 0 });
   }
 
@@ -1991,7 +2688,8 @@ export class RuntimeImpl implements Runtime {
   setMode(mode: Mode): void {
     if (mode !== "observe" && mode !== "guard" && mode !== "heal") return;
     this._mode = mode;
-    this.reporter.emit({ kind: "status", message: `[GenClass] Mode set to ${mode}.` });
+    this.computeScope();
+    this.emitReport({ kind: "status", message: `[GenClass] Mode set to ${mode}.` });
     this.fire("status", this.status);
   }
 
@@ -2053,9 +2751,19 @@ export class RuntimeImpl implements Runtime {
 
   private loadProfiles(): void {
     try {
-      const ls = this.global.localStorage as Storage | undefined;
-      const raw = ls?.getItem(PROFILE_KEY);
-      if (raw) this.profiles.load(JSON.parse(raw));
+      const st = this.storage(this.learnStore ?? "local");
+      const raw = st?.getItem(this.learnKey) ?? (this.learnStore === "local" && this.learnKey === "genclass:learn" ? st?.getItem(PROFILE_KEY) : null);
+      if (!raw) return;
+      const v = JSON.parse(raw) as { version?: string; profiles?: unknown } | unknown;
+      if (v && typeof v === "object" && "profiles" in (v as object)) {
+        const w = v as { version?: string; profiles: unknown };
+        // a release/version change discards what was learned under the old one
+        if (w.version !== this.learnVersion) {
+          st?.removeItem(this.learnKey);
+          return;
+        }
+        this.profiles.load(w.profiles as never);
+      } else if (this.learnVersion === undefined) this.profiles.load(v as never);
     } catch {
       /* ignore */
     }
@@ -2066,8 +2774,7 @@ export class RuntimeImpl implements Runtime {
     this.persistTimer = this.clock.setTimeout(() => {
       this.persistTimer = null;
       try {
-        const ls = this.global.localStorage as Storage | undefined;
-        ls?.setItem(PROFILE_KEY, JSON.stringify(this.profiles.toJSON()));
+        this.storage(this.learnStore ?? "local")?.setItem(this.learnKey, JSON.stringify({ version: this.learnVersion, profiles: this.profiles.toJSON() }));
       } catch {
         /* quota or privacy mode */
       }

@@ -2,7 +2,7 @@
 // parent, a root, start/end times and the global mutation sequence number at start (used to answer "what was
 // the version of field X when this op started").
 
-import type { Op, OpKind, OpStatus, TriggerKind } from "../types.js";
+import type { Op, OpKind, OpScope, OpStatus, TriggerKind } from "../types.js";
 
 /** Writes made by an op's causal chain (for transition profiles). */
 export interface ChainWrite {
@@ -15,6 +15,8 @@ export interface ChainWrite {
 }
 
 export interface OpRec extends Op {
+  /** Scope snapshotted when the op was created (OPTIONS-SPEC §3): effective mode, protection, labels. */
+  scope?: OpScope;
   /** Global applied-mutation sequence number when the op started. */
   startSeq: number;
   method?: string;
@@ -52,6 +54,8 @@ export interface OpRec extends Op {
 }
 
 export interface StartOpts {
+  /** Scope snapshot (network observers pass the request's; others get the current route scope). */
+  scope?: OpScope;
   detail?: string;
   cause?: OpRec | null;
   identity?: string;

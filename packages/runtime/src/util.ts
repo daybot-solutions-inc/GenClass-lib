@@ -158,7 +158,7 @@ export function ordinal(n: number): string {
 
 export const REDACTED = "[redacted]";
 
-export type Redactor = (path: string, value: unknown) => unknown;
+export type Redactor = (path: string, value: unknown, kind?: "state" | "url" | "header" | "input") => unknown;
 
 /** Words of an identifier: camelCase, snake_case, kebab-case and spaces split, lower-cased. */
 export function words(s: string): string[] {

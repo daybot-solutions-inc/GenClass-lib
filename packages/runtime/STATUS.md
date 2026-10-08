@@ -1163,6 +1163,36 @@ questions:
     rollback: restore the affected state to its last consistent snapshot
 ```
 
+## Batch 12: configuration options (docs/runtime/OPTIONS-SPEC.md)
+
+Implemented: `enabled` + `rt.disable({undo})`, `sample`, `routes`, `requests` {ignore, protect, crossOrigin, labels,
+labelsToModel, correlate}, `breaker` + `rt.breaker.reset()`, `shadow`, `onBeforeAction`/`vetoMode`,
+`policy.actionLimits` (`maxActionsPerMinute` alias), `holdBudgetMs` as a hard ceiling (defers and the veto hook count;
+the defer wait is capped at the remaining budget), `redact(path, value, kind)` (built-in redaction runs first),
+`sinks` + `rt.summary()`, `session`/`rt.setSession()`, `report: "interventions"`, `learn` {persist local|session, key,
+version} + `rt.learn.clear()`, `model.loadIf/threads/timeoutMs/maxDecisionsPerMinute/unloadAfterIdleMs`, events
+`shadow/breaker/limit/modelBudget`, hidden-tab skipping, the §0 gate order and the §8 defaults. New files:
+`src/util/match.ts`, `src/decide/breaker.ts`, `src/decide/summary.ts`, `test/options.test.ts` (27 tests). Suite: 413
+passed, 14 skipped; tsc clean.
+
+Behaviour changes (all toward safety): breaker on by default; `perSubject: 5` / `perSession: 200` limits; reasons
+`rate limit` → `limit:perMinute`; URL overrides (`?genclass`, `?genclass-mode`, `?genclass-aggr`) only demote unless
+`debug: true`; cross-origin requests are always passive; ops created under an off/observe route scope are never
+action targets.
+
+Deviations / not done:
+- **Query-value redaction in situation text (spec §8 item 6) is NOT implemented**: it changes model input and needs a
+  format-tag decision from the coordinator. Only sink evidence redacts URLs.
+- The scope block only adds `notOffered` entries; the action questions sent to the model are unchanged.
+- `enabled` source turning off mid-session is a soft disable (observers stay installed as pass-through);
+  `rt.disable()` is permanent (destroy).
+- `model.inlineFallback: false` is passed through to the host as `inlineFallback`, but `src/model/host.ts` (not CORE)
+  does not read it yet: the MODEL owner needs to honour it (state `skipped`, reason `worker-unavailable`).
+- `unloadAfterIdleMs` is a provider wrapper in `index.ts`: the evaluation that triggers the reload is rejected (fails
+  open, held items released unchanged); hidden time counts as idle because the timer is wall time.
+- Labels/tags/correlation ids never reach the model; with `labelsToModel: true` an op label shows as
+  `label (METHOD /path) (#id)`.
+
 ## Deviations from the contract (and why)
 
 - `retry` backoff is `min(200 ms · 2^(attempt-1), 5 s)`: the first retry waits 200 ms.

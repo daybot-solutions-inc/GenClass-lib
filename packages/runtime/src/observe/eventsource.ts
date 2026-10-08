@@ -23,9 +23,11 @@ export function installEventSource(h: MsgHost): (() => void) | null {
       if (disabled) return;
       const u = parseUrl(String(url), h.baseHref());
       const path = normalizePath(u.where);
+      const sc = h.scopeOf?.({ url: u.href, method: "GET", channel: "sse" });
+      if (sc === "ignore") return; // requests.ignore: a plain, unobserved channel
       let conn: OpRec | null = null;
       try {
-        conn = h.startOp(`SSE ${path}`, { detail: "connect" });
+        conn = h.startOp(`SSE ${path}`, { detail: "connect", ...(sc ? { scope: sc } : {}) });
       } catch {
         conn = null;
       }
@@ -49,7 +51,7 @@ export function installEventSource(h: MsgHost): (() => void) | null {
           /* ignore */
         }
       });
-      const gate = new MessageGate(this, h, "eventsource", path, raw);
+      const gate = new MessageGate(this, h, "eventsource", path, raw, sc);
       gates.set(this, gate);
       gate.ensure("message");
       gate.ensure("error");

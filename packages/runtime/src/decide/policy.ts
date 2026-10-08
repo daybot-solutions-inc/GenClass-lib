@@ -24,7 +24,9 @@ export interface PolicyConfig {
   holdBudgetMs: number | "auto";
   holdUserWrites: boolean;
   holdWrites: boolean;
+  /** = actionLimits.perMinute (deprecated alias kept for compatibility). */
   maxActionsPerMinute: number;
+  actionLimits: { perMinute: number; perSubject: number; perSession: number };
   requireDiagnosis: boolean;
   /** Lower-cased header names that make a non-idempotent request safe to repeat. */
   idempotencyHeaders: Set<string>;
@@ -43,7 +45,12 @@ export function policyConfig(p: PolicyOptions | undefined): PolicyConfig {
     holdBudgetMs: p?.holdBudgetMs ?? "auto",
     holdUserWrites: p?.holdUserWrites ?? false,
     holdWrites: p?.holdWrites ?? false,
-    maxActionsPerMinute: p?.maxActionsPerMinute ?? 60,
+    maxActionsPerMinute: p?.actionLimits?.perMinute ?? p?.maxActionsPerMinute ?? 60,
+    actionLimits: {
+      perMinute: p?.actionLimits?.perMinute ?? p?.maxActionsPerMinute ?? 60,
+      perSubject: p?.actionLimits?.perSubject ?? 5,
+      perSession: p?.actionLimits?.perSession ?? 200,
+    },
     requireDiagnosis: p?.requireDiagnosis ?? true,
     idempotencyHeaders: new Set((Array.isArray(p?.idempotencyHeaders) ? p!.idempotencyHeaders : DEFAULT_IDEMPOTENCY_HEADERS).filter((h) => typeof h === "string" && h.trim()).map((h) => h.trim().toLowerCase())),
   };
@@ -221,16 +228,46 @@ export function permittedActions<T extends { name: string; tier: Tier }>(c: Poli
   return actions.filter((a) => a.tier !== "passive" && restriction(c, mode, a) === null);
 }
 
+export type LimitKind = "perMinute" | "perSubject" | "perSession";
+
+/** Action limits (OPTIONS-SPEC §4.8): per sliding minute, per subject per sliding minute, per session. */
 export class RateLimiter {
   private ts: number[] = [];
-  constructor(private readonly perMinute: () => number) {}
-  /** Would one more action exceed the limit at time t? */
-  full(t: number): boolean {
-    this.ts = this.ts.filter((x) => x > t - 60_000);
-    return this.ts.length >= this.perMinute();
+  private bySubject = new Map<string, number[]>();
+  private session = 0;
+  private readonly limits: () => { perMinute: number; perSubject: number; perSession: number };
+  constructor(limits: (() => number) | (() => { perMinute: number; perSubject: number; perSession: number })) {
+    this.limits = () => {
+      const l = limits();
+      return typeof l === "number" ? { perMinute: l, perSubject: Infinity, perSession: Infinity } : l;
+    };
   }
-  take(t: number): void {
+  /** Would one more action exceed the per-minute limit at time t? */
+  full(t: number): boolean {
+    return this.check(t) === "perMinute";
+  }
+  /** The limit one more action (on `subject`) would exceed, or null. */
+  check(t: number, subject?: string): LimitKind | null {
+    const L = this.limits();
+    this.ts = this.ts.filter((x) => x > t - 60_000);
+    if (this.ts.length >= L.perMinute) return "perMinute";
+    if (subject !== undefined) {
+      const s = (this.bySubject.get(subject) ?? []).filter((x) => x > t - 60_000);
+      this.bySubject.set(subject, s);
+      if (s.length >= L.perSubject) return "perSubject";
+    }
+    if (this.session >= L.perSession) return "perSession";
+    return null;
+  }
+  take(t: number, subject?: string): void {
     this.ts.push(t);
+    this.session++;
+    if (subject !== undefined) {
+      const s = this.bySubject.get(subject) ?? [];
+      s.push(t);
+      this.bySubject.set(subject, s);
+      if (this.bySubject.size > 512) this.bySubject.delete(this.bySubject.keys().next().value!);
+    }
   }
   count(t: number): number {
     this.ts = this.ts.filter((x) => x > t - 60_000);
@@ -253,6 +290,10 @@ export interface GateInput {
   /** The gate kind (default "mass"); "gain" reads `thresholds` as margins in cost units and needs `tauGain`. */
   kind?: GateKind;
   tauGain?: number;
+  /** Gate steps 1–3 (OPTIONS-SPEC §0.4): a protected or cross-origin subject, or one created under off/observe scope. */
+  block?: "protected" | "cross-origin" | "scope";
+  /** Subject key for actionLimits.perSubject. */
+  subject?: string;
 }
 
 export interface GateOutcome {
@@ -270,6 +311,7 @@ export interface GateOutcome {
   kind: GateKind;
   /** gain kind: ĝ of the candidate. */
   gain?: number;
+  limitKind?: LimitKind;
 }
 
 /**
@@ -300,6 +342,7 @@ export function gate(c: PolicyConfig, rate: RateLimiter, g: GateInput): GateOutc
   const wanted = topTier !== "passive"; // a reason is only given when the model's own choice does not run
   const no = (reason: string | null): GateOutcome => ({ run: null, candidate, mass, reason: wanted ? reason : null, kind });
   if (g.paused) return no("GenClass is paused");
+  if (g.block) return { ...no(g.block), reason: g.block };
   if (!candidate) {
     const top = g.actions.find((a) => a.name === g.top);
     return no(top ? restriction(c, g.mode, top) ?? "no action is permitted" : "no action is permitted");
@@ -322,7 +365,8 @@ export function gate(c: PolicyConfig, rate: RateLimiter, g: GateInput): GateOutc
     if (!(mass >= th)) return { ...no(topRestriction ?? `probability ${mass.toFixed(2)} for the permitted actions (${A.map((a) => a.name).join(", ")}) is below the ${tier} threshold ${round2(th)}`), ...at };
   }
   if (c.requireDiagnosis && g.diagnosis === "expected") return { ...no("the model's diagnosis is expected"), reason: "the model's diagnosis is expected", ...at };
-  if (rate.full(g.now)) return { ...no(null), reason: `rate limit: ${c.maxActionsPerMinute} actions in the last minute`, ...at };
+  const lim = rate.check(g.now, g.subject);
+  if (lim) return { ...no(null), reason: `limit:${lim}`, limitKind: lim, ...at };
   return { run: candidate, candidate, mass, reason: null, kind, ...at };
 }
 
