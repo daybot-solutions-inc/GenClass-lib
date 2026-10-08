@@ -4,6 +4,7 @@
 
 import { hashAll, Rng } from "../../../sim/src/rng.js";
 import { ACTION_PARA } from "../../../sim/src/run/transform.js";
+import { DEFAULT_DIAGNOSES as RT_DEFAULT_DIAGNOSES } from "@rt/questions";
 import type { AppManifest } from "../shared/manifest.js";
 import { endpointsOf } from "../shared/routes.js";
 import type { ExternalEvent, Lat, NetProfile, OutageMode, Step } from "../shared/types.js";
@@ -49,18 +50,8 @@ export function splitOf(app: AppManifest, patterns: string[]): "train" | "dev" |
 
 // ------------------------------------------------------------------------------------------- vocabulary
 // Mirrors sim/src/world/scenario.ts (diagVocab / actionVocab): 50% default wording, otherwise paraphrases.
-export const DEFAULT_DIAGNOSES: Record<string, string> = {
-  expected: "normal behaviour, nothing is wrong",
-  stale: "outdated data or an older operation is about to replace newer state",
-  conflict: "concurrent operations are competing over the same state or resource",
-  duplicate: "the same change or request is happening again without a new intent",
-  inconsistent: "the state contradicts itself or relationships it normally keeps",
-  failing: "an operation keeps failing or its failures follow a pattern",
-  slow: "an operation is far slower than usual",
-  overload: "work is being triggered far more often than usual",
-  unusual: "this differs from how the same operation normally behaves",
-  transient: "a one-off failure that is likely to succeed if tried again",
-};
+/** The runtime's own default diagnosis vocabulary (same labels and wording as the build in use). */
+export const DEFAULT_DIAGNOSES: Record<string, string> = { ...(RT_DEFAULT_DIAGNOSES as Record<string, string>) };
 const DIAG_PARA: Record<string, string[]> = {
   expected: ["everything is working as intended", "nothing unusual: this is normal app behaviour", "no problem here; the app behaves normally"],
   stale: ["data from an older request or state would overwrite something newer", "this is out of date: newer information already exists", "an earlier operation finishing late would replace more recent state"],
@@ -80,7 +71,7 @@ function diagVocab(rng: Rng): Record<string, string> | undefined {
   const drop = rng.bool(0.3) ? new Set(rng.sample(["conflict", "slow", "overload", "unusual", "inconsistent", "duplicate", "transient"], rng.int(1, 2))) : new Set<string>();
   for (const [k, v] of Object.entries(DEFAULT_DIAGNOSES)) {
     if (drop.has(k)) continue;
-    out[k] = rng.bool(0.6) ? rng.pick(DIAG_PARA[k]!) : v;
+    out[k] = rng.bool(0.6) && DIAG_PARA[k] ? rng.pick(DIAG_PARA[k]!) : v;
   }
   return out;
 }

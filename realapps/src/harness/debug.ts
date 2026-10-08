@@ -93,7 +93,9 @@ if (arg("steps")) for (const s of scn.steps) console.log(`  step ${s.i} t=${Math
 const hash = (x: unknown) => createHash("sha1").update(JSON.stringify(x)).digest("hex").slice(0, 12);
 if (arg("traj")) {
   const t = await generateTrajectory(seed, APPS, runner, { maxPoints: 6, futures: 3, adaptive: true, testKeep: 1, ...(appName ? { apps: [appName] } : {}), ...(arg("clean") ? { clean: true } : {}) });
+  const st = t.steps;
   console.log(`traj runs=${t.runs} realMs=${t.realMs} runMs=${t.runMs} decisions=${t.decisions} rows=${t.rows.length} drops=${JSON.stringify(t.drops)} notes=${JSON.stringify(t.notes)} skipped=${t.skipped ?? ""}`);
+  if (st) console.log(`steps base ran=${st.ran} skipped=${st.skipped} ${JSON.stringify(st.why)}; ideal skipped=${st.idealSkipped} ${JSON.stringify(st.idealWhy)}${st.ran === 0 ? "  DEAD SESSION" : ""}`);
   for (const p of t.points) console.log(`   ${p.trigger} diag=${p.diagnosis} best=${p.best} npm=${p.nonPassiveMass} harm=${JSON.stringify(p.harm)} gain=${p.gain} K=${p.futures}`);
   for (const r of t.rows.slice(0, Number(arg("show", "3")))) {
     console.log("----", r.id, JSON.stringify(r.labels), JSON.stringify((r.meta as Record<string, unknown>).costs), (r.meta as Record<string, unknown>).diag_why);

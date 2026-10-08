@@ -246,6 +246,10 @@ export interface DecisionRec {
   diagnosis?: string;
   diagWhy?: string;
   diagTrace?: string;
+  /** The subject repeats an accidental user step (double click, impatient re-click). */
+  repeat?: boolean;
+  /** request: an identical request is in flight or answered in the last 10 s. */
+  twin?: boolean;
   /** Hash of JSON([trigger, state, questions]). */
   fp: string;
   state?: Record<string, unknown>;
