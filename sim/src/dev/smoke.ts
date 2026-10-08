@@ -41,7 +41,30 @@ async function profile(factory: RuntimeFactory): Promise<void> {
   for (const [k, ms, t, d, sn] of rows) console.log(`${k.padEnd(14)} ${ms.toFixed(0).padStart(6)} ms/run  ${t.toFixed(0).padStart(7)} tasks  ${d.toFixed(0).padStart(5)} decisions  ${sn.toFixed(0).padStart(6)} snapshots`);
 }
 
+/** S2: P(accidental | gap to the previous identical user action), measured on the scenario generator. */
+async function repeatPrior(n: number): Promise<void> {
+  const { repeatOfIndex } = await import("../run/latent.js");
+  const edges = [100, 200, 500, 1000, 2000, 3000];
+  const acc = edges.map(() => 0);
+  const tot = edges.map(() => 0);
+  for (let seed = 1; seed <= n; seed++) {
+    const scn = buildScenario(seed);
+    const rep = repeatOfIndex(scn.steps);
+    scn.steps.forEach((s, i) => {
+      const j = rep[i];
+      if (j === undefined || s.when) return;
+      const g = s.t - scn.steps[j]!.t;
+      const b = edges.findIndex((e) => g <= e);
+      if (b < 0) return;
+      tot[b]!++;
+      if (s.intent.accidental) acc[b]!++;
+    });
+  }
+  edges.forEach((e, b) => console.log(`gap <= ${e} ms: ${tot[b]} repeats, accidental ${(acc[b]! / Math.max(1, tot[b]!)).toFixed(3)}`));
+}
+
 async function main(): Promise<void> {
+  if (args.includes("--repeat-prior")) return repeatPrior(Number(opt("--repeat-prior", "20000")));
   const factory: RuntimeFactory = fake ? createFakeRuntime : await realRuntimeFactory();
   if (args.includes("--profile")) return profile(factory);
   const byTrig: Record<string, number> = {};

@@ -2,7 +2,7 @@
 // warnings, ask() after destroy, init never throws, provider timeouts, the `transient` label.
 import { describe, expect, it, vi } from "vitest";
 import { createRuntime, DEFAULT_DIAGNOSES, GenClass, GenClassUnavailableError } from "../src/index.js";
-import { isIdSegment, isSensitiveName, normalizePath } from "../src/util.js";
+import { defaultRedact, isIdSegment, isSensitiveName, normalizePath } from "../src/util.js";
 import type { Report } from "../src/types.js";
 import { FakeClock, ManualDecider, choice, defaultScript, setup } from "./helpers.js";
 
@@ -165,5 +165,49 @@ describe("vocabulary", () => {
     const labels = Object.keys(DEFAULT_DIAGNOSES);
     expect(labels.slice(-2)).toEqual(["unusual", "transient"]);
     expect(DEFAULT_DIAGNOSES.transient).toBe("a one-off failure that is likely to succeed if tried again");
+  });
+});
+
+describe("batch 5: redaction by the leaf field, never by the store name", () => {
+  it("an `auth` store keeps its status flags and user name visible; secrets stay redacted", async () => {
+    const { rt, clock, decider } = setup({ triage: "always" });
+    const auth = rt.atom("auth", { loading: false, status: "idle", user: { name: "Ada", email: "ada@x.io" }, token: "", refreshToken: "", tokens: { access: "" }, card: { number: "", expiry: "" }, pin: 0, hasPassword: false });
+    await rt.op("login", () =>
+      auth.set({
+        loading: true,
+        status: "signed-in",
+        user: { name: "Grace", email: "grace@x.io" },
+        token: "abc",
+        refreshToken: "r-123",
+        tokens: { access: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2ln" },
+        card: { number: "4242424242424242", expiry: "12/30" },
+        pin: 1234,
+        hasPassword: true,
+      }),
+    );
+    await clock.flush();
+    const text = JSON.stringify(decider.calls.map((c) => c.state));
+    expect(text).toContain("auth.loading");
+    expect(text).toContain("auth.status");
+    expect(text).toContain("signed-in");
+    expect(text).toContain("Grace");
+    for (const secret of ["abc", "r-123", "eyJhbGciOiJIUzI1NiJ9", "4242424242424242", "1234"]) expect(text).not.toContain(secret);
+    const r = defaultRedact;
+    expect(r("auth.card.expiry", "12/30")).toBe("12/30"); // not a secret by itself
+    expect(r("auth.loading", true)).toBe(true);
+    expect(r("auth.user.name", "Ada")).toBe("Ada");
+    expect(r("auth.token", "abc")).toBe("[redacted]");
+    expect(r("auth", "Bearer abc")).toBe("[redacted]"); // a store holding a primitive: its name is the leaf
+    expect(r("auth", { loading: true })).toEqual({ loading: true }); // objects are judged key by key
+    expect(r("app.auth.loading", false)).toBe(false);
+    expect(r("app.auth.sessionId", "s1")).toBe("[redacted]");
+    expect(r("users.3.password", "x")).toBe("[redacted]");
+    expect(r("payment.card.number", "4242")).toBe("[redacted]");
+    expect(r("credentials.password.value", "hunter2")).toBe("[redacted]");
+    expect(r("auth.tokens.access", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ")).toBe("[redacted]");
+    expect(r("auth.tokens.kind", "bearer")).toBe("bearer");
+    expect(r("query.token", "abc")).toBe("[redacted]");
+    expect(r('input "Password (min. 8 chars)"', "x")).toBe("[redacted]");
+    expect(r("board.cards", ["a"])).toEqual(["a"]);
   });
 });

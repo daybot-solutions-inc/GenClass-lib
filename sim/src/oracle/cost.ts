@@ -267,6 +267,35 @@ export function clientDivergenceAt(real: RunResult, ideal: RunResult, t: number)
   return clientDist(stateAt(real.snapshots, t, init), stateAt(ideal.snapshots, t, init), real.weights, real.relations);
 }
 
+/** Client fields ("store.field") that differ from the ideal run at time t (weight > 0), with relation-violated ones. */
+export function divergedFieldsAt(real: RunResult, ideal: RunResult, t: number): string[] {
+  const init = real.snapshots.length ? real.snapshots[0]!.state : real.final;
+  const rs = stateAt(real.snapshots, t, init);
+  const is = stateAt(ideal.snapshots, t, init);
+  const out: string[] = [];
+  for (const r of real.relations) {
+    try {
+      if (!r.check(rs)) out.push(r.fields[0]!);
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const [store, rv] of Object.entries(rs)) {
+    const iv = is[store];
+    if (rv === iv) continue;
+    const w = real.weights.get(store) ?? {};
+    if (rv && iv && typeof rv === "object" && typeof iv === "object" && !Array.isArray(rv)) {
+      for (const k of new Set([...Object.keys(rv as object), ...Object.keys(iv as object)])) {
+        if ((w[k] ?? 1) <= 0) continue;
+        const a = (rv as Record<string, unknown>)[k];
+        const b = (iv as Record<string, unknown>)[k];
+        if (a !== b && valueDist(a, b) > 0) out.push(`${store}.${k}`);
+      }
+    } else if (valueDist(rv, iv) > 0) out.push(store);
+  }
+  return [...new Set(out)];
+}
+
 /** Ideal server state at time t (from the ideal run's server timeline). */
 function serverAt(ideal: RunResult, t: number): ServerSnapshot {
   const tl = ideal.serverTimeline;

@@ -169,6 +169,24 @@ export class Network {
    * replayed prefix is byte-identical while the future varies.
    */
   future: number | null = null;
+  /**
+   * S2 (label = expected cost given what a runtime can observe): in a re-seeded future, what the client has not
+   * observed by time `t` is re-drawn too: whether an ambiguous failed write committed (a 500 that may come after the
+   * commit, a network error after the server processed the request), and the remaining time of requests still in
+   * flight at `t` (their response time is unknown to the client). Prefix observations stay byte-identical.
+   */
+  latent: { salt: number; t: number } | null = null;
+  private late(at: number, t0: number, identity: string, occurrence: number): number {
+    const L = this.latent;
+    if (!L || t0 >= L.t || at <= L.t) return at;
+    const f = new Rng(hashAll("late", L.salt, identity, occurrence)).lognormal(1, 0.5);
+    return L.t + Math.max(1, (at - L.t) * f);
+  }
+  private latentCommit(t: number, identity: string, occurrence: number, p: number, original: boolean): boolean {
+    const L = this.latent;
+    if (!L || t >= L.t) return original;
+    return new Rng(hashAll("latent-commit", L.salt, identity, occurrence)).next() < p;
+  }
   private occ = new Map<string, number>();
   private arrivals: number[] = [];
   private arrivalsBySig = new Map<string, number[]>();
@@ -361,12 +379,14 @@ export class Network {
         e.status = res.status;
         e.cause = cause;
         e.outcome = res.status >= 400 ? "http-error" : "ok";
+        at = this.late(at, t0, identity, occurrence);
         deliver = this.loop.schedule(Math.max(0, at - this.loop.now()), () => {
           finish(() => resolve(makeResponse(res, url.href)));
         }, "net");
       };
       const netError = (at: number, cause: NetCause) => {
         e.cause = cause;
+        at = this.late(at, t0, identity, occurrence);
         deliver = this.loop.schedule(Math.max(0, at - this.loop.now()), () => {
           e.outcome = "neterr";
           finish(() => reject(new TypeError("Failed to fetch")));
@@ -375,6 +395,10 @@ export class Network {
       // Arrival at the server.
       this.loop.schedule(up, () => {
         const ta = this.loop.now();
+        // S2: a request sent before the labelled decision but arriving after it: its server-side draws are part of
+        // the (unobserved) future, so they are re-drawn per future.
+        const L = this.latent;
+        const r2 = L && t0 < L.t && ta >= L.t ? new Rng(hashAll(this.seed, L.salt, identity, occurrence, "arrive")) : r;
         e.ta = ta;
         this.noteArrival(signature, ta);
         if (P.ideal) {
@@ -423,21 +447,25 @@ export class Network {
           }
         }
         // Random transient failures and network errors.
-        if (r.next() < P.transientP) {
-          const post = method !== "GET" && r.next() < P.postCommitP;
+        if (r2.next() < P.transientP) {
+          const post0 = method !== "GET" && r2.next() < P.postCommitP;
+          const st = post0 ? 500 : r2.pick([500, 502, 503]);
+          // A 500 on a write may or may not have committed; 502/503 never did (S2 re-draws the ambiguous case).
+          const pc = P.postCommitP;
+          const post = method !== "GET" && st === 500 ? this.latentCommit(ta, identity, occurrence, pc / (pc + (1 - pc) / 3), post0) : post0;
           if (post) {
             const out = this.process(e, method, url, headers, raw, ta);
             e.committed = out.committed;
           }
-          const st = post ? 500 : r.pick([500, 502, 503]);
           return respond({ status: st, body: { error: "server_error" } }, ta + proc + down, "transient");
         }
-        if (r.next() < P.netErrP) {
-          if (r.bool(0.5)) {
+        if (r2.next() < P.netErrP) {
+          const c0 = r2.bool(0.5);
+          if (method === "GET" ? c0 : this.latentCommit(ta, identity, occurrence, 0.5, c0)) {
             const out = this.process(e, method, url, headers, raw, ta);
             e.committed = out.committed;
           }
-          return netError(ta + proc + down * r.next(), "neterr");
+          return netError(ta + proc + down * r2.next(), "neterr");
         }
         // Normal processing (with possible bugs / replica lag).
         const bug = P.bugs.find((b) => inWin(b, ta) && b.endpoint === signature);

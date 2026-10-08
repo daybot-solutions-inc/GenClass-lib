@@ -9,7 +9,8 @@ the same row format, cost terms and label rule as the sim.
 
 ```
 realapps/
-  apps/<name>/            ~25 apps: manifest.ts (Node side) + app source; apps/README.md = authoring guide
+  apps/<name>/            66 apps (52 written for the corpus + 14 open-source): manifest.ts (Node side) + source;
+                          apps/README.md = authoring guide
   apps/_shared/           genclass.ts (the app's one-line integration), atom bridges (Vue, Svelte), Conduit manifest
   corpus/                 open-source apps: oss.json (repo, commit, licence), patch_oss.py, prepare_oss.sh,
                           vite.oss.config.mjs, LICENSES.md
@@ -18,7 +19,8 @@ realapps/
                           user.ts (scripted user), probe.ts (recording decider, hooks, snapshots), diagnose.ts
   src/harness/            Node side: scenario.ts, trajectory.ts, cost.ts, labels.ts, browser.ts, gen.ts (worker
                           pool), worker.ts, debug.ts (inspection, determinism and interference sweeps)
-  scripts/                analyze.py (stats + sim comparison), evalset.py, node_setup.sh, cluster.sh
+  scripts/                analyze.py (stats + sim comparison), evalset.py, examples.py (audit printer),
+                          node_setup.sh, cluster.sh, chromium_probe.mjs (the event-loop facts below, measured)
   build.mjs               bundles the world, the harness and every app (esbuild; Vite apps via corpus/)
   EXAMPLES.md             audited example rows (situation, labels, per-action costs)
 ```
@@ -32,10 +34,16 @@ mixed with the correct guard. Every app reads feature flags (`flag(name, default
 bug. The **first option** of each flag is the correct default; clean runs use only first options. Apps are ordinary
 apps. None is written for a particular trigger rule.
 
-- **Written for the corpus** (`apps/<name>`, see `apps/README.md` for the authoring rules). React (hooks,
-  useGenClassState, useReducer), Redux Toolkit, Zustand, TanStack Query, SWR, MobX, Vue 3 (template compiler,
-  Pinia, vue-query, axios), Svelte 5 (stores, WebSocket), Solid (signals), Preact (signals), Lit (shadow DOM),
-  jQuery ($.ajax, observe-only), Alpine, vanilla TypeScript and raw XMLHttpRequest. Latent bugs: missing
+- **Written for the corpus** (52 apps in `apps/<name>`; authoring rules in `apps/README.md`):
+  - **React:** hooks, useGenClassState, useReducer, React 19 actions/`useOptimistic`, React Router 7 data APIs.
+  - **State:** Redux Toolkit, RTK Query, redux-saga, Zustand, Jotai, Valtio, XState, effector, MobX, nanostores.
+  - **Data:** TanStack Query (React, Vue, Svelte, Solid), SWR, axios, ky, ofetch, wretch, superagent, RxJS.
+  - **Vue:** Vue 3 with template compiler, Pinia, vue-router; also petite-vue.
+  - **Other frameworks:** Svelte 5, Solid, Preact (signals, htm), Lit and native custom elements (shadow DOM),
+    Mithril, Hyperapp, Alpine, Knockout, Backbone.
+  - **Low level:** jQuery (`$.ajax`, observe-only), vanilla TypeScript, raw XMLHttpRequest.
+
+  Latent bugs: missing
   request-ordering guards, double submits, naive retries without idempotency keys, blind server echoes over newer
   typing, overlapping autosaves, optimistic updates without rollback, relative toggles, non-atomic derived counts and
   totals, cache/echo races, WebSocket reconnects without resync, response+push duplicates, concurrent token
@@ -232,9 +240,9 @@ scripts/vm.sh exec real 'cd realapps && node dist/harness/debug.js --app vue-edi
 scripts/vm.sh exec real 'cd realapps && node dist/harness/gen.js --out ~/gcl/real-out/pilot --seed 1 --trajectories 200 --workers 24'
 python3 realapps/scripts/analyze.py ~/gcl/real-out/pilot            # stats + comparison with sim final-A
 python3 realapps/scripts/evalset.py ~/gcl/real-out/pilot --out ~/gcl/real-out/eval
-# cluster nodes (from the Mac; ssh/rsync only)
-realapps/scripts/cluster.sh setup c10 && realapps/scripts/cluster.sh run c10 b1 1000000 20000
-realapps/scripts/cluster.sh status c10 && realapps/scripts/cluster.sh stop c10
+# cluster nodes (from the Mac; ssh/rsync only): TAG pins the runtime the apps are built against
+TAG=situation-v2 realapps/scripts/cluster.sh setup c10 && realapps/scripts/cluster.sh run c10 v2b1 1000000 20000 70
+realapps/scripts/cluster.sh status c10 && realapps/scripts/cluster.sh stop c10   # then deallocate the node
 ```
 
 `gen.js` flags:
@@ -252,8 +260,29 @@ Outputs never go under `~/gcl/<slot>`, which `vm.sh` syncs with `--delete`. On t
 
 ## Pilot (runtime `situation-v1`, 2026-10-08)
 
-The pilot is at `train:/data/real-out/pilot4`: 230 trajectories over 26 apps, built against `situation-v1`. Every
-held-out app was kept (`--test-keep 1`).
+**Full corpus** (`train:/data/real-out/pilot-all`): 500 trajectories over all 66 apps in 23 frameworks, every
+held-out app kept (`--test-keep 1`).
+- **Rows:** 3,403 gold (997 ask, 306 diagnosis-only) and 3,789 unlabeled.
+- **Quality:** 0 drops, 0 failed trajectories.
+  - Determinism sweep: 198/198 identical runs (66 apps × 3 seeds).
+  - Interference: 4 of 198 clean runs changed, all in 2 apps (the gothinkster Conduit, and rtkq-helpdesk once).
+- **Eval set:** 366 rows.
+
+Passive-best share against SIM:
+
+| trigger | real | sim |
+|---|---|---|
+| mutation | 88% | 88% |
+| request | 75% | 74% |
+| failure | 50% | 70% |
+| inconsistency | 94% | 84% |
+| transition | 89% | 86% |
+
+Label sharpness:
+- **Passive-best rows:** 1,512 of 1,674 have passive ≥ 0.9.
+- **Rows where an action gains ≥ 2:** 187 of 243 have non-passive mass ≥ 0.9.
+
+**First pilot, audited in `EXAMPLES.md`** (`train:/data/real-out/pilot4`): 230 trajectories over 26 apps.
 
 - **Gold rows:** 1,654 (train 1,210 / dev 47 / test 397). They include 439 ask rows and 171 diagnosis-only rows.
 - **Unlabeled rows:** 2,325.
@@ -297,6 +326,7 @@ Measured on `train` (64 vCPU), short batches including browser start-up:
 |---|---|---|
 | 28 | 3.3 trajectories/s, about 20 gold + 25 unlabeled rows/s | |
 | 56 (CPU saturated) | 4.6 trajectories/s, about 29 gold + 37 unlabeled rows/s | ≈ 20 browser runs, ≈ 0.45 s of in-page time each; page creation and load are ≈ 25% |
+| 48 (full 66-app corpus, held-out apps kept) | 4.5 trajectories/s, about 31 gold + 34 unlabeled rows/s | |
 
 Expected on an F80 (80 vCPU, about 70 workers): about 35–40 gold rows/s, or about 130k gold plus 170k unlabeled rows
 per node-hour.
@@ -308,15 +338,12 @@ per node-hour.
    - rebuild every app against it;
    - rerun the determinism and interference sweeps and a 230-trajectory pilot;
    - re-audit `EXAMPLES.md`.
-2. **Grow the corpus in parallel** (it does not depend on the runtime version). Wave 2 adds about 30 apps on new
-   libraries:
-   - RTK Query, Jotai, Valtio, XState, effector, redux-saga;
-   - React Router 7 loaders/actions, and React 19 actions with `useOptimistic`;
-   - RxJS, vue-router, svelte-query, solid-query, Mithril, Hyperapp, petite-vue, nanostores;
-   - Backbone, Knockout, native custom elements, and ky / ofetch / wretch / superagent.
-
-   More RealWorld front-ends (Angular, Elm, Vue 2, React + MobX, …) are being added under `corpus/`. The target is
-   ≥ 150 apps: keep adding about 30 per wave, holding out whole libraries and frameworks for test.
+2. **Grow the corpus in parallel** (it does not depend on the runtime version). There are 66 apps now: two
+   authoring waves of 22 and 30 apps, plus 14 open-source front-ends. The target is ≥ 150:
+   - about 30 apps per wave, with each wave covering libraries and domains the corpus lacks;
+   - more open-source apps with REST backends beyond RealWorld (the mock server's generic resources already cover
+     most of them);
+   - whole libraries and frameworks held out for test.
 3. **Generate on F80 nodes** (`scripts/cluster.sh setup|run|status|stop`). One batch per node gets a disjoint seed
    range of 1,000,000 seeds. Run with `--workers ≈ 70` and `--test-keep 0.5`, plus a `--clean` batch of about 20k
    rows for false-intervention reporting.

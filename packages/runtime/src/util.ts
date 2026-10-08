@@ -214,22 +214,67 @@ const SECRET_PAIRS: [string, Set<string>][] = [
  * any substring: "author", "cards", "passengers" or a kanban "card" are not secrets.
  */
 export function isSensitiveName(name: string): boolean {
+  const hit = nameCache.get(name);
+  if (hit !== undefined) return hit;
   const ws = words(name);
-  for (let i = 0; i < ws.length; i++) {
+  let r = false;
+  for (let i = 0; i < ws.length && !r; i++) {
     const w = ws[i];
-    if (SECRET_WORDS.has(w)) return true;
-    const next = ws[i + 1];
-    if (next) for (const [a, set] of SECRET_PAIRS) if (w === a && set.has(next)) return true;
+    if (SECRET_WORDS.has(w)) r = true;
+    else if (i + 1 < ws.length && isSecretPair(w, ws[i + 1])) r = true;
+  }
+  if (nameCache.size > 4096) nameCache.clear();
+  nameCache.set(name, r);
+  return r;
+}
+const nameCache = new Map<string, boolean>();
+
+function isSecretPair(a: string, b: string): boolean {
+  for (const [x, set] of SECRET_PAIRS) if (a === x && set.has(b)) return true;
+  return false;
+}
+
+/** Container words that hold secrets and ordinary state alike (an `auth` slice: token, but also loading, user). */
+const WEAK_CONTAINER = new Set(["auth", "authorization", "cookie", "session"]);
+/** Opaque credential-looking strings (JWTs, API keys, session ids): ≥ 20 chars, letters and digits, no spaces. */
+const OPAQUE = /^(?=[^\s]*\d)(?=[^\s]*[A-Za-z])[A-Za-z0-9_\-.+/=:]{20,}$/;
+/** Field paths: dot-separated identifiers (free text such as 'input "Card number"' is matched by words). */
+const PATH_LIKE = /^[^\s."']+(\.[^\s."']+)*$/;
+
+/**
+ * Whether the value at `path` is a secret, decided by the leaf field's name, never by the store's or a container's
+ * name alone: `auth.token`, `form.password`, `payment.card.number` (a secret pair across the last two segments) are
+ * secrets; `auth.loading`, `auth.user.name` are not. Array indices are skipped (`users.3.password`). Plain objects
+ * are never redacted whole: their keys are judged one by one. Under a container whose name means a secret, string
+ * values are redacted too (`credentials.password.value`), and under a broad one (`auth`, `session`, `cookie`) only
+ * opaque credential-looking strings (`auth.tokens.access = "eyJ…"`). Booleans, null and undefined are never secrets.
+ * Free text (an element description, a header line) is a secret when any of its words names one.
+ */
+export function isSensitivePath(path: string, value?: unknown): boolean {
+  if (value === null || value === undefined || typeof value === "boolean") return false;
+  if (!PATH_LIKE.test(path)) return isSensitiveName(path);
+  const segs = path.split(".").filter((x) => !/^\d+$/.test(x));
+  if (!segs.length) return false;
+  if (value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date) && !(value instanceof Map) && !(value instanceof Set)) return false;
+  const leaf = segs[segs.length - 1];
+  if (isSensitiveName(leaf)) return true;
+  if (segs.length >= 2) {
+    const a = words(segs[segs.length - 2]);
+    const b = words(leaf);
+    if (a.length && b.length && isSecretPair(a[a.length - 1], b[0])) return true;
+  }
+  if (typeof value !== "string" && typeof value !== "number") return false;
+  for (let i = 0; i < segs.length - 1; i++) {
+    if (!isSensitiveName(segs[i])) continue;
+    const broad = words(segs[i]).every((w) => WEAK_CONTAINER.has(w) || !SECRET_WORDS.has(w));
+    if (!broad && typeof value === "string") return true;
+    if (typeof value === "string" && OPAQUE.test(value)) return true;
   }
   return false;
 }
 
-/** Default redactor: any path segment that names a secret (see isSensitiveName). */
-export const defaultRedact: Redactor = (path, value) => {
-  const segs = path.split(".");
-  for (const s of segs) if (isSensitiveName(s)) return REDACTED;
-  return value;
-};
+/** Default redactor: values whose leaf field names a secret (see isSensitivePath). */
+export const defaultRedact: Redactor = (path, value) => (isSensitivePath(path, value) ? REDACTED : value);
 
 // -------------------------------------------------------------------------------------- descriptions
 

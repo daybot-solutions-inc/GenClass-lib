@@ -146,7 +146,11 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     Real-app eval set (unambiguous cases: stale-overwrite, duplicate-submit, clean-benign, benign-salient,
     genuine-break): `realapps/scripts/evalset.py` → `<dir>/real_eval.jsonl` with `meta.eval_case`/`eval_expect`.
     Locations are listed below as batches land.
-15. **REAL pilot (runtime `situation-v1`; audit data, superseded by v2 batches).** `train:/data/real-out/pilot4/`
+15. **REAL pilot (runtime `situation-v1`; audit data, superseded by v2 batches).** Full corpus (66 apps, 23
+    frameworks): `train:/data/real-out/pilot-all/` — 500 trajectories, gold `{train 2,963, dev 79, test 361}` (incl.
+    997 ask, 306 diagnosis-only), unlabeled 3,789, 0 drops; eval set `pilot-all/eval/real_eval.jsonl` (366 rows:
+    benign-salient 269, duplicate-submit 31, clean-benign 31, stale-overwrite 26, genuine-break 9). First (audited)
+    pilot: `train:/data/real-out/pilot4/`
     (= `~/gcl/real-out/pilot4`): 230 trajectories, 26 apps (22 written + 4 open-source Conduit front-ends),
     gold `{train 1,210, dev 47, test 397}` (incl. 439 ask rows, 171 diagnosis-only), unlabeled 2,325
     (`unlabeled-<split>.jsonl`), `stats.json`, `manifest.json` (held-out lists), `analysis.json` (comparison with SIM

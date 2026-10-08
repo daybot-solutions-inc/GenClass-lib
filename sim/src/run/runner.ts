@@ -13,6 +13,7 @@ import { API_STYLES, Db, VirtualServer, type ServerSnapshot } from "../net/serve
 import { diagnose, type Subject } from "../oracle/diagnose.js";
 import { Knowledge, type SimOp, type SimWrite } from "../oracle/knowledge.js";
 import { PROBE, ProbeState, probeAfter, probeDecision, type Probe } from "../oracle/probe.js";
+import { futureProfile, futureStepTimes, idealRepeatSkips, S2, type FutureSpec } from "./latent.js";
 import { hashAll, Rng } from "../rng.js";
 import { PASSIVE, type Answer, type DecisionProvider, type EvaluateRequest, type JevState, type Question } from "../types.js";
 import type { Scenario } from "../world/scenario.js";
@@ -100,7 +101,7 @@ export interface RunOptions {
    * Re-seeded future: from decision `k` on (ideal runs: k = -1, i.e. from time `t`), network draws, push latencies,
    * model latencies and the times of other users' events after `t` use `salt`. The prefix stays byte-identical.
    */
-  future?: { k: number; salt: number; t: number };
+  future?: FutureSpec;
 }
 
 export interface RunResult {
@@ -348,7 +349,8 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
     def.server(f.spec, server, db);
     if (def.relations) relations.push(...def.relations(f.spec));
   }
-  const network = new Network(loop, server, o.ideal ? IDEAL_PROFILE : scn.net, hashAll("net", scn.seed));
+  const network = new Network(loop, server, o.ideal ? IDEAL_PROFILE : futureProfile(scn.net, o.future), hashAll("net", scn.seed));
+  if (!o.ideal && o.future && !o.future.noLatent && S2) network.latent = { salt: o.future.salt, t: o.future.t };
   const G = makeGlobal(loop, network, scn.appTitle, o.ideal);
   const hub = makeBroadcast(loop);
   G.BroadcastChannel = hub.cls;
@@ -655,7 +657,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
   };
   // Connectivity: offline windows flip navigator.onLine and fire offline/online events.
   if (!o.ideal) {
-    for (const w of scn.net.offline ?? []) {
+    for (const w of network.profile.offline ?? []) {
       loop.at(w.start, () => {
         G.navigator.onLine = false;
         G.dispatchEvent(new Event("offline"));
@@ -702,9 +704,11 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
   }, "app");
   // User steps.
   const lastIntent = new Map<string, number>();
-  for (const st of scn.steps) {
-    if (o.ideal && (st.intent.accidental || st.when)) continue;
-    loop.at(st.t, () => {
+  const stepT = futureStepTimes(scn.steps, o.future);
+  const idealSkip = o.ideal ? idealRepeatSkips(scn.steps, o.future) : new Map<number, boolean>();
+  for (const [si, st] of scn.steps.entries()) {
+    if (o.ideal && (idealSkip.get(si) ?? (st.intent.accidental || !!st.when))) continue;
+    loop.at(stepT[si]!, () => {
       const client = clients.get(st.feature);
       if (!client) return;
       if (st.when && !(client.cond?.(st.when) ?? false)) return;

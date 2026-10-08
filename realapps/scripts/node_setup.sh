@@ -18,6 +18,11 @@ fi
 if ! ldd "$(ls -d "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-*/headless_shell | head -1)" 2>/dev/null | grep -q "not found"; then :; else
   sudo -n env PATH="$PATH" npx playwright install-deps chromium >/dev/null
 fi
+# build against the pinned runtime (cluster.sh sync with TAG=...), never the working tree, for data generation
+if [ -f "$HOME/gcl/real-cache/runtime/current" ]; then
+  export RW_RUNTIME_TAG="$(cat "$HOME/gcl/real-cache/runtime/current")"
+  export RW_RUNTIME_SRC="$HOME/gcl/real-cache/runtime/$RW_RUNTIME_TAG/src"
+fi
 bash corpus/prepare_oss.sh
 node build.mjs | tail -3
 echo "setup ok on $(hostname): $(nproc) vCPU, $(free -g | awk '/Mem/ {print $2}') GB"

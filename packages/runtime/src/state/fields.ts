@@ -8,7 +8,7 @@
 // element of an array counts, however long. Plain objects with more than 32 keys (entity maps such as `byId`) are
 // one field ("collection"), like arrays, so big normalized stores stay a bounded number of fields.
 
-import { describe, fnv1a, hashValue, isPlainObject, kindOf, plural, type Redactor } from "../util.js";
+import { describe, fnv1a, hashValue, isPlainObject, kindOf, plural, truncate, type Redactor } from "../util.js";
 
 export const MAX_DEPTH = 4;
 export const MAX_FIELDS_PER_STORE = 200;
@@ -362,7 +362,40 @@ export function changeText(c: Pick<FieldChange, "before" | "after" | "path"> & {
     if (removedK.length) parts.push(`removed ${removedK.slice(0, 2).join(", ")}${removedK.length > 2 ? ` and ${removedK.length - 2} more` : ""}`);
     return `${b.len} → ${a.len} entries${parts.length ? `: ${parts.join("; ")}` : ""}`;
   }
+  if (typeof c.before === "string" && typeof c.after === "string" && Object.is(redact(c.path, c.after), c.after) && Object.is(redact(c.path, c.before), c.before)) {
+    const d = stringDiff(c.before, c.after);
+    if (d) return d.text;
+  }
   return `${describe(c.before, c.path, redact, 36)} → ${describe(c.after, c.path, redact, 36)}`;
+}
+
+export interface StringDiff {
+  /** Characters of `before` that `after` does not have (between the common prefix and suffix). */
+  removed: string;
+  /** Characters of `after` that `before` does not have. */
+  added: string;
+  /** `"…sword shield market lib" → "…sword shield" (removes " market lib")`: both sides centred on the difference. */
+  text: string;
+}
+
+/**
+ * A diff-centred change of a long string: truncating both sides to the same prefix would hide the difference, so
+ * both previews start a little before the first differing character. Null for short strings (shown whole).
+ */
+export function stringDiff(before: string, after: string, width = 34): StringDiff | null {
+  if (before === after || (before.length <= width && after.length <= width)) return null;
+  let p = 0;
+  const max = Math.min(before.length, after.length);
+  while (p < max && before[p] === after[p]) p++;
+  let s = 0;
+  while (s < max - p && before[before.length - 1 - s] === after[after.length - 1 - s]) s++;
+  const removed = before.slice(p, before.length - s);
+  const added = after.slice(p, after.length - s);
+  const start = Math.max(0, p - 14);
+  const win = (x: string) => JSON.stringify(`${start > 0 ? "…" : ""}${x.slice(start, start + width)}${start + width < x.length ? "…" : ""}`);
+  const q = (x: string) => JSON.stringify(truncate(x, 28));
+  const what = !added ? `removes ${q(removed)}` : !removed ? `inserts ${q(added)}` : `replaces ${q(removed)} with ${q(added)}`;
+  return { removed, added, text: `${win(before)} → ${win(after)} (${what})` };
 }
 
 // ------------------------------------------------------------------------------------------------ patches

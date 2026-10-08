@@ -1,6 +1,8 @@
 #!/bin/bash
 # Mac-side helper for realapps generation on Azure VMs (ssh/rsync only; nothing heavy runs on the Mac).
-#   realapps/scripts/cluster.sh sync HOST                     rsync realapps + runtime + sim sources to HOST:~/gcl/real
+#   TAG=situation-v2 realapps/scripts/cluster.sh sync HOST    rsync realapps + runtime + sim sources to HOST:~/gcl/real,
+#                                                            plus `git archive $TAG packages/runtime/src` (the pinned
+#                                                            runtime the apps are built against; required for data)
 #   realapps/scripts/cluster.sh setup HOST                    sync, then scripts/node_setup.sh on HOST
 #   realapps/scripts/cluster.sh run HOST NAME SEED N [WORKERS] [extra gen args...]
 #                                                            detached gen into HOST:~/gcl/real-out/NAME (resumable)
@@ -22,7 +24,16 @@ sync() {
     timeout 600 rsync -az --delete -e "ssh ${OPTS[*]}" --exclude node_modules --exclude 'dist/' --exclude .git --exclude '/out/' --exclude '__pycache__' --exclude '.DS_Store' \
       "${ROOT}/${d}/" "${DEST}:gcl/real/${d}/"
   done
-  r "grep -c . ~/gcl/real/realapps/src/harness/trajectory.ts >/dev/null && echo synced to ${H}"
+  if [ -n "${TAG:-}" ]; then
+    local tmp
+    tmp="$(mktemp -d)"
+    (cd "$ROOT" && git archive --format=tar "$TAG" packages/runtime/src | tar -x -C "$tmp")
+    r "mkdir -p ~/gcl/real-cache/runtime/${TAG}"
+    timeout 600 rsync -az --delete -e "ssh ${OPTS[*]}" "$tmp/packages/runtime/src/" "${DEST}:gcl/real-cache/runtime/${TAG}/src/"
+    rm -rf "$tmp"
+    r "echo ${TAG} > ~/gcl/real-cache/runtime/current"
+  fi
+  r "grep -c . ~/gcl/real/realapps/src/harness/trajectory.ts >/dev/null && echo synced to ${H} (runtime: \$(cat ~/gcl/real-cache/runtime/current 2>/dev/null || echo working-tree))"
 }
 case "$cmd" in
   sync) sync ;;

@@ -35,6 +35,40 @@ describe("element descriptions", () => {
   });
 });
 
+describe("element descriptions: nested labels and shadow DOM (batch 5)", () => {
+  it("a control inside its <label>: the label's own text, without options, values or captions", () => {
+    page(`
+      <label>Stops <select id="s"><option>Any</option><option>Nonstop</option><option>1 stop</option></select></label>
+      <label>Remember me <input type="checkbox" id="c"></label>
+      <label for="q2">Quantity</label><input id="q2" value="3">
+      <label>Note <textarea id="t">hello</textarea> <button>Clear</button></label>
+    `);
+    const $ = (id: string) => document.getElementById(id);
+    expect(describeElement($("s"))).toBe('select "Stops"');
+    expect(describeElement($("c"))).toBe('checkbox "Remember me"');
+    expect(describeElement($("q2"))).toBe('input "Quantity"');
+    expect(describeElement($("t"))).toBe('textarea "Note"');
+    expect(describeElement(document.querySelector("label"))).toBe('label "Stops"');
+  });
+
+  it("elements inside open shadow roots: labels, aria-labelledby and slotted text resolve in their own tree", () => {
+    page(`<inbox-app id="app"></inbox-app><x-field id="xf" label="Email"></x-field><fancy-button id="fb">Save draft</fancy-button>`);
+    const app = document.getElementById("app")!.attachShadow({ mode: "open" });
+    app.innerHTML = `<ul><li id="conv"><b>Sofia</b> · Size exchange</li></ul>
+      <span id="lbl">Reply text</span><textarea id="reply" aria-labelledby="lbl"></textarea>
+      <label>Status <select id="st"><option>Open</option><option>Closed</option></select></label>`;
+    const xf = document.getElementById("xf")!.attachShadow({ mode: "open" });
+    xf.innerHTML = `<input id="inner">`;
+    const fb = document.getElementById("fb")!.attachShadow({ mode: "open" });
+    fb.innerHTML = `<button id="btn"><slot></slot></button>`;
+    expect(describeElement(app.getElementById("conv"))).toBe('li "Sofia · Size exchange"');
+    expect(describeElement(app.getElementById("reply"))).toBe('textarea "Reply text"');
+    expect(describeElement(app.getElementById("st"))).toBe('select "Status"');
+    expect(describeElement(xf.getElementById("inner"))).toBe('input "Email"'); // named by its host
+    expect(describeElement(fb.getElementById("btn"))).toBe('button "Save draft"'); // slotted text
+  });
+});
+
 describe("DOM user-action observer", () => {
   let rt: RuntimeImpl | null = null;
   afterEach(() => {
@@ -109,6 +143,28 @@ describe("DOM user-action observer", () => {
     (document.getElementById("app") as HTMLButtonElement).click();
     const names = rt.history().filter((e) => e.kind === "user").map((e) => e.name);
     expect(names).toEqual(['click button "App"']);
+    await clock.flush();
+  });
+
+  it("shadow DOM: clicks, typing and changes inside a custom element describe the real target, not the host", async () => {
+    page(`<inbox-app id="app"></inbox-app>`);
+    const sr = document.getElementById("app")!.attachShadow({ mode: "open" });
+    sr.innerHTML = `<button id="send">Send reply</button><label>Reply <input id="msg"></label>
+      <label>Status <select id="st"><option>Open</option><option>Closed</option></select></label>`;
+    const clock = new FakeClock();
+    rt = createRuntime({ clock, global: window, decider: new ScriptedDecider(), report: "silent", observe: { ...OFF, user: true, untrustedEvents: true } }) as RuntimeImpl;
+    (sr.getElementById("send") as HTMLButtonElement).click();
+    const msg = sr.getElementById("msg") as HTMLInputElement;
+    msg.dispatchEvent(new FocusEvent("focusin", { bubbles: true, composed: true }));
+    msg.value = "On its way";
+    msg.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    const st = sr.getElementById("st") as HTMLSelectElement;
+    st.dispatchEvent(new FocusEvent("focusin", { bubbles: true, composed: true }));
+    st.selectedIndex = 1;
+    st.dispatchEvent(new Event("change", { bubbles: true })); // not composed: stays inside the shadow root
+    const users = rt.history().filter((e) => e.kind === "user");
+    expect(users.map((e) => e.name)).toEqual(['click button "Send reply"', 'type input "Reply"', 'change select "Status"']);
+    expect(users.map((e) => e.data?.value)).toEqual([undefined, '"On its way"', '"Closed"']);
     await clock.flush();
   });
 

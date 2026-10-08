@@ -73,7 +73,7 @@ for split in ("train", "dev", "test"):
         npm = m.get("non_passive_mass")
         if npm is not None:
             costs = m["costs"]
-            P = {"mutation": "apply", "request": "send", "failure": "deliver", "stall": "wait", "inconsistency": "ignore", "transition": "ignore", "error": "ignore"}[t]
+            P = {"mutation": "apply", "request": "send", "delivery": "deliver", "failure": "deliver", "stall": "wait", "inconsistency": "ignore", "transition": "ignore", "error": "ignore"}[t]
             gain = costs[P] - min(costs.values())
             if m["passive_best"]:
                 b = "passive-best"

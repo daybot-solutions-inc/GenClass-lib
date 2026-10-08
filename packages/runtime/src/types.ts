@@ -343,7 +343,10 @@ export interface InitOptions {
   /** Default "salient". */
   triage?: "salient" | "always";
   policy?: PolicyOptions;
-  /** Default redacts keys matching /pass|token|secret|card|cvv|ssn|auth/i. */
+  /**
+   * Default: values whose leaf field names a secret (password, token, secret, cvv, card number, ssn, iban, api key,
+   * ...), never a whole store by its name (`auth.loading` stays visible, `auth.token` is redacted).
+   */
   redact?: (path: string, value: unknown) => unknown;
   plugins?: Plugin[];
   /** Events kept, default 500. */

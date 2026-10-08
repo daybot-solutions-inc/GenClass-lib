@@ -37,13 +37,14 @@ describe("oracle", () => {
       latency: (_m, p) => (p.includes("=la") ? 100 : p.includes("=l") ? 900 : undefined),
     });
     const { ideal, base } = await runBoth(scn, factory);
-    const d = find(base, (x) => x.trigger === "mutation");
-    expect(d, "a held write decision").toBeTruthy();
+    // situation v2: the stale response is decided at the network boundary (delivery), before the app writes.
+    const d = find(base, (x) => x.trigger === "delivery");
+    expect(d, "a delivery decision").toBeTruthy();
     expect(d!.diagnosis).toBe("stale");
     const pc = await pointCosts(scn, ideal, base, d!, factory);
     expect(pc.drop).toBeUndefined();
     expect(argmin(pc.costs)).toBe("discard");
-    expect(actionLabel(pc.futures, "apply").best).toBe("discard");
+    expect(actionLabel(pc.futures, "deliver").best).toBe("discard");
   });
 
   it("single-point counterfactual credits discarding ONE stale write even if a later stale write lands", async () => {
@@ -54,15 +55,15 @@ describe("oracle", () => {
       duration: 8000,
     });
     const { ideal, base } = await runBoth(scn, factory);
-    const muts = base.decisions.filter((x) => x.trigger === "mutation");
-    expect(muts.length).toBeGreaterThanOrEqual(2);
-    const first = muts[0]!; // "la" results landing after "lam"
+    const dels = base.decisions.filter((x) => x.trigger === "delivery");
+    expect(dels.length).toBeGreaterThanOrEqual(2);
+    const first = dels[0]!; // "la" results landing after "lam"
     expect(first.diagnosis).toBe("stale");
     const pc = await pointCosts(scn, ideal, base, first, factory);
-    // Final state is wrong either way ("l" lands later and is applied under the passive future),
-    // yet discarding this one write keeps the right results on screen longer.
-    expect(pc.parts.discard!.finalClient).toBeCloseTo(pc.parts.apply!.finalClient, 6);
-    expect(pc.costs.discard!).toBeLessThan(pc.costs.apply!);
+    // Final state is wrong either way ("l" lands later and is delivered under the passive future),
+    // yet discarding this one response's stale write keeps the right results on screen longer.
+    expect(pc.parts.discard!.finalClient).toBeCloseTo(pc.parts.deliver!.finalClient, 6);
+    expect(pc.costs.discard!).toBeLessThan(pc.costs.deliver!);
     // defer can be cheaper still: held until the even staler response lands, then applied over it.
     expect(["discard", "defer"]).toContain(argmin(pc.costs));
   });
@@ -130,11 +131,17 @@ describe("oracle", () => {
       latency: (m, _p, occ) => (m === "POST" ? (occ === 0 ? 600 : 300) : undefined),
     });
     const { ideal, base } = await runBoth(scn, factory);
-    const d = find(base, (x) => x.trigger === "mutation");
-    expect(d, "a held write decision for the second echo").toBeTruthy();
-    expect(d!.diagnosis).toBe("expected");
+    // Situation v2 asks only on newer-data conflicts / pending local changes: two independent adds usually raise no
+    // question at all (the best outcome for benign concurrency). When one is asked, passive must win.
+    const d = find(base, (x) => x.trigger === "delivery" || x.trigger === "mutation");
+    if (!d) {
+      expect(base.decisions.filter((x) => x.trigger === "delivery" || x.trigger === "mutation").length).toBe(0);
+      return;
+    }
+    expect(d.diagnosis).toBe("expected");
     const pc = await pointCosts(scn, ideal, base, d!, factory);
-    expect(actionLabel(pc.futures, "apply").best).toBe("apply");
+    const passive = d!.trigger === "delivery" ? "deliver" : "apply";
+    expect(actionLabel(pc.futures, passive).best).toBe(passive);
   });
 
   it("labels are sharp when futures agree and soft when they disagree", () => {

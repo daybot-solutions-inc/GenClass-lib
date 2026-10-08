@@ -4,8 +4,9 @@
 // cost → soft action label; diagnosis from the sim's knowledge at decision time; ask rows from probes.
 
 import { askQuestions } from "../ask/questions.js";
-import { clientDivergenceAt, actionLabel, runCost, TIER, W, type CostBreakdown } from "../oracle/cost.js";
+import { clientDivergenceAt, divergedFieldsAt, actionLabel, runCost, TIER, W, type CostBreakdown } from "../oracle/cost.js";
 import { hashAll, Rng } from "../rng.js";
+import { S2, type FutureSpec } from "../run/latent.js";
 import { runScenario, type DecisionRec, type ExplorePolicy, type RunResult } from "../run/runner.js";
 import type { RuntimeFactory } from "../run/rt.js";
 import { transformQuestions } from "../run/transform.js";
@@ -68,7 +69,7 @@ export interface TrajectoryOut {
   skipped?: string;
 }
 
-const TRIGGER_W: Record<string, number> = { mutation: 1, request: 1, failure: 1.6, stall: 2.2, inconsistency: 3, transition: 3, error: 2.2 };
+const TRIGGER_W: Record<string, number> = { mutation: 1, delivery: 1.2, request: 1, failure: 1.6, stall: 2.2, inconsistency: 3, transition: 3, error: 2.2 };
 
 function explorePolicy(scale: number, rngT: Rng): ExplorePolicy | undefined {
   const eps = rngT.weighted([[0, 4], [0.08, 3], [0.2, 2]] as const) * scale;
@@ -79,7 +80,8 @@ function explorePolicy(scale: number, rngT: Rng): ExplorePolicy | undefined {
       const others = rec.actions.filter((a) => a !== passive);
       if (!others.length) return undefined;
       // Exploration is concentrated where the sim sees a problem (keeps fake-diagnosis answers rare).
-      const p = rec.diagnosis && rec.diagnosis !== "expected" ? eps : eps / 4;
+      // Delivery diagnoses are only known after the run; the runtime asks only on salient deliveries.
+      const p = rec.trigger === "delivery" ? eps / 2 : rec.diagnosis && rec.diagnosis !== "expected" ? eps : eps / 4;
       return rng.next() < p ? rng.pick(others) : undefined;
     },
   };
@@ -186,7 +188,14 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
     for (const a of p.actions) if (a !== passive) harm[a] = Math.round((costs[a]! - costs[passive]!) * 1e3) / 1e3;
     const tr = transformQuestions(p.questions, lab.dist, passive, lab.best, R.fork("transform", p.k));
     const labels: Record<string, Label> = { action: { type: "choice", dist: tr.dist ?? lab.dist } };
-    const diag = p.diagnosis;
+    // S1: never `expected` where acting clearly wins; name what the action repairs or prevents.
+    let diag = p.diagnosis;
+    let diagS1: string | undefined;
+    if ((diag === undefined || diag === "expected") && p.subject.kind !== "unknown" && !lab.passiveBest && (lab.adjusted[passive] ?? 0) >= S1_GAP) {
+      const c = diagnosisFromOutcome(base, ideal, p, lab.best);
+      diag = c.diag;
+      diagS1 = c.source;
+    }
     const dq = tr.questions.diagnosis;
     if (diag && dq && dq.type === "choice" && diag in dq.criteria && p.subject.kind !== "unknown") labels.diagnosis = { type: "choice", label: diag };
     else if (diag && dq && dq.type === "choice" && !(diag in dq.criteria)) drop("diagnosis-not-in-vocab");
@@ -217,6 +226,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
         cost_parts: Object.fromEntries(Object.entries(parts).map(([a, c]) => [a, { area: r3(c.area), final_client: r3(c.finalClient), final_server: r3(c.finalServer), relation_s: r3(c.relationS), relation_final: c.relationFinal, errors: c.shownErrors, uncaught: c.uncaught, wasted: c.wasted, latency_s: r3(c.latencyS) }])),
         tiers: Object.fromEntries(p.actions.map((a) => [a, TIER[a] ?? "heal"])),
         diagnosis: diag ?? null,
+        ...(diagS1 ? { diagnosis_s1: diagS1, diagnosis_subject: p.diagnosis ?? null } : {}),
         subject: p.subject,
         transform: tr.variant,
         ...(p.fakeDiagnosis ? { fake_diagnosis: true } : {}),
@@ -294,6 +304,49 @@ export function resetCostMs(): void {
   costMs = 0;
 }
 
+/** S1: a clear non-passive win (passive's label gap, premiums included) at least this large never keeps `expected`. */
+export const S1_GAP = 1.0;
+
+/**
+ * S1 diagnosis for a point whose subject looks normal but where an action clearly wins: the cause of what the action
+ * repairs or prevents.
+ *   a) fields already wrong at the decision (vs the ideal run): the verdict of the last non-`expected` write to them;
+ *   b) the subject repeats an accidental user action (any body, e.g. a toggle clicked back): duplicate;
+ *   c) coalesce/block of a request with an identical one in flight or just answered: duplicate;
+ *   d) fields already wrong with no named cause: inconsistent (inconsistency/transition) or stale (the client holds
+ *      older data than the intended state);
+ *   e) otherwise: unusual.
+ */
+export function diagnosisFromOutcome(base: RunResult, ideal: RunResult, p: DecisionRec, best: string): { diag: string; source: string } {
+  const know = base.know;
+  const fields = divergedFieldsAt(base, ideal, p.t);
+  let bestW: { t: number; diag: string } | undefined;
+  for (const f of fields) {
+    const [store, field] = f.split(".");
+    for (let i = know.writes.length - 1; i >= 0; i--) {
+      const w = know.writes[i]!;
+      if (w.t > p.t || w.store !== store) continue;
+      if (field && w.fields && !w.fields.includes(field)) continue;
+      if (w.diag && w.diag !== "expected" && (!bestW || w.t > bestW.t)) bestW = { t: w.t, diag: w.diag };
+      break;
+    }
+  }
+  if (bestW) return { diag: bestW.diag, source: "a-write" };
+  const ref = p.subject.ref;
+  const op = p.subject.kind === "op" ? know.getOp(ref) : p.subject.kind === "write" ? know.getOp(know.getWrite(ref)?.op) : undefined;
+  const it = know.getIntent(op?.intent ?? (p.subject.kind === "write" ? know.getWrite(ref)?.intent : undefined));
+  if (it?.accidental || it?.repeatOf !== undefined || op?.dupOf !== undefined) return { diag: "duplicate", source: "b-repeat" };
+  if (op && p.trigger === "request" && (best === "coalesce" || best === "block")) {
+    const twin = know.ops.some((x) => x.id !== op.id && x.method === op.method && x.url === op.url && x.body === op.body && x.t0 <= op.t0 && (x.tEnd === undefined || x.tEnd > p.t - 10000));
+    if (twin) return { diag: "duplicate", source: "c-twin" };
+  }
+  if (fields.length) return { diag: p.trigger === "inconsistency" || p.trigger === "transition" ? "inconsistent" : "stale", source: "d-diverged" };
+  return { diag: "unusual", source: "e-other" };
+}
+
+/** Futures whose latent re-draw changed an observed prefix and were re-run with network/timing randomness only. */
+export let latentFallbacks = 0;
+
 export async function pointCosts(
   scn: Scenario,
   ideal: RunResult,
@@ -311,18 +364,16 @@ export async function pointCosts(
   let runs = 0;
   const passive = PASSIVE[p.trigger] ?? p.actions[0]!;
   const laterExternal = scn.external.some((e) => e.t > p.t);
-  for (let j = 0; j < Math.max(1, K); j++) {
-    if (j === 1 && adaptive) {
-      const cp = costs[passive]?.[0];
-      const gain = cp === undefined ? 0 : Math.max(...p.actions.filter((a) => a !== passive).map((a) => cp - (costs[a]?.[0] ?? cp)));
-      if (!(gain > 0.05)) break;
-    }
-    const future = j === 0 ? undefined : { k: p.k, salt: hashAll("future", scn.seed, p.k, j), t: p.t };
+  /** One paired future: every action under the same world. "mismatch" when a replayed prefix differs. */
+  const runFuture = async (j: number, noLatent: boolean): Promise<Record<string, { c: CostBreakdown; r: RunResult }> | string> => {
+    const future: FutureSpec | undefined = j === 0 ? undefined : { k: p.k, salt: hashAll("future", scn.seed, p.k, j), t: p.t, ...(noLatent ? { noLatent } : {}) };
     let idealJ = ideal;
-    if (future && laterExternal) {
-      idealJ = await runScenario(scn, { ideal: true, serverTimeline: true, future: { k: -1, salt: future.salt, t: p.t } });
+    // S2 re-draws the user's later steps and hidden intents, so the ideal of a re-seeded future is re-run.
+    if (future && (laterExternal || (S2 && !noLatent))) {
+      idealJ = await runScenario(scn, { ideal: true, serverTimeline: true, future: { ...future, k: -1 } });
       runs++;
     }
+    const out: Record<string, { c: CostBreakdown; r: RunResult }> = {};
     for (const a of p.actions) {
       const forced = new Map(forcedPrefix);
       forced.set(p.k, a);
@@ -330,20 +381,42 @@ export async function pointCosts(
       try {
         cf = await runScenario(scn, { ideal: false, factory, forced, fpUpTo: p.k, tStop: p.t + W.finalMs, ...(future ? { future } : {}) });
       } catch {
-        return { costs, parts, runs, drop: "cf-exception", results };
+        return "cf-exception";
       }
       runs++;
-      if (cf.internalErrors.length) return { costs, parts, runs, drop: "cf-internal-error", results };
+      if (cf.internalErrors.length) return "cf-internal-error";
       // Replay check: every decision up to k must be byte-identical to the base run.
       const mine = cf.decisions.filter((d) => d.k <= p.k);
-      if (mine.length !== p.k + 1 || mine.some((d) => d.fp !== base.decisions[d.k]?.fp)) return { costs, parts, runs, drop: "prefix-mismatch", results };
+      if (mine.length !== p.k + 1 || mine.some((d) => d.fp !== base.decisions[d.k]?.fp)) return "prefix-mismatch";
       const tc = performance.now();
-      const c = runCost(cf, idealJ, p.t, scn.tEnd);
+      out[a] = { c: runCost(cf, idealJ, p.t, scn.tEnd), r: cf };
       costMs += performance.now() - tc;
+    }
+    return out;
+  };
+  const gainOf = (j: number): number => {
+    const cp = costs[passive]?.[j];
+    return cp === undefined ? 0 : Math.max(...p.actions.filter((a) => a !== passive).map((a) => cp - (costs[a]?.[j] ?? cp)));
+  };
+  for (let j = 0; j < Math.max(1, K); j++) {
+    if (adaptive && j >= 1) {
+      // S2: always look at one re-seeded future (the hidden state may favour an action the base world does not);
+      // the third and later futures only when some action gains in a future seen so far.
+      const minK = S2 ? 2 : 1;
+      if (j >= minK && !(Math.max(...Array.from({ length: j }, (_, i) => gainOf(i))) > 0.05)) break;
+    }
+    let res = await runFuture(j, false);
+    if (res === "prefix-mismatch" && j > 0 && S2) {
+      latentFallbacks++;
+      res = await runFuture(j, true);
+    }
+    if (typeof res === "string") return { costs, parts, runs, drop: res, results };
+    for (const a of p.actions) {
+      const { c, r } = res[a]!;
       (costs[a] ??= []).push(Math.round(c.total * 1e4) / 1e4);
       if (j === 0) {
         parts[a] = c;
-        results[a] = cf;
+        results[a] = r;
       }
     }
   }

@@ -15,7 +15,7 @@ export interface ScoreAnswer { type: "score"; score: number; confidence: number;
 export type Answer = NoulAnswer | ChoiceAnswer | ScoreAnswer;
 
 export type TriggerKind =
-  | "mutation" | "request" | "failure" | "stall" | "inconsistency" | "transition" | "error" | "ask";
+  | "mutation" | "request" | "delivery" | "failure" | "stall" | "inconsistency" | "transition" | "error" | "ask";
 
 export interface ModelStatus { state: "off" | "loading" | "ready" | "error"; model?: string; error?: string }
 
