@@ -140,6 +140,24 @@ point.
 **Quantization.** The q8 export was fixed by moving to MatMulNBits block 16: 223/223 decisions match PyTorch,
 the file is 10.16 MB, and it is fp16-free.
 
+### Model 0.2.0 (r17-v2dT, gain gate, three aggressiveness profiles)
+
+Gates are fitted on the shipped q8 outputs, using the real-app certification set (counted per trajectory) and
+shipping-gate on-policy rows. Results on held-out test:
+
+| Profile | guard FIR | guard harm | guard recall (clear / real) | guard gain | heal FIR | heal harm | heal recall (clear / real) | heal gain | report | detected (duplicate / stale / broken) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0.1.0 (v2b) | 0.01% | 0.00% | 0.6% / 0% | 0.8% | 0.07% | 0.04% | – / 5.7% | 3.8% | 0.85 | 76% / 28% / – |
+| 0.2.0 cautious | 0.005% | 0.007% | 2.4% / 1.4% | 3.1% | 0.26% | 0.06% | 3.7% / 3.8% | 3.2% | 0.95 | 72% / 28% / 0% |
+| **0.2.0 balanced (default)** | 0.13% | 0.03% | 7.8% / 7.5% | 6.7% | 0.59% | 0.11% | 7.1% / 10.4% | 5.7% | 0.90 | 75% / 30% / 6% |
+| 0.2.0 eager | 0.54% | 0.11% | 14.2% / 21.0% | 12.5% | 1.84% | 0.29% | 17.1% / 24.2% | 14.2% | 0.70 | 77% / 45% / 13% |
+
+The 0.1.0 row comes from the earlier, stricter fit without the certification set, so it is not exactly
+like-for-like. FIR on real apps is 0.00% for every profile.
+
+Why v2dT: v2d is better in heal mode (gain 8.1% vs 5.7%, real recall 21.8% vs 10.4%), and v2dT is better in guard
+mode (6.7% vs 4.2%). Guard is the default mode, so v2dT ships. Choosing the model per mode is an open item.
+
 Targets: guard FIR ≤ 0.1% (met), heal FIR ≤ 0.5% (met), calibration error ≤ 0.02 (met: 0.009),
 diagnosis ≥ 95% (not yet), clear-case recall ≥ 80% (not yet).
 

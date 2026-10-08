@@ -400,3 +400,32 @@ REAL action recall at the shipped margins is low (0.7%: REAL action cases sit be
 conservative; v2c ranks first at its shipped point only because its dev fit allowed a looser heal gate.
 Deliveries (train VM, ORT-web 223/223): `~/gcl/train-out/v2dT/r17/` (2.0.0-rc4t), `v2d/r17/` (2.0.0-rc4),
 `v2c-q8/r17/` (2.0.0-rc3b).
+
+## `@genclass/runtime-model@0.2.0` = `r17-v2dT` (gain gate, aggressiveness profiles; 2026-10-08 16:30 UTC)
+
+Refit of all three candidates on q8 outputs with REAL's certification dev set (`v23-cert`, 427,576 rows, dev-split apps,
+clustered by trajectory `meta.seed`) added to dev, on-policy rows only from the shipping-gate policy, cluster-robust
+95% Wilson bounds at the limit (no extra margin), per-trigger values only where certified (else tier default; `error`
+default/never), guard thresholds raised jointly when needed so heal-mode limits also hold (one guard set serves both
+modes). Profiles (coordinator 15:50): cautious = guard FIR/harm ≤ 0.1/0.2%, heal ≤ 0.5/1%, report false ≤ 1% REAL / 2%
+SIM; **balanced** (top-level `gate`) = guard ≤ 0.3/0.3%, heal ≤ 1/1%, report ≤ 2/3%; eager = guard ≤ 1/1%, heal ≤ 3/3%,
+report ≤ 5/6%. Held-out test (q8): shipping-gate on-policy a/b test + sim2e + sim2f + sim3e; REAL eval test splits.
+
+| model / profile | guard FIR / harm | guard recall clear / REAL act / gain | heal FIR / harm (SIM / REAL) | heal recall clear / REAL act / gain | report | detection right: dup / stale (v2, v2.3) / broken |
+|---|---|---|---|---|---|---|
+| **v2dT cautious** | 0.005 / 0.007% | 2.4 / 1.4 / 3.1% | 0.26 / 0.06 / 0.00% | 3.7 / 3.8 / 3.2% | 0.95 | 72% / 14, 28% / 0% |
+| **v2dT balanced** | 0.13 / 0.03% | **7.8 / 7.5 / 6.7%** | 0.59 / 0.11 / 0.02% | 7.1 / 10.4 / 5.7% | 0.90 | 75% / 21, 30% / 6% |
+| **v2dT eager** | 0.54 / 0.11% | 14.2 / 21.0 / 12.5% | 1.84 / 0.29 / 0.16% | 17.1 / 24.2 / 14.2% | 0.70 | 77% / 40, 45% / 13% |
+| v2d cautious | 0.03 / 0.00% | 2.9 / 0.4 / 2.6% | 0.15 / 0.03 / 0.06% | 3.3 / 14.9 / 4.1% | 0.95 | 72% / 12, 23% / 6% |
+| v2d balanced | 0.07 / 0.02% | 4.5 / 1.4 / 4.2% | 0.41 / 0.08 / 0.13% | 7.9 / **21.8 / 8.1%** | 0.90 | 74% / 21, 28% / 6% |
+| v2d eager | 0.59 / 0.11% | 13.5 / 6.4 / 12.0% | 1.48 / 0.34 / 0.28% | 16.0 / 33.2 / 14.5% | 0.70 | 77% / 41, 45% / 13% |
+| v2c balanced | 0.06 / 0.01% | 3.1 / 0.4 / 2.1% | 0.36 / 0.08 / 0.04% | 5.4 / 13.2 / 5.1% | 0.90 | 74% / 22, 25% / 8% |
+
+All profiles meet their limits on held-out test (REAL FIR 0.00% throughout). Choice: v2d and v2dT tie on total shipped
+gain at balanced (12.3 vs 12.4 points guard+heal); v2dT wins guard mode clearly (+61% gain, 5× REAL action recall) and
+the cautious guard profile, v2d wins heal mode (+42% gain, 2× REAL action recall); detection quality is equal (v2dT
+slightly ahead on stale). **v2dT ships as 0.2.0** (guard is the first active mode after observe); a heal-heavy
+deployment would be better served by v2d — candidate for a later per-mode model choice. Staged:
+`packages/runtime-model/files/r17-0.2.0/` and `train:~/gcl/train-out/v2dT-0.2.0/r17/` (meta.json sha256 73b63b4d…cab07,
+model.json 3f792892…169daf; q8 10.16 MB, fp16 13.57 MB; ORT-web WASM 1 thread 182 / 330 / 599 ms; parity 223/223).
+`meta.gate` = balanced (`kind: "gain"`, `tauGain` 1) + `gate.profiles` {cautious, balanced, eager}.

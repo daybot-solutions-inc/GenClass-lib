@@ -387,3 +387,16 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
   10:55 report fits for v2c-q8 / v2d / v2dT used only v23-eval as REAL benign evidence; the refit corrects this.
 - `cert_refit.sh` (Mac-side): imports the cert set on c09 (eval-set ids removed), collects q8 logits on it per model
   across R0 + helpers, refits, refreshes model.json, prints the h2h summary. All nodes deallocated while waiting.
+
+### 12:00–16:35 certification refit; aggressiveness profiles; 0.2.0 staged
+- REAL `v23-cert` landed in 10 per-node parts (~13:00–15:00). First refit attempts broke on: Mac-side orchestration
+  killed by the session restart, a truncated own-part (the R0 curl'd its own part from its own http server while
+  serving it), mixed cert-set versions across nodes (9-part vs 10-part), and helpers whose stale parts satisfied the
+  gather check. Clean rerun: node-side `cert_gather.sh` (done markers per share, never re-downloads its own part),
+  5 shares per model across 15 nodes, 427,576 cert rows → 791,670 records per model, ≈ 10 min.
+- `fit_gates.py`: cluster-robust counts (cert rows clustered by trajectory), `--limits/--margin/--fallback`,
+  `error` never certifiable, joint guard raise so heal-mode limits hold; `fit_report.py`: same clustering and
+  `--limits/--margin`. `profiles.sh` fits cautious / balanced / eager and writes `gate` + `gate.profiles`.
+- Result (EVAL.md): v2dT ships as 0.2.0 (wins guard mode; ties overall; v2d better in heal mode). Staged in
+  `packages/runtime-model/files/r17-0.2.0/`; files/r17/ (0.1.0) untouched. All TRAIN nodes deallocated 16:35.
+- Cost since 11:50 ≈ $130 (15 nodes × ≈ 0.5 h + workbench/R0s). **Total ≈ $1,150.**

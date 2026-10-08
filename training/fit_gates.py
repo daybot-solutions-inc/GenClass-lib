@@ -357,6 +357,22 @@ def certifiable(T: Table, sel: np.ndarray, tier: str) -> dict:
     return {k: (v > 0 and wilson_upper(0, v) <= DEV_MARGIN * lim[k] + 1e-12, v) for k, v in n.items()}
 
 
+def raise_guard_for_heal(T: Table, th: dict, notes: dict) -> None:
+    """The runtime uses one guard threshold set in both modes; in heal mode guard candidates see more permitted mass,
+    so the guard thresholds alone can break the heal-mode limits. Raise them (all together, one grid step at a time)
+    until the heal-mode pooled constraints hold with the heal tier at "never"; the heal tier is fitted afterwards."""
+    allrows = np.ones(T.n, bool)
+    up = lambda v: next((x for x in GRID if x > v + 1e-9), GRID[-1])
+    steps = 0
+    while not ok(metrics(T, T.fired(th, "heal"), allrows), "heal", True) and steps < len(GRID):
+        g = th["guard"]
+        g["default"] = up(g["default"])
+        g["byTrigger"] = {k: up(v) for k, v in g["byTrigger"].items()}
+        steps += 1
+    if steps:
+        notes["guard:raised-for-heal-mode"] = f"guard thresholds raised {steps} grid step(s) so the heal-mode limits hold"
+
+
 def fit(items: list[dict], min_passive: int, min_real: int) -> tuple[dict, dict]:
     """Rule (coordinator, 10:15): a trigger gets its own threshold only when its dev evidence can certify every limit
     (SIM and REAL sets that have rows for it); otherwise it uses the tier default — never a lower per-trigger value.
@@ -368,6 +384,8 @@ def fit(items: list[dict], min_passive: int, min_real: int) -> tuple[dict, dict]
         mode = tier
         T = Table(items, mode)
         allrows = np.ones(T.n, bool)
+        if tier == "heal":  # heal tier still at "never" here
+            raise_guard_for_heal(T, th, notes)
         cert = certifiable(T, allrows, tier)
         if not (cert["fir_sim"][0] and cert["harm_sim"][0]):
             notes[f"{tier}:default"] = f"SIM dev evidence cannot certify the limits ({cert}) → never"
