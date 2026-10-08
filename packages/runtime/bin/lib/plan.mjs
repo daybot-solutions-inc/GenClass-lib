@@ -5,9 +5,9 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { firstFile, htmlFiles, htmlModuleEntry, isDir, isFile, readText, walkSources, withExts } from "./detect.mjs";
-import { MARK, MARK_INLINE, appendEnd, bodyTagEnd, codeStyle, indentOf, indentUnit, insertLineAt, insertTop, lineIndexAt, linesOf } from "./edit.mjs";
+import { AUTO, MARK, MARK_INLINE, appendEnd, bodyTagEnd, codeStyle, indentOf, indentUnit, insertLineAt, insertTop, lineIndexAt, linesOf } from "./edit.mjs";
 
-export const AUTO = (mode) => (mode && mode !== "guard" ? `@genclass/runtime/auto/${mode}` : "@genclass/runtime/auto");
+export { AUTO };
 const HEADER = `${MARK} start: GenClass Runtime, added by \`npx @genclass/runtime init\` (\`npx @genclass/runtime remove\` takes it out)`;
 const mark = (line) => `${line} // ${MARK}`;
 const posix = (p) => p.split(sep).join("/");
@@ -78,9 +78,22 @@ function planCra(p, o) {
   return { entry, changes: [editEntry(entry, { ...o, devCond: DEV.node })] };
 }
 
+// Modules only Node code imports: a server framework, Node's built-ins, server-side rendering.
+const NODE_IMPORT_RE =
+  /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)(['"])(node:[\w/]+|express|fastify|koa|@hapi\/hapi|@nestjs\/core|restify|polka|http|https|http2|net|tls|dgram|fs|fs\/promises|child_process|cluster|worker_threads|react-dom\/server|vue\/server-renderer)\1/m;
+
+/** The Node-only module a file imports (it is a server or tool entry, not a browser entry), or null. */
+export function nodeOnlyImport(text) {
+  const m = NODE_IMPORT_RE.exec(text ?? "");
+  return m ? m[2] : null;
+}
+
 function planWebpack(p, o) {
   const entry = firstFile(p.dir, [...withExts("src/main"), ...withExts("src/index"), ...withExts("src/app"), ...withExts("index")]);
   if (!entry) return { changes: [], manual: "no entry file found (src/main.*, src/index.*, index.*)" };
+  // a bundler project with a page can still be a server (express serving public/index.html): never edit its entry
+  const nodeOnly = nodeOnlyImport(readText(entry));
+  if (nodeOnly) return { changes: [], manual: `${posix(relative(p.dir, entry))} imports "${nodeOnly}", so it is Node code (a server?), not the browser entry` };
   // webpack, rspack/rsbuild and parcel replace process.env.NODE_ENV; other bundlers may not define `process`
   const knowsNodeEnv = ["webpack", "@rspack/core", "@rsbuild/core", "parcel"].includes(p.details.bundler);
   const devtools = o.devtools && knowsNodeEnv;
@@ -225,12 +238,20 @@ function planAstro(p, o) {
   return { entry: targets[0], changes };
 }
 
-/** SRI for our own copy of the script, when the URL serves that file. */
-function integrityFor(url, pkgDir) {
-  const name = /genclass\.global(\.min)?\.js(?:[?#].*)?$/.exec(url);
-  if (!name) return null;
+export const cdnUrl = (version, min = true) => `https://cdn.jsdelivr.net/npm/@genclass/runtime@${version}/dist/genclass.global${min ? ".min" : ""}.js`;
+const unpkgUrl = (version, min) => `https://unpkg.com/@genclass/runtime@${version}/dist/genclass.global${min ? ".min" : ""}.js`;
+
+/**
+ * SRI for the script URL, only when the URL is exactly this version's file on jsDelivr or unpkg, whose bytes are the
+ * CLI's own copy. Any other URL (another version, @latest, no version, a mirror, a self-hosted copy) may serve
+ * different bytes, and a wrong hash makes the browser refuse the script: no integrity attribute then.
+ */
+export function integrityFor(url, pkgDir, version) {
+  if (!/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(String(version))) return null;
+  const min = [true, false].find((m) => url === cdnUrl(version, m) || url === unpkgUrl(version, m));
+  if (min === undefined) return null;
   try {
-    const buf = readFileSync(join(pkgDir, "dist", `genclass.global${name[1] ?? ""}.js`));
+    const buf = readFileSync(join(pkgDir, "dist", `genclass.global${min ? ".min" : ""}.js`));
     return `sha384-${createHash("sha384").update(buf).digest("base64")}`;
   } catch {
     return null;
@@ -238,11 +259,12 @@ function integrityFor(url, pkgDir) {
 }
 
 export function scriptTag(o, pkgDir, version) {
-  const url = o.cdn || `https://cdn.jsdelivr.net/npm/@genclass/runtime@${version}/dist/genclass.global.min.js`;
-  const sri = o.sri === false ? null : integrityFor(url, pkgDir);
+  const url = o.cdn || cdnUrl(version);
+  const sri = o.sri === false ? null : integrityFor(url, pkgDir, version);
   const attrs = [`src="${url}"`];
   if (sri) attrs.push(`integrity="${sri}"`, 'crossorigin="anonymous"');
-  if (o.mode && o.mode !== "guard") attrs.push(`data-mode="${o.mode}"`);
+  // no data-mode: observe, the runtime's default
+  if (o.mode) attrs.push(`data-mode="${o.mode}"`);
   if (o.devtools) attrs.push('data-devtools="local"');
   return `<script ${attrs.join(" ")}></script>`;
 }
@@ -270,7 +292,15 @@ function planHtml(p, o, ctx) {
     }
     changes.push({ file: f, kind: "modify", before, after });
   }
-  return { entry: files[0], changes, notes: [] };
+  const notes = [];
+  if (o.sri !== false && !/ integrity="/.test(tag)) {
+    notes.push(
+      o.cdn
+        ? `No integrity (SRI) attribute: --cdn is not ${cdnUrl(ctx.version)}, so the CLI cannot know the bytes it serves. Pin a version and add the hash yourself if you want one.`
+        : `No integrity (SRI) attribute: this copy of the CLI has no built dist/genclass.global.min.js to hash.`,
+    );
+  }
+  return { entry: files[0], changes, notes };
 }
 
 const PLANNERS = {

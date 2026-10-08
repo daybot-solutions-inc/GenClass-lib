@@ -2,15 +2,16 @@
 //
 // init: detects the project, installs @genclass/runtime, adds the auto import as the first statement of the entry
 // file (plus a dev-only devtools line), shows the diff and asks before writing. Every added line or created file
-// carries the marker `genclass:init`, so `remove` can take out exactly that and nothing else. Running init twice
-// changes nothing.
+// carries the marker `genclass:init`, so `remove` can take out exactly that and nothing else (and refuses when a
+// marked line or block was edited). Running init twice changes nothing; running it again with another --mode
+// switches the marked import (or the script tag's data-mode) to that mode in place.
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { detectProject, detectState, htmlFiles, isDir, isFile, readText, walkSources } from "./detect.mjs";
-import { MARK, hasMarker, removeMarked } from "./edit.mjs";
+import { detectProject, detectState, htmlFiles, isDir, isFile, readText, walkSkipped, walkSources } from "./detect.mjs";
+import { MARK, hasMarker, planRemoval, removeMarked, switchMode } from "./edit.mjs";
 import { AUTO, planInit, scriptTag } from "./plan.mjs";
 import { banner, c, confirm, err, out, printChange, row, sym } from "./ui.mjs";
 
@@ -31,11 +32,12 @@ export const USAGE = `Usage:
   genclass-runtime remove [--yes] [--dry-run] [--keep-package] [--cwd <dir>]
 
 init     finds your framework, installs ${PKG}, adds one import to your entry file (and a dev-only devtools
-         line), shows the diff and asks before writing. Running it again changes nothing.
-remove   takes out exactly what init added (every line marked "${MARK}") and uninstalls the package if
-         nothing else uses it.
+         line), shows the diff and asks before writing. Running it again changes nothing; with another
+         --mode it switches the import init added to that mode.
+remove   takes out exactly what init added (the lines and blocks marked "${MARK}"; it changes nothing if
+         one of them was edited) and uninstalls the package if nothing else imports it.
 
-  --mode <m>       observe (never changes anything), guard (default) or heal
+  --mode <m>       observe (default: reports, never changes anything), guard or heal
   --yes, -y        apply without asking
   --dry-run        show what would change; write nothing
   --no-install     do not run the package manager
@@ -43,7 +45,9 @@ remove   takes out exactly what init added (every line marked "${MARK}") and uni
   --keep-package   remove: leave ${PKG} installed
   --cwd <dir>      the project directory (default: the current directory)
   --from <spec>    install ${PKG} from this spec (a version, tag or tarball path)
-  --cdn <url>      plain HTML: the script URL (default: jsDelivr, this version)`;
+  --cdn <url>      plain HTML: the script URL (default: jsDelivr, this version, with an SRI hash; other
+                   URLs get no hash)
+  --no-sri         plain HTML: no integrity attribute`;
 
 class UsageError extends Error {}
 
@@ -234,10 +238,55 @@ function printRecommendations(recs) {
 
 // ------------------------------------------------------------------------------------------------ init
 
+/** init --mode <m> on a project init already set up in another mode: rewrite the marked code in place. */
+async function switchModes(o, project, changes, install, spec, cwd) {
+  row("Mode", `${o.mode} ${c.gray("(switching what init added)")}`);
+  out();
+  out(`  ${c.bold("Changes")}`);
+  out();
+  for (const ch of changes) printChange({ ...ch, file: ch.rel });
+  if (install) out(`  ${c.bold("Install")}  ${c.cyan(installArgs(project.pm, spec).flat().join(" "))}`);
+  out();
+  if (o.dryRun) {
+    out(`  ${c.gray("Dry run: nothing was written.")}`);
+    out();
+    return 0;
+  }
+  if (!o.yes) {
+    const ok = await confirm(`Switch to ${o.mode} mode?`);
+    if (ok === null) {
+      out(`  Not a terminal, so nothing was written. Re-run with ${c.bold("--yes")} to apply.`);
+      out();
+      return 1;
+    }
+    if (!ok) {
+      out(`  Nothing changed.`);
+      out();
+      return 0;
+    }
+    out();
+  }
+  if (install && !spawn(...installArgs(project.pm, spec), cwd)) {
+    err(`  ${c.red(sym.cross)} Installing ${PKG} failed, so no files were changed.`);
+    return 1;
+  }
+  for (const ch of changes) writeChange(ch);
+  out(`  ${c.green(sym.ok)} ${c.bold(`GenClass Runtime now starts in ${o.mode} mode.`)} ${c.gray(`(${changes.map((ch) => ch.rel).join(", ")})`)}`);
+  out();
+  return 0;
+}
+
 async function init(o) {
   const cwd = projectDir(o);
   banner("init");
   const project = detectProject(cwd);
+  if (project.refused) {
+    out(`  ${c.yellow(sym.warn)} Not adding GenClass to ${c.bold(cwd)}: ${project.refused}.`);
+    out(`  If this is a browser app, add the import as the first line of its browser entry file yourself:`);
+    out(`    ${c.cyan(`import "${AUTO()}";`)}`);
+    out();
+    return 1;
+  }
   if (!project.framework) {
     out(`  ${c.yellow(sym.warn)} Could not recognise the project in ${c.bold(cwd)}.`);
     if (project.pkg?.workspaces) out(`  It looks like a monorepo root: run init inside your app's directory (or pass --cwd apps/web).`);
@@ -257,6 +306,17 @@ async function init(o) {
   if (marked.length || manualRefs(files).length) {
     const where = (marked.length ? marked : manualRefs(files)).map((f) => posix(relative(cwd, f)));
     row("Setup", marked.length ? `already added by init in ${where.join(", ")}` : `GenClass is already imported in ${where.join(", ")}; init leaves your code alone`);
+    // `init --mode <m>` again: switch what init added to that mode, in place (GenClass.init() keeps the first
+    // runtime's options, so a later GenClass.init({ mode }) in app code would not change it)
+    const switches = o.mode
+      ? marked
+          .map((f) => {
+            const before = readText(f) ?? "";
+            return { file: f, rel: posix(relative(cwd, f)), kind: "modify", before, after: switchMode(before, o.mode) };
+          })
+          .filter((ch) => ch.after !== ch.before)
+      : [];
+    if (switches.length) return switchModes(o, project, switches, install, spec, cwd);
     if (!install) {
       out();
       out(`  ${c.green("Nothing to do.")}${marked.length ? ` To take it out: ${c.cyan(`${CMD} remove`)}` : ""}`);
@@ -286,7 +346,7 @@ async function init(o) {
     return 1;
   }
   row("Entry", posix(relative(cwd, plan.entry)));
-  row("Mode", `${o.mode ?? "guard"}${o.mode ? "" : c.gray(" (default; --mode observe never changes anything)")}`);
+  row("Mode", `${o.mode ?? "observe"}${o.mode ? "" : c.gray(" (default: reports only, never changes anything; --mode guard lets it act)")}`);
   out();
   out(`  ${c.bold("Changes")}`);
   out();
@@ -351,21 +411,41 @@ async function remove(o) {
   const files = walkSources(cwd);
   const changes = [];
   const after = new Map();
+  const problems = [];
   for (const f of files) {
     const before = readText(f);
     if (before === null || !hasMarker(before)) continue;
-    const next = removeMarked(before);
+    const { text: next, problems: p } = planRemoval(before);
+    for (const x of p) problems.push(`${posix(relative(cwd, f))}:${x.line}: ${x.reason}`);
     if (next === before) continue;
     const rel = posix(relative(cwd, f));
     const created = before.includes(`${MARK} start`) && next.trim() === "";
     changes.push(created ? { file: f, rel, kind: "delete", before, after: "" } : { file: f, rel, kind: "modify", before, after: next });
     after.set(f, created ? "" : next);
   }
-  const stillUsed = files.some((f) => REF_RE.test(after.has(f) ? after.get(f) : readText(f) ?? ""));
-  const uninstall = !!project.pkg && project.has(PKG) && !o.keepPackage && !stillUsed && !o.noInstall;
+  if (problems.length) {
+    out(`  ${c.yellow(sym.warn)} Not removing anything: these places carry init's marker but are not what init wrote, so`);
+    out(`  taking them out could delete your code or leave half a statement behind.`);
+    for (const p of problems) out(`    ${sym.dot} ${p}`);
+    out();
+    out(`  Restore them to what init wrote, or delete GenClass's lines there by hand (and their "${MARK}" markers), then`);
+    out(`  run ${c.cyan(`${CMD} remove`)} again.`);
+    out();
+    return 1;
+  }
+  const users = files.filter((f) => REF_RE.test(after.has(f) ? after.get(f) : readText(f) ?? ""));
+  // also the places walkSources skips (.storybook, tmp, out, build, ...): read only, never edited
+  const hasPkg = !!project.pkg && project.has(PKG);
+  if (hasPkg && !users.length && !o.keepPackage) for (const f of walkSkipped(cwd)) if (REF_RE.test(readText(f) ?? "")) users.push(f);
+  const stillUsed = users.length > 0;
+  const uninstall = hasPkg && !o.keepPackage && !stillUsed && !o.noInstall;
+
+  const keptBecause = () =>
+    out(`  ${c.gray(`${PKG} stays installed${stillUsed ? `: still imported in ${users.slice(0, 10).map((f) => posix(relative(cwd, f))).join(", ")}${users.length > 10 ? ` and ${users.length - 10} more` : ""}` : ""}.`)}`);
 
   if (!changes.length && !uninstall) {
     out(`  Nothing to remove: no lines marked ${c.bold(MARK)} in ${c.bold(cwd)}.`);
+    if (hasPkg && stillUsed) keptBecause();
     out();
     return 0;
   }
@@ -375,7 +455,7 @@ async function remove(o) {
     for (const ch of changes) printChange({ ...ch, file: ch.rel });
   }
   if (uninstall) out(`  ${c.bold("Uninstall")}  ${c.cyan(uninstallArgs(project.pm).flat().join(" "))}`);
-  else if (project.pkg && project.has(PKG)) out(`  ${c.gray(`${PKG} stays installed${stillUsed ? " (your code still uses it)" : ""}.`)}`);
+  else if (hasPkg) keptBecause();
   out();
   if (o.dryRun) {
     out(`  ${c.gray("Dry run: nothing was written.")}`);

@@ -10,16 +10,26 @@ npx @genclass/runtime init
 
 It finds your framework and package manager, installs `@genclass/runtime`, and adds one import as the first line of
 your entry file, plus a line that loads the devtools overlay in development only. It shows the diff and asks before
-writing anything. Running it again changes nothing.
+writing anything. Running it again changes nothing; running it with another `--mode` switches the import it added to
+that mode. It sets up observe mode (reports only, never changes anything) unless you pass `--mode guard` or `--mode heal`.
 
 ```bash
 npx @genclass/runtime init --yes            # no questions
-npx @genclass/runtime init --mode observe   # report only, never change anything
+npx @genclass/runtime init --mode guard     # let GenClass act (also: --mode heal); again later to switch
 npx @genclass/runtime init --dry-run        # show the diff, write nothing
-npx @genclass/runtime remove                # undo exactly what init added
+npx @genclass/runtime remove                # undo exactly what init added (refuses if you edited those lines)
 ```
 
-Other flags: `--no-install` (don't run the package manager), `--no-devtools`, `--cwd <dir>`.
+Other flags: `--no-install` (don't run the package manager), `--no-devtools`, `--cwd <dir>`, `--cdn <url>` and
+`--no-sri` (plain HTML), `remove --keep-package`.
+
+`init` only edits browser apps: a project whose only build tool is esbuild, rollup, parcel or webpack needs an
+`index.html`, a UI framework such as `react-dom` or `vue`, or an HTML plugin / dev server, else `init` stops and says
+why (Node servers and libraries are left alone). It also stops for a package that looks like a library (a UI
+framework as a peer dependency, or an `exports`, `module`, `types` or `bin` field) and for an entry file that imports
+Node-only modules (`express`, `node:*`, `react-dom/server`, ...). `remove` takes out a line a formatter rewrapped as a whole; if a
+line or block `init` marked was edited, it changes nothing and lists where. It keeps the package installed while
+anything still imports it, including in dot-folders such as `.storybook`, `tmp`, `out` or `build`.
 
 What it adds, by framework:
 
@@ -32,7 +42,7 @@ What it adds, by framework:
 | SvelteKit | `src/hooks.client.ts` |
 | Nuxt 3 and 4 | a new `plugins/genclass.client.ts` |
 | Astro | a `<script>` line in each layout's `<head>` |
-| Plain HTML | a `<script>` tag first in each page's `<head>` (jsDelivr, pinned version, with SRI) |
+| Plain HTML | a `<script>` tag first in each page's `<head>` (jsDelivr, pinned version, with SRI; a `--cdn` URL gets no SRI hash) |
 
 In a Vite app the result is:
 
@@ -54,8 +64,9 @@ import "@genclass/runtime/auto"; // first line of your entry file
 
 `/auto` starts GenClass while your entry's imports load, so stores created at import time already see
 `GenClass.runtime`. It is a no-op on the server (SSR). `import rt from "@genclass/runtime/auto"` also gives you the
-runtime. For a mode other than guard, import `@genclass/runtime/auto/observe` (or `/auto/heal`). Configure it from the
-page if you like:
+runtime. It observes (the default); to let GenClass act, import `@genclass/runtime/auto/guard` (or `/auto/heal`). The
+subpaths have types under every TypeScript `moduleResolution`, `"node"` included. Configure it from the page if you
+like:
 
 ```html
 <meta name="genclass" content="mode=observe, devtools=local">
@@ -74,7 +85,7 @@ demand from the same CDN, at the same version as the tag, also when the URL has 
 
 | attribute | |
 |---|---|
-| `data-mode` | `observe`, `guard` (default) or `heal` |
+| `data-mode` | `observe` (default), `guard` or `heal` |
 | `data-devtools` | show the overlay; `="local"`: only on localhost, `*.localhost`, `*.local`, `*.test` |
 | `data-model` | your model directory (`npx @genclass/runtime fetch-model public/genclass-model`), or `off` |
 | `data-ort` | onnxruntime-web's `dist/` directory, if you self-host its wasm |
@@ -83,3 +94,8 @@ demand from the same CDN, at the same version as the tag, also when the URL has 
 
 The same keys work in `<meta name="genclass" content="...">`, and `window.GENCLASS_CONFIG` takes any `init`
 option. In every form, `?genclass=off` in the URL turns GenClass off.
+
+Every `<meta name="genclass">` in the document is read; on a page that renders untrusted HTML, set the options in
+`window.GENCLASS_CONFIG` (it wins) or call `GenClass.init(options)` instead. The tag's SRI hash covers that file only:
+the worker, ONNX Runtime and overlay it loads later come from the same CDN version without one, so pin a version (as
+`init` does) or self-host with `data-base`, `data-ort` and `data-model`.

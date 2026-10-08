@@ -10,6 +10,19 @@
 // Keys of the meta tag and data attributes: mode, model (a model directory URL, or "off"), device, preload, ort
 // (onnxruntime-web wasm directory), worker, report, debug, triage, devtools (bare / true, "local" = only on
 // localhost, false, or a corner such as "bottom-left").
+//
+// Trust: every `<meta name="genclass">` in the document is read (head or body, first to last), and its keys can set
+// the mode and the model and onnxruntime-web URLs. That is deliberate (no build step needed), but on a page that
+// renders untrusted HTML able to contain <meta> tags, set those keys in window.GENCLASS_CONFIG (it wins over meta
+// tags) or call GenClass.init(options) instead of using /auto or the script tag's automatic start.
+//
+// Remote code: an `integrity` attribute on the script tag covers that one file only. What it loads later at runtime
+// (dist/cdn/worker.js, dist/cdn/ort-*.js, dist/devtools/index.js, onnxruntime-web's wasm and the model files) is
+// fetched by URL without SRI (dynamic import() and module workers take no integrity option). On
+// jsDelivr/unpkg those URLs are pinned to the tag's own version (immutable there), so pin the tag's version
+// (`@genclass/runtime@x.y.z`, as `init` writes it), never @latest, in production. For full control, self-host:
+// `data-base` (this package's dist/), `data-ort` (onnxruntime-web's dist/) and `data-model` (a model directory), plus
+// a CSP `script-src` / `worker-src` / `connect-src` limited to those origins.
 
 import type { DevtoolsOptions, DevtoolsPosition } from "../devtools/index.js";
 import type { InitOptions, Mode, ModelOptions } from "../types.js";

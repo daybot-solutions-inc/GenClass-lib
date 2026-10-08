@@ -91,11 +91,25 @@ function killSwitch(g: Record<string, unknown>): string | null {
 }
 
 let current: Runtime | null = null;
+let warnedIgnored: Runtime | null = null;
 
 export const GenClass = {
-  /** Install GenClass (idempotent: a second call returns the same runtime). Never throws. */
+  /**
+   * Install GenClass (idempotent: a second call returns the same runtime and ignores its options; asking for another
+   * mode then logs one warning). Never throws.
+   */
   init(options: InitOptions = {}): Runtime {
-    if (current) return current;
+    if (current) {
+      if (options.mode && options.mode !== current.mode && warnedIgnored !== current) {
+        warnedIgnored = current;
+        const g = globalThis as unknown as Record<string, unknown>;
+        (g.console as Console | undefined)?.warn?.(
+          `[GenClass] Already running in ${current.mode} mode (started by @genclass/runtime/auto, the script tag or an earlier GenClass.init()), so this call's options are ignored. ` +
+            `To change the mode: GenClass.runtime.setMode("${options.mode}"), or re-run \`npx @genclass/runtime init --mode ${options.mode}\`.`,
+        );
+      }
+      return current;
+    }
     try {
       return initUnsafe(options);
     } catch (e) {

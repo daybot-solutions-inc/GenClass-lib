@@ -28,11 +28,24 @@
     "./dist/genclass.global.js",
     "./dist/genclass.global.min.js",
     "./dist/cdn/*.js",
+    "./dist/worker.js",
     "./src/model/worker.ts"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "auto": ["./dist/auto.d.ts"],
+      "auto/observe": ["./dist/auto/observe.d.ts"],
+      "auto/guard": ["./dist/auto/guard.d.ts"],
+      "auto/heal": ["./dist/auto/heal.d.ts"],
+      "react": ["./dist/adapters/react.d.ts"],
+      "redux": ["./dist/adapters/redux.d.ts"],
+      "zustand": ["./dist/adapters/zustand.d.ts"],
+      "devtools": ["./dist/devtools/index.d.ts"]
+    }
+  },
   "unpkg": "./dist/genclass.global.min.js",
   "jsdelivr": "./dist/genclass.global.min.js",
   "exports": {

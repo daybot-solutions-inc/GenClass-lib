@@ -84,6 +84,46 @@ export function walkSources(dir, max = 20000) {
   return outFiles.sort();
 }
 
+// Generated or third-party directories even the full scan below skips: dependencies, version control and the
+// frameworks' own caches (they are rebuilt from the sources).
+const NEVER_SCAN = new Set([
+  "node_modules", ".git", ".hg", ".svn", ".next", ".nuxt", ".output", ".svelte-kit", ".astro", ".vercel", ".netlify",
+  ".turbo", ".cache", ".parcel-cache", ".angular", ".vite", ".react-router", ".remix", "coverage",
+]);
+
+/**
+ * Source files walkSources leaves out (dot-directories such as .storybook, tmp, out, build, dist, deeper than 10
+ * levels), read-only: `remove` checks them for imports before it uninstalls the package.
+ */
+export function walkSkipped(dir, max = 20000) {
+  const seen = new Set(walkSources(dir));
+  const outFiles = [];
+  const stack = [[dir, 0]];
+  while (stack.length && outFiles.length < max) {
+    const [d, depth] = stack.pop();
+    let entries;
+    try {
+      entries = readdirSync(d, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        if (!NEVER_SCAN.has(e.name) && depth < 30) stack.push([join(d, e.name), depth + 1]);
+      } else if (e.isFile() && SRC_EXT.test(e.name)) {
+        const p = join(d, e.name);
+        if (seen.has(p)) continue;
+        try {
+          if (statSync(p).size <= 1_000_000) outFiles.push(p);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+  return outFiles.sort();
+}
+
 // -------------------------------------------------------------------------------------- package manager
 
 /** npm | pnpm | yarn | bun, from lockfiles (this directory and its parents), packageManager, or the user agent. */
@@ -151,7 +191,8 @@ export function htmlModuleEntry(html) {
  * {
  *   dir, pkg, deps, pm, ts, name,
  *   framework: "next" | "nuxt" | "sveltekit" | "astro" | "angular" | "remix" | "react-router" | "cra" | "vite" | "webpack" | "html" | null,
- *   label, details: {...}
+ *   label, details: {...},
+ *   refused?: why init will not edit this project (a bundler but no sign of a browser app)
  * }
  */
 export function detectProject(cwd) {
@@ -194,9 +235,65 @@ export function detectProject(cwd) {
     return { ...p, framework: "vite", label: `Vite + ${flavor}`, details: { flavor } };
   }
   const bundler = ["webpack", "@rspack/core", "@rsbuild/core", "parcel", "esbuild", "rollup"].find((n) => has(n));
-  if (bundler) return { ...p, framework: "webpack", label: `${bundler} project`, details: { bundler } };
+  if (bundler) {
+    // a bundler alone does not make a browser app: Node servers, CLIs and libraries use them too
+    const lib = libraryEvidence(pkg);
+    if (lib) {
+      return {
+        ...p,
+        refused:
+          `${bundler} is a dependency, but this looks like a library or a CLI (${lib}), not an app: GenClass would start in ` +
+          `every app that imports it. init only edits apps; run it in the app that uses this package`,
+      };
+    }
+    const evidence = browserEvidence(dir, pkg);
+    if (evidence) return { ...p, framework: "webpack", label: `${bundler} project`, details: { bundler, evidence } };
+    return {
+      ...p,
+      refused:
+        `${bundler} is a dependency, but nothing shows this is a browser app (no index.html in the project, src/ or public/, ` +
+        `no UI framework such as react-dom or vue in dependencies, no HTML plugin or dev server). GenClass Runtime runs in the ` +
+        `browser, so init does not edit a Node server's or a library's entry file`,
+    };
+  }
   if (htmlFiles(dir).length) return { ...p, framework: "html", label: "Plain HTML (no bundler)" };
   return p;
+}
+
+// UI libraries and browser-app tooling. Counted only from dependencies/devDependencies, not peerDependencies (a
+// component library lists its framework as a peer).
+const BROWSER_DEPS = [
+  "react-dom", "vue", "svelte", "preact", "solid-js", "lit", "@angular/core", "jquery", "alpinejs", "@hotwired/turbo",
+  "@hotwired/stimulus", "html-webpack-plugin", "webpack-dev-server", "@rsbuild/core", "@rspack/dev-server",
+  "@web/dev-server", "esbuild-plugin-html", "@rollup/plugin-html", "rollup-plugin-serve", "rollup-plugin-livereload",
+];
+
+// UI frameworks a component library lists as peer dependencies.
+const UI_PEERS = ["react", "react-dom", "vue", "svelte", "preact", "solid-js", "lit", "@angular/core"];
+
+/**
+ * Why a bundler project's package.json looks like a published library or a CLI, or null: a UI framework as a peer
+ * dependency, or the fields packages publish ("exports", "module", "types", "bin"). Apps have none of them ("main"
+ * alone is npm init's default, so it does not count).
+ */
+export function libraryEvidence(pkg) {
+  const peer = UI_PEERS.find((n) => Object.prototype.hasOwnProperty.call(pkg?.peerDependencies ?? {}, n));
+  if (peer) return `${peer} is a peer dependency`;
+  const field = ["exports", "module", "types", "typings", "bin"].find((f) => pkg?.[f] !== undefined);
+  return field ? `package.json has a "${field}" field` : null;
+}
+
+/** Why a bundler project looks like a browser app ("index.html", "react-dom", ...), or null. */
+export function browserEvidence(dir, pkg) {
+  for (const f of ["index.html", "src/index.html", "public/index.html"]) if (isFile(join(dir, f))) return f;
+  const own = { ...(pkg?.devDependencies ?? {}), ...(pkg?.dependencies ?? {}) };
+  const dep = BROWSER_DEPS.find((n) => Object.prototype.hasOwnProperty.call(own, n));
+  if (dep) return dep;
+  // Parcel apps name their HTML entry: "source": "src/index.html"
+  const sources = [pkg?.source].flat().filter((x) => typeof x === "string");
+  if (sources.some((x) => /\.html?$/i.test(x))) return "package.json source (HTML)";
+  if (htmlFiles(dir).length) return "an .html page";
+  return null;
 }
 
 /** Top-level .html files with a <head> (plain sites). */
