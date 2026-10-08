@@ -10,7 +10,9 @@
 //   that started a newer request of X's own signature (typeahead keystrokes, autosave edits) is not a conflict:
 //   that newer request will deliver after X.
 //
-// Inputs that moved, or a newer request of the same signature still in flight, are never conflicts by themselves.
+// Inputs that moved, or a newer request of the same signature still in flight, are never conflicts by themselves. While
+// such a newer request is in flight, newer-data conflicts are not reported either: it will write these fields again
+// (situation v2: delivery salience needs newer data that is applied and final; the in-flight request stays a fact).
 
 import type { FieldHist, LogEntry } from "../state/hub.js";
 import type { OpRec } from "../trace/ops.js";
@@ -94,8 +96,16 @@ function netChanged(env: SitEnv, x: OpRec, path: string, log: LogEntry[]): boole
   return before.hash !== cur.hash;
 }
 
+/** A request of x's signature that started after x is still in flight (it will write x's fields again). */
+export function newerSameSignature(env: SitEnv, x: OpRec): boolean {
+  if (x.kind !== "fetch" && x.kind !== "xhr") return false;
+  for (const o of env.ops.inFlight) if (o !== x && o.name === x.name && o.kind === x.kind && o.start > x.start) return true;
+  return false;
+}
+
 /** Newer-data conflict on `path` for operation `x` (null when none). */
 export function newerConflict(env: SitEnv, x: OpRec, path: string): Conflict | null {
+  if (newerSameSignature(env, x)) return null;
   const log = env.hub.logSince(path, x.startSeq).filter((e) => !inChain(env, x, e.writer));
   if (!log.length) return null;
   let newest: OpRec | undefined;

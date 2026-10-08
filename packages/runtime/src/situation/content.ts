@@ -17,6 +17,7 @@ import type { OpRec } from "../trace/ops.js";
 import { describe, isIdSegment, isPlainObject, kindOf, plural, secs } from "../util.js";
 import { opLabel } from "./describe.js";
 import type { CreateRec, SitEnv } from "./env.js";
+import type { Conflict } from "./conflicts.js";
 
 const ITEM_ID = ["id", "_id", "uuid", "slug", "key"];
 const MAX_NODES = 20_000;
@@ -49,10 +50,12 @@ export interface BodyIndex {
   ids: Map<string, Obj[]>;
   /** Arrays outside other arrays. */
   arrays: { keys: string[]; value: unknown[] }[];
+  /** Objects outside arrays (keyed update messages: `{card: "c1", col: "done"}`). */
+  objects: Obj[];
 }
 
 export function indexBody(root: unknown): BodyIndex {
-  const ix: BodyIndex = { root, props: [], ids: new Map(), arrays: [] };
+  const ix: BodyIndex = { root, props: [], ids: new Map(), arrays: [], objects: [] };
   let nodes = 0;
   const walk = (v: unknown, keys: string[], inArray: boolean, depth: number): void => {
     if (++nodes > MAX_NODES || depth > MAX_DEPTH) return;
@@ -62,6 +65,7 @@ export function indexBody(root: unknown): BodyIndex {
       return;
     }
     if (!isPlainObject(v)) return;
+    if (!inArray && ix.objects.length < 64) ix.objects.push(v);
     const k = itemIdKey(v);
     if (k) {
       const id = String(v[k]);
@@ -153,6 +157,20 @@ export function locate(ix: BodyIndex, path: string, current: unknown): Located |
     const v = getIn(o, rest);
     if (v === MISSING || !compatible(current, v)) return null;
     return { path, value: v, where: `item ${seg}${rest.length ? `'s ${rest.join(".")}` : ""}` };
+  }
+  // 1b. a keyed update ({card: "c1", col: "done"} for board.cards.c1): the object naming the key as a value, and its
+  //     one other property of the field's kind
+  const lastSeg = segs[segs.length - 1];
+  if (segs.length >= 2 && lastSeg && (isIdSegment(lastSeg) || /\d/.test(lastSeg)) && current !== null && typeof current !== "object") {
+    const hits: unknown[] = [];
+    for (const o of ix.objects) {
+      const keyProp = Object.keys(o).find((k) => o[k] === lastSeg);
+      if (!keyProp) continue;
+      const others = Object.keys(o).filter((k) => k !== keyProp && typeof o[k] === typeof current);
+      if (others.length === 1) hits.push(o[others[0]]);
+    }
+    const v = agreed(hits);
+    if (v !== undefined) return { path, value: v, where: `the update for ${lastSeg}` };
   }
   // 2. the same key path (longest common suffix), outside arrays
   if (segs.length) {
@@ -331,20 +349,25 @@ export function analyzeBody(env: SitEnv, x: OpRec, body: unknown, fields: string
 
 const show = (env: SitEnv, path: string, v: unknown, n = 40) => describe(v, path, env.redact, n);
 
-function whoText(env: SitEnv, x: OpRec, h: FieldHist, now: number): string {
+function writerText(env: SitEnv, h: FieldHist): string {
   const w = env.ops.get(h.writer);
-  const by = w ? opLabel(w) : h.user ? "a user action" : "an operation that is no longer tracked";
-  const rel = w && w.start > x.start ? `, which started after #${x.id}` : w && w.start < x.start ? `, which started before #${x.id}` : "";
-  return `${by} ${secs(now - h.t)} ago${rel}`;
+  return w ? opLabel(w) : h.user ? "a user action" : "an operation that is no longer tracked";
+}
+
+function startedText(env: SitEnv, x: OpRec, h: FieldHist): string {
+  const w = env.ops.get(h.writer);
+  if (!w || w.start === x.start) return "";
+  return ` (it started ${w.start > x.start ? "after" : "before"} #${x.id})`;
 }
 
 /**
  * F1/F2/F3 facts for compared fields. `subject` is "The response" (delivery) or "This write" (mutation); conflicts
  * come first, at most 3 fields.
  */
-export function contentFacts(env: SitEnv, x: OpRec, cmps: Cmp[], subject: "The response" | "This write", now: number, all?: { fields: string[] }): Fact[] {
+export function contentFacts(env: SitEnv, x: OpRec, cmps: Cmp[], subject: "The response" | "This message" | "This write", now: number, all?: { fields: string[] }): Fact[] {
   const out: Fact[] = [];
-  const verb = subject === "The response" ? "delivering it" : "applying it";
+  const verb = subject === "This write" ? "applying it" : "delivering it";
+  const own = subject === "This write" ? "this write's" : subject === "This message" ? "this message's" : "this response's";
   const ordered = [...cmps].sort((a, b) => Number(!!b.revertOf || !!b.user || !!b.items?.reverts.length) - Number(!!a.revertOf || !!a.user || !!a.items?.reverts.length));
   let shown = 0;
   for (const c of ordered) {
@@ -357,7 +380,7 @@ export function contentFacts(env: SitEnv, x: OpRec, cmps: Cmp[], subject: "The r
         out.push(fact(`${subject} would put back ${r.key} = ${show(env, `${c.path}.${r.key}`, r.incoming, 24)} for item ${r.id} of ${c.path}${more}: the store has ${show(env, `${c.path}.${r.key}`, r.current, 24)}, changed since #${x.id} started; ${verb} would undo that change.`, "versions", false));
         shown++;
       } else if (it.newer.length && it.newerSame) {
-        out.push(fact(`The newer writes to ${c.path} changed only ${plural(it.newer.length, "item")} (${it.newer.slice(0, 3).join(", ")}); ${subject === "The response" ? "this response's" : "this write's"} copy of ${it.newer.length === 1 ? "it" : "them"} equals the store.`, "versions", true));
+        out.push(fact(`The newer writes to ${c.path} changed only ${plural(it.newer.length, "item")} (${it.newer.slice(0, 3).join(", ")}); ${own} copy of ${it.newer.length === 1 ? "it" : "them"} equals the store.`, "versions", true));
         shown++;
       }
       const parts: string[] = [];
@@ -377,7 +400,7 @@ export function contentFacts(env: SitEnv, x: OpRec, cmps: Cmp[], subject: "The r
     }
     if (c.revertOf) {
       const h = c.revertOf;
-      out.push(fact(`${subject} has ${c.path} = ${show(env, c.path, c.incoming)}, the value that ${whoText(env, x, h, now)} replaced with ${show(env, c.path, h.after)}; ${verb} would put the older value back.`, "versions", false));
+      out.push(fact(`${subject} has ${c.path} = ${show(env, c.path, c.incoming)}, the value that ${writerText(env, h)} replaced with ${show(env, c.path, h.after)} ${secs(now - h.t)} ago${startedText(env, x, h)}; ${verb} would put the older value back.`, "versions", false));
       shown++;
       continue;
     }
@@ -392,6 +415,31 @@ export function contentFacts(env: SitEnv, x: OpRec, cmps: Cmp[], subject: "The r
     const list = same.length <= 3 ? same.join(", ") : `${same.slice(0, 3).join(", ")} and ${same.length - 3} more`;
     const everything = all && all.fields.length > 0 && same.length === all.fields.length;
     out.push(fact(everything ? `${subject} matches the current values of everything it is predicted to write (${list}): ${verb} changes nothing.` : `${subject} has the current value of ${list}.`, "delta", true));
+  }
+  return out;
+}
+
+/**
+ * F1 for a pending local change: the incoming value equals the value the user's (unconfirmed) change replaced, so
+ * delivering it would undo the user's change while the user's own request is still in flight.
+ */
+export function pendingRevertFacts(env: SitEnv, conflicts: Conflict[], cmps: Cmp[], subject: string, now: number): Fact[] {
+  const out: Fact[] = [];
+  for (const c of conflicts) {
+    if (c.kind !== "pending" || !c.writer || out.length >= 2) continue;
+    const cmp = cmps.find((x) => x.path === c.path);
+    if (!cmp || cmp.same) continue;
+    const hist = env.hub.field(c.path)?.hist ?? [];
+    let h: FieldHist | undefined;
+    for (let i = hist.length - 1; i >= 0 && !h; i--) if (hist[i].root === c.writer.id) h = hist[i];
+    if (!h || vhash(h.before) !== vhash(cmp.incoming)) continue;
+    out.push(
+      fact(
+        `${subject} has ${c.path} = ${show(env, c.path, cmp.incoming)}, the value before ${opLabel(c.writer)} changed it to ${show(env, c.path, h.after)} ${secs(now - h.t)} ago${c.pendingOp ? ` (its ${opLabel(c.pendingOp)} is still in flight)` : ""}; delivering it would undo the user's change.`,
+        "versions",
+        false,
+      ),
+    );
   }
   return out;
 }

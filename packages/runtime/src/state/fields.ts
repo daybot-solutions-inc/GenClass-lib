@@ -382,7 +382,7 @@ export interface StringDiff {
  * A diff-centred change of a long string: truncating both sides to the same prefix would hide the difference, so
  * both previews start a little before the first differing character. Null for short strings (shown whole).
  */
-export function stringDiff(before: string, after: string, width = 34): StringDiff | null {
+export function stringDiff(before: string, after: string, width = 30): StringDiff | null {
   if (before === after || (before.length <= width && after.length <= width)) return null;
   let p = 0;
   const max = Math.min(before.length, after.length);

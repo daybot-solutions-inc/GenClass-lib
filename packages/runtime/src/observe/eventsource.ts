@@ -33,8 +33,22 @@ export function installEventSource(h: MsgHost): (() => void) | null {
         if (conn && conn.end === undefined) h.endOp(conn, status, o);
       };
       const raw = (type: string, fn: (e: Event) => void) => super.addEventListener(type, fn as EventListener);
-      raw("open", () => endConn("ok"));
-      raw("error", () => endConn("error", { code: "network", failure: true }));
+      raw("open", () => {
+        endConn("ok");
+        try {
+          h.channel?.("up", "eventsource", path);
+        } catch {
+          /* ignore */
+        }
+      });
+      raw("error", () => {
+        endConn("error", { code: "network", failure: true });
+        try {
+          h.channel?.("down", "eventsource", path, "network");
+        } catch {
+          /* ignore */
+        }
+      });
       const gate = new MessageGate(this, h, "eventsource", path, raw);
       gates.set(this, gate);
       gate.ensure("message");

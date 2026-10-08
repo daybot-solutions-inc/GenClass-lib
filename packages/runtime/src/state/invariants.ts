@@ -7,7 +7,13 @@
 //
 // Precision: `a != null` is only proposed for fields never seen null (initial value included) and needs 6
 // supporting snapshots (closing a selection is not an inconsistency). Per-array statistics (column sums, products,
-// value sets) are computed once per array version, so settled points stay cheap with large stores.
+// value sets, group counts) are computed once per array version, so settled points stay cheap with large stores.
+//
+// Relation quality (situation v2, SIM's F8): `a == b` between fields whose names share no word is learned only after
+// it held over 3 distinct values (coincidences of small numbers and flags rarely get there), and never between
+// version counters / offsets; `a ∈ B[*].k` with numbers needs an id column (`selectedId ∈ items[*].id`), never
+// `tally.approved ∈ items[*].days`. New template: count by group, `a == count(B[*].k == v)` (a badge or a per-lane
+// counter), proposed when the names relate or learned over 3 distinct counts.
 
 import type { Violation } from "../situation/env.js";
 import { describe, fmtNum, isIdSegment, isPlainObject, type Redactor } from "../util.js";
@@ -22,7 +28,7 @@ const MAX_COLUMNS = 8;
 const MAX_CANDIDATES = 4000;
 const MAX_DROPPED = 50_000;
 
-type Tpl = "eq" | "len" | "sum" | "sumprod" | "nonneg" | "in" | "unique" | "type" | "nonnull";
+type Tpl = "eq" | "len" | "sum" | "sumprod" | "nonneg" | "in" | "unique" | "type" | "nonnull" | "count";
 
 interface Cand {
   id: string;
@@ -38,6 +44,34 @@ interface Cand {
   held: number;
   learned: boolean;
   typeKind?: string;
+  /** count: the group value. */
+  v?: string | number | boolean;
+  /** Distinct values of `a` it held over (weakly supported relations need `minDistinct` of them). */
+  vals?: Set<string>;
+  minDistinct?: number;
+}
+
+const GENERIC_WORDS = new Set(["value", "values", "data", "n", "num", "number", "state", "current", "item", "items", "list", "the", "of", "is", "has"]);
+const VERSION_WORDS = /^(version|versions|revision|rev|seq|sequence|offset|page|cursor|index|idx|tick|epoch|generation|nonce|timestamp|ts|time|updated|created|at|ms)$/;
+const ID_COLUMN = /^(id|_id|uuid|key|slug|code)$|(Id|_id|ID)$/;
+
+function nameWords(path: string): string[] {
+  const last = path.split(".").pop() ?? path;
+  return last
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase().replace(/(ies)$/, "y").replace(/s$/, ""));
+}
+
+/** Whether two field names (last segments) share a meaningful word ("cart.total" / "summary.total"). */
+function relatedNames(a: string, b: string): boolean {
+  const A = new Set(nameWords(a).filter((w) => !GENERIC_WORDS.has(w)));
+  return nameWords(b).some((w) => !GENERIC_WORDS.has(w) && A.has(w));
+}
+
+function versionLike(path: string): boolean {
+  return nameWords(path).some((w) => VERSION_WORDS.test(w));
 }
 
 interface Expectation {
@@ -56,6 +90,8 @@ interface ArrayStats {
   prods: Map<string, number>;
   sets: Map<string, Set<unknown>>;
   unique: Map<string, boolean>;
+  /** Group counts per column: value -> number of items. */
+  groups: Map<string, Map<unknown, number>>;
 }
 
 export function numEq(a: number, b: number): boolean {
@@ -145,7 +181,7 @@ export class InvariantMiner {
         sums.set(k, s);
       }
     }
-    st = { n: arr.length, objs, numCols, scalarCols, sums, prods: new Map(), sets: new Map(), unique: new Map() };
+    st = { n: arr.length, objs, numCols, scalarCols, sums, prods: new Map(), sets: new Map(), unique: new Map(), groups: new Map() };
     this.statsCache.set(l, st);
     return st;
   }
@@ -169,6 +205,21 @@ export class InvariantMiner {
       st.sets.set(k, s);
     }
     return s;
+  }
+
+  /** Items per value of a string/boolean column (null when the column has more than 8 values). */
+  private colGroups(l: Leaf, st: ArrayStats, k: string): Map<unknown, number> | null {
+    let g = st.groups.get(k);
+    if (!g) {
+      g = new Map();
+      for (const o of l.value as unknown[]) {
+        const v = isPlainObject(o) ? o[k] : undefined;
+        if (typeof v !== "string" && typeof v !== "boolean") continue;
+        g.set(v, (g.get(v) ?? 0) + 1);
+      }
+      st.groups.set(k, g);
+    }
+    return g.size > 0 && g.size <= 8 ? g : null;
   }
 
   private colUnique(l: Leaf, st: ArrayStats, k: string): boolean {
@@ -233,6 +284,14 @@ export class InvariantMiner {
         if (!st || !st.objs) return false;
         return this.colSet(B, st, c.f!).has(a.value);
       }
+      case "count": {
+        const a = val(c.a);
+        const B = val(c.B);
+        if (!a || !B || B.kind !== "array" || typeof a.value !== "number") return null;
+        let n = 0;
+        for (const o of B.value as unknown[]) if (isPlainObject(o) && o[c.f!] === c.v) n++;
+        return a.value === n;
+      }
       case "unique": {
         const B = val(c.B);
         if (!B || B.kind !== "array") return null;
@@ -270,6 +329,8 @@ export class InvariantMiner {
       case "in":
       case "unique":
         return n >= 2;
+      case "count":
+        return n >= 2 && !!a && typeof a.value === "number" && a.value > 0;
       case "nonneg":
         return !!a && typeof a.value === "number" && a.value > 0;
       default:
@@ -309,6 +370,12 @@ export class InvariantMiner {
       }
       case "in":
         return `${c.a} = ${show(c.a)}, not among ${c.B}[*].${c.f}`;
+      case "count": {
+        const B = L.get(c.B!);
+        let n = 0;
+        if (B && Array.isArray(B.value)) for (const o of B.value) if (isPlainObject(o) && o[c.f!] === c.v) n++;
+        return `${c.a} = ${show(c.a)}, count(${c.B}[*].${c.f} == ${JSON.stringify(c.v)}) = ${n}`;
+      }
       case "unique":
         return `${c.B}[*].${c.f} has duplicates`;
     }
@@ -328,8 +395,19 @@ export class InvariantMiner {
     if (!this.nonTrivial(cand, this.leavesNow)) return;
     // the snapshot that creates a candidate counts as its first one when one of its fields changed
     cand.held = this.involved(c.watch, this.changedNow) ? 1 : 0;
-    cand.learned = cand.held >= this.need(cand);
+    if (cand.minDistinct && cand.held) this.noteDistinct(cand, this.leavesNow);
+    cand.learned = this.supported(cand);
     this.cands.set(c.id, cand);
+  }
+
+  private noteDistinct(c: Cand, L: Map<string, Leaf>): void {
+    const a = c.a ? L.get(c.a) : undefined;
+    if (!a) return;
+    (c.vals ??= new Set()).add(a.hash);
+  }
+
+  private supported(c: Cand): boolean {
+    return c.held >= this.need(c) && (!c.minDistinct || (c.vals?.size ?? 0) >= c.minDistinct);
   }
 
   private need(c: Cand): number {
@@ -362,7 +440,10 @@ export class InvariantMiner {
         const [pb, lb] = scalar[j];
         if (la.kind !== lb.kind || la.value === 0 || la.value === "") continue;
         const same = la.kind === "number" ? numEq(la.value as number, lb.value as number) : la.value === lb.value;
-        if (same) this.add({ id: `eq:${pa}:${pb}`, tpl: "eq", text: `${pa} == ${pb}`, a: pa, b: pb, watch: [pa, pb] });
+        if (!same) continue;
+        const related = relatedNames(pa, pb);
+        if (!related && (versionLike(pa) || versionLike(pb))) continue;
+        this.add({ id: `eq:${pa}:${pb}`, tpl: "eq", text: `${pa} == ${pb}`, a: pa, b: pb, watch: [pa, pb], ...(related ? {} : { minDistinct: 3 }) });
       }
     for (const [B, leaf] of arrays) {
       if (!leaf.len) continue;
@@ -386,7 +467,22 @@ export class InvariantMiner {
         const set = this.colSet(leaf, st, k);
         for (const [a, l] of scalar) {
           if (a.startsWith(B + ".") || l.value === "" || l.value === 0) continue;
+          // numbers: only membership in an id column (or a related column), never in counters or versions
+          if (l.kind === "number" && (!(ID_COLUMN.test(k) || relatedNames(a, k)) || versionLike(k) || versionLike(a))) continue;
           if (set.has(l.value)) this.add({ id: `in:${a}:${B}:${k}`, tpl: "in", text: `${a} ∈ ${B}[*].${k}`, a, B, f: k, watch: [a, B] });
+        }
+      }
+      // count by group: a number equal to the items of one group of a string/boolean column
+      for (const k of Object.keys((leaf.value as Record<string, unknown>[])[0] ?? {}).slice(0, MAX_COLUMNS)) {
+        const groups = this.colGroups(leaf, st, k);
+        if (!groups) continue;
+        for (const [gv, n] of groups) {
+          if (n < 1 || groups.size < 2) continue;
+          for (const [a, av] of numeric) {
+            if (av !== n || a.startsWith(B + ".") || versionLike(a)) continue;
+            const related = relatedNames(a, String(gv)) || relatedNames(a, k);
+            this.add({ id: `count:${a}:${B}:${k}:${String(gv)}`, tpl: "count", text: `${a} == count(${B}[*].${k} == ${JSON.stringify(gv)})`, a, B, f: k, v: gv as string | boolean, watch: [a, B], ...(related ? {} : { minDistinct: 3 }) });
+          }
         }
       }
     }
@@ -410,7 +506,8 @@ export class InvariantMiner {
         this.drop(c.id);
       } else if (involved && this.nonTrivial(c, L)) {
         c.held++;
-        if (c.held >= this.need(c)) c.learned = true;
+        if (c.minDistinct) this.noteDistinct(c, L);
+        if (this.supported(c)) c.learned = true;
       }
     }
     this.changedNow = changed;

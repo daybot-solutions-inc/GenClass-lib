@@ -11,8 +11,9 @@ Policies (guard mode = guard-tier actions only; heal mode = guard + heal):
   gate@t        CONTRACT §8: candidate = argmax p over permitted non-passive A, fire iff Σ_A p ≥ t and top diagnosis
                 ≠ expected (t = 0.9 guard / 0.8 heal are the runtime's; others for the curve)
   gate@t-nodiag same without the diagnosis condition (`policy.requireDiagnosis: false`)
-  gain>m        for T1 models (label τ given after the calibration path): ĝ(a) = τ·ln(p(a)/p(passive)); fire the
-                argmax ĝ over A if ĝ > m
+  gain>m        for T1 models (label τ given after the calibration path): ĝ(a) = τ·(z_a − z_passive) on the RAW logits
+                (= τ·ln(p(a)/p(passive)) at temperature 1); fire the argmax ĝ over A if ĝ > m
+  head>m        for gain-head checkpoints (records with `gain_pred`): fire the argmax predicted gain over A if > m
 Metrics: fired share, recall on clear rows (fired with their best action), benign rows fired, harmful share (fired
 true gain < −1, over all rows), gain captured (Σ true gain of fired actions ÷ oracle), net gain per row, and FIR against
 the hard label (passive-best rows fired) for continuity with EVAL.md.
@@ -22,7 +23,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -79,6 +79,10 @@ def evaluate(rows: dict, recs: dict, cal: dict, t1_tau: float | None) -> dict:
         policies.update({f"gate@{t}-nodiag": [] for t in (0.5, 0.7, 0.8, 0.9, 0.95)})
         if t1_tau:
             policies.update({f"gain>{m}": [] for m in (0, 0.5, 1, 2, 3, 4)})
+        has_head = any("gain_pred" in q.get("action", {}) for q in list(recs.values())[:50])
+        if has_head:
+            policies.update({f"head>{m}": [] for m in (0, 0.5, 1, 2, 3, 4)})
+            policies.update({f"head>{m}+diag": [] for m in (0.5, 1, 2)})
         n = n_clear = n_benign = 0
         oracle = 0.0
         n_passive_label = 0
@@ -124,11 +128,18 @@ def evaluate(rows: dict, recs: dict, cal: dict, t1_tau: float | None) -> dict:
                 if f"gate@{t}-nodiag" in policies:
                     fires[f"gate@{t}-nodiag"] = cand if mass >= t else None
             if t1_tau:
-                pp = max(float(p[idx[passive]]), 1e-12)
-                gh = {a: t1_tau * math.log(max(float(p[idx[a]]), 1e-12) / pp) for a in A}
+                z = ra["logits"]  # raw logits: the T1 targets make z_a − z_passive ≈ gain(a)/τ (dev calibration is fitted to SIM labels)
+                gh = {a: t1_tau * (float(z[idx[a]]) - float(z[idx[passive]])) for a in A}
                 best = max(gh, key=gh.get)
                 for mg in (0, 0.5, 1, 2, 3, 4):
                     fires[f"gain>{mg}"] = best if gh[best] > mg else None
+            if has_head and "gain_pred" in ra:
+                gp = {a: float(ra["gain_pred"][idx[a]]) for a in A}
+                bh = max(gp, key=gp.get)
+                for mg in (0, 0.5, 1, 2, 3, 4):
+                    fires[f"head>{mg}"] = bh if gp[bh] > mg else None
+                for mg in (0.5, 1, 2):
+                    fires[f"head>{mg}+diag"] = bh if (gp[bh] > mg and top_d != "expected") else None
             for k, a in fires.items():
                 if a is None:
                     continue

@@ -26,15 +26,18 @@ function show(name: string, req: EvaluateRequest) {
 
 async function typeahead(s: Setup) {
   const { rt, clock, server, fetch } = s;
-  server.on("GET", "/api/search", ({ url }) => ({ body: { q: url.searchParams.get("q") }, latency: url.searchParams.get("q") === "rea" ? 900 : 120 }));
+  server.on("GET", "/api/search", ({ url }) => {
+    const q = url.searchParams.get("q");
+    return { body: { q, results: [`${q}-1`, `${q}-2`] }, latency: q === "rea" ? 900 : 120 };
+  });
   const search = rt.atom("search", { query: "", results: [] as string[] });
   const type = (q: string) =>
     rt.user({ kind: "type", target: 'input "Search"', value: q }, () => {
       search.set((v) => ({ ...v, query: q }));
       void (async () => {
         const res = await fetch(`/api/search?q=${q}`);
-        const data = (await res.json()) as { q: string };
-        search.set((v) => ({ ...v, results: [`${data.q}-1`, `${data.q}-2`] }));
+        const data = (await res.json()) as { q: string; results: string[] };
+        search.set((v) => ({ ...v, results: data.results }));
       })();
     });
   type("r");

@@ -406,7 +406,37 @@ measured effect, and they fit in the room CORE left (≤ 12 facts; delivery situ
   rewritten within 0.5 s are mostly benign (2.8 % clear), and a shorter horizon would only relabel slow-healing
   clobbers as benign.
 
-## 8. Reproduce
+## 8. After CORE batch 5 and SIM S1/S2 (first check, 100k v2 rows)
+
+**Setup.** Runtime: situation v2 + batch 5 (the §6 facts). Labels: S1 + S2. Data:
+`train:/data/sim-out/v2b5-100k`, 64,754 decision rows, analysed with the same scripts (`sep/v2b5.log`).
+
+**Caveat.** This is not like for like. Under S2 a row is "clear" only if it stays clear when the hidden state and
+the future are re-drawn, so the clear set is smaller and more predictable by construction. The seeds also differ.
+
+The table compares the 150k probe run (situation v1) with this run. "Twin" = share of clear rows that have a
+benign look-alike with the same canonical facts. Recall is at 1 % FIR, linear model on visible text.
+
+| trigger | twin (v1 → v2) | AUC (v1 → v2) | recall (v1 → v2) | test clear rows (v2) |
+|---|---|---|---|---|
+| failure | 40 % → 17 % | 0.846 → 0.850 | 5.9 % → **11.0 %** | 465 |
+| request | 48 % → 38 % | 0.793 → 0.812 | 11.4 % → **14.7 %** | 292 |
+| inconsistency | 42 % → 38 % | 0.729 → **0.814** | 10.2 % → **20.2 %** | 119 |
+| mutation | 8 % → 2 % | 0.846 → 0.838 | 17.7 % → 14.9 % | 74 |
+| delivery (new) | 6 % | 0.719 | 7.4 % | 121 |
+| stall | 31 % → 5 % | 0.699 → 0.671 | 10.9 % → 2.9 % | 35 |
+| transition | 43 % → 23 % | 0.637 → 0.622 | 8.0 % → 4.3 % | 23 |
+
+- Look-alikes are much rarer.
+- The triggers with enough clear rows (failure, request, inconsistency) separate better.
+- Mutation, stall and transition have too few clear test rows in 100k to tell. Mutation is now mostly decided at
+  `delivery`.
+- The expected-gain rule still dominates P(best) ≥ 0.5, which fires on nothing. For example, at inconsistency,
+  E[gain] > 1 recalls 27.7 % of clear rows with 5.2 % of benign rows fired; at stall, 34 % with 10.8 %.
+
+TRAIN's v2 rounds will give the real numbers.
+
+## 9. Reproduce
 
 All of this runs on the train VM from `~/gcl/sim`. Outputs are in `/data/sim-out/sep/`.
 

@@ -21,6 +21,8 @@ export interface FutureSpec {
   t: number;
   /** Re-draw network/timing randomness only (fallback when a latent re-draw changed an observed prefix). */
   noLatent?: boolean;
+  /** Ideal runs: indices of conditional user steps that fired in the base run before t. */
+  fired?: number[];
 }
 
 export const S2 = typeof process === "undefined" || process.env.SIM_S2 !== "0";
@@ -77,15 +79,15 @@ export function futureStepTimes(steps: UserStep[], f: FutureSpec | undefined): n
 
 /**
  * P(accidental | gap to the previous identical user action), from the sim's own user model (measured with
- * `node sim/dist/smoke.js --repeat-prior 20000`; see README). Buckets: upper bound of the gap in ms.
+ * `node sim/dist/smoke.js --repeat-prior 4000`: activations only, conditional re-clicks only when they fired). Buckets: upper bound of the gap in ms.
  */
 export const REPEAT_PRIOR: [number, number][] = [
-  [100, 0.9],
-  [200, 0.6],
-  [500, 0.15],
-  [1000, 0.25],
-  [2000, 0.25],
-  [3000, 0.15],
+  [100, 0.74],
+  [200, 0.67],
+  [500, 0.17],
+  [1000, 0.23],
+  [2000, 0.2],
+  [3000, 0.06],
 ];
 
 export function repeatPrior(gapMs: number): number | undefined {
@@ -93,10 +95,16 @@ export function repeatPrior(gapMs: number): number | undefined {
   return undefined;
 }
 
-/** Index of the previous identical user action (same feature, action, key and target) within 3 s, per step. */
+/** A discrete activation (click, submit, Enter/Space): the kind of action a user repeats by accident. */
+function activation(s: UserStep): boolean {
+  return s.ui.kind === "click" || s.ui.kind === "submit" || (s.ui.kind === "key" && (s.ui.value === "Enter" || s.ui.value === "Space"));
+}
+
+/** Index of the previous identical activation (same feature, action, key and target) within 3 s, per step. */
 export function repeatOfIndex(steps: UserStep[]): (number | undefined)[] {
   const last = new Map<string, number>();
   return steps.map((s, i) => {
+    if (!activation(s)) return undefined;
     const k = `${s.feature}|${s.action}|${s.intent.key}|${s.ui.target}`;
     const j = last.get(k);
     last.set(k, i);
@@ -112,9 +120,11 @@ export function idealRepeatSkips(steps: UserStep[], f: FutureSpec | undefined): 
   const out = new Map<number, boolean>();
   if (!f || f.noLatent || !S2) return out;
   const rep = repeatOfIndex(steps);
+  const fired = new Set(f.fired ?? []);
   steps.forEach((s, i) => {
     const j = rep[i];
-    if (j === undefined || s.when || s.t > f.t) return;
+    // Conditional re-clicks (impatience) count only if they fired in the base run (the ideal cannot evaluate them).
+    if (j === undefined || s.t > f.t || (s.when && !fired.has(i))) return;
     const p = repeatPrior(s.t - steps[j]!.t);
     if (p === undefined) return;
     out.set(i, new Rng(hashAll("future-intent", f.salt, i)).next() < p);

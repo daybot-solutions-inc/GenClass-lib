@@ -260,7 +260,8 @@ export function installDomUser(g: Record<string, unknown>, sink: UserSink): (() 
 
   const onClick = (e: Event) => {
     const el = interactive(originOf(e));
-    sink.user({ kind: "click", target: describeElement(el) });
+    const detail = (e as MouseEvent).detail;
+    sink.user({ kind: "click", target: describeElement(el), ...(typeof detail === "number" && detail > 0 ? { clicks: detail } : {}) });
   };
   const onInput = (e: Event) => {
     const el = originOf(e) as HTMLInputElement | null;

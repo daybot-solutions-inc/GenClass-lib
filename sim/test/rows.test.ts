@@ -47,6 +47,11 @@ describe("rows", () => {
         if (l.type === "noul") expect([0, 1]).toContain(l.p);
       }
     }
+    // S1: a gold `expected` diagnosis never comes with a clear non-passive win.
+    for (const r of rows) {
+      const m = r.meta as { diagnosis?: string; passive_best?: boolean; passive?: string; adjusted?: Record<string, number> };
+      if (m.diagnosis === "expected" && m.passive_best === false && m.passive && m.adjusted) expect(m.adjusted[m.passive]!, r.id).toBeLessThan(1);
+    }
     const dec = rows.filter((r) => r.meta.trigger !== "ask");
     const passiveBest = dec.filter((r) => r.meta.passive_best === true).length / Math.max(1, dec.length);
     console.log(`rows=${rows.length} decision=${dec.length} passive-best=${passiveBest.toFixed(2)} drops=${JSON.stringify(drops)}`);

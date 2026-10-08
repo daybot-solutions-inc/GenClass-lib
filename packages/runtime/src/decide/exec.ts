@@ -70,7 +70,9 @@ export interface NetHost {
    * A response is about to reach the app: the delivery gate. `release` delivers it (now or after a decision);
    * called at most once; synchronously when nothing is salient.
    */
-  deliver(o: { op: OpRec; req: ReqMeta; status: number }, release: () => void): void;
+  deliver(o: { op: OpRec; req: ReqMeta; status: number; body?: () => Promise<unknown> }, release: () => void): void;
+  /** A successful response arrived (any method): its parsed JSON body, read from a clone, for read-your-writes. */
+  noteResponse?(o: { op: OpRec; req: ReqMeta; status: number; body: () => Promise<unknown> }): void;
   /** A request identity that matches nothing else (bodies that cannot be read cheaply). */
   uniqueId(): string;
   /** Set a request's identity once known (after reading its body) and register it. */

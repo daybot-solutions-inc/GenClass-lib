@@ -8,6 +8,8 @@ import type { FieldHist, MutationRec, StoreHub } from "../state/hub.js";
 import type { EventLog } from "../trace/events.js";
 import type { OpRec, OpRegistry } from "../trace/ops.js";
 import type { Conflict, Predicted } from "./conflicts.js";
+import type { ContentResult } from "./content.js";
+import type { CadenceInfo } from "../learn/cadence.js";
 import type { Redactor } from "../util.js";
 
 export interface ReqMeta {
@@ -65,6 +67,31 @@ export interface DeliverySpec {
   defers: number;
   /** Messages of the same channel already held ahead of this one. */
   queuedAhead: number;
+  /** The parsed JSON body of the response/message, when it was read (salient deliveries only). */
+  body?: unknown;
+  /** Its comparison with the predicted fields (computed once at the gate). */
+  content?: ContentResult;
+}
+
+/** A create response seen recently (read-your-writes). */
+export interface CreateRec {
+  op: OpRec;
+  /** When the response arrived. */
+  t: number;
+  status: number;
+  ids: string[];
+  /** Keys of the created object (to match the lists it belongs to). */
+  keys: string[];
+}
+
+/** A completed request (any signature), for failure scope across endpoints. */
+export interface OutcomeRec {
+  t: number;
+  sig: string;
+  /** "same-origin" or the host of a cross-origin request. */
+  host: string;
+  ok: boolean;
+  outcome: string;
 }
 
 export type SubjectSpec =
@@ -120,6 +147,14 @@ export interface SitEnv {
   chainWrites(op: OpRec): ChainWriteInfo[];
   /** Normalised fields the last completed op of this signature (its chain) wrote, if any. */
   lastChain(sig: string): string[] | undefined;
+  /** Create responses of the last 10 s (read-your-writes). */
+  creates(): CreateRec[];
+  /** Learned schedule / debounce of a request signature. */
+  cadence(sig: string, now: number): CadenceInfo | undefined;
+  /** Completed requests of the last 30 s across signatures. */
+  outcomes(): OutcomeRec[];
+  /** navigator.onLine, when the global has it. */
+  online(): boolean | undefined;
 }
 
 export interface ChainWriteInfo {

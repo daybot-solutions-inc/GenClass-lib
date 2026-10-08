@@ -49,10 +49,13 @@ import { StoreHub, toChanges, type MutationRec, type StoreRec, type Verdict } fr
 import { cloneValue, flatten, normalizeLeafKind, type FieldChange, type Leaf } from "./state/fields.js";
 import { InvariantMiner } from "./state/invariants.js";
 import { Baselines } from "./learn/baselines.js";
+import { Cadence } from "./learn/cadence.js";
+import { analyzeBody, createdIds, vhash } from "./situation/content.js";
+import { commitAmbiguity, failureOf, hostOfSig } from "./situation/evidence.js";
 import { Profiles, shapeOf } from "./learn/profiles.js";
 import { buildSituation, relatedInFlight, type BuildOptions, type BuiltSituation } from "./situation/build.js";
 import { computeFacts } from "./situation/facts.js";
-import type { ChainWriteInfo, DeliverySpec, ErrorInfo, ReqMeta, SitEnv, SubjectSpec, Violation } from "./situation/env.js";
+import type { ChainWriteInfo, CreateRec, DeliverySpec, ErrorInfo, OutcomeRec, ReqMeta, SitEnv, SubjectSpec, Violation } from "./situation/env.js";
 import { conflictsOn, matchFields, predictedWrites } from "./situation/conflicts.js";
 import { installEventSource } from "./observe/eventsource.js";
 import { opLabel } from "./situation/describe.js";
@@ -72,7 +75,7 @@ import { installStorage } from "./observe/storage.js";
 import { installPerf } from "./observe/perf.js";
 import { installWebSocket } from "./observe/websocket.js";
 import { installTimers } from "./observe/timers.js";
-import { defaultRedact, normalizeFieldPath, plural, secs, truncate, type Redactor } from "./util.js";
+import { defaultRedact, normalizeFieldPath, plural, ratio, secs, truncate, type Redactor } from "./util.js";
 
 const DECISIONS_KEPT = 200;
 /** A held write that applied because its hold budget expired can still be reverted this long after it applied. */
@@ -81,6 +84,8 @@ const LATE_REVERT_MS = 2000;
 const BACKGROUND_DEADLINE_MS = 5000;
 /** A delivery `discard` keeps dropping the chain's writes over newer data for this long. */
 const DISCARD_MARK_MS = 10_000;
+/** A salient delivery waits at most this long for its body (a buffered clone) before deciding without it. */
+const BODY_WAIT_MS = 100;
 const STALL_MIN_MS = 500;
 const LONG_RUNNING_MS = 10_000;
 const PROFILED: ReadonlySet<OpKind> = new Set<OpKind>(["fetch", "xhr", "user", "task", "ws"]);
@@ -175,6 +180,14 @@ export class RuntimeImpl implements Runtime {
   private lastTyping: { e: RtEvent; target: string; t: number } | null = null;
   private persistTimer: unknown = null;
   private readonly env: SitEnv;
+  /** Learned schedules / debounces of request signatures (F6). */
+  private readonly cadence = new Cadence();
+  /** Create responses of the last 10 s (read-your-writes). */
+  private createsBuf: CreateRec[] = [];
+  /** Completed requests of the last 30 s across signatures (failure scope, F5). */
+  private outcomesBuf: OutcomeRec[] = [];
+  /** Live channels that went down: path -> when and why (F9 marks when they come back). */
+  private channelsDown = new Map<string, { t: number; code: number | string; channel: "websocket" | "eventsource" }>();
 
   constructor(o: CreateOptions & { decider?: DecisionProvider | null; ownsDecider?: boolean } = {}) {
     this.clock = o.clock ?? browserClock;
@@ -310,7 +323,8 @@ export class RuntimeImpl implements Runtime {
       watchStall: (op, req, ctl) => this.watchStall(op, req, ctl),
       failureStreak: (sig) => this.base.stats(sig)?.failStreak ?? 0,
       uniqueId: () => `uniq:${++this.uniq}`,
-      deliver: (o, release) => this.runDelivery({ op: o.op, channel: "response", req: o.req, status: o.status }, release),
+      deliver: (o, release) => this.runDelivery({ op: o.op, channel: "response", req: o.req, status: o.status, ...(o.body ? { body: o.body } : {}) }, release),
+      noteResponse: (o) => this.noteResponse(o),
       setIdentity: (op, req, identity) => {
         if (op.identity === identity) return;
         op.identity = identity;
@@ -338,8 +352,9 @@ export class RuntimeImpl implements Runtime {
       startOp: (name: string, o: Omit<StartOpts, "startSeq" | "t">) => this.startOp("ws", name, o),
       endOp: (op: OpRec, status: OpStatus, eo?: EndOpts) => this.endOp(op, status, eo),
       event: (name: string, data: Record<string, unknown>, op?: OpRec) => this.events.push(this.clock.now(), "custom", name, { ...(op ? { op: op.id } : {}), data }),
-      deliverMessage: (o: { op: OpRec; channel: "websocket" | "eventsource"; message: { path: string; summary: string }; queuedAhead: number }, release: () => void) =>
+      deliverMessage: (o: { op: OpRec; channel: "websocket" | "eventsource"; message: { path: string; summary: string }; queuedAhead: number; body?: () => Promise<unknown> }, release: () => void) =>
         this.runDelivery(o, release),
+      channel: (state: "down" | "up", channel: "websocket" | "eventsource", path: string, code?: number | string) => this.onChannel(state, channel, path, code),
     };
   }
 
@@ -365,6 +380,10 @@ export class RuntimeImpl implements Runtime {
     if ((kind === "fetch" || kind === "xhr") && !op.genclass) {
       this.base.start(name, t);
       if (op.identity) this.registerIdentity(op);
+      // cadence: background (schedule) vs a steady delay after a user action through a timer (debounce)
+      const u = this.ops.userOf(op);
+      const viaTimer = !!cause && cause.kind === "timer";
+      this.cadence.note(name, t, { user: !!u, ...(u && viaTimer ? { userDelay: t - u.start } : {}) });
     }
     // instant ops are complete at creation: profile them at the next settled point (their chains finish by then)
     if (op.instant && PROFILED.has(kind) && !op.genclass) this.queueProfile(op);
@@ -388,6 +407,10 @@ export class RuntimeImpl implements Runtime {
       const outcome = status === "aborted" ? "aborted" : o.code !== undefined ? String(o.code) : status;
       const ok = status === "ok" && (typeof o.code !== "number" || o.code < 400);
       this.base.end(op.name, t, t - op.start, ok, outcome, !!o.failure);
+      if (status !== "aborted") {
+        this.outcomesBuf.push({ t, sig: op.name, host: hostOfSig(op.name), ok: !o.failure, outcome });
+        while (this.outcomesBuf.length > 128 || (this.outcomesBuf.length && t - this.outcomesBuf[0].t > 30_000)) this.outcomesBuf.shift();
+      }
     }
     if (PROFILED.has(op.kind) && !op.genclass && status !== "aborted" && !o.synthetic) this.queueProfile(op);
     this.scheduleSettle();
@@ -875,7 +898,7 @@ export class RuntimeImpl implements Runtime {
    * in-flight operations, then decide again (twice at most).
    */
   runDelivery(
-    o: { op: OpRec; channel: "response" | "websocket" | "eventsource"; req?: ReqMeta; status?: number; message?: { path: string; summary: string }; queuedAhead?: number },
+    o: { op: OpRec; channel: "response" | "websocket" | "eventsource"; req?: ReqMeta; status?: number; message?: { path: string; summary: string }; queuedAhead?: number; body?: () => Promise<unknown> },
     release: () => void,
     defers = 0,
   ): void {
@@ -891,14 +914,27 @@ export class RuntimeImpl implements Runtime {
     const predicted = predictedWrites(this.env, op);
     const matched = matchFields(this.env, predicted.patterns);
     const conflicts = conflictsOn(this.env, op, matched, now);
-    op.delivery = { patterns: new Set(predicted.patterns), known: predicted.source !== "unknown", salient: conflicts.length > 0, decided: false };
+    // salience (situation v2): newer data that is already applied (a newer request of the same signature still in
+    // flight makes newer-data conflicts neutral, see conflicts.ts); a pending local change or text the user typed
+    // only when the body shows the response would overwrite it (put back the older value / replace the text)
+    const newer = conflicts.filter((c) => c.kind === "newer");
+    const pending = conflicts.filter((c) => c.kind === "pending");
+    op.delivery = { patterns: new Set(predicted.patterns), known: predicted.source !== "unknown", salient: newer.length > 0, decided: false };
     const spec: DeliverySpec = { trigger: "delivery", op, channel: o.channel, predicted, matched, conflicts, defers, queuedAhead: o.queuedAhead ?? 0 };
     if (o.req) spec.req = o.req;
     if (o.status !== undefined) spec.status = o.status;
     if (o.message) spec.message = o.message;
     const what = o.channel === "response" ? `the response to ${opLabel(op)}` : `message ${opLabel(op)}`;
     const ctl: Controller = {
-      passive: rel,
+      passive: () => {
+        // delivered over newer data (or a pending local change) without a decision to drop it: its chain's writes
+        // to those fields are marked as possibly stale (F9)
+        if (!released && conflicts.length && op.delivery?.salient) {
+          const c0 = conflicts[0];
+          op.delivery.overNewer = { paths: new Set(conflicts.map((c) => c.path)), by: c0.writer ? opLabel(c0.writer) : "a newer operation", kind: c0.kind };
+        }
+        rel();
+      },
       proceeded: () => released,
       stale: () => released,
       run: (action) => {
@@ -934,7 +970,147 @@ export class RuntimeImpl implements Runtime {
         throw new Error(`unsupported action ${action}`);
       },
     };
-    this.trigger(spec, ctl, { hold: true, priority: 2 });
+    const go = () => {
+      if (!released) this.trigger(spec, ctl, { hold: true, priority: 2 });
+    };
+    // text fields the user typed into after this op started: salient only if the body would replace that text (F2)
+    const typed = matched.filter((p) => typeof this.hub.valueAt(p) === "string" && this.hub.writesSince(p, op.startSeq).some((h) => h.user && !this.inChainOf(op, h.writer)));
+    const always = this.triage === "always" || this.standing.some((q) => q.always && q.on.includes("delivery"));
+    /** Decide without (more) content: newer applied data is salient; pending changes and typed text need the body. */
+    const settle = (salient: boolean) => {
+      if (op.delivery) op.delivery.salient = salient;
+      if (!salient && !always) return rel();
+      go();
+    };
+    if (!conflicts.length && !typed.length && !always) return rel();
+    if (!o.body) return settle(newer.length > 0);
+    // read the body first (a clone, bounded in time)
+    let done = false;
+    const timer = this.clock.setTimeout(() => {
+      if (done) return;
+      done = true;
+      settle(newer.length > 0);
+    }, BODY_WAIT_MS);
+    const finish = (body: unknown) => {
+      if (done) return;
+      done = true;
+      this.clock.clearTimeout(timer);
+      if (body === undefined || this.destroyed) return settle(newer.length > 0);
+      try {
+        spec.body = body;
+        spec.content = analyzeBody(this.env, op, body, matched);
+        const by = new Map(spec.content.cmps.map((c) => [c.path, c]));
+        // newer data: unless the response already equals it (F3); not located → assume it would change it
+        const liveNewer = newer.filter((c) => !by.get(c.path)?.same);
+        // a pending local change: only when the response puts back the value the user's change replaced (F1)
+        const livePending = pending.filter((c) => {
+          const cmp = by.get(c.path);
+          if (!cmp || cmp.same || !c.writer) return false;
+          const hist = this.hub.field(c.path)?.hist ?? [];
+          let h: (typeof hist)[number] | undefined;
+          for (let i = hist.length - 1; i >= 0 && !h; i--) if (hist[i].root === c.writer.id) h = hist[i];
+          return !!h && vhash(h.before) === vhash(cmp.incoming);
+        });
+        // text typed since the request started: only when the response would replace it (F2)
+        const liveTyped = typed.filter((p) => by.has(p) && !by.get(p)!.same);
+        const salient = liveNewer.length > 0 || livePending.length > 0 || liveTyped.length > 0;
+        if (!salient && conflicts.length && conflicts.every((c) => by.get(c.path)?.same)) this.events.push(this.clock.now(), "custom", "delivery.unchanged", { op: op.id, data: { paths: conflicts.map((c) => c.path) } });
+        return settle(salient);
+      } catch (e) {
+        this.log("content analysis failed", e);
+        return settle(newer.length > 0);
+      }
+    };
+    let p: Promise<unknown>;
+    try {
+      p = o.body();
+    } catch {
+      p = Promise.resolve(undefined);
+    }
+    p.then(finish, () => finish(undefined));
+  }
+
+  private inChainOf(x: OpRec, writer: number | null): boolean {
+    const w = writer === null ? undefined : this.ops.get(writer);
+    return !!w && (this.ops.isAncestorOrSelf(x, w) || this.ops.isAncestorOrSelf(w, x));
+  }
+
+  /** A successful response to a create (POST, or 201): remember the ids it returned (read-your-writes). */
+  private noteResponse(o: { op: OpRec; req: ReqMeta; status: number; body: () => Promise<unknown> }): void {
+    if (o.req.method !== "POST" && o.status !== 201) return;
+    const t = this.clock.now();
+    let p: Promise<unknown>;
+    try {
+      p = o.body();
+    } catch {
+      return;
+    }
+    p.then(
+      (b) => {
+        const c = createdIds(b);
+        if (!c || this.destroyed) return;
+        this.createsBuf.push({ op: o.op, t, status: o.status, ids: c.ids, keys: c.keys });
+        const now = this.clock.now();
+        while (this.createsBuf.length > 16 || (this.createsBuf.length && now - this.createsBuf[0].t > 30_000)) this.createsBuf.shift();
+      },
+      () => undefined,
+    );
+  }
+
+  /** A live channel went down / came back: fields its messages wrote may have missed updates meanwhile (F9). */
+  private onChannel(state: "down" | "up", channel: "websocket" | "eventsource", path: string, code?: number | string): void {
+    const key = `${channel} ${path}`;
+    const now = this.clock.now();
+    if (state === "down") {
+      if (!this.channelsDown.has(key)) this.channelsDown.set(key, { t: now, code: code ?? "closed", channel });
+      return;
+    }
+    const d = this.channelsDown.get(key);
+    if (!d) return;
+    this.channelsDown.delete(key);
+    const sigs = channel === "websocket" ? [`WS message ${path}`] : [...this.lastChainMap.keys()].filter((k) => k.startsWith("SSE ") && k.endsWith(` ${path}`));
+    const fields = new Set<string>();
+    for (const sig of sigs) for (const f of matchFields(this.env, this.lastChainMap.get(sig) ?? [])) fields.add(f);
+    const how = typeof d.code === "number" ? `closed ${d.code}` : d.code === "network" ? "connection error" : String(d.code);
+    const why = `by ${channel === "websocket" ? "WebSocket" : "server-sent"} messages on ${path}; the channel then was down for ${secs(now - d.t)} (${how}), so updates sent meanwhile may be missing`;
+    for (const f of fields) {
+      const st = this.hub.field(f);
+      if (st && st.t <= d.t) this.hub.markField(f, { t: st.t, op: st.writer, why });
+    }
+  }
+
+  /** F9: marks on the fields a write just set when its chain makes the value suspicious. */
+  private markWrites(changes: FieldChange[], writer: OpRec): void {
+    const now = this.clock.now();
+    const chain = [writer, ...this.ops.ancestors(writer, 8)];
+    for (const op of chain) {
+      let paths = changes.filter((c) => c.afterLeaf !== undefined).map((c) => c.path);
+      if (!paths.length) return;
+      let why: string | null = null;
+      const d = op.delivery?.overNewer;
+      if (d) {
+        const hit = paths.filter((p) => d.paths.has(p));
+        if (hit.length) {
+          paths = hit;
+          const src = op.kind === "fetch" || op.kind === "xhr" ? `the response to ${opLabel(op)}` : `the message ${opLabel(op)}`;
+          why = `by ${src}, which was delivered over ${d.kind === "pending" ? "a pending local change of" : "newer data from"} ${d.by}`;
+        }
+      }
+      if (!why && (op.kind === "fetch" || op.kind === "xhr") && op.end !== undefined && !op.genclass) {
+        const lat = this.base.latency(op.name);
+        const dur = op.end - op.start;
+        if (op.status === "ok" && lat && dur >= 5 * lat.median && dur - lat.median >= 300) why = `by the response to ${opLabel(op)}, which took ${secs(dur)} (${ratio(dur, lat.median)} its usual ${secs(lat.median)})`;
+        else if (op.status === "error") {
+          const f = failureOf(op);
+          const c = f ? commitAmbiguity(op.method ?? op.name.split(" ")[0], f, lat) : null;
+          if (f && c?.ambiguous) why = `after ${opLabel(op)} failed (${f.kind === "http" ? `HTTP ${f.status}` : f.kind === "timeout" ? "timed out" : "network error"} after ${secs(f.durMs)}), although the server may have applied it`;
+        }
+      }
+      if (why) {
+        for (const p of paths) this.hub.markField(p, { t: now, op: op.id, why });
+        return;
+      }
+    }
   }
 
   /** Writes of a chain marked by delivery `discard` that would land over newer data. */
@@ -1061,6 +1237,13 @@ export class RuntimeImpl implements Runtime {
             if (first !== undefined) this.lastChainMap.delete(first);
           }
         }
+      }
+    }
+    if (writer && !writer.genclass) {
+      try {
+        this.markWrites(changes, writer);
+      } catch (e) {
+        this.log("marking writes failed", e);
       }
     }
     this.miner.noteChanged(changes.map((c) => c.path));
@@ -1303,6 +1486,13 @@ export class RuntimeImpl implements Runtime {
       chainWrites: (op) => this.chainWrites(op),
       lastChain: (sig) => this.lastChainMap.get(sig),
       writable: (store) => !!this.hub.get(store)?.writable,
+      creates: () => this.createsBuf,
+      cadence: (sig, now) => this.cadence.get(sig, now),
+      outcomes: () => this.outcomesBuf,
+      online: () => {
+        const n = this.global.navigator as { onLine?: unknown } | undefined;
+        return typeof n?.onLine === "boolean" ? n.onLine : undefined;
+      },
     };
   }
 

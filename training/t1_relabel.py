@@ -42,7 +42,7 @@ def gains_of(m: dict, offered: list[str]) -> tuple[dict[str, float], str] | None
     return g, passive
 
 
-def relabel_row(r: dict, tau: float) -> tuple[dict, bool]:
+def relabel_row(r: dict, tau: float, keep_dist: bool = False) -> tuple[dict, bool]:
     m = r.get("meta") or {}
     q = (r.get("questions") or {}).get("action")
     if not q or "action" not in (r.get("labels") or {}):
@@ -52,6 +52,11 @@ def relabel_row(r: dict, tau: float) -> tuple[dict, bool]:
     if got is None:
         return r, False
     g, _ = got
+    if keep_dist:  # gain-head variant: keep SIM's label for the choice head, add the gains for the regression head
+        r["labels"]["action"] = {**r["labels"]["action"], "gain": {a: round(v, 4) for a, v in g.items()}}
+        m["egain"] = {a: round(v, 4) for a, v in g.items()}
+        r["meta"] = m
+        return r, True
     mx = max(v / tau for v in g.values())
     ex = {a: math.exp(v / tau - mx) for a, v in g.items()}
     s = sum(ex.values())
@@ -62,12 +67,12 @@ def relabel_row(r: dict, tau: float) -> tuple[dict, bool]:
 
 
 def work(args: tuple) -> tuple[str, int, int]:
-    src, dst, tau = args
+    src, dst, tau, keep = args
     n = changed = 0
     with open(src) as f, open(dst, "w") as g:
         for line in f:
             r = json.loads(line)
-            r, ch = relabel_row(r, tau)
+            r, ch = relabel_row(r, tau, keep)
             n += 1
             changed += int(ch)
             g.write(json.dumps(r, ensure_ascii=False) + "\n")
@@ -80,11 +85,12 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--tau", type=float, required=True)
     ap.add_argument("--workers", type=int, default=16)
+    ap.add_argument("--keep-dist", action="store_true", help="keep SIM's action dist; add label['gain'] for the gain head")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
     files = sorted(a.inp.glob("*.jsonl"))
     with Pool(a.workers) as p:
-        res = p.map(work, [(str(f), str(a.out / f.name), a.tau) for f in files])
+        res = p.map(work, [(str(f), str(a.out / f.name), a.tau, a.keep_dist) for f in files])
     print(json.dumps({"files": len(res), "rows": sum(r[1] for r in res), "relabelled": sum(r[2] for r in res), "tau": a.tau}))
 
 

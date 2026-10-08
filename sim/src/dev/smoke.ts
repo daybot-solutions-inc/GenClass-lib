@@ -47,12 +47,15 @@ async function repeatPrior(n: number): Promise<void> {
   const edges = [100, 200, 500, 1000, 2000, 3000];
   const acc = edges.map(() => 0);
   const tot = edges.map(() => 0);
+  // Conditional re-clicks count only when they fire (needs a base run; the fake runtime is enough for app timing).
+  const factory = createFakeRuntime;
   for (let seed = 1; seed <= n; seed++) {
     const scn = buildScenario(seed);
     const rep = repeatOfIndex(scn.steps);
+    const fired = scn.steps.some((s) => s.when) ? new Set((await runScenario(scn, { ideal: false, factory })).firedSteps) : new Set<number>();
     scn.steps.forEach((s, i) => {
       const j = rep[i];
-      if (j === undefined || s.when) return;
+      if (j === undefined || (s.when && !fired.has(i))) return;
       const g = s.t - scn.steps[j]!.t;
       const b = edges.findIndex((e) => g <= e);
       if (b < 0) return;

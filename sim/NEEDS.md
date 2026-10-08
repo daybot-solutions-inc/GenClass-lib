@@ -116,3 +116,21 @@ response content vs current state on the paths in P:
 slash) matches directories only, so every `vm.sh sync/run sim` deletes the link; the data on `/data` is safe. SIM
 recreates the link after each sync (`ln -sfn /data/sim-out sim/out`). Changing the pattern to `--exclude '/sim/out'`
 would fix it for good (lead-owned file).
+
+## Batch 4 integration (SIM, 2026-10-08 03:20 UTC): works; one observation (ASK)
+
+- `delivery` integrates cleanly. Subjects correlate for 100 % of 727 delivery decisions on 80 seeds: 607 by fetch op
+  (`rtOps` via `opCreated`) and 120 by WebSocket message op (push id set during dispatch). Forced
+  `deliver`/`discard`/`defer` replay byte-identically. The sim's diagnosis for a delivery is the verdict of the
+  first write the op or message makes.
+- **Observation (discard reach).** On 4k v2 rows, before SIM's S2 futures, 45 of the 65 deliveries the sim
+  diagnoses `stale` showed `discard` within ±0.5 cost of `deliver`. Typical cases:
+  1. Out-of-order typeahead while the newer request is **still in flight**. Its results field is not yet "newer
+     data", so discard drops only `fetching` and the stale results render until the newer response lands.
+  2. A **pending local change** (an optimistic update whose request is still in flight). Discard does not drop the
+     write over it.
+
+  If the intent is "discard = keep what the user/newer request will show", consider letting discard also cover
+  (1) paths a newer same-signature request in flight is predicted to write, and (2) pending-local-change paths.
+  Then defer would not be the only remedy. Sim labels follow whatever the runtime does, so this only changes how
+  often acting can help.

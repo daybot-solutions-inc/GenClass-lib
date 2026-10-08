@@ -56,6 +56,49 @@ describe("delivery: typeahead", () => {
     expect(s.decider.calls).toHaveLength(0);
   });
 
+  it("a debounced search that sets its own loading flag: no model call and no hold, also when an older response lands while the newer request is in flight", async () => {
+    const holder: { clock?: FakeClock } = {};
+    const s = setup({ observe: { fetch: true, timers: true }, extraGlobal: timers(holder) });
+    holder.clock = s.clock;
+    // latencies vary so that some older responses land while a newer request is still in flight
+    const lat = [400, 120, 380, 90, 300, 150, 260, 100, 200];
+    let k = 0;
+    s.server.on("GET", "/api/search", ({ url }) => {
+      const q = url.searchParams.get("q") ?? "";
+      return { body: { query: q, items: [`${q}-1`] }, latency: lat[k++ % lat.length] };
+    });
+    const st = s.rt.atom("search", { input: "", fetching: false, query: "", items: [] as string[] });
+    const setT = s.g.setTimeout as (f: () => void, ms: number) => unknown;
+    const clearT = s.g.clearTimeout as (h: unknown) => void;
+    let debounce: unknown;
+    let latest = "";
+    const held: number[] = [];
+    const type = (value: string) =>
+      s.rt.user({ kind: "type", target: 'input "Search"', value }, () => {
+        st.set((v) => ({ ...v, input: value }));
+        clearT(debounce);
+        debounce = setT(() => {
+          latest = value;
+          st.set((v) => ({ ...v, fetching: true })); // written by the timer's chain, not by the user
+          void (async () => {
+            const res = await s.fetch(`/api/search?q=${value}`);
+            const arrived = s.clock.now();
+            const d = (await res.json()) as { query: string; items: string[] };
+            held.push(s.clock.now() - arrived);
+            if (d.query === latest) st.set((v) => ({ ...v, fetching: false, query: d.query, items: d.items })); // the app ignores stale answers
+          })();
+        }, 80);
+      });
+    for (const w of ["b", "ba", "bar", "barc", "barce", "barcel", "barcelo", "barcelon", "barcelona"]) {
+      type(w);
+      await s.clock.advance(110);
+    }
+    await s.clock.advance(2000);
+    expect(st.get().query).toBe("barcelona");
+    expect(s.decider.calls.filter((c) => c.trigger === "delivery")).toHaveLength(0);
+    expect(held.every((ms) => ms === 0)).toBe(true);
+  });
+
   it("a stale out-of-order response gets a delivery decision; discard drops only the stale field writes", async () => {
     const s = setup({ script: stale });
     s.server.on("GET", "/api/search", ({ url }) => {
@@ -250,7 +293,7 @@ function board(s: Setup) {
 }
 
 describe("delivery: WebSocket messages", () => {
-  it("a message over a pending local change is held; later messages wait behind it (order kept); discard drops its write", async () => {
+  it("a message that would put back the value a pending local change replaced is held; later messages wait behind it (order kept); discard drops its write", async () => {
     const manual = new ManualDecider();
     const created: Op[] = [];
     const s = setup({ decider: manual, observe: { fetch: true, websocket: true }, extraGlobal: { WebSocket: FakeWS }, hooks: { opCreated: (op) => created.push(op) } });
@@ -264,7 +307,7 @@ describe("delivery: WebSocket messages", () => {
       void s.fetch("/api/cards/c1", { method: "PATCH", body: '{"col":"done"}' });
     });
     await s.clock.advance(50);
-    socket.emit({ n: 2, card: "c1", col: "doing" }); // older server state for c1: held
+    socket.emit({ n: 2, card: "c1", col: "todo" }); // older server state for c1 (before the user's move): held
     const msgOp = created[created.length - 1];
     expect(msgOp.name).toBe("WS message /live"); // created synchronously inside the dispatch
     socket.emit({ n: 3, card: "c2", col: "review" }); // queued behind #2
@@ -276,14 +319,30 @@ describe("delivery: WebSocket messages", () => {
     expect(req.state.trigger).toMatch(/^A WebSocket message \/live \(#\d+\) arrived and is about to be delivered; messages like it last wrote board\.cards\.:id\.$/);
     expect((req.state.facts as string[])[0]).toMatch(/^board\.cards\.c1 has a pending local change: user clicked button "Move c1 to done" \(#\d+\) wrote it 0\.05s ago and its PATCH \/api\/cards\/c1 \{col: "done"\} \(#\d+\) is still in flight/);
     await s.clock.flush();
-    expect(seen).toEqual([1, 2]); // #2 delivered; its write over the pending change dropped
-    expect(b.get().cards.c1).toBe("done");
-    // #3 now gets its own decision (still salient: c1's change is still pending)
-    expect(manual.pending.length).toBe(1);
-    manual.answer(defaultScript());
-    await s.clock.flush();
+    // #2 delivered (its write over the pending change dropped), then #3 right behind it: #3 is about c2 and does not
+    // touch the pending change, so it needs no decision
     expect(seen).toEqual([1, 2, 3]);
+    expect(b.get().cards.c1).toBe("done");
+    expect(manual.pending.length).toBe(0);
     expect(b.get().cards).toEqual({ c1: "done", c2: "review" });
+    await s.clock.advance(1000);
+  });
+
+  it("a message with a third value over a pending local change is delivered at once (the pending request decides)", async () => {
+    const s = setup({ observe: { fetch: true, websocket: true }, extraGlobal: { WebSocket: FakeWS } });
+    s.server.on("PATCH", "/api/cards/c1", { body: { ok: true }, latency: 800 });
+    const { b, seen, socket } = board(s);
+    socket.emit({ n: 1, card: "c2", col: "doing" });
+    await s.clock.advance(50);
+    s.rt.user({ kind: "click", target: 'button "Move c1 to done"' }, () => {
+      b.set((v) => ({ cards: { ...v.cards, c1: "done" } }));
+      void s.fetch("/api/cards/c1", { method: "PATCH", body: '{"col":"done"}' });
+    });
+    await s.clock.advance(50);
+    socket.emit({ n: 2, card: "c1", col: "review" });
+    await s.clock.flush();
+    expect(seen).toEqual([1, 2]);
+    expect(s.decider.calls.filter((c) => c.trigger === "delivery")).toHaveLength(0);
     await s.clock.advance(1000);
   });
 
@@ -314,6 +373,7 @@ describe("delivery: EventSource", () => {
     src.emit("update", { n: 1 }, "e1"); // triage always: held for the model
     src.emit("update", { n: 2 }, "e2"); // queued behind
     expect(got).toEqual([]);
+    await s.clock.flush(); // the gate reads the message body before asking
     manual.answer(defaultScript());
     await s.clock.flush();
     expect(got).toEqual([1]);

@@ -176,6 +176,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
     const pc = await pointCosts(scn, ideal, base, p, o.factory, o.futures ?? 3, o.adaptive ?? true);
     if (p.probe) p.probe.l_div_now = Math.round(clientDivergenceAt(base, ideal, p.t) * 1000) / 1000;
     out.runs += pc.runs;
+    if (pc.fallbacks) out.drops["info:latent-fallback"] = (out.drops["info:latent-fallback"] ?? 0) + pc.fallbacks;
     if (pc.drop) drop(pc.drop);
     const ok = !pc.drop;
     const futures = pc.costs;
@@ -355,7 +356,7 @@ export async function pointCosts(
   factory: RuntimeFactory,
   K = 3,
   adaptive = true,
-): Promise<{ costs: Record<string, number[]>; parts: Record<string, CostBreakdown>; runs: number; drop?: string; results: Record<string, RunResult> }> {
+): Promise<{ costs: Record<string, number[]>; parts: Record<string, CostBreakdown>; runs: number; drop?: string; results: Record<string, RunResult>; fallbacks?: number }> {
   const forcedPrefix = new Map<number, string>();
   for (const d of base.decisions) if (d.k < p.k && d.explored) forcedPrefix.set(d.k, d.chosen);
   const costs: Record<string, number[]> = {};
@@ -364,13 +365,14 @@ export async function pointCosts(
   let runs = 0;
   const passive = PASSIVE[p.trigger] ?? p.actions[0]!;
   const laterExternal = scn.external.some((e) => e.t > p.t);
+  let fallbacks = 0;
   /** One paired future: every action under the same world. "mismatch" when a replayed prefix differs. */
   const runFuture = async (j: number, noLatent: boolean): Promise<Record<string, { c: CostBreakdown; r: RunResult }> | string> => {
     const future: FutureSpec | undefined = j === 0 ? undefined : { k: p.k, salt: hashAll("future", scn.seed, p.k, j), t: p.t, ...(noLatent ? { noLatent } : {}) };
     let idealJ = ideal;
     // S2 re-draws the user's later steps and hidden intents, so the ideal of a re-seeded future is re-run.
     if (future && (laterExternal || (S2 && !noLatent))) {
-      idealJ = await runScenario(scn, { ideal: true, serverTimeline: true, future: { ...future, k: -1 } });
+      idealJ = await runScenario(scn, { ideal: true, serverTimeline: true, future: { ...future, k: -1, fired: base.firedSteps.filter((i) => scn.steps[i]!.t <= p.t) } });
       runs++;
     }
     const out: Record<string, { c: CostBreakdown; r: RunResult }> = {};
@@ -408,9 +410,10 @@ export async function pointCosts(
     let res = await runFuture(j, false);
     if (res === "prefix-mismatch" && j > 0 && S2) {
       latentFallbacks++;
+      fallbacks++;
       res = await runFuture(j, true);
     }
-    if (typeof res === "string") return { costs, parts, runs, drop: res, results };
+    if (typeof res === "string") return { costs, parts, runs, drop: res, results, fallbacks };
     for (const a of p.actions) {
       const { c, r } = res[a]!;
       (costs[a] ??= []).push(Math.round(c.total * 1e4) / 1e4);
@@ -420,7 +423,7 @@ export async function pointCosts(
       }
     }
   }
-  return { costs, parts, runs, results };
+  return { costs, parts, runs, results, fallbacks };
 }
 
 /** Meta shared by every row of a trajectory (TRAIN reads domain, program_family, clean, chaos, budget). */

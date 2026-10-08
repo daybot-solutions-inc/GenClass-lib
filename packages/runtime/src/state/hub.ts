@@ -61,6 +61,16 @@ export interface FieldState {
   hist: FieldHist[];
   /** The last 512 writes (seq ascending). */
   log: LogEntry[];
+  /** The current value is known to be suspicious (situation v2, F9); cleared by the next write. */
+  mark?: StaleMark;
+}
+
+/** Why a field's current value may be stale: written over newer data, by a very slow response, after an ambiguous failure, ... */
+export interface StaleMark {
+  t: number;
+  op: number | null;
+  /** "written by the response to GET /x (#6), which was delivered over newer data from …" */
+  why: string;
 }
 
 export interface RecentChange {
@@ -610,6 +620,7 @@ export class StoreHub {
       f.writer = writer ? writer.id : null;
       f.t = t;
       f.seq = seq;
+      f.mark = undefined;
       const h: FieldHist = { v: f.v, seq, writer: f.writer, root, user, t, delta: c.delta, before: c.before, after: c.after, mutation: mid };
       if (c.beforeLeaf) h.beforeLeaf = c.beforeLeaf;
       if (c.afterLeaf) h.afterLeaf = c.afterLeaf;
@@ -713,6 +724,12 @@ export class StoreHub {
   }
 
   // ------------------------------------------------------------------------------------------- queries
+
+  /** Mark a field's current value as suspicious (until its next write). */
+  markField(path: string, mark: StaleMark): void {
+    const f = this.field(path);
+    if (f) f.mark = mark;
+  }
 
   field(path: string): FieldState | undefined {
     const store = path.split(".")[0];

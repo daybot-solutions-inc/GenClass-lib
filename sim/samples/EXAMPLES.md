@@ -2,22 +2,23 @@
 
 Each example shows the situation exactly as the runtime handed it to the decider, the questions (after the documented transform), the labels, and the per-action counterfactual costs (lower is better; `adjusted` adds the tier premium / tie rule used for the soft label).
 
-## 1. mutation — commerce — search+settings/mutation
+## 1. mutation — construction — benign+nav+poll/mutation
 
-id `sim-1086-d21`, split `train`, chaos `degraded`, features ["search","settings"]
+id `sim-99-d10`, split `train`, chaos `flaky`, features ["poll","nav","benign"]
 
 ```text
-app: Cartwise — /app
-trigger: A write to preferences.options.emailReceipts, preferences.isSaving, preferences.error from PATCH /api/settings {emailReceipts: false} (#206) is about to be applied.
+app: BuildLog — /rfis
+trigger: A write to overviewStats.numbers.openRfis, overviewStats.numbers.scheduleSlip from GET /v1/status?window=15m (#25) is about to be applied.
 facts:
-  - preferences.error was written once by other operations since this write's cause (#206) started (version 0 → 1), last 1.13s ago by PATCH /api/settings {currency: true} (#235), which started 6.89s after #206, from a later…
-  - preferences.options.currency changed 4 times since this write's cause (#206) started and is back to false, last by PATCH /api/settings {currency: true} (#235) 6.90s after #206 started.
-  - preferences.options.compactView changed since this write's cause (#206) started: false → true, last by user changed switch "Compact view" to "on" (#211) 3.46s after #206 started.
-in_flight: none
+  - overviewStats.numbers.openRfis was written twice by other operations since this write's cause (#25) started (version 0 → 2), last 0.06s ago by GET /v1/status?window=6h (#29), which started 1.92s after #25, from a later …
+  - overviewStats.numbers.scheduleSlip was written twice by other operations since this write's cause (#25) started (version 0 → 2), last 0.06s ago by GET /v1/status?window=6h (#29), which started 1.92s after #25, from a la…
+in_flight:
+  - GET /v1/status?window=15m (#13) 5.72s so far, by #12
+  - POST /v1/presence {status: "active"} (#31) 0.72s so far, by #30
 timeline: none
 state: none
 stats:
-  - PATCH /api/settings: 36 done, median 0.29s, p95 0.92s, 1 of last 20 failed, 6 in last 10s (usual 7.71)
+  - GET /v1/status: 5 done, 1 of last 5 failed, 8 in last 10s
 ```
 
 Questions:
@@ -57,9 +58,9 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "apply": 0,
-   "discard": 1,
-   "defer": 0
+   "apply": 0.2167,
+   "discard": 0.7543,
+   "defer": 0.029
   }
  },
  "diagnosis": {
@@ -69,51 +70,49 @@ Labels:
 }
 ```
 
-Costs: {"apply":13.1991,"discard":10.1194,"defer":13.1948}  
-Adjusted: {"apply":2.83,"discard":0,"defer":4.33}  
-Sim diagnosis: `stale`, best `discard`, subject {"kind":"write","how":"subject","ref":264}
+Costs: {"apply":15.6789,"discard":14.4995,"defer":15.6789}  
+Adjusted: {"apply":0.929,"discard":0,"defer":2.429}  
+Sim diagnosis: `stale`, best `discard`, subject {"kind":"write","how":"subject","ref":11}
 
 Cost parts:
 ```json
-{"apply":{"area":7.555,"final_client":0.1,"final_server":0,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":0,"latency_s":15.9},"discard":{"area":4.476,"final_client":0.1,"final_server":0,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":0,"latency_s":15.9},"defer":{"area":7.551,"final_client":0.1,"final_server":0,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":0,"latency_s":15.915}}
+{"apply":{"area":8.799,"final_client":0.2,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":13.692},"discard":{"area":7.245,"final_client":0.2,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":13.692},"defer":{"area":8.799,"final_client":0.2,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":13.692}}
 ```
 
-## 2. mutation — energy — board+chat+toggle/mutation
+## 2. mutation — chat — benign+multitab+settings/mutation
 
-id `sim-1046-d2`, split `train`, chaos `normal`, features ["board","chat","toggle"]
+id `sim-128-d4`, split `train`, chaos `storm`, features ["settings","multitab","benign"]
 
 ```text
-app: Wattly — /meters
-trigger: A write to lanes.records from WS message app.example.test/ws/live-feed (#33) is about to be applied.
+app: Huddle — /channels
+trigger: A write to notesState.values.draft is about to be applied.
 facts:
-  - lanes.records has a pending local change: user changed card "Meter MTR-140" to "fault" (#30) wrote it 0.22s ago and its PATCH /api/meters/:id {status: "fault", version: 1} (#31) is still in flight; this write comes from WS message app.example.test/ws/live-fee…
-  - lanes.records has not changed since this write's cause (#33) started (version 5).
-  - This write comes from WS message app.example.test/ws/live-feed (#33), started 0.00s ago.
-  - This write would change lanes.records: 8 items, 1 changed: {id: "car_7lp0hpyf14d2ip", version: 1 → 2}.
+  - notesState.values.draft has a pending local change: user typed "review ship" into textarea "Reply" (#57) wrote it 0.91s ago and its PUT /api/user/state {values: {draft: "review ship"}} (#59) is still in flight; this write has no known cause.
+  - This write has no known cause: no operation was active when it started.
+  - This write would change notesState.values.draft: "review ship" → "it it random support general g…" (replaces "review ship" with "it it random support genera…").
 in_flight:
-  - PATCH /api/meters/:id {status: "fault", version: 1} (#31) 0.22s so far, by #30
+  - PUT /api/user/state {values: {draft: "review ship"}} (#59) 0.52s so far, by #58
+  - POST /api/session-keepalive {status: "active"} (#61) 0.04s so far, by #60
 timeline:
-  - -5.12s user typed "MTR-301" into textarea "Reply" (7 keystrokes, #6–#13)
-  - -4.52s event ws.message {id: "car_3h1xh1gkaznkq1", status: "fault", +2} (#9)
-  - -4.52s write lanes.records: 8 items, 1 changed: {id: "car_3h1xh1gkaznkq1", version: 1 → 2, status: undefined → "fault"} (by #9)
-  - -3.37s user pressed a key in textarea "Reply" (#14)
-  - -3.20s user pressed a key in textarea "Reply" (#16)
-  - -2.93s user changed card "Meter MTR-140 MTR-01" to "fault" (#18)
-  - -2.93s write lanes.records: 8 items, 1 changed: {id: "car_4k1k7ln5le9tz4", status: undefined → "fault"} (by #18, user)
-  - -2.51s event ws.message {id: "car_4k1k7ln5le9tz4", status: "fault", +2} (#20)
-  - -2.50s write lanes.records: 8 items, 1 changed: {id: "car_4k1k7ln5le9tz4", version: 1 → 2} (by #20)
-  - -2.19s event ws.message {id: "car_4k1k7ln5le9tz4", status: "online", +2} (#21)
-  - -2.19s GenClass Dropped the write to lanes.records from WS message app.example.test/ws/live-feed (#21); lanes stays…
-  - -1.64s user typed "MTR-01 M" into textarea "Reply" (8 keystrokes, #22–#29)
-  - -0.22s user changed card "Meter MTR-140" to "fault" (#30)
-  - -0.22s write lanes.records: 8 items, 1 changed: {id: "car_7lp0hpyf14d2ip", status: undefined → "fault"} (by #30, user)
-  - -0.09s user typed "MTR-01 MT" into textarea "Reply" (#32)
-  - -0.00s event ws.message {id: "car_7lp0hpyf14d2ip", status: "fault", +2} (#33)
+  - -1.52s user changed switch "Notifications" to "on" (#49)
+  - -1.27s user typed "review s" into textarea "Reply" (2 keystrokes, #51–#52)
+  - -1.27s write notesState.values.draft: "it it random support general g…" → "review " (replaces "it it random support genera… (by…
+  - -1.16s write notesState.values.draft: "review " → "review s" (by #52, user)
+  - -1.10s user clicked link "Pricing" (#53)
+  - -1.03s user typed "review ship" into textarea "Reply" (3 keystrokes, #55–#57)
+  - -1.03s write notesState.values.draft: "review s" → "review sh" (by #55, user)
+  - -0.99s write notesState.values.draft: "review sh" → "review shi" (by #56, user)
+  - -0.91s write notesState.values.draft: "review shi" → "review ship" (by #57, user)
+  - -0.52s start timer 387ms (#58, by #57)
+  - -0.52s write notesState.saving: false → true (by #58)
+  - -0.52s start PUT /api/user/state {values: {draft: "review ship"}} (#59, by #58)
 state:
-  - lanes.records = 8 items [{id: "car_0cjhxfo716fts1", +5}, {id: "car_0q1wv9l9416p8x", +5}, …] (v5, by #30 0.22s ago)
-  - lanes.problem = null (v0)
+  - notesState.values.draft = "review ship" (v23, by #57 0.91s ago)
+  - notesState.saving = true (v3, by #58 0.52s ago)
+  - notesState.failure = null (v0)
 stats:
-  - PATCH /api/meters/:id: 1 done, 0 of last 1 failed, 2 in last 10s
+  - PUT /api/user/state: 1 done, 0 of last 1 failed, 2 in last 10s
+  - POST /api/session-keepalive: 9 done, median 0.29s, p95 1.05s, 1 of last 9 failed, 4 in last 10s
 ```
 
 Questions:
@@ -123,24 +122,24 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "normal behaviour, nothing is wrong",
+   "expected": "no problem here; the app behaves normally",
    "stale": "outdated data or an older operation is about to replace newer state",
-   "conflict": "concurrent operations are competing over the same state or resource",
+   "conflict": "competing updates target the same record at the same time",
    "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the state contradicts itself or relationships it normally keeps",
+   "inconsistent": "derived values no longer match the data they come from",
    "failing": "an operation keeps failing or its failures follow a pattern",
-   "slow": "an operation is far slower than usual",
-   "overload": "work is being triggered far more often than usual",
-   "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a one-off failure that is likely to succeed if tried again"
+   "slow": "this is taking much longer than it normally does",
+   "overload": "too much work is being triggered, far above the usual rate",
+   "unusual": "this operation behaved differently from its usual pattern",
+   "transient": "an isolated failure that should work if retried"
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do with this write?",
   "criteria": {
-   "apply": "let this write update the state now",
-   "discard": "drop this write and keep the current state",
+   "apply": "accept this change now",
+   "discard": "throw this write away and keep what is there",
    "defer": "hold this write until the related in-flight operations finish, then decide again"
   }
  }
@@ -153,8 +152,8 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "apply": 1,
-   "discard": 0,
+   "apply": 0.9268,
+   "discard": 0.0732,
    "defer": 0
   }
  },
@@ -165,40 +164,58 @@ Labels:
 }
 ```
 
-Costs: {"apply":4.7629,"discard":4.7629,"defer":4.7632}  
-Adjusted: {"apply":0,"discard":1.5,"defer":1.5}  
-Sim diagnosis: `conflict`, best `apply`, subject {"kind":"write","how":"subject","ref":28}
+Costs: {"apply":17.5982,"discard":17.9792,"defer":17.5982}  
+Adjusted: {"apply":0,"discard":0.631,"defer":1.5}  
+Sim diagnosis: `conflict`, best `apply`, subject {"kind":"write","how":"subject","ref":53}
 
 Cost parts:
 ```json
-{"apply":{"area":2.577,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":8.742},"discard":{"area":2.577,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":8.742},"defer":{"area":2.578,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":8.741}}
+{"apply":{"area":1.356,"final_client":0.2,"final_server":6,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":0,"latency_s":27.129},"discard":{"area":1.588,"final_client":0.2,"final_server":6,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":0,"latency_s":27.129},"defer":{"area":1.356,"final_client":0.2,"final_server":6,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":0,"latency_s":27.129}}
 ```
 
-## 3. request — fleet — chat+form+poll/request
+## 3. request — docs — upload/request
 
-id `sim-1060-d1`, split `train`, chaos `degraded`, features ["poll","chat","form"]
+id `sim-127-d7`, split `train`, chaos `flaky`, features ["upload"]
 
 ```text
-app: Motorly — /vehicles
-trigger: GET /api/v1/metrics?since=month (#25) is about to be sent.
+app: DocNest — /comments
+trigger: POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#28) is about to be sent.
 facts:
-  - 1 identical GET /api/v1/metrics request in the last 10s: #21 in flight (started 0.39s ago); #21 started 0.39s before this one.
-  - The last 1 GET /api/v1/metrics request failed in a row (500); no success yet.
-  - GET /api/v1/metrics was requested 3 times in the last 10s (no usual rate learned yet).
-  - This request comes from interval 1.00s (#24), started 0.00s ago.
-  - GET is idempotent.
-in_flight:
-  - GET /api/v1/metrics?since=month (#21) 0.39s so far, by #20
+  - 1 identical POST /api/v1/files request in the last 10s: #22 ended 500 1.01s ago; #22 started 1.31s before this one, from the same user action (#21).
+  - The last 1 POST /api/v1/files request failed in a row (201, 201, 201, 201, 500); last success 2.49s ago.
+  - POST /api/v1/files was requested 7 times in the last 10s (no usual rate learned yet).
+  - POST /api/v1/files usually answers in 0.22s (p95 1.27s, 6 samples); error rate 14% over 7 requests (1 failed).
+  - This request comes from timer 1.00s (#27), started 0.00s ago; its chain began with user changed input[type=file] "Attach" to "question 9.heic, agree_9.jpg, question …" (#21).
+  - POST is not idempotent; its body (62 bytes) can be replayed.
+in_flight: none
 timeline:
-  - -0.27s user typed "190" into input "Cost" (2 keystrokes, #22–#23)
-  - -0.00s start interval 1.00s (#24)
-  - -0.00s start GET /api/v1/metrics?since=month (#25, by #24)
+  - -2.49s write uploadQueue.files: 5 items, 1 changed: {status: "uploading" → "done", id: undefined → "300156"}; uploadQueue.… (by #20)
+  - -1.31s user changed input[type=file] "Attach" to "question 9.heic, agree_9.jpg, question …" (#21)
+  - -1.31s write uploadQueue.files: 5 → 8 items: added {name: "question 9.heic", +3} and 2 more; uploadQueue.fetching: false →… (by #21, user)
+  - -1.31s write uploadQueue.files: 8 items, 1 changed: {name: "question 9.heic", status: "queued" → "uploading"}; uploadQueue… (by #21, user)
+  - -1.31s start POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#22, by #21)
+  - -1.01s end POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#22): 500 in 0.30s
+  - -1.01s start interval 0.30s (#23, by #21)
+  - -1.01s write uploadQueue.progress.ucpiwf5apaa: 0 → 93 (by #23)
+  - -1.00s write uploadQueue.files: 8 items, 1 changed: {name: "question 9.heic", status: "uploading" → "retrying"} (by #22)
+  - -0.95s user clicked button "Remove agree 22.png" (#24)
+  - -0.95s write uploadQueue.files: 8 → 7 items: removed 1 item; uploadQueue.doneCount: 5 → 4; uploadQueue.bytesDone: 1654 → 1… (by #24, user)
+  - -0.39s user changed input[type=file] "Attach" to "question-30.docx" (#26)
+  - -0.39s write uploadQueue.files: 7 → 8 items: added {name: "question-30.docx", +3} (by #26, user)
+  - -0.00s start timer 1.00s (#27, by #22)
+  - -0.00s write uploadQueue.files: 8 items, 1 changed: {name: "question 9.heic", status: "retrying" → "uploading"} (by #27)
+  - -0.00s start POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#28, by #27)
 state:
-  - overview_panel.period = "month" (v1, by #20 0.39s ago)
-  - overview_panel.status = "error" (v1, by #1 4.48s ago)
-  - overview_panel.problem = "1 failed" (v1, by #1 4.48s ago)
+  - uploadQueue.files = 8 items [{id: "145745", name: "typo 4.csv", +3}, …] (v23, by #27 0.00s ago)
+  - uploadQueue.doneCount = 4 (v8, by #24 0.95s ago)
+  - uploadQueue.bytesDone = 1315 (v8, by #24 0.95s ago)
+  - uploadQueue.progress.ucpiwf5apaa = 93 (v2, by #23 1.01s ago)
+  - uploadQueue.fetching = true (v7, by #21 1.31s ago)
+  - uploadQueue.progress.u2i3t1klp5j = 100 (v2, by #20 2.49s ago)
+  - uploadQueue.progress.ulcexpy945b = 100 (v3, by #16 6.48s ago)
+  - uploadQueue.progress.uv53wenq3th = 100 (v2, by #12 8.90s ago)
 stats:
-  - GET /api/v1/metrics: 1 done, 1 of last 1 failed, 3 in last 10s
+  - POST /api/v1/files: 7 done, median 0.22s, p95 1.27s, 1 of last 7 failed, 7 in last 10s
 ```
 
 Questions:
@@ -208,26 +225,24 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": null,
-   "stale": null,
-   "conflict": null,
-   "duplicate": null,
-   "inconsistent": null,
-   "failing": null,
-   "slow": null,
-   "overload": null,
-   "unusual": null,
-   "transient": null
+   "expected": "normal behaviour, nothing is wrong",
+   "stale": "data from an older request or state would overwrite something newer",
+   "conflict": "competing updates target the same record at the same time",
+   "duplicate": "the same change or request is happening again without a new intent",
+   "failing": "an operation is failing again and again",
+   "slow": "an operation is far slower than usual",
+   "overload": "work is being triggered far more often than usual",
+   "unusual": "a normally consistent operation produced an atypical outcome"
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do with this request?",
   "criteria": {
-   "send": null,
-   "coalesce": null,
-   "delay": null,
-   "block": null
+   "send": "send it now",
+   "coalesce": "merge with the identical in-flight request",
+   "delay": "back off before sending so the service can recover",
+   "block": "cancel the request immediately"
   }
  }
 }
@@ -239,10 +254,10 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "send": 0.2279,
-   "coalesce": 0.6655,
-   "delay": 0.0429,
-   "block": 0.0637
+   "send": 0.2423,
+   "coalesce": 0.2041,
+   "delay": 0.5481,
+   "block": 0.0056
   }
  },
  "diagnosis": {
@@ -252,37 +267,58 @@ Labels:
 }
 ```
 
-Costs: {"send":68.742,"coalesce":68.3375,"delay":68.8291,"block":68.3266}  
-Adjusted: {"send":0.154,"coalesce":0,"delay":0.492,"block":0.239}  
-Sim diagnosis: `duplicate`, best `coalesce`, subject {"kind":"op","how":"subject","ref":5}
+Costs: {"send":45.3695,"coalesce":45.3695,"delay":37.9795,"block":42.0951}  
+Adjusted: {"send":7.14,"coalesce":8.64,"delay":0,"block":4.366}  
+Sim diagnosis: `duplicate`, best `delay`, subject {"kind":"op","how":"subject","ref":11}
 
 Cost parts:
 ```json
-{"send":{"area":4.679,"final_client":1.661,"final_server":50,"relation_s":0,"relation_final":0,"errors":1,"uncaught":0,"wasted":0,"latency_s":5.69},"coalesce":{"area":4.319,"final_client":1.661,"final_server":50,"relation_s":0,"relation_final":0,"errors":1,"uncaught":0,"wasted":0,"latency_s":5.8},"delay":{"area":4.729,"final_client":1.661,"final_server":50,"relation_s":0,"relation_final":0,"errors":1,"uncaught":0,"wasted":0,"latency_s":5.69},"block":{"area":4.314,"final_client":1.661,"final_server":50,"relation_s":0,"relation_final":0,"errors":1,"uncaught":0,"wasted":0,"latency_s":5.794}}
+{"send":{"area":9.803,"final_client":0.021,"final_server":50,"relation_s":3.269,"relation_final":0,"errors":0,"uncaught":0,"wasted":5,"latency_s":5.22},"coalesce":{"area":9.803,"final_client":0.021,"final_server":50,"relation_s":3.269,"relation_final":0,"errors":0,"uncaught":0,"wasted":5,"latency_s":5.22},"delay":{"area":11.031,"final_client":0.021,"final_server":25,"relation_s":2.239,"relation_final":0,"errors":0,"uncaught":0,"wasted":3,"latency_s":5.731},"block":{"area":14.402,"final_client":0.021,"final_server":25,"relation_s":4.275,"relation_final":0,"errors":0,"uncaught":0,"wasted":3,"latency_s":5.21}}
 ```
 
-## 4. request — pharmacy — nav+search+settings/request
+## 4. request — waste — badge+cart+search/request
 
-id `sim-1000-d12`, split `train`, chaos `calm`, features ["search","settings","nav"]
+id `sim-3-d342`, split `train`, chaos `degraded`, features ["search","cart","badge"]
 
 ```text
-app: Rxly — /overview
-trigger: GET /overview/prescriptions (#66) is about to be sent.
+app: TrashTrack — /trucks
+trigger: PATCH /v1/cart/items/:id {qty: 5} (#2584) is about to be sent.
 facts:
-  - 3 identical GET /overview/prescriptions requests in the last 10s: #48 answered 200 6.37s ago; #49 answered 200 6.33s ago; #65 in flight (started 0.00s ago); #65 started 0.00s before this one, from the same user action (…
-  - GET /overview/prescriptions was requested 4 times in the last 10s (no usual rate learned yet).
-  - GET /overview/prescriptions usually answers in 0.17s (p95 0.29s, 10 samples); error rate 0% over 10 requests (0 failed).
-  - This request comes from user navigated to link "Overview" (#64), started 0.00s ago.
-  - GET is idempotent.
-  - A cached 200 response from 6.33s ago exists for this request.
+  - 1 identical PATCH /v1/cart/items/:id request in the last 10s: #2580 answered 200 0.09s ago; #2580 started 0.25s before this one; they come from separate user actions 0.25s apart.
+  - User actions #2579 and #2583, 0.25s apart: both are clicks on button "+"; the browser counted #2583 as click 2 of a multi-click (MouseEvent.detail); between them the app wrote selection.results, selection.size and 2 more.
+  - PATCH /v1/cart/items/:id was requested 10 times in the last 10s; usually 10.04 per 10s (1.0×).
+  - PATCH /v1/cart/items/:id usually answers in 0.33s (p95 2.30s, 64 samples); error rate 5% over 20 requests (1 failed).
+  - This request comes from user clicked button "+" (#2583), started 0.00s ago.
+  - PATCH is not idempotent; its body (9 bytes) can be replayed.
 in_flight:
-  - GET /overview/prescriptions (#65) 0.00s so far, by #64
-timeline: none
+  - POST /v1/basket/lines {productId: "bbea6814-e93e-497f-a1fb…", qty: 1} (#2582) 0.04s so far, by #2581
+timeline:
+  - -0.73s user clicked button "Add to cart rt01" (#2577)
+  - -0.59s user clicked button "Add to cart rt12" (#2578)
+  - -0.25s user clicked button "+" (#2579)
+  - -0.25s write selection.results: 4 items, 1 changed: {id: "af0c79ee-5d60-4241-afc…, qty: 4 → 5}; selection.size: 37 → 38; s… (by #2579, user)
+  - -0.25s start PATCH /v1/cart/items/:id {qty: 5} (#2580, by #2579)
+  - -0.09s end PATCH /v1/cart/items/:id {qty: 5} (#2580): 200 in 0.16s
+  - -0.08s write selection.results: 4 items, 2 changed: {id: "71617d5b-7d03-4cbe-aa2…, qty: 14 → 15, version: 37 → 38}, and 1 … (by #2580)
+  - -0.07s end POST /v1/basket/lines {productId: "08fe9555-52fb-4dcb-a4bd…", qty: 1} (#2559): 200 in 5.25s
+  - -0.06s write selection.results: 4 items, 2 changed: {id: "71617d5b-7d03-4cbe-aa2…, qty: 15 → 12, version: 38 → 35}, and 1 … (by #2559)
+  - -0.04s user clicked button "Add to cart rt12" (#2581)
+  - -0.04s write selection.results: 4 items, 1 changed: {id: "7bdfb2e3-ac54-422c-afd…, qty: 11 → 12}; selection.size: 35 → 36;… (by #2581, user)
+  - -0.04s write selection.fetching: false → true (by #2581, user)
+  - -0.04s start POST /v1/basket/lines {productId: "bbea6814-e93e-497f-a1fb…", qty: 1} (#2582, by #2581)
+  - -0.00s user clicked button "+" (#2583)
+  - -0.00s write selection.results: 4 items, 1 changed: {id: "af0c79ee-5d60-4241-afc…, qty: 4 → 5}; selection.size: 36 → 37; s… (by #2583, user)
+  - -0.00s start PATCH /v1/cart/items/:id {qty: 5} (#2584, by #2583)
 state:
-  - pageState.loading = true (v25, by #64 0.00s ago)
-  - pageState.screen = "/overview" (v12, by #64 0.00s ago)
+  - selection.results = 4 items [{id: "71617d5b-7d03-4cbe-aa20…", +5}, {id: "af0c79ee-5d60-4241-afcb…", +5}, …] (v489, by #2583 0.00s ago)
+  - selection.size = 37 (v326, by #2583 0.00s ago)
+  - selection.sum = 4473.3 (v342, by #2583 0.00s ago)
+  - selection.fetching = true (v205, by #2581 0.04s ago)
+  - selection.failure = "Server error (502)" (v23, by #2527 13.5s ago)
+  - selection.confirmation = "placed" (v1, by #1693 106.5s ago)
 stats:
-  - GET /overview/prescriptions: 10 done, median 0.17s, p95 0.29s, 0 of last 10 failed, 4 in last 10s
+  - PATCH /v1/cart/items/:id: 226 done, median 0.33s, p95 2.30s, 1 of last 20 failed, 10 in last 10s (usual 10.04)
+  - POST /v1/basket/lines: 52 done, median 1.56s, p95 5.74s, 3 of last 20 failed, 3 in last 10s (usual 2.33)
 ```
 
 Questions:
@@ -292,27 +328,26 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": null,
-   "stale": null,
-   "conflict": null,
-   "duplicate": null,
-   "inconsistent": null,
-   "failing": null,
-   "slow": null,
-   "overload": null,
-   "unusual": null,
-   "transient": null
+   "expected": "nothing unusual: this is normal app behaviour",
+   "stale": "outdated data or an older operation is about to replace newer state",
+   "conflict": "competing updates target the same record at the same time",
+   "duplicate": "the same change or request is happening again without a new intent",
+   "inconsistent": "the app's state is internally contradictory",
+   "failing": "an operation is failing again and again",
+   "slow": "the request is unusually slow",
+   "overload": "requests are being fired in a storm",
+   "unusual": "this differs from how the same operation normally behaves",
+   "transient": "an isolated failure that should work if retried"
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do with this request?",
   "criteria": {
-   "send": null,
-   "coalesce": null,
-   "delay": null,
-   "block": null,
-   "serve_cached": null
+   "send": "let the request go out as is",
+   "coalesce": "merge with the identical in-flight request",
+   "delay": "send it later, after a pause",
+   "block": "refuse to send this request and fail it right away"
   }
  }
 }
@@ -324,11 +359,10 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "send": 0.932,
-   "coalesce": 0.0271,
-   "delay": 0.0409,
-   "block": 0,
-   "serve_cached": 0
+   "send": 0.7291,
+   "coalesce": 0.2366,
+   "delay": 0.0343,
+   "block": 0
   }
  },
  "diagnosis": {
@@ -338,60 +372,59 @@ Labels:
 }
 ```
 
-Costs: {"send":2.2915,"coalesce":2.3954,"delay":2.354,"block":3.9315,"serve_cached":2.2542}  
-Adjusted: {"send":0,"coalesce":0.354,"delay":0.313,"block":2.14,"serve_cached":1.5}  
-Sim diagnosis: `expected`, best `send`, subject {"kind":"op","how":"subject","ref":43}
+Costs: {"send":217.5934,"coalesce":217.5164,"delay":217.6592,"block":219.5487}  
+Adjusted: {"send":0,"coalesce":0.173,"delay":0.316,"block":2.455}  
+Sim diagnosis: `expected`, best `send`, subject {"kind":"op","how":"subject","ref":571}
 
 Cost parts:
 ```json
-{"send":{"area":1.316,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":3.901},"coalesce":{"area":1.316,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":4.316},"delay":{"area":1.316,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":4.151},"block":{"area":1.999,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":3.73},"serve_cached":{"area":1.316,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":3.752}}
+{"send":{"area":24.747,"final_client":2.4,"final_server":181,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":12.083},"coalesce":{"area":24.747,"final_client":2.4,"final_server":181,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":11.977},"delay":{"area":24.747,"final_client":2.4,"final_server":181,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":12.333},"block":{"area":24.746,"final_client":2.4,"final_server":181,"relation_s":0.628,"relation_final":0,"errors":1,"uncaught":0,"wasted":0,"latency_s":11.794}}
 ```
 
-## 5. failure — food — auth+editor+search/failure
+## 5. failure — waste — badge+cart+search/failure
 
-id `sim-1041-d256`, split `train`, chaos `flaky`, features ["search","auth","editor"]
+id `sim-3-d212`, split `train`, chaos `degraded`, features ["search","cart","badge"]
 
 ```text
-app: GrubHub — /deliveries
-trigger: GET /api/deliveries/query?query=D- D-1440 D-902D-  (#1072) failed (HTTP 500) and the app has not seen the failure yet.
+app: TrashTrack — /trucks
+trigger: POST /v1/basket/lines {productId: "dad73de9-c774-4432-a0ef…", qty: 1} (#1801) failed (HTTP 500) and the app has not seen the failure yet.
 facts:
-  - The request #1072 failed: HTTP 500 after 0.30s; the app has not seen the failure yet.
-  - This is the 1st GET /api/deliveries/query failure in a row (recent outcomes: 200, 200, 200, 200, 500; last success 0.21s ago); error rate 15% over 20 requests (3 failed).
-  - Before this failure its chain wrote deliveryLookup.keyword, deliveryLookup.busy.
-  - GET /api/deliveries/query was requested 14 times in the last 10s; usually 10.72 per 10s (1.3×).
-  - GET /api/deliveries/query usually answers in 0.30s (p95 0.42s, 64 samples); error rate 15% over 20 requests (3 failed).
-  - 3 other GET /api/deliveries/query requests with different input are in flight: #1074 ?query=D- D-1440 D-902D- (started 0.08s after #1072); #1076 ?query=D- D-1440 D-902D (started 0.18s after #1072); #1079 ?query=D- D-1440 D-902 (started 0.26s after #1072).
-  - This request comes from user typed "D- D-1440 D-902D- " into input "Look up deliveries" (#1071), started 0.30s ago.
-  - GET is idempotent.
-  - A cached 200 response from 26.9s ago exists for this request.
-in_flight:
-  - GET /api/deliveries/query?query=D- D-1440 D-902D- (#1074) 0.22s so far, by #1073
-  - GET /api/deliveries/query?query=D- D-1440 D-902D (#1076) 0.12s so far, by #1075
-  - GET /api/deliveries/query?query=D- D-1440 D-902 (#1079) 0.04s so far, by #1078
+  - The request #1801 failed: HTTP 500 after 0.40s; the app has not seen the failure yet.
+  - User actions #1751 and #1800, 2.64s apart: both are clicks on button "Add to cart rt01"; between them the app wrote truckFinder.query, truckFinder.rows and 7 more.
+  - 2 identical POST /v1/basket/lines requests in the last 10s: #1703 answered 200 6.13s ago; #1752 answered 200 0.59s ago; #1752 started 2.64s before this one; they come from separate user actions 2.64s apart.
+  - This is the 1st POST /v1/basket/lines failure in a row (recent outcomes: 200, 200, 200, 200, 500; last success 0.59s ago); error rate 10% over 20 requests (2 failed).
+  - Before this failure its chain wrote selection.results, selection.size, selection.sum, selection.fetching.
+  - This POST failed with HTTP 500 after 0.40s, well before its usual 1.60s.
+  - 1 other endpoint of this origin failed in the last 10s (1 failure, latest: PATCH /v1/alerts/:id timeout); 26 other requests succeeded.
+  - POST /v1/basket/lines was requested 5 times in the last 10s; usually 2.41 per 10s (2.1×).
+  - POST /v1/basket/lines usually answers in 1.60s (p95 5.74s, 30 samples); error rate 10% over 20 requests (2 failed).
+  - This request comes from user clicked button "Add to cart rt01" (#1800), started 0.40s ago.
+  - POST is not idempotent; its body (60 bytes) can be replayed.
+in_flight: none
 timeline:
-  - -0.30s start GET /api/deliveries/query?query=D- D-1440 D-902D-  (#1072, by #1071)
-  - -0.29s end GET /api/deliveries/query?query=D- D-1440 D-902D- D- (#1066): 200 in 0.33s
-  - -0.28s write deliveryLookup.busy: true → false (by #1066)
-  - -0.22s write deliveryLookup.keyword: "D- D-1440 D-902D- " → "D- D-1440 D-902D-" (by #1073, user)
-  - -0.22s write deliveryLookup.busy: false → true (by #1073, user)
-  - -0.22s start GET /api/deliveries/query?query=D- D-1440 D-902D- (#1074, by #1073)
-  - -0.21s end GET /api/deliveries/query?query=D- D-1440 D-902D- D (#1069): 200 in 0.34s
-  - -0.21s write deliveryLookup.busy: true → false (by #1069)
-  - -0.12s write deliveryLookup.keyword: "D- D-1440 D-902D-" → "D- D-1440 D-902D" (by #1075, user)
-  - -0.12s write deliveryLookup.busy: false → true (by #1075, user)
-  - -0.12s start GET /api/deliveries/query?query=D- D-1440 D-902D (#1076, by #1075)
-  - -0.12s user typed "Recipe D-881 D-902 D-1440 thai D-2071 p…" into input "Title" (#1077)
-  - -0.04s user typed "D- D-1440 D-902" into input "Look up deliveries" (#1078)
-  - -0.04s write deliveryLookup.keyword: "D- D-1440 D-902D" → "D- D-1440 D-902" (by #1078, user)
-  - -0.04s start GET /api/deliveries/query?query=D- D-1440 D-902 (#1079, by #1078)
-  - -0.00s end GET /api/deliveries/query?query=D- D-1440 D-902D-  (#1072): 500 in 0.30s
+  - -0.88s write selection.results: 2 items, 1 changed: {id: "71617d5b-7d03-4cbe-aa2…, version: 7 → 8} (by #1788)
+  - -0.80s user clicked button "Add to cart rt09" (#1797)
+  - -0.59s end POST /v1/basket/lines {productId: "dad73de9-c774-4432-a0ef…", qty: 1} (#1752): 200 in 2.44s
+  - -0.58s write selection.results: 2 items, 1 changed: {id: "71617d5b-7d03-4cbe-aa2…, qty: 4 → 6, version: 8 → 6}; selection.… (by #1752)
+  - -0.43s user typed "" into input "Find trucks" (2 keystrokes, #1798–#1799)
+  - -0.40s user clicked button "Add to cart rt01" (#1800)
+  - -0.40s write selection.results: 2 items, 1 changed: {id: "71617d5b-7d03-4cbe-aa2…, qty: 6 → 7}; selection.size: 8 → 9; sel… (by #1800, user)
+  - -0.40s write selection.fetching: false → true (by #1800, user)
+  - -0.40s start POST /v1/basket/lines {productId: "dad73de9-c774-4432-a0ef…", qty: 1} (#1801, by #1800)
+  - -0.39s user clicked button "Add to cart rt09" (#1802)
+  - -0.33s user typed "rt22" into input "Find trucks" (4 keystrokes, #1803–#1806)
+  - -0.12s user clicked button "Add to cart rt12" (#1807)
+  - -0.02s user clicked listitem "Alert" (#1808)
+  - -0.00s end POST /v1/basket/lines {productId: "dad73de9-c774-4432-a0ef…", qty: 1} (#1801): 500 in 0.40s
 state:
-  - deliveryLookup.keyword = "D- D-1440 D-902" (v181, by #1078 0.04s ago)
-  - deliveryLookup.busy = true (v203, by #1075 0.12s ago)
-  - deliveryLookup.lastError = null (v35, by #1048 1.91s ago)
-  - deliveryLookup.data = 0 items (v22, by #838 37.8s ago)
+  - selection.fetching = true (v125, by #1800 0.40s ago)
+  - selection.results = 2 items [{id: "71617d5b-7d03-4cbe-aa20…", +5}, {id: "af0c79ee-5d60-4241-afcb…", +5}] (v266, by #1800 0.40s ago)
+  - selection.size = 9 (v173, by #1800 0.40s ago)
+  - selection.sum = 640.4 (v181, by #1800 0.40s ago)
+  - selection.confirmation = "placed" (v1, by #1693 8.65s ago)
+  - selection.failure = null (v15, by #1692 9.01s ago)
 stats:
-  - GET /api/deliveries/query: 174 done, median 0.30s, p95 0.42s, 3 of last 20 failed, 14 in last 10s (usual 10.72)
+  - POST /v1/basket/lines: 33 done, median 1.60s, p95 5.74s, 2 of last 20 failed, 5 in last 10s (usual 2.41)
 ```
 
 Questions:
@@ -401,16 +434,16 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "normal behaviour, nothing is wrong",
+   "expected": "nothing unusual: this is normal app behaviour",
    "stale": "outdated data or an older operation is about to replace newer state",
-   "conflict": "concurrent operations are competing over the same state or resource",
+   "conflict": "competing updates target the same record at the same time",
    "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the state contradicts itself or relationships it normally keeps",
-   "failing": "an operation keeps failing or its failures follow a pattern",
-   "slow": "an operation is far slower than usual",
-   "overload": "work is being triggered far more often than usual",
+   "inconsistent": "the app's state is internally contradictory",
+   "failing": "an operation is failing again and again",
+   "slow": "the request is unusually slow",
+   "overload": "requests are being fired in a storm",
    "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a one-off failure that is likely to succeed if tried again"
+   "transient": "an isolated failure that should work if retried"
   }
  },
  "action": {
@@ -418,8 +451,7 @@ Questions:
   "instructions": "What should the runtime do with this failed request?",
   "criteria": {
    "deliver": "pass the failure to the application as it is",
-   "retry": "retry the request after a short backoff",
-   "serve_cached": "use the cached result instead of the network"
+   "retry": "retry the request after a short backoff"
   }
  }
 }
@@ -431,9 +463,8 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "deliver": 0,
-   "retry": 0.1419,
-   "serve_cached": 0.8581
+   "deliver": 0.3211,
+   "retry": 0.6789
   }
  },
  "diagnosis": {
@@ -443,47 +474,56 @@ Labels:
 }
 ```
 
-Costs: {"deliver":29.2496,"retry":27.9506,"serve_cached":27.7502}  
-Adjusted: {"deliver":0.999,"retry":0.2,"serve_cached":0}  
-Sim diagnosis: `transient`, best `serve_cached`, subject {"kind":"op","how":"subject","ref":308}
+Costs: {"deliver":245.3299,"retry":244.462}  
+Adjusted: {"deliver":0.368,"retry":0}  
+Sim diagnosis: `transient`, best `retry`, subject {"kind":"op","how":"subject","ref":376}
 
 Cost parts:
 ```json
-{"deliver":{"area":0.972,"final_client":0,"final_server":18,"relation_s":0,"relation_final":0,"errors":4,"uncaught":0,"wasted":3,"latency_s":18.009},"retry":{"area":0.958,"final_client":0,"final_server":18,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":4,"latency_s":18.619},"serve_cached":{"area":0.972,"final_client":0,"final_server":18,"relation_s":0,"relation_final":0,"errors":3,"uncaught":0,"wasted":3,"latency_s":18.007}}
+{"deliver":{"area":34.257,"final_client":3.12,"final_server":156,"relation_s":11.365,"relation_final":1,"errors":6,"uncaught":0,"wasted":0,"latency_s":30.472},"retry":{"area":34.292,"final_client":3.12,"final_server":156,"relation_s":10.106,"relation_final":1,"errors":6,"uncaught":0,"wasted":0,"latency_s":33.632}}
 ```
 
-## 6. failure — project — benign+search/failure
+## 6. failure — commerce — benign+longtask+money/failure
 
-id `sim-1040-d32`, split `train`, chaos `normal`, features ["search","benign"]
+id `sim-4-d37`, split `train`, chaos `deploy`, features ["money","longtask","benign"]
 
 ```text
-app: Kanbo — /tasks
-trigger: GET /api/v1/tasks/search?term=doc tefl shredolo migrf (#130) failed (HTTP 429) and the app has not seen the failure yet.
+app: Cartwise — /products
+trigger: POST /v1/heartbeat {status: "active"} (#356) failed (HTTP 502) and the app has not seen the failure yet.
 facts:
-  - The request #130 failed: HTTP 429 after 0.20s; the app has not seen the failure yet.
-  - This is the 3rd GET /api/v1/tasks/search failure in a row (recent outcomes: 200, 200, 429, 429, 429; last success 0.26s ago); error rate 35% over 20 requests (7 failed).
-  - Before this failure its chain wrote task_finder.query, task_finder.loading.
-  - GET /api/v1/tasks/search was requested 17 times in the last 10s; usually 11.25 per 10s (1.5×).
-  - GET /api/v1/tasks/search usually answers in 0.80s (p95 3.19s, 23 samples); error rate 35% over 20 requests (7 failed).
-  - 5 other GET /api/v1/tasks/search requests with different input are in flight: #116 ?term=doc tefl shredolo migrf… (started 0.65s before #130); #124 ?term=doc tefl shredolo migrf… (started 0.32s before #130); #126 ?term=doc tefl shredolo…
-  - This request comes from user typed "doc tefl shredolo migrf" into input "Search tasks" (#129), started 0.20s ago.
-  - GET is idempotent.
-  - A cached 200 response from 10.3s ago exists for this request.
-in_flight:
-  - GET /api/v1/tasks/search?term=doc tefl shredolo migrfl shwrl (#116) 0.85s so far, by #115
-  - GET /api/v1/tasks/search?term=doc tefl shredolo migrfl s (#124) 0.52s so far, by #123
-  - GET /api/v1/tasks/search?term=doc tefl shredolo migrfl  (#126) 0.39s so far, by #125
-  - GET /api/v1/tasks/search?term=doc tefl shredolo migr (#132) 0.15s so far, by #131
+  - The request #356 failed: HTTP 502 after 0.06s; the app has not seen the failure yet.
+  - 4 identical POST /v1/heartbeat requests in the last 10s (latest 3: #341 answered 200 5.31s ago; #350 answered 200 3.37s ago; #354 answered 200 1.20s ago); #354 started 2.00s before this one, neither from a user action.
+  - This is the 1st POST /v1/heartbeat failure in a row (recent outcomes: 200, 200, 200, 200, 502; last success 1.20s ago); error rate 10% over 20 requests (2 failed).
+  - This POST failed with HTTP 502, a status servers and gateways usually return without processing the request.
+  - 1 other endpoint of this origin failed in the last 10s (1 failure, latest: PATCH /v1/estimates/:id timeout); 13 other requests succeeded.
+  - POST /v1/heartbeat runs on a schedule: every 2.00s (last 8 intervals); the next run is due in 1.94s.
+  - POST /v1/heartbeat was requested 5 times in the last 10s; usually 5.02 per 10s (1.0×).
+  - POST /v1/heartbeat usually answers in 0.86s (p95 2.19s, 27 samples); error rate 10% over 20 requests (2 failed).
+  - This request comes from interval 2.00s (#355), started 0.06s ago.
+  - POST is not idempotent; its body (19 bytes) can be replayed.
+in_flight: none
 timeline:
-  - -0.02s write task_finder.loading: true → false (by #128)
-  - -0.00s end GET /api/v1/tasks/search?term=doc tefl shredolo migrf (#130): 429 in 0.20s
+  - -6.46s user clicked button "−" (#338)
+  - -6.06s start interval 2.00s (#340)
+  - -6.06s start POST /v1/heartbeat {status: "active"} (#341, by #340)
+  - -5.68s user clicked button "−" (#342)
+  - -5.31s end POST /v1/heartbeat {status: "active"} (#341): 200 in 0.75s
+  - -5.31s user clicked button "−" (#344)
+  - -4.17s user changed select "Discount %" to "0" (#347)
+  - -4.06s start interval 2.00s (#349)
+  - -4.06s start POST /v1/heartbeat {status: "active"} (#350, by #349)
+  - -3.37s end POST /v1/heartbeat {status: "active"} (#350): 200 in 0.69s
+  - -2.06s start interval 2.00s (#353)
+  - -2.06s start POST /v1/heartbeat {status: "active"} (#354, by #353)
+  - -1.20s end POST /v1/heartbeat {status: "active"} (#354): 200 in 0.86s
+  - -0.06s start interval 2.00s (#355)
+  - -0.06s start POST /v1/heartbeat {status: "active"} (#356, by #355)
+  - -0.00s end POST /v1/heartbeat {status: "active"} (#356): 502 in 0.06s
 state:
-  - task_finder.loading = false (v30, by #128 0.02s ago)
-  - task_finder.query = "doc tefl shredolo mig" (v41, by #137 0.08s ago)
-  - task_finder.items = 0 items (v3, by #24 25.9s ago)
-  - task_finder.problem = null (v0)
+  - sessionInfo.online = true (v2, by #235 18.2s ago)
+  - sessionInfo.peers = 3 (v1, by #5 57.0s ago)
 stats:
-  - GET /api/v1/tasks/search: 36 done, median 0.80s, p95 3.19s, 7 of last 20 failed, 17 in last 10s (usual 11.25)
+  - POST /v1/heartbeat: 29 done, median 0.86s, p95 2.19s, 2 of last 20 failed, 5 in last 10s (usual 5.02)
 ```
 
 Questions:
@@ -495,23 +535,21 @@ Questions:
   "criteria": {
    "expected": "normal behaviour, nothing is wrong",
    "stale": "outdated data or an older operation is about to replace newer state",
-   "conflict": "concurrent operations are competing over the same state or resource",
-   "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the state contradicts itself or relationships it normally keeps",
+   "conflict": "simultaneous changes from different sources collide",
+   "duplicate": "the same work is being done twice by accident",
    "failing": "an operation keeps failing or its failures follow a pattern",
    "slow": "an operation is far slower than usual",
-   "overload": "work is being triggered far more often than usual",
+   "overload": "the app is hammering the service much more than normal",
    "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a one-off failure that is likely to succeed if tried again"
+   "transient": "an isolated failure that should work if retried"
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do with this failed request?",
   "criteria": {
-   "deliver": "pass the failure to the application as it is",
-   "retry": "try the request again after a short wait",
-   "serve_cached": "answer with the last successful response for this request instead"
+   "retry": "re-send the request after backing off",
+   "deliver": "report the failure to the app"
   }
  }
 }
@@ -523,63 +561,64 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "deliver": 0.9995,
-   "retry": 0.0005,
-   "serve_cached": 0
+   "deliver": 0.8771,
+   "retry": 0.1229
   }
  },
  "diagnosis": {
   "type": "choice",
-  "label": "overload"
+  "label": "failing"
  }
 }
 ```
 
-Costs: {"deliver":9.0803,"retry":9.3451,"serve_cached":9.0803}  
-Adjusted: {"deliver":0,"retry":0.765,"serve_cached":1.5}  
-Sim diagnosis: `overload`, best `deliver`, subject {"kind":"op","how":"subject","ref":65}
+Costs: {"deliver":32.3622,"retry":32.2784}  
+Adjusted: {"deliver":0,"retry":0.416}  
+Sim diagnosis: `failing`, best `deliver`, subject {"kind":"op","how":"subject","ref":123}
 
 Cost parts:
 ```json
-{"deliver":{"area":2.015,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":4,"latency_s":26.979},"retry":{"area":2.012,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":5,"latency_s":27.732},"serve_cached":{"area":2.015,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":4,"latency_s":26.979}}
+{"deliver":{"area":0.261,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0},"retry":{"area":0.365,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0}}
 ```
 
-## 7. stall — finance — cart+editor+poll/stall
+## 7. stall — skiresort — clockskew/stall
 
-id `sim-1016-d111`, split `train`, chaos `storm`, features ["editor","poll","cart"]
+id `sim-49-d17`, split `train`, chaos `normal`, features ["clockskew"]
 
 ```text
-app: Tally — /home
-trigger: GET /api/status?range=1h (#644) has been waiting 2.59s for a response.
+app: SlopeSide — /lifts
+trigger: GET /api/v1/lifts/latest (#191) has been waiting 0.50s for a response.
 facts:
-  - The request #644 has been in flight for 2.59s; GET /api/status usually takes 0.45s (p95 1.53s, 64 samples), 5.7× the median.
-  - 2 identical GET /api/status requests in the last 10s: #639 answered 200 4.61s ago; #642 answered 200 3.59s ago; #642 started 1.47s before this one, neither from a user action.
-  - Recent GET /api/status outcomes: 200, 200, 200, 200, 200.
-  - GET /api/status was requested 7 times in the last 10s; usually 8.98 per 10s (0.8×).
-  - This request comes from timer 1.00s (#643), started 2.59s ago; its chain began with timer 1.00s (#5).
+  - The request #191 has been in flight for 0.50s; GET /api/v1/lifts/latest usually takes 0.10s (p95 0.16s, 64 samples), 4.9× the median.
+  - 11 identical GET /api/v1/lifts/latest requests in the last 10s (latest 3: #185 answered 200 1.89s ago; #187 answered 200 1.39s ago; #189 answered 200 0.93s ago); #189 started 0.50s before this one, neither from a user action.
+  - Recent GET /api/v1/lifts/latest outcomes: 200, 200, 200, 200, 200.
+  - GET /api/v1/lifts/latest runs on a schedule: every 0.50s (last 8 intervals); the next run is due in 0.00s.
+  - GET /api/v1/lifts/latest was requested 19 times in the last 10s; usually 24.44 per 10s (0.8×).
+  - This request comes from interval 0.50s (#190), started 0.50s ago.
   - GET is idempotent.
-  - A cached 200 response from 3.59s ago exists for this request.
-in_flight:
-  - PATCH /api/reports/:id {summary: "Report food housing tra…", +2} (#655) 0.51s so far, by #654
+  - A cached 200 response from 0.93s ago exists for this request.
+in_flight: none
 timeline:
-  - -4.07s start GET /api/status?range=1h (#642, by #641)
-  - -3.59s end GET /api/status?range=1h (#642): 200 in 0.47s
-  - -2.59s start timer 1.00s (#643, by #642)
-  - -2.59s start GET /api/status?range=1h (#644, by #643)
-  - -1.97s user typed "Report food housing travel rent salary …" into textarea "Body" (4 keystrokes, #645–#648)
-  - -1.55s user clicked button "Add salary" (#649)
-  - -1.41s user typed "Report food housing travel rent salary …" into textarea "Body" (3 keystrokes, #651–#653)
-  - -1.37s end GET /api/status?range=24h (#608): 200 in 6.00s
-  - -0.09s user typed "Report food housing travel rent salary …" into textarea "Body" (2 keystrokes, #656–#657)
+  - -2.00s start interval 0.50s (#184)
+  - -2.00s start GET /api/v1/lifts/latest (#185, by #184)
+  - -1.89s end GET /api/v1/lifts/latest (#185): 200 in 0.11s
+  - -1.50s start interval 0.50s (#186)
+  - -1.50s start GET /api/v1/lifts/latest (#187, by #186)
+  - -1.39s end GET /api/v1/lifts/latest (#187): 200 in 0.11s
+  - -1.00s start interval 0.50s (#188)
+  - -1.00s start GET /api/v1/lifts/latest (#189, by #188)
+  - -0.93s end GET /api/v1/lifts/latest (#189): 200 in 0.07s
+  - -0.50s start interval 0.50s (#190)
+  - -0.50s start GET /api/v1/lifts/latest (#191, by #190)
 state:
-  - liveStats.gauges.spendToday = 724 (v15, by #639 4.61s ago)
-  - liveStats.gauges.burnRate = 475 (v14, by #639 4.61s ago)
-  - liveStats.range = "1h" (v11, by #638 4.92s ago)
-  - liveStats.isLoading = true (v37, by #613 6.09s ago)
-  - liveStats.state = "ok" (v15, by #477 22.1s ago)
+  - lifts_snapshot.active.id = "4cfecfd5-4d44-4992-aaa0-f1fa874b1f52" (v5, by #141 12.6s ago)
+  - lifts_snapshot.active.name = "summit" (v5, by #141 12.6s ago)
+  - lifts_snapshot.active.waitMin = 43 (v5, by #141 12.6s ago)
+  - lifts_snapshot.active.windKph = 40 (v5, by #141 12.6s ago)
+  - lifts_snapshot.active.updatedAt = 1791378271038 (v5, by #141 12.6s ago)
+  - lifts_snapshot.inFlight = false (v28, by #141 12.6s ago)
 stats:
-  - GET /api/status: 110 done, median 0.45s, p95 1.53s, 0 of last 20 failed, 7 in last 10s (usual 8.98)
-  - PATCH /api/reports/:id: 25 done, median 0.76s, p95 2.40s, 4 of last 20 failed, 6 in last 10s (usual 3.67)
+  - GET /api/v1/lifts/latest: 93 done, median 0.10s, p95 0.16s, 0 of last 20 failed, 19 in last 10s (usual 24.44)
 ```
 
 Questions:
@@ -589,14 +628,14 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "everything is working as intended",
-   "stale": "this is out of date: newer information already exists",
-   "conflict": "two in-progress operations are fighting over the same data",
-   "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "state values disagree with each other",
-   "failing": "requests keep failing in a pattern",
-   "slow": "an operation is far slower than usual",
-   "overload": "work is being triggered far more often than usual",
+   "expected": "nothing unusual: this is normal app behaviour",
+   "stale": "outdated data or an older operation is about to replace newer state",
+   "conflict": "simultaneous changes from different sources collide",
+   "duplicate": "this repeats an action or request that already happened, with no new intent",
+   "inconsistent": "the app's state is internally contradictory",
+   "failing": "an operation keeps failing or its failures follow a pattern",
+   "slow": "the request is unusually slow",
+   "overload": "requests are being fired in a storm",
    "unusual": "this differs from how the same operation normally behaves",
    "transient": "a momentary glitch, not a pattern; trying again would likely succeed"
   }
@@ -619,9 +658,9 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "wait": 0.2166,
-   "hedge": 0.0571,
-   "serve_cached": 0.7263
+   "wait": 0.6494,
+   "hedge": 0,
+   "serve_cached": 0.3506
   }
  },
  "diagnosis": {
@@ -631,43 +670,48 @@ Labels:
 }
 ```
 
-Costs: {"wait":135.5697,"hedge":131.9712,"serve_cached":130.2946}  
-Adjusted: {"wait":4.775,"hedge":1.677,"serve_cached":0}  
-Sim diagnosis: `slow`, best `serve_cached`, subject {"kind":"op","how":"subject","ref":191}
+Costs: {"wait":5.5822,"hedge":5.6018,"serve_cached":5.4657}  
+Adjusted: {"wait":0,"hedge":1.5,"serve_cached":0.383}  
+Sim diagnosis: `slow`, best `wait`, subject {"kind":"op","how":"subject","ref":96}
 
 Cost parts:
 ```json
-{"wait":{"area":27.523,"final_client":3.6,"final_server":56,"relation_s":7.065,"relation_final":0,"errors":2,"uncaught":0,"wasted":2,"latency_s":13.091},"hedge":{"area":27.103,"final_client":3.3,"final_server":56,"relation_s":6.992,"relation_final":0,"errors":2,"uncaught":0,"wasted":2,"latency_s":12.628},"serve_cached":{"area":26.5,"final_client":3.3,"final_server":56,"relation_s":7.031,"relation_final":0,"errors":2,"uncaught":0,"wasted":2,"latency_s":12.538}}
+{"wait":{"area":4.469,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":22,"latency_s":0},"hedge":{"area":3.633,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":25,"latency_s":0},"serve_cached":{"area":3.472,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":24,"latency_s":0}}
 ```
 
-## 8. inconsistency — sports — chat+form/inconsistency
+## 8. inconsistency — language — auth+benign+cart+clockskew/inconsistency
 
-id `sim-1079-d6`, split `train`, chaos `degraded`, features ["form","chat"]
+id `sim-22-d12`, split `train`, chaos `flaky`, features ["clockskew","auth","cart","benign"]
 
 ```text
-app: LeagueLine — /app
-trigger: The relation players.records[*].name unique (and 1 more) no longer holds now that the app is settled.
+app: WordWise — /app
+trigger: The relation lessons_cache.refreshedAt == lessons_cache.open.updatedAt no longer holds now that the app is settled.
 facts:
-  - The learned relation players.records[*].name unique no longer holds: players.records[*].name has duplicates. It held at 3 settled points before.
-  - The learned relation players.records[*].goals unique no longer holds: players.records[*].goals has duplicates. It held at 3 settled points before.
-  - The last consistent state is 1.12s old; 12 field writes happened since.
-  - players.records was written 0.06s ago by GET /api/players (#78): 7 → 8 items: added {id: "880358", name: "novak", +2}.
-  - players.records was written 0.06s ago by GET /api/players (#78): 7 → 8 items: added {id: "880358", name: "novak", +2}.
+  - The learned relation lessons_cache.refreshedAt == lessons_cache.open.updatedAt no longer holds: lessons_cache.refreshedAt = 1791380970360, lessons_cache.open.updatedAt = 1791378398143. It held at 5 settled points before.
+  - The last consistent state is 0.97s old; 5 field writes happened since.
+  - lessons_cache.open.updatedAt was written 0.06s ago by user clicked row "Lesson travel food" (#135) (user): 1791379984858 → 1791378398143.
   - No operations are in flight (the app is settled).
 in_flight: none
 timeline:
-  - -1.18s user typed "32" into input "Goals" (#69)
-  - -0.74s user clicked button "Send" (#70)
-  - -0.74s user submitted button "Add player" (#72)
-  - -0.74s start POST /api/players {name: "novak", goals: 32} (#73, by #72)
-  - -0.58s user clicked button "Send" (#74)
-  - -0.32s end POST /api/players {name: "novak", goals: 32} (#73): 201 in 0.42s
-  - -0.32s start GET /api/players (#78, by #73)
-  - -0.06s end GET /api/players (#78): 200 in 0.26s
-  - -0.06s write players.records: 7 → 8 items: added {id: "880358", name: "novak", +2} (by #78)
+  - -10.3s write lessons_cache.fetching: false → true (by #103, user)
+  - -10.3s start GET /api/lessons/latest (#104, by #103)
+  - -10.2s end GET /api/lessons/latest (#104): 503 in 0.18s
+  - -10.2s write lessons_cache.fetching: true → false; lessons_cache.failure: null → "Server error (503)" (by #104)
+  - -9.12s user clicked button "Add food" (#109)
+  - -7.48s user clicked button "−" (#113)
+  - -7.29s user clicked button "−" (#115)
+  - -4.40s user clicked tab "Lessons" (#121)
+  - -4.10s user clicked button "Add food" (#124)
+  - -2.91s user clicked button "Add food" (#129)
+  - -0.06s user clicked row "Lesson travel food" (#135)
+  - -0.06s write lessons_cache.open.id: "items-y49w" → "items-prwd"; lessons_cache.open.topic: "family" → "travel food"; lesso… (by…
 state:
-  - players.records = 8 items [{id: "767537", name: "j.", goals: 28, +4}, …] (v4, by #78 0.06s ago)
-  - players.size = 0 (v0)
+  - lessons_cache.refreshedAt = 1791380970360 (v1, by #7 48.5s ago)
+  - lessons_cache.open.updatedAt = 1791378398143 (v8, by #135 0.06s ago)
+  - lessons_cache.open.id = "items-prwd" (v8, by #135 0.06s ago)
+  - lessons_cache.open.topic = "travel food" (v8, by #135 0.06s ago)
+  - lessons_cache.open.xp = 100 (v8, by #135 0.06s ago)
+  - lessons_cache.open.minutes = 9 (v8, by #135 0.06s ago)
 stats: none
 ```
 
@@ -678,21 +722,214 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "no problem here; the app behaves normally",
-   "stale": "this is out of date: newer information already exists",
+   "expected": "normal behaviour, nothing is wrong",
+   "stale": "outdated data or an older operation is about to replace newer state",
    "conflict": "simultaneous changes from different sources collide",
    "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the app's state is internally contradictory",
-   "failing": "requests keep failing in a pattern",
+   "failing": "an operation keeps failing or its failures follow a pattern",
    "slow": "the request is unusually slow",
-   "overload": "requests are being fired in a storm",
-   "unusual": "the result has an unexpected shape compared with previous runs",
-   "transient": "a single failed attempt that a retry would probably fix"
+   "overload": "too much work is being triggered, far above the usual rate",
+   "transient": "a one-off failure that is likely to succeed if tried again"
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do about this inconsistent state?",
+  "criteria": {
+   "ignore": "leave things as they are",
+   "rollback": "restore the affected state to its last consistent snapshot",
+   "resync": "reload the affected state from its source"
+  }
+ }
+}
+```
+
+Labels:
+```json
+{
+ "action": {
+  "type": "choice",
+  "dist": {
+   "ignore": 0.1244,
+   "rollback": 0.0313,
+   "resync": 0.8443
+  }
+ }
+}
+```
+
+Costs: {"ignore":82.157,"rollback":84.3559,"resync":78.2335}  
+Adjusted: {"ignore":3.424,"rollback":6.122,"resync":0}  
+Sim diagnosis: `inconsistent`, best `resync`, subject {"kind":"invariant","how":"subject"}
+
+Cost parts:
+```json
+{"ignore":{"area":26.008,"final_client":1.9,"final_server":50,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":2,"latency_s":2.459},"rollback":{"area":28.34,"final_client":1.9,"final_server":50,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":2,"latency_s":2.459},"resync":{"area":23.815,"final_client":1.9,"final_server":50,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":3,"latency_s":1.979}}
+```
+
+## 9. inconsistency — docs — upload/inconsistency
+
+id `sim-127-d5`, split `train`, chaos `flaky`, features ["upload"]
+
+```text
+app: DocNest — /comments
+trigger: The relation uploadQueue.doneCount == len(uploadQueue.files) (and 1 more) no longer holds now that the app is settled.
+facts:
+  - The learned relation uploadQueue.doneCount == len(uploadQueue.files) no longer holds: uploadQueue.doneCount = 4, len(uploadQueue.files) = 7. It held at 3 settled points before.
+  - The learned relation uploadQueue.bytesDone == sum(uploadQueue.files[*].size) no longer holds: uploadQueue.bytesDone = 1315, sum(uploadQueue.files[*].size) = 2776. It held at 3 settled points before.
+  - The last consistent state is 1.86s old; 9 field writes happened since.
+  - uploadQueue.doneCount was written 0.38s ago by user clicked button "Remove agree 22.png" (#24) (user): 5 → 4.
+  - uploadQueue.files was written 0.38s ago by user clicked button "Remove agree 22.png" (#24) (user): 8 → 7 items: removed 1 item.
+  - uploadQueue.bytesDone was written 0.38s ago by user clicked button "Remove agree 22.png" (#24) (user): 1654 → 1315.
+  - uploadQueue.files was written 0.38s ago by user clicked button "Remove agree 22.png" (#24) (user): 8 → 7 items: removed 1 item.
+  - No operations are in flight (the app is settled).
+in_flight: none
+timeline:
+  - -2.13s write uploadQueue.files: 5 items, 1 changed: {name: "agree 22.png", status: "queued" → "uploading"}; uploadQueue.pr… (by #19, user)
+  - -2.13s start POST /api/v1/files {name: "agree 22.png", size: 339, +1} (#20, by #19)
+  - -1.92s end POST /api/v1/files {name: "agree 22.png", size: 339, +1} (#20): 201 in 0.21s
+  - -1.92s write uploadQueue.files: 5 items, 1 changed: {status: "uploading" → "done", id: undefined → "300156"}; uploadQueue.… (by #20)
+  - -0.75s user changed input[type=file] "Attach" to "question 9.heic, agree_9.jpg, question …" (#21)
+  - -0.75s write uploadQueue.files: 5 → 8 items: added {name: "question 9.heic", +3} and 2 more; uploadQueue.fetching: false →… (by #21, user)
+  - -0.75s write uploadQueue.files: 8 items, 1 changed: {name: "question 9.heic", status: "queued" → "uploading"}; uploadQueue… (by #21, user)
+  - -0.75s start POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#22, by #21)
+  - -0.45s end POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#22): 500 in 0.30s
+  - -0.45s start interval 0.30s (#23, by #21)
+  - -0.45s write uploadQueue.progress.ucpiwf5apaa: 0 → 93 (by #23)
+  - -0.43s write uploadQueue.files: 8 items, 1 changed: {name: "question 9.heic", status: "uploading" → "retrying"} (by #22)
+  - -0.38s user clicked button "Remove agree 22.png" (#24)
+  - -0.38s write uploadQueue.files: 8 → 7 items: removed 1 item; uploadQueue.doneCount: 5 → 4; uploadQueue.bytesDone: 1654 → 1… (by #24, user)
+state:
+  - uploadQueue.doneCount = 4 (v8, by #24 0.38s ago)
+  - uploadQueue.files = 7 items [{id: "145745", name: "typo 4.csv", +3}, …] (v21, by #24 0.38s ago)
+  - uploadQueue.bytesDone = 1315 (v8, by #24 0.38s ago)
+  - uploadQueue.progress.ucpiwf5apaa = 93 (v2, by #23 0.45s ago)
+  - uploadQueue.fetching = true (v7, by #21 0.75s ago)
+  - uploadQueue.progress.u2i3t1klp5j = 100 (v2, by #20 1.92s ago)
+  - uploadQueue.progress.ulcexpy945b = 100 (v3, by #16 5.91s ago)
+  - uploadQueue.progress.uv53wenq3th = 100 (v2, by #12 8.33s ago)
+stats: none
+```
+
+Questions:
+```json
+{
+ "diagnosis": {
+  "type": "choice",
+  "instructions": "What is happening here?",
+  "criteria": {
+   "expected": "normal behaviour, nothing is wrong",
+   "stale": "data from an older request or state would overwrite something newer",
+   "conflict": "competing updates target the same record at the same time",
+   "duplicate": "the same change or request is happening again without a new intent",
+   "failing": "an operation is failing again and again",
+   "slow": "an operation is far slower than usual",
+   "overload": "work is being triggered far more often than usual",
+   "unusual": "a normally consistent operation produced an atypical outcome"
+  }
+ },
+ "action": {
+  "type": "choice",
+  "instructions": "What should the runtime do about this inconsistent state?",
+  "criteria": {
+   "ignore": "leave the state as it is",
+   "rollback": "restore the state to its last consistent snapshot",
+   "resync": "refetch the state from the server"
+  }
+ }
+}
+```
+
+Labels:
+```json
+{
+ "action": {
+  "type": "choice",
+  "dist": {
+   "ignore": 0.3025,
+   "rollback": 0.0644,
+   "resync": 0.6331
+  }
+ },
+ "diagnosis": {
+  "type": "choice",
+  "label": "expected"
+ }
+}
+```
+
+Costs: {"ignore":77.7671,"rollback":89.1013,"resync":76.8648}  
+Adjusted: {"ignore":0.402,"rollback":12.237,"resync":0}  
+Sim diagnosis: `expected`, best `resync`, subject {"kind":"invariant","how":"subject"}
+
+Cost parts:
+```json
+{"ignore":{"area":10.971,"final_client":0.021,"final_server":50,"relation_s":3.269,"relation_final":0,"errors":0,"uncaught":0,"wasted":4,"latency_s":5.239},"rollback":{"area":16.144,"final_client":1.354,"final_server":50,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":1,"latency_s":4.398},"resync":{"area":10.845,"final_client":0.021,"final_server":50,"relation_s":1.215,"relation_final":0,"errors":0,"uncaught":0,"wasted":5,"latency_s":5.239}}
+```
+
+## 10. transition — commerce — benign+longtask+money/transition
+
+id `sim-4-d10`, split `train`, chaos `deploy`, features ["money","longtask","benign"]
+
+```text
+app: Cartwise — /products
+trigger: user typed "" into input "Filter orders" (#85) completed with a state change unlike its usual ones.
+facts:
+  - In the previous 21 completions of user typed "" into input "Filter orders" its chain wrote ordersReport.searchText (18 of 21 times); this time it wrote ordersReport.busy, ordersReport.data, ordersReport.searchText and ordersReport.size.
+  - The last consistent state from before #85 started is 9.50s old; 85 field writes happened since.
+  - The completed user action #85 comes from user typed "" into input "Filter orders" (#85), started 6.78s ago.
+  - ordersReport.searchText is now "SO-".
+  - ordersReport.busy is now false.
+  - ordersReport.data is now 189 items [{id: "131428", +6}, {id: "221422", +6}, …].
+in_flight: none
+timeline:
+  - -4.24s write ordersReport.busy: false → true (by #100)
+  - -4.24s start GET /v1/orders/all?search=SO- (#101, by #100)
+  - -4.12s end GET /v1/orders/all?search=SO- (#101): 200 in 0.12s
+  - -3.74s user clicked button "Add lamp" (#104)
+  - -2.62s start timer 0ms (#108, by #101)
+  - -2.62s write ordersReport.busy: true → false (by #108)
+  - -1.72s user changed select "Discount %" to "0" (#109)
+  - -1.70s user clicked button "Refresh" (#111)
+  - -1.70s write ordersReport.busy: false → true (by #111, user)
+  - -1.70s start GET /v1/orders/all?search=SO- (#112, by #111)
+  - -1.68s end GET /v1/orders/all?search=SO- (#112): 200 in 0.02s
+  - -0.56s user clicked button "Add throw" (#115)
+  - -0.56s user clicked button "Refresh" (#117)
+  - -0.18s user changed select "Shipping" to "4.99" (#118)
+  - -0.18s start timer 0ms (#120, by #112)
+  - -0.18s write ordersReport.busy: true → false (by #120)
+state:
+  - ordersReport.searchText = "SO-" (v25, by #99 4.43s ago)
+  - ordersReport.busy = false (v8, by #120 0.18s ago)
+  - ordersReport.data = 189 items [{id: "131428", +6}, {id: "221422", +6}, {id: "596028", +6}, …] (v6, by #94 5.06s ago)
+  - ordersReport.size = 189 (v5, by #94 5.06s ago)
+  - ordersReport.orderBy = "amount:asc" (v1, by #23 14.4s ago)
+  - ordersReport.problem = null (v0)
+stats: none
+```
+
+Questions:
+```json
+{
+ "diagnosis": {
+  "type": "choice",
+  "instructions": "What is happening here?",
+  "criteria": {
+   "expected": "normal behaviour, nothing is wrong",
+   "stale": "outdated data or an older operation is about to replace newer state",
+   "conflict": "simultaneous changes from different sources collide",
+   "duplicate": "the same work is being done twice by accident",
+   "failing": "an operation keeps failing or its failures follow a pattern",
+   "slow": "an operation is far slower than usual",
+   "overload": "the app is hammering the service much more than normal",
+   "unusual": "this differs from how the same operation normally behaves",
+   "transient": "an isolated failure that should work if retried"
+  }
+ },
+ "action": {
+  "type": "choice",
+  "instructions": "What should the runtime do about this unusual state change?",
   "criteria": {
    "ignore": "leave the state as it is",
    "rollback": "restore the affected state to its last consistent snapshot",
@@ -708,87 +945,9 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "ignore": 0.9975,
-   "rollback": 0.0002,
-   "resync": 0.0023
-  }
- },
- "diagnosis": {
-  "type": "choice",
-  "label": "inconsistent"
- }
-}
-```
-
-Costs: {"ignore":127.2425,"rollback":127.5924,"resync":127.348}  
-Adjusted: {"ignore":0,"rollback":0.85,"resync":0.605}  
-Sim diagnosis: `inconsistent`, best `ignore`, subject {"kind":"invariant","how":"subject"}
-
-Cost parts:
-```json
-{"ignore":{"area":11.861,"final_client":1.017,"final_server":100,"relation_s":10,"relation_final":1,"errors":0,"uncaught":0,"wasted":2,"latency_s":4.619},"rollback":{"area":12.211,"final_client":1.017,"final_server":100,"relation_s":10,"relation_final":1,"errors":0,"uncaught":0,"wasted":2,"latency_s":4.619},"resync":{"area":11.846,"final_client":1.017,"final_server":100,"relation_s":10,"relation_final":1,"errors":0,"uncaught":0,"wasted":3,"latency_s":4.78}}
-```
-
-## 9. inconsistency — travel — board+editor/inconsistency
-
-id `sim-1017-d1`, split `train`, chaos `degraded`, features ["editor","board"]
-
-```text
-app: Roamr — /editor
-trigger: The relation itineraryDoc.etag ∈ board.entries[*].version no longer holds now that the app is settled.
-facts:
-  - The learned relation itineraryDoc.etag ∈ board.entries[*].version no longer holds: itineraryDoc.etag = 3, not among board.entries[*].version. It held at 4 settled points before.
-  - The last consistent state is 0.31s old; 7 field writes happened since.
-  - itineraryDoc.etag was written 0.07s ago by PUT /api/itinerarys/:id {title: "Itinerary lisbon kyoto …", +1} (#27): 2 → 3.
-  - No operations are in flight (the app is settled).
-in_flight: none
-timeline:
-  - -0.06s write itineraryDoc.notes: "Itinerary lisbon kyoto oslo hanoi … → "Itinerary lisbon kyoto osl…
-state:
-  - itineraryDoc.etag = 3 (v2, by #27 0.07s ago)
-  - board.entries = 8 items [{id: "fc5e995e-512f-43a0-a280…", +6}, {id: "a4bd13ea-cf4c-4543-a945…", +6}…
-  - itineraryDoc.notes = "Itinerary lisbon kyoto oslo hanoi BA28" (v11, by #28 0.06s ago)
-stats: none
-```
-
-Questions:
-```json
-{
- "diagnosis": {
-  "type": "choice",
-  "instructions": "What is happening here?",
-  "criteria": {
-   "expected": null,
-   "stale": null,
-   "conflict": null,
-   "inconsistent": null,
-   "failing": null,
-   "slow": null,
-   "unusual": null,
-   "transient": null
-  }
- },
- "action": {
-  "type": "choice",
-  "instructions": "What should the runtime do about this inconsistent state?",
-  "criteria": {
-   "ignore": "do not change the state",
-   "rollback": null,
-   "resync": null
-  }
- }
-}
-```
-
-Labels:
-```json
-{
- "action": {
-  "type": "choice",
-  "dist": {
-   "ignore": 0.9973,
-   "rollback": 0.0027,
-   "resync": 0
+   "ignore": 0.8026,
+   "rollback": 0,
+   "resync": 0.1974
   }
  },
  "diagnosis": {
@@ -798,132 +957,48 @@ Labels:
 }
 ```
 
-Costs: {"ignore":13.9882,"rollback":14.0793,"resync":15.8329}  
-Adjusted: {"ignore":0,"rollback":0.591,"resync":2.345}  
-Sim diagnosis: `expected`, best `ignore`, subject {"kind":"invariant","how":"subject"}
+Costs: {"ignore":30.1696,"rollback":32.2447,"resync":30.9839}  
+Adjusted: {"ignore":0,"rollback":2.575,"resync":1.314}  
+Sim diagnosis: `expected`, best `ignore`, subject {"kind":"chain","how":"chain"}
 
 Cost parts:
 ```json
-{"ignore":{"area":0.93,"final_client":0.12,"final_server":6,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":3,"latency_s":13.353},"rollback":{"area":1.021,"final_client":0.12,"final_server":6,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":3,"latency_s":13.353},"resync":{"area":2.603,"final_client":0.12,"final_server":6,"relation_s":0,"relation_final":0,"errors":2,"uncaught":0,"wasted":5,"latency_s":13.4}}
+{"ignore":{"area":8.736,"final_client":0.1,"final_server":18,"relation_s":2.875,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":22.432},"rollback":{"area":10.751,"final_client":0.1,"final_server":18,"relation_s":2.875,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":22.432},"resync":{"area":8.639,"final_client":0.1,"final_server":18,"relation_s":2.613,"relation_final":0,"errors":0,"uncaught":0,"wasted":1,"latency_s":23.244}}
 ```
 
-## 10. transition — insurance — editor+poll/transition
+## 11. error — schooladmin — flags+schemadrift+search/error
 
-id `sim-1104-d20`, split `train`, chaos `normal`, features ["editor","poll"]
+id `sim-74-d152`, split `train`, chaos `mobile`, features ["schemadrift","flags","search"]
 
 ```text
-app: PolicyPal — /workspace
-trigger: user typed "Claim statement PO-77 PO-102 PO-388 CL-…" into textarea "Statement" (#108) completed with a state change unlike its usual ones.
+app: CampusOps — /students
+trigger: An uncaught TypeError was thrown: Failed to fetch
 facts:
-  - In the previous 30 completions of user typed "Claim statement PO-77 PO-102 PO-388 CL-…" into textarea "Statement" its chain wrote statementDoc.statement (30 of 30 times); this time it wrote statementDoc.revision, statem…
-  - The last consistent state from before #108 started is 2.60s old; 12 field writes happened since.
-  - The completed user action #108 comes from user typed "Claim statement PO-77 PO-102 PO-388 CL-…" into textarea "Statement" (#108), started 1.17s ago.
-  - statementDoc.statement is now "Claim statement PO-77 PO-102 PO-388 CL-4417 PO-…".
-  - statementDoc.syncing is now false.
-  - statementDoc.revision is now 7.
-in_flight: none
-timeline: none
-state:
-  - statementDoc.statement = "Claim statement PO-77 PO-102 PO-388 CL-4417 PO-…" (v39, by #110 0.07s ago)
-stats: none
-```
-
-Questions:
-```json
-{
- "diagnosis": {
-  "type": "choice",
-  "instructions": "What is happening here?",
-  "criteria": {
-   "expected": null,
-   "stale": null,
-   "conflict": null,
-   "duplicate": null,
-   "inconsistent": null,
-   "failing": null,
-   "slow": null,
-   "overload": null,
-   "unusual": null,
-   "transient": null
-  }
- },
- "action": {
-  "type": "choice",
-  "instructions": "What should the runtime do about this unusual state change?",
-  "criteria": {
-   "ignore": null,
-   "rollback": null,
-   "resync": null
-  }
- }
-}
-```
-
-Labels:
-```json
-{
- "action": {
-  "type": "choice",
-  "dist": {
-   "ignore": 0.997,
-   "rollback": 0,
-   "resync": 0.003
-  }
- },
- "diagnosis": {
-  "type": "choice",
-  "label": "failing"
- }
-}
-```
-
-Costs: {"ignore":20.5101,"rollback":20.5059,"resync":20.5901}  
-Adjusted: {"ignore":0,"rollback":1.5,"resync":0.58}  
-Sim diagnosis: `failing`, best `ignore`, subject {"kind":"chain","how":"chain"}
-
-Cost parts:
-```json
-{"ignore":{"area":10.403,"final_client":1,"final_server":6,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.43},"rollback":{"area":10.401,"final_client":1,"final_server":6,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.418},"resync":{"area":10.403,"final_client":1,"final_server":6,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":1,"latency_s":0.43}}
-```
-
-## 11. error — hr — benign+search/error
-
-id `sim-1006-d5`, split `train`, chaos `flaky`, features ["search","benign"]
-
-```text
-app: Staffly — /leaves
-trigger: An uncaught HttpError was thrown: search si failed with 503
-facts:
-  - Uncaught HttpError: search si failed with 503 (at unhandledrejection).
-  - The last consistent state from before #16 started is 0.34s old; 3 field writes happened since.
-  - Its chain wrote leave_lookup.q, leave_lookup.busy before the error.
-  - It was thrown while GET /api/v2/leaves/query?search=si (#17) was active, 0.27s after it started; that chain began with user typed "si" into input "Search leaves" (#16).
+  - Uncaught TypeError: Failed to fetch (at unhandledrejection).
+  - The last consistent state from before #572 started is 0.30s old; 3 field writes happened since.
+  - Its chain wrote studentSearch.term, studentSearch.busy before the error.
+  - It was thrown while GET /api/v1/students/search?term=le  (#573) was active, 0.02s after it started; that chain began with user typed "le " into input "Search students" (#572).
 in_flight: none
 timeline:
-  - -5.82s error Error: ResizeObserver loop completed with undelivered notifications. (during #6)
-  - -2.23s start interval 2.50s (#11)
-  - -2.23s start POST /api/v2/telemetry {event: "tick"} (#12, by #11)
-  - -1.96s end POST /api/v2/telemetry {event: "tick"} (#12): 204 in 0.27s
-  - -0.73s start interval 3.00s (#13)
-  - -0.73s start POST /api/v2/ping {status: "active"} (#14, by #13)
-  - -0.59s end POST /api/v2/ping {status: "active"} (#14): 200 in 0.14s
-  - -0.59s write session_info.connected: false → true (by #14)
-  - -0.40s user typed "si" into input "Search leaves" (2 keystrokes, #15–#16)
-  - -0.40s write leave_lookup.q: "" → "s" (by #15, user)
-  - -0.27s write leave_lookup.q: "s" → "si" (by #16, user)
-  - -0.27s write leave_lookup.busy: false → true (by #16, user)
-  - -0.27s start GET /api/v2/leaves/query?search=si (#17, by #16)
-  - -0.01s end GET /api/v2/leaves/query?search=si (#17): 503 in 0.27s
-  - -0.00s write leave_lookup.busy: true → false (by #17)
-  - -0.00s error HttpError: search si failed with 503 (during #17)
+  - -1.48s GenClass Reloaded studentsTable from its source (resync handler).
+  - -0.93s user clicked button "Update" (#565)
+  - -0.81s user clicked button "Update" (#567)
+  - -0.56s user changed select "Order" to "name" (#569)
+  - -0.52s GenClass Replaced the failed response of GET /api/v1/students?sort=name (#571) with the cached 200 response …
+  - -0.02s user typed "le " into input "Search students" (#572)
+  - -0.02s write studentSearch.term: "le" → "le " (by #572, user)
+  - -0.02s write studentSearch.busy: false → true (by #572, user)
+  - -0.02s start GET /api/v1/students/search?term=le  (#573, by #572)
+  - -0.01s end GET /api/v1/students/search?term=le  (#573): network error in 0.00s
+  - -0.00s write studentSearch.busy: true → false (by #573)
+  - -0.00s error TypeError: Failed to fetch (during #573)
 state:
-  - leave_lookup.busy = false (v2, by #17 0.00s ago)
-  - leave_lookup.q = "si" (v2, by #16 0.27s ago)
-  - leave_lookup.results = 0 items (v0)
-  - leave_lookup.errorMessage = null (v0)
-  - leave_lookup.totalCount = 0 (v0)
+  - studentSearch.busy = false (v50, by #573 0.00s ago)
+  - studentSearch.term = "le " (v185, by #572 0.02s ago)
+  - studentSearch.items = 4 items [{id: "442306", name: "lena", grade: 3, +4}, …] (v17, by #558 3.66s ago)
+  - studentSearch.err = null (v0)
 stats:
-  - GET /api/v2/leaves/query: 1 done, 1 of last 1 failed, 1 in last 10s
+  - GET /api/v1/students/search: 187 done, median 0.75s, p95 2.29s, 3 of last 20 failed, 28 in last 10s (usual 22.4)
 ```
 
 Questions:
@@ -934,7 +1009,7 @@ Questions:
   "instructions": "What is happening here?",
   "criteria": {
    "expected": "normal behaviour, nothing is wrong",
-   "stale": "an earlier operation finishing late would replace more recent state",
+   "stale": "outdated data or an older operation is about to replace newer state",
    "conflict": "concurrent operations are competing over the same state or resource",
    "duplicate": "the same change or request is happening again without a new intent",
    "inconsistent": "the state contradicts itself or relationships it normally keeps",
@@ -950,7 +1025,7 @@ Questions:
   "instructions": "What should the runtime do about this error?",
   "criteria": {
    "ignore": "leave the state as it is",
-   "rollback": "revert the affected state"
+   "rollback": "restore the affected state to its last consistent snapshot"
   }
  }
 }
@@ -962,8 +1037,8 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "ignore": 1,
-   "rollback": 0
+   "ignore": 0.9978,
+   "rollback": 0.0022
   }
  },
  "diagnosis": {
@@ -973,33 +1048,55 @@ Labels:
 }
 ```
 
-Costs: {"ignore":3.2294,"rollback":3.2655}  
-Adjusted: {"ignore":0,"rollback":1.5}  
+Costs: {"ignore":48.4773,"rollback":48.6462}  
+Adjusted: {"ignore":0,"rollback":0.669}  
 Sim diagnosis: `failing`, best `ignore`, subject {"kind":"error","how":"subject"}
 
 Cost parts:
 ```json
-{"ignore":{"area":1.688,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":2.166},"rollback":{"area":1.724,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":1,"wasted":0,"latency_s":2.166}}
+{"ignore":{"area":17.733,"final_client":1.22,"final_server":0,"relation_s":0,"relation_final":0,"errors":6,"uncaught":6,"wasted":0,"latency_s":43.044},"rollback":{"area":17.911,"final_client":1.22,"final_server":0,"relation_s":0,"relation_final":0,"errors":6,"uncaught":6,"wasted":0,"latency_s":43.044}}
 ```
 
-## 12. mutation — pharmacy — nav+search+settings/mutation
+## 12. mutation — docs — upload/mutation
 
-id `sim-1000-d20`, split `train`, chaos `calm`, features ["search","settings","nav"]
+id `sim-127-d4`, split `train`, chaos `flaky`, features ["upload"]
 
 ```text
-app: Rxly — /prescriptions
-trigger: A write to refillSearch.records, refillSearch.matches from GET /refills/find?search=R (#156) is about to be applied.
+app: DocNest — /comments
+trigger: A write to uploadQueue.files from POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#22) is about to be applied.
 facts:
-  - An identical change to refillSearch.records, refillSearch.matches (added 20 items {id: "832611", reference: "RF-210", +4}) was applied 0.48s ago by GET /refills/find?search=RF- (#146); they come from separate user actio…
-  - refillSearch.records has not changed since this write's cause (#156) started (version 4).
-  - refillSearch.matches has not changed since this write's cause (#156) started (version 4).
-  - This write's cause (#156) took 0.05s, 1.5× its usual 0.03s (p95 0.07s).
-  - This write comes from GET /refills/find?search=R (#156), started 0.05s ago, ended 0.00s ago with 200; its chain began with user typed "R" into input "Search refills" (#155).
+  - uploadQueue.files was loaded by POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#22), which started 7.75s after POST /api/v1/files {name: "typo 4.csv", size: 218, +1} (#11) created item "546071" 8.06s ago (201), and does not contain it.
+  - Applying this write would break the learned relation uploadQueue.doneCount == len(uploadQueue.files) (uploadQueue.doneCount = 5, len(uploadQueue.files) = 8); it held at 3 settled points.
+  - Applying this write would break the learned relation uploadQueue.bytesDone == sum(uploadQueue.files[*].size) (uploadQueue.bytesDone = 1654, sum(uploadQueue.files[*].size) = 3115); it held at 3 settled points.
+  - uploadQueue.files has not changed since this write's cause (#22) started (version 19).
+  - uploadQueue.progress.ucpiwf5apaa changed since this write's cause (#22) started: 0 → 93, last by interval 0.30s (#23) 0.30s after #22 started.
+  - This write's cause (#22) failed (500) before this write.
+  - This write's cause (#22) took 0.30s, 1.4× its usual 0.22s (p95 1.27s).
+  - This write comes from POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#22), started 0.31s ago, ended 0.01s ago with 500; its chain began with user changed input[type=file] "Attach" to "question 9.heic, agree_9.jpg, question …" (#21).
+  - This write would change uploadQueue.files: 8 items, 1 changed: {name: "question 9.heic", status: "uploading" → "retrying"}.
 in_flight: none
-timeline: none
-state: none
+timeline:
+  - -1.70s start POST /api/v1/files {name: "agree 22.png", size: 339, +1} (#20, by #19)
+  - -1.49s end POST /api/v1/files {name: "agree 22.png", size: 339, +1} (#20): 201 in 0.21s
+  - -1.49s write uploadQueue.files: 5 items, 1 changed: {status: "uploading" → "done", id: undefined → "300156"}; uploadQueue.… (by #20)
+  - -0.31s user changed input[type=file] "Attach" to "question 9.heic, agree_9.jpg, question …" (#21)
+  - -0.31s write uploadQueue.files: 5 → 8 items: added {name: "question 9.heic", +3} and 2 more; uploadQueue.fetching: false →… (by #21, user)
+  - -0.31s write uploadQueue.files: 8 items, 1 changed: {name: "question 9.heic", status: "queued" → "uploading"}; uploadQueue… (by #21, user)
+  - -0.31s start POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#22, by #21)
+  - -0.01s end POST /api/v1/files {name: "question 9.heic", size: 552, +1} (#22): 500 in 0.30s
+  - -0.01s start interval 0.30s (#23, by #21)
+  - -0.01s write uploadQueue.progress.ucpiwf5apaa: 0 → 93 (by #23)
+state:
+  - uploadQueue.files = 8 items [{id: "145745", name: "typo 4.csv", +3}, …] (v19, by #21 0.31s ago)
+  - uploadQueue.progress.ucpiwf5apaa = 93 (v2, by #23 0.01s ago)
+  - uploadQueue.fetching = true (v7, by #21 0.31s ago)
+  - uploadQueue.doneCount = 5 (v7, by #20 1.49s ago)
+  - uploadQueue.bytesDone = 1654 (v7, by #20 1.49s ago)
+  - uploadQueue.progress.u2i3t1klp5j = 100 (v2, by #20 1.49s ago)
+  - uploadQueue.progress.ulcexpy945b = 100 (v3, by #16 5.48s ago)
+  - uploadQueue.progress.uv53wenq3th = 100 (v2, by #12 7.90s ago)
 stats:
-  - GET /refills/find: 18 done, median 0.03s, p95 0.07s, 0 of last 18 failed, 15 in last 10s
+  - POST /api/v1/files: 7 done, median 0.22s, p95 1.27s, 1 of last 7 failed, 7 in last 10s
 ```
 
 Questions:
@@ -1009,25 +1106,23 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": null,
-   "stale": null,
-   "conflict": null,
-   "duplicate": null,
-   "inconsistent": null,
-   "failing": null,
-   "slow": null,
-   "overload": null,
-   "unusual": null,
-   "transient": null
+   "expected": "normal behaviour, nothing is wrong",
+   "stale": "data from an older request or state would overwrite something newer",
+   "conflict": "competing updates target the same record at the same time",
+   "duplicate": "the same change or request is happening again without a new intent",
+   "failing": "an operation is failing again and again",
+   "slow": "an operation is far slower than usual",
+   "overload": "work is being triggered far more often than usual",
+   "unusual": "a normally consistent operation produced an atypical outcome"
   }
  },
  "action": {
   "type": "choice",
   "instructions": "What should the runtime do with this write?",
   "criteria": {
-   "apply": null,
-   "discard": "drop the incoming change",
-   "defer": null
+   "apply": "let the update go through",
+   "discard": "drop this write and keep the current state",
+   "defer": "hold this write until the related in-flight operations finish, then decide again"
   }
  }
 }
@@ -1039,9 +1134,9 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "apply": 0.9504,
-   "discard": 0.0047,
-   "defer": 0.0449
+   "apply": 1,
+   "discard": 0,
+   "defer": 0
   }
  },
  "diagnosis": {
@@ -1051,47 +1146,55 @@ Labels:
 }
 ```
 
-Costs: {"apply":4.2494,"discard":4.5307,"defer":4.3047}  
-Adjusted: {"apply":0,"discard":0.531,"defer":0.305}  
-Sim diagnosis: `expected`, best `apply`, subject {"kind":"write","how":"subject","ref":173}
+Costs: {"apply":38.2084,"discard":38.2075,"defer":38.2084}  
+Adjusted: {"apply":0,"discard":1.5,"defer":1.5}  
+Sim diagnosis: `expected`, best `apply`, subject {"kind":"write","how":"subject","ref":27}
 
 Cost parts:
 ```json
-{"apply":{"area":2.566,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":6.734},"discard":{"area":2.847,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":6.735},"defer":{"area":2.623,"final_client":0,"final_server":0,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":6.727}}
+{"apply":{"area":11.781,"final_client":0.021,"final_server":50,"relation_s":3.269,"relation_final":0,"errors":0,"uncaught":0,"wasted":4,"latency_s":5.557},"discard":{"area":11.761,"final_client":0.021,"final_server":50,"relation_s":3.327,"relation_final":0,"errors":0,"uncaught":0,"wasted":4,"latency_s":5.558},"defer":{"area":11.781,"final_client":0.021,"final_server":50,"relation_s":3.269,"relation_final":0,"errors":0,"uncaught":0,"wasted":4,"latency_s":5.557}}
 ```
 
-## 13. request — iot — auth/request
+## 13. delivery — waste — badge+cart+search/delivery
 
-id `sim-1001-d24`, split `train`, chaos `calm`, features ["auth"]
+id `sim-3-d96`, split `train`, chaos `degraded`, features ["search","cart","badge"]
 
 ```text
-app: Thermia — /devices
-trigger: GET /rest/me/rules (#192) is about to be sent.
+app: TrashTrack — /trucks
+trigger: A WebSocket message /ws/alerts/new (#959) arrived and is about to be delivered; messages like it usually write alertsFeed.list and alertsFeed.newCount.
 facts:
-  - 3 identical GET /rest/me/rules requests in the last 10s: #183 answered 401 5.35s ago; #186 answered 401 2.91s ago; #189 answered 401 0.80s ago; #189 started 0.88s before this one; they come from separate user actions 0.88s apart.
-  - GET /rest/me/rules was requested 4 times in the last 10s; usually 3.35 per 10s (1.2×).
-  - GET /rest/me/rules usually answers in 0.11s (p95 0.21s, 52 samples); error rate 0% over 20 requests (0 failed).
-  - This request comes from user clicked button "Reload" (#190), started 0.00s ago.
-  - GET is idempotent.
-  - A cached 200 response from 75.3s ago exists for this request.
+  - alertsFeed.list has a pending local change: user clicked listitem "Alert" (#957) wrote it 0.11s ago and its PATCH /v1/alerts/:id {read: true} (#958) is still in flight; this message (#959) started after that user action.
+  - alertsFeed.newCount has a pending local change: user clicked listitem "Alert" (#957) wrote it 0.11s ago and its PATCH /v1/alerts/:id {read: true} (#958) is still in flight; this message (#959) started after that user action.
+  - In 4 earlier completions of WS message /ws/alerts/new its chain wrote alertsFeed.list and alertsFeed.newCount (4 of 4 wrote state).
+  - A WebSocket message (#959) {id: "5e459a5e-4a9c-4356-a745…", +4} arrived on /ws/alerts/new; the app has not seen it yet.
 in_flight:
-  - GET /rest/me/devices (#191) 0.00s so far, by #190
+  - GET /v1/trucks/search?search=rt09rtrtrt (#956) 0.25s so far, by #955
+  - PATCH /v1/alerts/:id {read: true} (#958) 0.11s so far, by #957
 timeline:
-  - -2.86s end GET /rest/me/devices (#185): 401 in 0.13s
-  - -0.88s user clicked button "Reload" (#187)
-  - -0.88s start GET /rest/me/devices (#188, by #187)
-  - -0.88s start GET /rest/me/rules (#189, by #187)
-  - -0.81s end GET /rest/me/devices (#188): 401 in 0.07s
-  - -0.80s end GET /rest/me/rules (#189): 401 in 0.08s
-  - -0.00s user clicked button "Reload" (#190)
-  - -0.00s start GET /rest/me/devices (#191, by #190)
-  - -0.00s start GET /rest/me/rules (#192, by #190)
+  - -2.34s user clicked button "Add to cart rt09" (#926)
+  - -2.34s user clicked listitem "Alert" (#927)
+  - -2.31s user typed "rt09" into input "Find trucks" (7 keystrokes, #928–#934)
+  - -1.85s user clicked listitem "Alert" (#935)
+  - -1.67s event ws.message {id: "c087fa8e-5b8f-44b2-a7c3…", +4} (#938)
+  - -1.67s write alertsFeed.list: 7 → 8 items: added {id: "c087fa8e-5b8f-44b2-a7c3…", +4}; alertsFeed.newCount: 0 → 1 (by #938)
+  - -1.58s user typed "rt09r" into input "Find trucks" (#939)
+  - -1.57s user clicked button "+" (#940)
+  - -1.53s user typed "rt09rt" into input "Find trucks" (#942)
+  - -1.27s user clicked button "+" (#945)
+  - -1.05s user typed "rt09rtrt" into input "Find trucks" (2 keystrokes, #947–#948)
+  - -0.91s user clicked button "+" (#949)
+  - -0.48s user typed "rt09rtrtrt" into input "Find trucks" (2 keystrokes, #953–#954)
+  - -0.11s user clicked listitem "Alert" (#957)
+  - -0.11s write alertsFeed.list: 8 items, 1 changed: {id: "c087fa8e-5b8f-44b2-a7c…, read: false → true}; alertsFeed.newCount:… (by #957, user)
+  - -0.00s event ws.message {id: "5e459a5e-4a9c-4356-a745…", +4} (#959)
 state:
-  - profileData.sections.rules = 1 item [{id: "b0124125-2bbd-4ec0-a7c8…", +5}] (v1, by #2 156.0s ago)
-  - profileData.sections.devices = 3 items [{id: "d0e4afa8-84b1-416b-a4e3…", +5}, {id: "079faf90-2a9f-4080-a159…", +5}, …] (…
+  - alertsFeed.list = 8 items [{id: "01e84b37-4394-4815-a0fb…", +4}, {id: "a733e404-cb28-4daa-aeac…", +4}, …] (v11, by #957 0.11s ago)
+  - alertsFeed.newCount = 0 (v13, by #957 0.11s ago)
+  - alertsFeed.expanded = true (v7, by #880 7.01s ago)
+  - alertsFeed.failure = null (v0)
 stats:
-  - GET /rest/me/rules: 52 done, median 0.11s, p95 0.21s, 0 of last 20 failed, 4 in last 10s (usual 3.35)
-  - GET /rest/me/devices: 59 done, median 0.10s, p95 0.19s, 0 of last 20 failed, 4 in last 10s (usual 3.83)
+  - GET /v1/trucks/search: 79 done, median 0.32s, p95 0.48s, 1 of last 20 failed, 11 in last 10s (usual 10.04)
+  - PATCH /v1/alerts/:id: 4 done, 0 of last 4 failed, 1 in last 10s (usual 1.39)
 ```
 
 Questions:
@@ -1101,26 +1204,24 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "normal behaviour, nothing is wrong",
+   "expected": "nothing unusual: this is normal app behaviour",
    "stale": "outdated data or an older operation is about to replace newer state",
-   "conflict": "concurrent operations are competing over the same state or resource",
+   "conflict": "competing updates target the same record at the same time",
    "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the state contradicts itself or relationships it normally keeps",
-   "failing": "an operation keeps failing or its failures follow a pattern",
-   "slow": "an operation is far slower than usual",
-   "overload": "work is being triggered far more often than usual",
+   "inconsistent": "the app's state is internally contradictory",
+   "failing": "an operation is failing again and again",
+   "slow": "the request is unusually slow",
+   "overload": "requests are being fired in a storm",
    "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a one-off failure that is likely to succeed if tried again"
+   "transient": "an isolated failure that should work if retried"
   }
  },
  "action": {
   "type": "choice",
-  "instructions": "What should the runtime do with this request?",
+  "instructions": "What should the runtime do with this response or message?",
   "criteria": {
-   "send": "proceed with this request",
-   "coalesce": "reuse the response of the identical request instead of sending another",
-   "delay": "back off before sending so the service can recover",
-   "serve_cached": "use the cached result instead of the network"
+   "discard": "deliver it but drop the state changes it would make over newer data",
+   "deliver": "pass it to the application now"
   }
  }
 }
@@ -1132,54 +1233,67 @@ Labels:
  "action": {
   "type": "choice",
   "dist": {
-   "send": 0.7724,
-   "coalesce": 0.178,
-   "delay": 0.0339,
-   "serve_cached": 0.0156
+   "deliver": 0.8394,
+   "discard": 0.1606
   }
  },
  "diagnosis": {
   "type": "choice",
-  "label": "failing"
+  "label": "expected"
  }
 }
 ```
 
-Costs: {"send":37.9779,"coalesce":37.8787,"delay":38.0404,"block":37.8787,"serve_cached":37.8787}  
-Adjusted: {"send":0,"coalesce":0.151,"delay":0.313,"block":0.401,"serve_cached":0.401}  
-Sim diagnosis: `failing`, best `send`, subject {"kind":"op","how":"subject","ref":121}
+Costs: {"deliver":195.8943,"discard":198.1375}  
+Adjusted: {"deliver":0,"discard":2.493}  
+Sim diagnosis: `expected`, best `deliver`, subject {"kind":"push","how":"push","ref":5}
 
 Cost parts:
 ```json
-{"send":{"area":14,"final_client":1.4,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":1,"latency_s":0.998},"coalesce":{"area":14,"final_client":1.4,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.9},"delay":{"area":14,"final_client":1.4,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":1,"latency_s":1.248},"block":{"area":14,"final_client":1.4,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.9},"serve_cached":{"area":14,"final_client":1.4,"final_server":18,"relation_s":0,"relation_final":0,"errors":0,"uncaught":0,"wasted":0,"latency_s":0.9}}
+{"deliver":{"area":31.318,"final_client":2.5,"final_server":118,"relation_s":12.381,"relation_final":0,"errors":6,"uncaught":0,"wasted":0,"latency_s":31.037},"discard":{"area":32.561,"final_client":2.5,"final_server":118,"relation_s":12.381,"relation_final":0,"errors":6,"uncaught":0,"wasted":0,"latency_s":29.405}}
 ```
 
-## 14. error — project — benign+search/error
+## 14. stall — waste — badge+cart+search/stall
 
-id `sim-1040-s0`, split `train`, chaos `normal`, features ["search","benign"]
+id `sim-3-s239`, split `train`, chaos `degraded`, features ["search","cart","badge"]
 
 ```text
-app: Kanbo — /tasks
-trigger: An uncaught TypeError was thrown: Cannot read properties of null (reading 'postMessage') at analytics.js:1:2210
+app: TrashTrack — /trucks
+trigger: PATCH /v1/cart/items/:id {qty: 5} (#1988) has been waiting 3.93s for a response.
 facts:
-  - Uncaught TypeError: Cannot read properties of null (reading 'postMessage') at analytics.js:1:2210 (at window.onerror).
-  - The last consistent state from before #10 started is 0.68s old; 2 field writes happened since.
-  - Its chain wrote no state before the error.
-  - It was thrown while timer 4.85s (#10) was active, 0.00s after it started.
-in_flight:
-  - GET /api/v1/tasks/search?term=d (#9) 0.05s so far, by #8
+  - The request #1988 has been in flight for 3.93s; PATCH /v1/cart/items/:id usually takes 0.32s (p95 2.54s, 64 samples), 12× the median.
+  - The other endpoints of this origin answered normally in the last 10s (19 requests to 5 endpoints).
+  - Recent PATCH /v1/cart/items/:id outcomes: 200, 404, 404, 404, 404.
+  - PATCH /v1/cart/items/:id was requested 13 times in the last 10s; usually 10.02 per 10s (1.3×).
+  - This request comes from user clicked button "+" (#1987), started 3.93s ago.
+  - PATCH is not idempotent; its body (9 bytes) can be replayed.
+in_flight: none
 timeline:
-  - -0.85s start POST /api/v1/ping {status: "active"} (#7, by #6)
-  - -0.79s end POST /api/v1/track {event: "tick"} (#5): 204 in 0.06s
-  - -0.74s end POST /api/v1/ping {status: "active"} (#7): 200 in 0.11s
-  - -0.05s user typed "d" into input "Search tasks" (#8)
-  - -0.05s write task_finder.query: "" → "d" (by #8, user)
-  - -0.05s write task_finder.loading: false → true (by #8, user)
-  - -0.05s start GET /api/v1/tasks/search?term=d (#9, by #8)
-  - -0.00s start timer 4.85s (#10)
-  - -0.00s error TypeError: Cannot read properties of null (reading 'postMessage') at analytics.js:1:2210 (during #10)
-state: none
-stats: none
+  - -2.42s user typed "rt22rt" into input "Find trucks" (2 keystrokes, #2013–#2014)
+  - -2.22s user clicked button "−" (#2015)
+  - -2.22s start PATCH /v1/cart/items/:id {qty: 0} (#2016, by #2015)
+  - -1.95s user clicked listitem "Alert" (#2019)
+  - -1.91s end PATCH /v1/cart/items/:id {qty: 0} (#2016): 404 in 0.31s
+  - -1.85s user clicked button "−" (#2020)
+  - -1.85s start PATCH /v1/cart/items/:id {qty: 0} (#2021, by #2020)
+  - -1.71s end PATCH /v1/cart/items/:id {qty: 0} (#2021): 404 in 0.15s
+  - -1.48s user clicked button "−" (#2022)
+  - -1.48s start PATCH /v1/cart/items/:id {qty: 0} (#2023, by #2022)
+  - -1.36s end PATCH /v1/cart/items/:id {qty: 0} (#2023): 404 in 0.12s
+  - -1.28s user typed "rt22rt rt1" into input "Find trucks" (4 keystrokes, #2024–#2029)
+  - -0.60s user clicked listitem "Alert" (#2034)
+  - -0.44s user clicked button "−" (#2035)
+  - -0.44s start PATCH /v1/cart/items/:id {qty: 0} (#2036, by #2035)
+  - -0.26s end PATCH /v1/cart/items/:id {qty: 0} (#2036): 404 in 0.19s
+state:
+  - selection.results = 2 items [{id: "71617d5b-7d03-4cbe-aa20…", +5}, {id: "af0c79ee-5d60-4241-afcb…", +5}] (v309, by #1978 3.55s ago)
+  - selection.size = 5 (v202, by #1978 3.55s ago)
+  - selection.sum = 344.9 (v212, by #1978 3.55s ago)
+  - selection.fetching = true (v143, by #1962 6.77s ago)
+  - selection.failure = "Request failed (404)" (v17, by #1814 18.8s ago)
+  - selection.confirmation = "placed" (v1, by #1693 27.7s ago)
+stats:
+  - PATCH /v1/cart/items/:id: 146 done, median 0.32s, p95 2.54s, 0 of last 20 failed, 13 in last 10s (usual 10.02)
 ```
 
 Questions:
@@ -1189,16 +1303,16 @@ Questions:
   "type": "choice",
   "instructions": "What is happening here?",
   "criteria": {
-   "expected": "normal behaviour, nothing is wrong",
+   "expected": "nothing unusual: this is normal app behaviour",
    "stale": "outdated data or an older operation is about to replace newer state",
-   "conflict": "concurrent operations are competing over the same state or resource",
+   "conflict": "competing updates target the same record at the same time",
    "duplicate": "the same change or request is happening again without a new intent",
-   "inconsistent": "the state contradicts itself or relationships it normally keeps",
-   "failing": "an operation keeps failing or its failures follow a pattern",
-   "slow": "an operation is far slower than usual",
-   "overload": "work is being triggered far more often than usual",
+   "inconsistent": "the app's state is internally contradictory",
+   "failing": "an operation is failing again and again",
+   "slow": "the request is unusually slow",
+   "overload": "requests are being fired in a storm",
    "unusual": "this differs from how the same operation normally behaves",
-   "transient": "a one-off failure that is likely to succeed if tried again"
+   "transient": "an isolated failure that should work if retried"
   }
  }
 }
@@ -1209,118 +1323,151 @@ Labels:
 {
  "diagnosis": {
   "type": "choice",
-  "label": "expected"
+  "label": "slow"
  }
 }
 ```
 
-## 15. ask — pharmacy — nav+search+settings/ask
+## 15. ask — waste — badge+cart+search/ask
 
-id `sim-1000-a0`, split `train`, chaos `calm`, features ["search","settings","nav"]
+id `sim-3-a0`, split `train`, chaos `degraded`, features ["search","cart","badge"]
 
 ```text
-app: Rxly — /overview
+app: TrashTrack — /trucks
 trigger: The developer asks about the app right now.
 facts:
-  - An identical change to pageState.screen was applied 4 times in the last 10s.
-  - An identical change to pageState.loading was applied 8 times in the last 10s.
-  - An identical change to pageState.content.prescriptions,pageState.content.refills,pageState.content.stats,pageState.loading was applied twice in the last 10s.
-  - An identical change to refillSearch.term was applied twice in the last 10s.
-  - An identical change to settings.writing was applied 4 times in the last 10s.
-  - An identical change to settings.writing was applied 4 times in the last 10s.
-in_flight: none
+  - The learned relation alertsFeed.list[*].text unique does not hold: alertsFeed.list[*].text has duplicates.
+  - An identical change to selection.results,selection.size,selection.sum was applied twice in the last 10s.
+  - An identical change to selection.fetching was applied 8 times in the last 10s.
+  - 1 operation is in flight; the oldest is POST /v1/basket/lines {productId: "dad73de9-c774-4432-a0ef…", qty: 1} (#2606) (0.43s).
+in_flight:
+  - POST /v1/basket/lines {productId: "dad73de9-c774-4432-a0ef…", qty: 1} (#2606) 0.43s so far, by #2605
 timeline:
-  - -0.58s user typed "RFRF RF-7" into input "Search refills" (5 keystrokes, #188–#196)
+  - -6.99s user clicked button "Add to cart rt01" (#2577)
+  - -6.85s user clicked button "Add to cart rt12" (#2578)
+  - -6.51s user clicked button "+" (#2579)
+  - -6.30s user clicked button "Add to cart rt12" (#2581)
+  - -6.25s user clicked button "+" (#2583)
+  - -5.93s user clicked button "+" (#2585)
+  - -4.77s user clicked button "−" (#2587)
+  - -4.57s user clicked button "−" (#2589)
+  - -3.95s user clicked button "−" (#2591)
+  - -3.11s user clicked button "−" (#2595)
+  - -2.71s user clicked button "−" (#2597)
+  - -2.10s user clicked button "−" (#2599)
+  - -1.74s user clicked button "+" (#2601)
+  - -1.22s user clicked button "+" (#2603)
+  - -0.43s user clicked button "Add to cart rt01" (#2605)
+  - -0.14s user clicked button "Add to cart rt12" (#2607)
 state:
-  - refillSearch.term = "RFRF RF-7" (v27, by #196 0.10s ago)
-  - pageState.loading = false (v54, by #186 0.23s ago)
-  - pageState.content.prescriptions = 4 items [{id: "525303", drug: "amoxicillin", +5}, …] (v27, by #18…
-stats: none
+  - selection.fetching = true (v219, by #2605 0.43s ago)
+  - selection.results = 4 items [{id: "71617d5b-7d03-4cbe-aa20…", +5}, {id: "af0c79ee-5d60-4241-afcb…", +5}, …] (v510, by #2605 0.43s ago)
+  - selection.size = 40 (v341, by #2605 0.43s ago)
+  - selection.sum = 4719.4 (v357, by #2605 0.43s ago)
+  - selection.failure = "Server error (502)" (v23, by #2527 19.7s ago)
+  - truckFinder.fetching = false (v318, by #2327 60.7s ago)
+  - truckFinder.query = "rtrtrt" (v1002, by #2325 61.1s ago)
+  - truckFinder.error = "Server error (502)" (v15, by #2301 62.6s ago)
+stats:
+  - POST /v1/basket/lines: 53 done, median 1.54s, p95 5.74s, 2 of last 20 failed, 2 in last 10s (usual 2.36)
 ```
 
 Questions:
 ```json
 {
- "q_user_waiting": {
+ "q_recent_failure": {
   "type": "noul",
-  "instructions": "Has the user waited over 3 seconds on something they started?"
+  "instructions": "Did a request fail within the past 10 s?"
  },
- "q_last_failed": {
-  "type": "choice",
-  "instructions": "Which endpoint failed most recently?",
-  "criteria": {
-   "e1": "GET /prescriptions/stats",
-   "e2": "GET /prescriptions/refills",
-   "e3": "GET /home/refills",
-   "none": "nothing failed recently"
-  }
- }
-}
-```
-
-Labels:
-```json
-{
- "q_user_waiting": {
-  "type": "noul",
-  "p": 0
- },
- "q_last_failed": {
-  "type": "choice",
-  "label": "none"
- }
-}
-```
-
-## 16. ask — pharmacy — nav+search+settings/ask
-
-id `sim-1000-a1`, split `train`, chaos `calm`, features ["search","settings","nav"]
-
-```text
-app: Rxly — /overview
-trigger: The developer asks about the app right now.
-facts:
-  - An identical change to settings.prefs.pickupReminders was applied twice in the last 10s.
-  - An identical change to settings.writing was applied 6 times in the last 10s.
-  - An identical change to pageState.screen was applied 4 times in the last 10s.
-  - An identical change to pageState.loading was applied 7 times in the last 10s.
-  - An identical change to settings.writing was applied 6 times in the last 10s.
-  - An identical change to pageState.content.activity,pageState.content.prescriptions,pageState.content.prescriptions1,pageState.content.refills,pageState.loading was applied 4 times in the last 10s.
-in_flight: none
-timeline:
-  - -0.48s user changed switch "Generic ok" to "off" (#266)
-state:
-  - settings.writing = false (v60, by #267 0.39s ago)
-  - settings.prefs.genericOk = false (v11, by #266 0.48s ago)
-  - refillSearch.records = 14 items [{id: "198768", reference: "RF-402", +4}, …] (v14, by #265 0.72s ag…
-stats: none
-```
-
-Questions:
-```json
-{
- "q_pending": {
+ "q_fail_count": {
   "type": "score",
-  "instructions": "How many requests are pending?",
+  "instructions": "Count the failed requests in the past 10 s.",
   "criteria": [
    "none",
    "one",
    "two",
    "three or more"
   ]
- },
- "q_any_inflight": {
+ }
+}
+```
+
+Labels:
+```json
+{
+ "q_recent_failure": {
   "type": "noul",
-  "instructions": "Are requests still pending?"
+  "p": 0
  },
+ "q_fail_count": {
+  "type": "score",
+  "level": 0
+ }
+}
+```
+
+## 16. ask — commerce — benign+longtask+money/ask
+
+id `sim-4-a0`, split `train`, chaos `deploy`, features ["money","longtask","benign"]
+
+```text
+app: Cartwise — /products
+trigger: The developer asks about the app right now.
+facts:
+  - An identical change to ordersReport.searchText was applied 5 times in the last 10s.
+  - An identical change to ordersReport.searchText was applied 5 times in the last 10s.
+  - An identical change to ordersReport.searchText was applied 5 times in the last 10s.
+  - An identical change to estimateEditor.saving was applied 6 times in the last 10s.
+  - An identical change to ordersReport.searchText was applied 4 times in the last 10s.
+  - An identical change to ordersReport.searchText was applied twice in the last 10s.
+  - An identical change to estimateEditor.saving was applied 4 times in the last 10s.
+  - An identical change to ordersReport.searchText was applied twice in the last 10s.
+  - An identical change to ordersReport.busy was applied twice in the last 10s.
+  - 2 operations are in flight; the oldest is POST /v1/heartbeat {status: "active"} (#93) (2.82s).
+in_flight:
+  - POST /v1/heartbeat {status: "active"} (#93) 2.82s so far, by #92
+  - POST /v1/heartbeat {status: "active"} (#107) 0.75s so far, by #106
+timeline:
+  - -5.76s user clicked button "Remove line 3" (#66)
+  - -5.09s user typed "SO-1SO" into input "Filter orders" (2 keystrokes, #70–#71)
+  - -4.85s user changed select "Discount %" to "0" (#76)
+  - -4.46s GenClass Delivered the response to GET /v1/orders/all?search=SO-1SO (#73) and dropped the state changes it m…
+  - -4.39s user typed "" into input "Filter orders" (6 keystrokes, #79–#85)
+  - -4.36s GenClass dropped the write of ordersReport.data, ordersReport.size by timer 0ms (#80) over newer data (its o…
+  - -3.57s user changed select "Discount %" to "12.5" (#88)
+  - -2.82s user clicked button "+" (#90)
+  - -2.03s user clicked button "+" (#95)
+  - -1.94s user typed "SO-" into input "Filter orders" (3 keystrokes, #97–#99)
+  - -1.13s user clicked button "Add lamp" (#104)
+  - -0.75s start interval 2.00s (#106)
+  - -0.75s start POST /v1/heartbeat {status: "active"} (#107, by #106)
+  - -0.38s end PATCH /v1/estimates/:id {hits: [3], discountPct: 12.5, freight: 0} (#105): 200 in 0.75s
+  - -0.38s write estimateEditor.saving: true → false (by #105)
+  - -0.00s end POST /v1/track {event: "tick"} (#103): 204 in 1.13s
+state:
+  - estimateEditor.saving = false (v12, by #105 0.38s ago)
+  - estimateEditor.hits = 3 items [{sku: "sku-17", description: "ceramic", +2}, …] (v6, by #104 1.13s ago)
+  - estimateEditor.subtotal = 1646.3 (v10, by #104 1.13s ago)
+  - estimateEditor.savings = 205.8 (v6, by #104 1.13s ago)
+  - estimateEditor.vat = 187.3 (v11, by #104 1.13s ago)
+  - estimateEditor.amountDue = 1627.8 (v11, by #104 1.13s ago)
+  - ordersReport.busy = true (v5, by #100 1.62s ago)
+  - ordersReport.searchText = "SO-" (v25, by #99 1.81s ago)
+stats:
+  - POST /v1/heartbeat: 10 done, median 0.76s, p95 2.19s, 0 of last 10 failed, 5 in last 10s
+```
+
+Questions:
+```json
+{
  "q_last_failed": {
   "type": "choice",
-  "instructions": "What is the most recent failing endpoint?",
+  "instructions": "Which endpoint failed most recently?",
   "criteria": {
-   "e1": "GET /overview/activity",
-   "e2": "PATCH /me_settings",
-   "e3": "GET /prescriptions/refills",
-   "none": "nothing failed recently"
+   "e1": "POST /v1/track",
+   "e2": "POST /v1/heartbeat",
+   "e3": "PATCH /v1/estimates/:id",
+   "none": "none of these"
   }
  }
 }
@@ -1329,14 +1476,6 @@ Questions:
 Labels:
 ```json
 {
- "q_pending": {
-  "type": "score",
-  "level": 0
- },
- "q_any_inflight": {
-  "type": "noul",
-  "p": 0
- },
  "q_last_failed": {
   "type": "choice",
   "label": "none"

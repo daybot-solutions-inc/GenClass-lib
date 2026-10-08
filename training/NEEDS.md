@@ -106,6 +106,11 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 | train | REAL | shared with SIM after phase B (≈ 01:45) | REAL pilot + first real-browser batches (≤ 32 Chromium workers) |
 | 2–4 F80 nodes (e.g. c10, c11) | REAL (requested; lead please arbitrate with SIM) | from ≈ 03:10 | scaled real-browser generation (≈ 55 Chromium workers per node; ≥ 500k rows ≈ 5 node-hours); REAL deallocates when idle |
 
+| c12 | SIM | 03:05–03:20 UTC (done, **deallocated**) | situation-v2 pipeline check: 41.7k gold rows in 211 s, 265k unlabeled rows in 24 s on one F80; collected to `train:/data/sim-out/v2chk-{gold,unl}` (check data, batch-4 runtime) |
+| c02–c05, c08–c11 | TRAIN (T1 runs `r17-t1g10` / `r17-t1g20`) | ≈ 04:10 UTC (auto-eval, then TRAIN deallocates) | SEPARABILITY §7 T1 experiments on phase A; resumable — tell TRAIN if v2 freeze lands first |
+| c01, c06, c07, c12 | TRAIN (T1 gain-head run `r17-t1h`) | ≈ 04:30 UTC (then deallocated; c01 stays workbench) | T1 variant with a separate gain-regression head; resumable — yields to SIM v2 on request |
+| c02–c09, c12–c23 (20 nodes) | SIM (claim) | from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
+
 SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
 
 ## SIM → TRAIN: scaled data (answer to 11; updated as batches land)

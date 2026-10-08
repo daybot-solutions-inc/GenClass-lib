@@ -32,9 +32,33 @@ export function installWebSocket(h: MsgHost): (() => void) | null {
         if (conn && conn.end === undefined) h.endOp(conn, status, o);
       };
       const raw = (type: string, fn: (e: Event) => void) => super.addEventListener(type, fn as EventListener);
-      raw("open", () => endConn("ok"));
-      raw("error", () => endConn("error", { code: "network", failure: true }));
-      raw("close", (e) => endConn("error", { code: (e as CloseEvent).code }));
+      let down = false;
+      const goDown = (code: number | string) => {
+        if (down) return;
+        down = true;
+        try {
+          h.channel?.("down", "websocket", path, code);
+        } catch {
+          /* tracing never breaks a channel */
+        }
+      };
+      raw("open", () => {
+        endConn("ok");
+        try {
+          h.channel?.("up", "websocket", path);
+        } catch {
+          /* ignore */
+        }
+      });
+      raw("error", () => {
+        endConn("error", { code: "network", failure: true });
+        goDown("network");
+      });
+      raw("close", (e) => {
+        const code = (e as CloseEvent).code;
+        endConn("error", { code });
+        if (code !== 1000) goDown(code);
+      });
       const gate = new MessageGate(this, h, "websocket", path, raw);
       gate.ensure("message");
       gate.ensure("close");

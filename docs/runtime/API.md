@@ -56,7 +56,7 @@ interface InitOptions {
                                                         // untrustedEvents (default false): record synthetic DOM events (isTrusted false) as user actions (test harnesses)
   triage?: "salient" | "always";                        // default "salient"
   policy?: PolicyOptions;                               // see Policy
-  redact?: (path: string, value: unknown) => unknown;   // default redacts fields that name a secret (password, token, card number, cvv, ssn, iban, ...)
+  redact?: (path: string, value: unknown) => unknown;   // default: values whose leaf field names a secret (password, token, card number, cvv, ssn, iban, ...); never a whole store by its name
   plugins?: Plugin[];
   historySize?: number;                                 // events kept, default 500
   debug?: boolean;                                      // console.debug every decision
@@ -114,12 +114,17 @@ search.set((s) => ({ ...s, results: data }));                           // appli
 
 How writes flow: GenClass decides at the network boundary and enforces synchronously at the store. A response
 (fetch or XHR) or a pushed message (WebSocket, EventSource) is checked before the app sees it: GenClass predicts
-which fields it will write (from what the same operation wrote before) and consults the model only when one of those
-fields has newer data (an operation that started later already wrote it) or an unconfirmed local change (a user
-action's optimistic write whose own request is still in flight). The model may let it through (`deliver`), let it
+which fields it will write (from what the same operation wrote before) and consults the model only when it would
+overwrite newer data (an operation that started later already wrote it, and no newer request of the same kind is
+still on its way), put back the value of an unconfirmed local change (a user action's optimistic write whose own
+request is still in flight), or replace text the user typed meanwhile. The model may let it through (`deliver`), let it
 through but drop the writes it makes over newer data (`discard`: each later `set()` of that response's chain applies
 its other fields and skips those), or hold it until the related requests finish and decide again (`defer`). Holding
-only adds latency; messages of one socket or stream keep their order.
+only adds latency; messages of one socket or stream keep their order. Before asking, it reads the response (a
+clone, ≤ 256 KB of JSON) and compares it with the store: a response that equals the current values changes nothing and is let through without
+a model call. The situation then says what the response would do: put back a value a newer operation replaced (per
+field, or per item cell of a list joined by id), replace text the user typed since the request started (with a
+preview centred on the difference), or reload a list without the item a recent create returned.
 
 `set()` always applies at once (`set(x); get()` returns x) and notifies subscribers; writes to one store apply in the
 order they were made. A write that looks wrong on its own (not covered by a delivery decision) is decided in the
@@ -150,13 +155,18 @@ rt.user<T>(action: UserAction, handler?: () => T): T | undefined   // a user act
 rt.emit(name: string, data?: Record<string, unknown>): void        // a custom event in the timeline
 rt.reportError(error: unknown, info?: { source?: string }): void   // a handled error worth knowing about
 
-interface UserAction { kind: "click"|"type"|"change"|"submit"|"key"|"nav"|string; target?: string; value?: string; key?: string; sensitive?: boolean }
+interface UserAction { kind: "click"|"type"|"change"|"submit"|"key"|"nav"|string; target?: string; value?: string; key?: string; sensitive?: boolean; clicks?: number /* MouseEvent.detail */ }
 ```
 
 ```ts
 await rt.op("loadProfile", async () => profile.set(await (await fetch("/api/me")).json()));
 rt.user({ kind: "click", target: 'button "Sync"' }, () => startSync());
 ```
+
+The DOM observer describes the element the user actually interacted with, also inside open shadow roots (Lit,
+custom elements): `button "Send reply"`, `select "Status"`. Names come from `aria-label`, `aria-labelledby`, the
+label (its own text, without the options or values of controls nested in it), rendered text (following slots),
+placeholder, title, name, or the custom element host's `label`/`aria-label`.
 
 Causality is tracked through `await` on a best-effort basis: the operation that is running is "ambient" while a
 user handler or `rt.op` body runs, after a fetch/XHR settles and when its body (`json()`, `text()`, ...) is read,
@@ -230,7 +240,7 @@ every observer and restores the globals it wrapped.
 
 | trigger | when | actions (passive first) |
 |---|---|---|
-| `delivery` | a response (fetch/XHR) or a WebSocket/EventSource message is about to reach the app, and a field it usually writes has newer data or an unconfirmed local change | `deliver`, `discard`, `defer` |
+| `delivery` | a response (fetch/XHR) or a WebSocket/EventSource message is about to reach the app and, judged from its body (read from a clone), would change newer data already applied (no newer request of the same signature in flight), put back the value of an unconfirmed local change, or replace text the user typed since the request started | `deliver`, `discard`, `defer` |
 | `mutation` | a salient state write not covered by a delivery decision (decided in the background unless `holdWrites`) | `apply`, `discard`, `defer` |
 | `request` | a fetch/XHR is about to be sent | `send`, `coalesce`, `delay`, `block`, `serve_cached` |
 | `failure` | a request failed (network, timeout, 5xx, 429, 408) before the app sees it | `deliver`, `retry`, `serve_cached` |
@@ -433,8 +443,12 @@ interface RtEvent { seq: number; t: number; kind: "user"|"op.start"|"op.end"|"st
 interface Op { id: number; kind: "user"|"fetch"|"xhr"|"ws"|"task"|"timer"|"genclass"; name: string /* e.g. "GET /api/x", "WS message /live", "SSE update /stream" */; detail?: string; start: number; end?: number; status?: "ok"|"error"|"aborted"|"blocked"; code?: number | string; cause?: number; root?: number; attempt: number; reads: Map<string, number>; identity?: string }
 ```
 
-Privacy: values are summarised and redacted before they reach a situation: fields, query parameters and body keys
-whose names mean a secret (password, passcode, pin, token, secret, cvv/cvc, ssn, iban, otp, cookie, authorization,
-card number, credit card, api key, session id, ...), password inputs and inputs with `autocomplete` cc-* /
-one-time-code. Element text such as a kanban "card" is not a secret. Everything stays in the browser; the model
-runs locally.
+Privacy: values are summarised and redacted before they reach a situation. A value is redacted when its leaf field
+names a secret (password, passcode, pin, token, secret, cvv/cvc, ssn, iban, otp, cookie, authorization, card number,
+credit card, api key, session id, ...; `payment.card.number` counts), never because of the store's name: in an `auth`
+store, `auth.token` is redacted and `auth.loading` or `auth.user.name` are not. Under a container that names a secret
+(`credentials.password.value`) strings are redacted too, and under `auth`/`session`/`cookie` only opaque
+credential-like strings (JWTs, API keys). Query parameters and body keys follow the same rule; password inputs and
+inputs with `autocomplete` cc-* / one-time-code are never recorded. Element text such as a kanban "card" is not a
+secret. Response bodies are read only from a clone the runtime already keeps (≤ 256 KB) and only to compare them with
+the store. Everything stays in the browser; the model runs locally.

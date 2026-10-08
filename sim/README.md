@@ -29,8 +29,17 @@ Committed samples (`samples/`): `sample.jsonl` (200 rows, stratified over trigge
 `EXAMPLES.md` (16 pretty-printed rows covering every trigger), `sample-stats.json`, and `stats-final-a.json` (stats of
 final phase A: 600k rows on the frozen runtime). Regenerate all data whenever the runtime's situation text changes.
 
+**Situation v2 (CORE batch 4, from 2026-10-08).** The runtime decides responses and WebSocket messages at the
+network boundary (`delivery`: deliver / discard / defer), and `mutation` is non-blocking (late revert). The sim
+correlates delivery subjects through `opCreated`: fetch ops via the ambient app op, and message ops via a push id
+set while the virtual socket dispatches. It labels them like mutations, from the writes they cause. Labels use
+S1 (diagnosis consistent with the action label) and S2 (futures re-draw what a runtime cannot observe); both are
+described under The oracle. The v1 datasets below predate both and remain valid for situation v1 only. The
+separability analysis behind S1/S2 and the CORE fact proposals is `SEPARABILITY.md` (probe mode:
+`SIM_PROBE=1`, `meta.probe`; analysis only).
+
 **Final datasets (runtime frozen at tag `situation-v1`).** `bash sim/scripts/final.sh a` writes phase A (600k rows,
-seeds from 10,000,000) to `sim/out/final-a/{train,dev,test}.jsonl` with `stats.json`. `bash sim/scripts/final.sh b`
+seeds from 10,000,000) to `sim/out/final-a/{train,dev,test}.jsonl` (`sim/out` → `/data/sim-out` on the train VM) with `stats.json`. `bash sim/scripts/final.sh b`
 writes phase B (1.4M rows, seeds from 50,000,000) as resumable parts: `sim/out/final-b/parts/part-NNNNNN.<split>.jsonl`,
 each a complete, usable file, with a `part-NNNNNN.json` marker once finished. If B is interrupted (the VM shuts down
 at 03:00 UTC), run `final.sh b` again: finished parts are skipped, half-written `*.tmp` parts are regenerated, and it
@@ -137,18 +146,49 @@ cost = 1.0 · ∫ D(t) dt                                  t ∈ [t_k, t_k+10 s]
 
 ### Labels
 
-- `action` is a soft label over **K = 3 paired futures**. Future 0 keeps every random draw. Futures 1–2 re-seed
-  everything drawn after the decision (network latencies and failures, push latencies, model latencies, other
-  users' timing), with the same salt for every action (common random numbers). The user's session is unchanged
-  and the prefix check still holds. Extra futures run only when some intervention beats passive by > 0.05 in
-  future 0 (otherwise the point is a tie or a clear passive case). Each action's cost per future gets a tier
-  premium (precision first: passive 0, guard 0.25, heal 0.5). An action whose mean cost is within 0.05 of passive
-  is a practical tie and is pinned to passive + 1.5. Then `p_a ∝ exp(−gap_a/τ_a)`, where `gap_a` is the mean
-  adjusted cost difference to the best action and `τ_a = 0.10 + 1.0·SE_a` (SE of that paired difference over
-  futures). Clear-cut cases are sharp (≥ 0.95 on the best tier group) and cases whose futures disagree stay soft.
-  `meta.cost_futures` keeps the raw per-future costs, so labels can be re-derived with other parameters.
+- `action` is a soft label over **K = 2–3 paired futures**. Future 0 keeps every random draw. Futures 1–2
+  re-draw everything a runtime cannot observe at the decision, with the same salt for every action (common
+  random numbers). Re-drawn (**S2**, `src/run/latent.ts`, `SIM_S2=0` turns it off):
+  - draws after the decision: network latencies and failures, push latencies, model latencies, other users'
+    timing;
+  - the user's own later steps: a per-future tempo and per-gap jitter; order and content are kept;
+  - outage, offline, slow, socket-drop and server-bug windows: the remaining length of a window already running,
+    and the start of later ones;
+  - prefix latents the client has not observed:
+    - whether an ambiguous failed write committed (a 500 on a write, posterior `pc/(pc + (1−pc)/3)`; a network
+      error after processing, 0.5);
+    - the remaining time of requests in flight at the decision, and the server-side draws of requests that
+      arrive after it;
+    - accidental vs intended for repeated activations before the decision, drawn from
+      `REPEAT_PRIOR(gap)` (measured on the user model) — only the ideal run changes.
+
+  A re-drawn latent that changes an observed prefix (a later read in the prefix would have seen the commit) is
+  re-run with network/timing randomness only (`info:latent-fallback` in stats, about 6 % of re-seeded futures).
+  The ideal run of every re-seeded future is re-run. Future 1 always runs. Future 2 runs only when some
+  intervention beats passive by > 0.05 in a future seen so far.
+
+  Each action's cost per future gets a tier premium (precision first: passive 0, guard 0.25, heal 0.5). An action
+  whose mean cost is within 0.05 of passive is a practical tie and is pinned to passive + 1.5. Then
+  `p_a ∝ exp(−gap_a/τ_a)`, where `gap_a` is the mean adjusted cost difference to the best action and
+  `τ_a = 0.10 + 1.0·SE_a` (SE of that paired difference over futures). The label is therefore
+  softmax(−E[cost]/τ) over what the runtime can observe. Clear cases stay sharp, outcomes that hinge on hidden
+  state or the future stay soft, and cheap high-upside actions get mass when their expected gain is clearly
+  positive. `meta.cost_futures` keeps the raw per-future costs, so labels or an expected-advantage target can be
+  re-derived (`scripts/relabel.py`). Background in `SEPARABILITY.md`.
 - `diagnosis` is a hard label from the sim's knowledge at decision time (`src/oracle/diagnose.ts`). It is omitted
   when the runtime's vocabulary for that trajectory lacks the gold label.
+  - **S1: never `expected` where acting clearly wins.** When the subject looks normal but a non-passive action
+    beats passive by ≥ 1 (premiums included), the diagnosis names what the action repairs or prevents
+    (`diagnosisFromOutcome`):
+    a) the verdict of the last non-`expected` write to a client field that is already wrong vs the ideal run;
+    b) `duplicate` for a repeat of an accidental activation (any body, for example a toggle clicked back);
+    c) `duplicate` for coalesce/block with an identical request in flight or just answered;
+    d) `inconsistent` (inconsistency/transition) or `stale` when fields are already wrong with no named cause;
+    e) `unusual` otherwise.
+
+    `meta.diagnosis_s1` gives the rule letter and `meta.diagnosis_subject` the subject-only verdict.
+  - delivery (situation v2): the verdict of the first write the delivered response or message makes (the mutation
+    rules below, computed when the write is proposed).
   - mutation: a feature classifier first (content bookkeeping of which intent the displayed data reflects).
     Otherwise: partial-update write → `inconsistent`; server bug / outage-emptied data → `unusual`; repeat of
     an accidental click or app duplicate → `duplicate`; replica lag, or data of a superseded intent → `stale`;
@@ -237,6 +277,15 @@ no accidental clicks, correct guards; any non-passive answer there is a false po
    19k rows/s; gz is about 290 bytes per row.
 4. `orchestrate.sh stop …` deallocates nodes one at a time. With no shutdown backstop, every node is deallocated as
    soon as it is idle.
+5. Situation-v2 runs use `bigrun.sh`, which wraps the steps above:
+   - `start NODES` (`az vm start --no-wait`, one call at a time, then waits for ssh);
+   - `unl RUN ROWS NODES` / `gold RUN ROWS NODES` (seed bases 16·10⁹ / 11·10⁹ + NN·10⁸, disjoint from v1;
+     re-fetches the bundle);
+   - `wait RUN NODES`;
+   - `ips NODES` (the addresses collect.py needs).
+
+   Collect on the train VM into `/data/sim-out/<run>` (1 TB disk). Measured on one F80 (c12, batch-4 runtime):
+   gold about 200–250 rows/s, unlabeled about 11k rows/s.
 
 **Program space, round 2.**
 - 115 domains (`vocab.ts` + `vocab2.ts`).
@@ -269,24 +318,26 @@ Splits are per trajectory, so all of a scenario's rows share one split (`src/wor
   of test trajectories are kept (`--test-keep`), to bound the test volume.
 - **dev**: 3% of the remaining families (by hash). **train**: the rest.
 
-## Tests (`SIM_RUNTIME=real npx vitest run`; 17 tests)
+## Tests (`SIM_RUNTIME=real npx vitest run`; 19 tests)
 
 - Loop ordering, microtask draining, `Response` bodies within one macrotask, keyed RNG independence.
 - Determinism: same seed → identical rows and final client/server states; forced replays reproduce every
   decision prefix byte for byte.
 - Oracle sanity on hand-built programs:
-  - stale overwrite → `discard`;
-  - one stale write among later stale writes still credited;
+  - stale out-of-order response → `delivery` decision, `stale`, `discard` (situation v2);
+  - one stale response among later stale responses still credited;
   - intentional double add → `send`, `expected`;
   - duplicate non-idempotent POST after a timeout whose first attempt committed → `block`/`coalesce` beat `send`,
     `duplicate`;
   - outage failure streak → `delay`/`serve_cached` beat `send`, `failing`;
-  - benign concurrency → `apply`, `expected`;
+  - benign concurrency → no question (v2), or passive and `expected` when asked;
   - partial-update invariant break → `rollback`/`resync` beat `ignore`, `inconsistent`;
   - duplicate token refresh → `coalesce` beats `send`;
   - labels are sharp when futures agree, soft when they disagree, and passive-heavy when interventions are
     slightly harmful;
   - exact ties → passive.
+- S2 futures (`test/latent.test.ts`): windows and user steps re-drawn only after the decision; hidden repeat intent
+  drawn from its posterior for prefix repeats only.
 - Row validity over 40 random trajectories: labels reference real options, distributions sum to 1, no sim
   correlation header (`x-request-id`) value in any state, passive is best on a healthy share of rows.
 

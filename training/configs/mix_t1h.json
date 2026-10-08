@@ -1,0 +1,19 @@
+{
+  "bucket_weights": {
+    "simAh": 0.85,
+    "cur4": 0.12,
+    "cur1": 0.02,
+    "gen": 0.01
+  },
+  "buckets": [
+    "simAh",
+    "cur4",
+    "cur1",
+    "gen"
+  ],
+  "pass_tokens": 500000000,
+  "max_repeat": {
+    "*": 2.0,
+    "simAh": 1.3
+  }
+}

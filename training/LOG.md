@@ -230,3 +230,31 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
   `pull_on_train.sh`, `cluster_expand.sh` + `node_init.sh`.
 - All TRAIN nodes (c01–c23) deallocated at 01:56; only `train` (SIM/lead) runs.
 - **Cost estimate to date ≈ $390**: c01 ≈ 10.7 node-h ($58); c02–c11 ≈ 49.5 node-h ($270); c12–c23 ≈ 9 node-h ($60).
+
+### 02:40–02:50 T1 (expected-advantage targets) on phase A — sim/SEPARABILITY.md §7
+- `training/t1_relabel.py`: gain(a) = mean_f c(passive) − mean_f c(a) − premium (guard 0.25, heal 0.5), clipped ±30;
+  action label = softmax(gain/τ) (passive gain 0); 291k of 448k phase-A train rows relabelled (the rest have no
+  action question). `training/eval_gain.py`: SIM's classes (clear / benign / mild) and metrics (recall on clear,
+  benign fired, harmful share = fired gain < −1, gain captured ÷ oracle) for the §8 gate (with/without the diagnosis
+  condition) and, for T1 models, a per-action gain policy ĝ(a) = τ·ln(p(a)/p(passive)) > m.
+- Baseline R17-final1 (current labels), heal mode, 12,901 test decision rows (912 clear, 9,720 benign, oracle
+  0.91 gain/row): gate@0.8 captures 6.7% of the oracle gain (recall on clear 8.1%, harmful 0.09%); gate@0.5 31%
+  (recall 38%, harmful 1.3%, label-FIR 5.1%).
+- Observation before training: with τ = 1, the soft labels put ≥ 0.5 summed non-passive mass on 64% of rows (and
+  ≥ 0.8 on 12%) because several actions are near-ties with passive (gain ≈ −premium). A **summed-mass** gate is the
+  wrong rule for gain-shaped probabilities; T1 needs a per-action gate (candidate's own gain).
+- Runs (from `r17-s1c`, same data/schedule as `r17-final1`, 3 passes): `r17-t1g10` (τ = 1.0, c09 c10 c11 c08) and
+  `r17-t1g20` (τ = 2.0, c02–c05), launched 02:48, ETA ≈ 04:00; `t1_post.sh` on c09/c02 evaluates automatically.
+
+### 03:00–03:12 T1 gain-head variant (`r17-t1h`)
+- Parent repo (additive, default off): optional gain-regression head in `jev_local` — `DecisionHeads(gain_head=…)`
+  / `add_gain_head()` (MLP over the option marker states, one scalar per option), `HeadOut.gain`; trainer
+  `--gain-loss W` (smooth-L1, β = 2, on `labels.action.gain`, per-question mean; `x_gain` in the log);
+  `load_checkpoint` builds the head when the checkpoint has `gain_mlp.*`; `--init-from` tolerates its absence.
+  Smoke on c06 (12 steps, 17M): gain loss 0.98 → 0.23–0.41, `meta.gain_head: true`, `collect_gain.py` returns
+  per-option `gain_pred`.
+- `t1_relabel.py --keep-dist` keeps SIM's action labels and adds the gains (`simAh`); run `r17-t1h` = r17-final1
+  recipe (from `r17-s1c`, 3 passes, `mix_t1h.json`) + `--gain-loss 1.0` on c01 c06 c07 c12 (launched 03:11, ETA
+  ≈ 04:25). `t1h_post.sh` (detached on c01) evaluates gate policies and `head>m` policies (fire argmax predicted
+  gain over permitted actions if > m, with/without the diagnosis condition).
+- Nodes running: c02–c05, c08–c11 (T1 τ runs), c01, c06, c07, c12 (gain head) — claims in NEEDS.md.

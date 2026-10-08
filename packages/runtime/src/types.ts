@@ -209,6 +209,8 @@ export interface UserAction {
   key?: string;
   /** True when the value is sensitive (password field): it is never recorded. */
   sensitive?: boolean;
+  /** Clicks: the browser's click count (MouseEvent.detail; 2 for the second click of a double click). */
+  clicks?: number;
   data?: Record<string, unknown>;
 }
 

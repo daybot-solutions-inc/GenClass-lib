@@ -112,6 +112,8 @@ export interface RunResult {
   decisions: DecisionRec[];
   asks: AskRec[];
   know: Knowledge;
+  /** Conditional user steps (impatient re-clicks) that fired. */
+  firedSteps: number[];
   netLog: NetEntry[];
   shownErrors: number;
   uncaught: number;
@@ -704,6 +706,8 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
   }, "app");
   // User steps.
   const lastIntent = new Map<string, number>();
+  const firedSteps: number[] = [];
+  const lastClick = new Map<string, { t: number; clicks: number }>();
   const stepT = futureStepTimes(scn.steps, o.future);
   const idealSkip = o.ideal ? idealRepeatSkips(scn.steps, o.future) : new Map<number, boolean>();
   for (const [si, st] of scn.steps.entries()) {
@@ -712,12 +716,21 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
       const client = clients.get(st.feature);
       if (!client) return;
       if (st.when && !(client.cond?.(st.when) ?? false)) return;
+      if (st.when) firedSteps.push(si);
       const lk = `${st.feature}|${st.action}|${st.intent.key}`;
       const rep = st.intent.accidental ? lastIntent.get(lk) : undefined;
       const it = know.intent({ feature: st.feature, kind: st.intent.kind, key: st.intent.key, mode: st.intent.mode, accidental: st.intent.accidental, ...(rep !== undefined ? { repeatOf: rep } : {}) });
       if (!st.intent.accidental) lastIntent.set(lk, it.id);
-      const act: { kind: string; target?: string; value?: string } = { kind: st.ui.kind, target: st.ui.target };
+      const act: { kind: string; target?: string; value?: string; clicks?: number } = { kind: st.ui.kind, target: st.ui.target };
       if (st.ui.value !== undefined) act.value = st.ui.value;
+      if (st.ui.kind === "click") {
+        // The browser's click count (MouseEvent.detail): consecutive clicks on the same element within 500 ms.
+        const now = loop.now();
+        const lc = lastClick.get(st.ui.target);
+        const clicks = lc && now - lc.t <= 500 ? lc.clicks + 1 : 1;
+        lastClick.set(st.ui.target, { t: now, clicks });
+        act.clicks = clicks;
+      }
       if (runtime) {
         know.callingIntent = it.id;
         try {
@@ -778,6 +791,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
     decisions,
     asks,
     know,
+    firedSteps,
     netLog: network.log,
     shownErrors: know.shownErrors,
     uncaught: env.uncaughtCount,

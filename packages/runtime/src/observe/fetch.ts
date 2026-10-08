@@ -15,6 +15,7 @@ import type { NetHost, Controller, ActionEffect } from "../decide/exec.js";
 import type { ReqMeta, FailureInfo } from "../situation/env.js";
 import type { OpRec } from "../trace/ops.js";
 import { opLabel } from "../situation/describe.js";
+import { parseJsonBody } from "../situation/content.js";
 import { describe, fnv1a, IDEMPOTENT_METHODS, parseUrl, redactSearch, requestSignature, secs, stableStringify, truncate } from "../util.js";
 import { blockedResponse, bufferResponse, makeResponse, type Buffered } from "./cache.js";
 
@@ -218,6 +219,18 @@ export function parseRequest(
 }
 
 const FAILURE_STATUS = (s: number) => s >= 500 || s === 429 || s === 408;
+
+/** JSON of a buffered response (JSON content type, or a text body that parses as JSON). */
+function jsonOfBuffered(b: Buffered | null): unknown {
+  if (!b || b.kind !== "body" || !b.body.byteLength) return undefined;
+  const ct = b.headers.find(([k]) => k.toLowerCase() === "content-type")?.[1] ?? "";
+  if (ct && !/json|text\/plain/i.test(ct)) return undefined;
+  try {
+    return parseJsonBody(new TextDecoder().decode(b.body));
+  } catch {
+    return undefined;
+  }
+}
 const BODY_METHODS = ["json", "text", "arrayBuffer", "blob", "formData", "bytes"] as const;
 
 /** Make the op ambient when the app's body reads settle. */
@@ -404,7 +417,10 @@ export function installFetch(host: NetHost): (() => void) | null {
           p = Promise.reject(e);
         }
         let resolveBody: (b: Buffered | null) => void = () => undefined;
-        const tracked = R && req.identity ? host.cache.track(req.identity, sendOp, new Promise<Buffered | null>((r) => (resolveBody = r))) : null;
+        const bodyP = new Promise<Buffered | null>((r) => (resolveBody = r));
+        const tracked = R && req.identity ? host.cache.track(req.identity, sendOp, bodyP) : null;
+        // the parsed JSON body, from the buffered clone (the app's own body is never read)
+        const json = tracked ? () => bodyP.then((b) => jsonOfBuffered(b)) : undefined;
         if (primary && host.gated(op)) cancelStall = host.watchStall(op, req, () => stallController());
         p.then(
           (res) => {
@@ -422,8 +438,9 @@ export function installFetch(host: NetHost): (() => void) | null {
             if (failed && host.gated(op) && !answered) {
               failureGate(sendOp, res, null, { kind: "http", status: res.status, statusText: res.statusText, durMs: (sendOp.end ?? host.clock.now()) - sendOp.start });
             } else if (!failed && host.gated(sendOp) && !answered) {
+              if (json && req.method !== "GET" && req.method !== "HEAD" && res.ok) host.noteResponse?.({ op: sendOp, req, status: res.status, body: json });
               // the delivery gate: delaying a response is only extra latency (any correct app tolerates it)
-              host.deliver({ op: sendOp, req, status: res.status }, () => answer(res));
+              host.deliver({ op: sendOp, req, status: res.status, ...(json ? { body: json } : {}) }, () => answer(res));
             } else answer(res);
           },
           (err: unknown) => {

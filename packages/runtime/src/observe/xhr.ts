@@ -18,6 +18,7 @@ import type { OpRec } from "../trace/ops.js";
 import { opLabel } from "../situation/describe.js";
 import { fnv1a, secs } from "../util.js";
 import { bodyInfo, parseRequest } from "./fetch.js";
+import { parseJsonBody } from "../situation/content.js";
 import type { Buffered } from "./cache.js";
 
 const VOLATILE = /^(traceparent|tracestate|baggage|sentry-trace|x-request-id|x-correlation-id|request-id|x-amzn-trace-id|x-cloud-trace-context|b3|x-b3-.*|x-datadog-.*|newrelic|date|x-request-start|x-genclass)$/i;
@@ -51,6 +52,18 @@ function invoke(listener: unknown, target: unknown, ev: Event): unknown {
   if (typeof listener === "function") return (listener as (this: unknown, e: Event) => unknown).call(target, ev);
   const h = (listener as { handleEvent?: (e: Event) => unknown } | null)?.handleEvent;
   return typeof h === "function" ? h.call(listener, ev) : undefined;
+}
+
+/** The JSON of a completed XHR's response (text or json response types), never throwing. */
+function xhrJson(xhr: XMLHttpRequest): unknown {
+  try {
+    const t = xhr.responseType;
+    if (t === "json") return xhr.response as unknown;
+    if (t === "" || t === "text") return parseJsonBody(xhr.responseText);
+  } catch {
+    /* not readable */
+  }
+  return undefined;
 }
 
 const captureOf = (o: unknown): boolean => (typeof o === "boolean" ? o : !!(o as { capture?: boolean } | null)?.capture);
@@ -156,9 +169,11 @@ export function installXHR(host: NetHost): (() => void) | null {
     host.endOp(op, "ok", { code: status });
     host.ctx.stick(op);
     if (!host.gated(op)) return;
+    const body = () => Promise.resolve(xhrJson(xhr));
+    if (st.req.method !== "GET" && st.req.method !== "HEAD" && status < 300) host.noteResponse?.({ op, req: st.req, status, body });
     st.dlv = "held";
     let sync = true;
-    host.deliver({ op, req: st.req, status }, () => {
+    host.deliver({ op, req: st.req, status, body }, () => {
       if (st.dlv !== "held") return; // aborted meanwhile
       st.dlv = "open";
       if (sync) return;

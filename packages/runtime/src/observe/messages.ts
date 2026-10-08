@@ -8,6 +8,7 @@ import type { Context } from "../trace/context.js";
 import type { EndOpts } from "../decide/exec.js";
 import type { OpStatus } from "../types.js";
 import { describe, truncate, type Redactor } from "../util.js";
+import { parseJsonBody } from "../situation/content.js";
 
 export interface MsgHost {
   global: Record<string, unknown>;
@@ -18,7 +19,9 @@ export interface MsgHost {
   endOp(op: OpRec, status: OpStatus, o?: EndOpts): void;
   event(name: string, data: Record<string, unknown>, op?: OpRec): void;
   /** The delivery gate (runtime): `release` delivers the message, synchronously when nothing is salient. */
-  deliverMessage(o: { op: OpRec; channel: "websocket" | "eventsource"; message: { path: string; summary: string }; queuedAhead: number }, release: () => void): void;
+  deliverMessage(o: { op: OpRec; channel: "websocket" | "eventsource"; message: { path: string; summary: string }; queuedAhead: number; body?: () => Promise<unknown> }, release: () => void): void;
+  /** A live channel went down (closed or errored after it was open) or came up (opened). */
+  channel?(state: "down" | "up", channel: "websocket" | "eventsource", path: string, code?: number | string): void;
 }
 
 const PARSE_MAX = 16 * 1024;
@@ -132,7 +135,13 @@ export class MessageGate {
     let sync = true;
     let releasedSync = false;
     this.host.deliverMessage(
-      { op: item.op!, channel: this.channel, message: { path: this.path, summary: item.summary }, queuedAhead: first ? 0 : this.queue.indexOf(item) },
+      {
+        op: item.op!,
+        channel: this.channel,
+        message: { path: this.path, summary: item.summary },
+        queuedAhead: first ? 0 : this.queue.indexOf(item),
+        body: () => Promise.resolve(parseJsonBody((item.ev as MessageEvent).data as string)),
+      },
       () => {
         if (sync) {
           releasedSync = true;

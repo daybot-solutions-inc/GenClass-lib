@@ -11,7 +11,9 @@ import { outcomeLabel } from "../learn/baselines.js";
 import { describe, fmtNum, ordinal, plural, ratio, secs, truncate } from "../util.js";
 import { opLabel, opPhrase, statusText } from "./describe.js";
 import type { DeliverySpec, FailureInfo, ReqMeta, SitEnv, SubjectSpec, Violation } from "./env.js";
-import { newerConflict, pendingConflict } from "./conflicts.js";
+import { matchFields, newerConflict, pendingConflict } from "./conflicts.js";
+import { analyzeBody, compareField, contentFacts, pendingRevertFacts, rywFacts } from "./content.js";
+import { cadenceFact, commitAmbiguity, markFacts, repeatEvidence, scopeFacts } from "./evidence.js";
 import type { Unusual } from "../learn/profiles.js";
 
 export const MAX_FACTS = 12;
@@ -219,6 +221,16 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
     const ref = `this write's cause (#${C.id})`;
     const Ref = `This write's cause (#${C.id})`;
     out.push(...versionFacts(env, C, written.slice(0, 3), ref, now));
+    // what this write puts back / overwrites (F1, F2), item by item for lists
+    const cmps = m.changes.filter((c) => c.afterLeaf !== undefined).slice(0, 6).map((c) => compareField(env, C, c.path, c.after, c.before));
+    out.push(...contentFacts(env, C, cmps, "This write", now));
+    const net = netOf(env, C);
+    const lists = m.changes.filter((c) => Array.isArray(c.after)).map((c) => ({ path: c.path, value: c.after as unknown[], ...(net ? { loadedBy: net } : {}) }));
+    out.push(...rywFacts(env, lists, now));
+    if (net && net.kind !== "user") {
+      const cf = cadenceFact(env, net.name, now);
+      if (cf) out.push(cf);
+    }
     out.push(...movedFacts(env, C, written, [m.store], ref));
     out.push(...concurrencyFacts(env, C, [m.store], ref));
     // baseline: latency of the cause
@@ -240,6 +252,7 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
     }
   }
   if (m.unholdable) out.push(fact(`This write could not be held: ${m.unholdable}.`, "outcome", true));
+  out.push(...markFacts(env, written, now));
   // repetition: the same change (same store, paths and delta) applied recently
   const key = written.slice().sort().join(",") + "|" + m.changes.map((c) => `${c.path}=${c.delta}`).sort().join(";");
   const reps = env.hub.recent.filter((r) => r.key === key && now - r.t <= WINDOW);
@@ -252,7 +265,10 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
       const u1 = env.ops.userOf(C);
       const u2 = env.ops.userOf(w);
       if (u1 && u2 && u1.id === u2.id) relation = `; both come from the same user action (#${u1.id})`;
-      else if (u1 && u2) relation = `; they come from separate user actions ${secs(Math.abs(u1.start - u2.start))} apart`;
+      else if (u1 && u2) {
+        relation = `; they come from separate user actions ${secs(Math.abs(u1.start - u2.start))} apart`;
+        out.push(repeatEvidence(env, u2, u1));
+      }
     }
     const what = deltaPhrase(env, m.changes[0]);
     out.push(
@@ -273,6 +289,29 @@ function mutationFacts(env: SitEnv, m: MutationRec, now: number): Fact[] {
   // value delta
   for (const c of m.changes.slice(0, 3)) out.push(fact(`This write would change ${c.path}: ${changeText(c, env.redact)}.`, "delta", true));
   if (m.defers) out.push(fact(`This write was already deferred ${times(m.defers)}.`, "outcome", true));
+  return out;
+}
+
+/** The nearest request or message op in a chain (the source of the data a write carries). */
+function netOf(env: SitEnv, op: OpRec): OpRec | undefined {
+  let x: OpRec | undefined = op;
+  for (let i = 0; x && i < 16; i++) {
+    if (x.kind === "fetch" || x.kind === "xhr" || x.kind === "ws") return x;
+    x = env.ops.get(x.cause);
+  }
+  return undefined;
+}
+
+/** Store fields among `paths` that hold lists, with the op whose chain last wrote each (read-your-writes). */
+function storeLists(env: SitEnv, paths: string[]): { path: string; value: unknown[]; loadedBy?: OpRec }[] {
+  const out: { path: string; value: unknown[]; loadedBy?: OpRec }[] = [];
+  for (const p of new Set(paths)) {
+    const v = env.hub.valueAt(p);
+    if (!Array.isArray(v)) continue;
+    const w = env.ops.get(env.hub.field(p)?.writer ?? undefined);
+    const net = w ? netOf(env, w) : undefined;
+    out.push({ path: p, value: v, ...(net ? { loadedBy: net } : {}) });
+  }
   return out;
 }
 
@@ -316,6 +355,17 @@ function deliveryFacts(env: SitEnv, s: DeliverySpec, now: number): Fact[] {
   const conflicted = s.conflicts.map((c) => c.path);
   const rest = s.matched.filter((f) => !conflicted.includes(f) && env.hub.logSince(f, X.startSeq).length > 0);
   out.push(...versionFacts(env, X, [...conflicted, ...rest].slice(0, 3), ref, now));
+  // the response's content against the predicted fields (F1–F3), lists against recent creates (read-your-writes)
+  const content = s.content ?? (s.body !== undefined ? analyzeBody(env, X, s.body, s.matched) : undefined);
+  if (content) {
+    const subject = s.channel === "response" ? "The response" : "This message";
+    out.push(...pendingRevertFacts(env, s.conflicts, content.cmps, subject, now));
+    out.push(...contentFacts(env, X, content.cmps, subject, now, { fields: s.matched }));
+    out.push(...rywFacts(env, content.located.filter((l) => Array.isArray(l.value)).map((l) => ({ path: l.path, value: l.value as unknown[], loadedBy: X, fromResponse: true })), now));
+  }
+  out.push(...markFacts(env, [...conflicted, ...s.matched], now));
+  const cf = cadenceFact(env, X.name, now);
+  if (cf) out.push(cf);
   const stores = [...new Set(s.matched.map((f) => f.split(".")[0]))];
   out.push(...movedFacts(env, X, s.matched, stores, ref));
   out.push(...concurrencyFacts(env, X, stores, ref));
@@ -375,7 +425,10 @@ function requestCommon(env: SitEnv, trigger: "request" | "failure" | "stall", op
     const u2 = env.ops.userOf(last);
     let rel = `#${last.id} started ${secs(Math.abs(op.start - last.start))} ${last.start > op.start ? "after" : "before"} this one`;
     if (u1 && u2 && u1.id === u2.id) rel += `, from the same user action (#${u1.id})`;
-    else if (u1 && u2) rel += `; they come from separate user actions ${secs(Math.abs(u1.start - u2.start))} apart`;
+    else if (u1 && u2) {
+      rel += `; they come from separate user actions ${secs(Math.abs(u1.start - u2.start))} apart`;
+      out.push(repeatEvidence(env, u2, u1, last));
+    }
     else if (!u1 && !u2) rel += ", neither from a user action";
     const gap = Math.abs(op.start - last.start);
     const id = env.base.identity(req.identity);
@@ -443,6 +496,12 @@ function failureFacts(env: SitEnv, op: OpRec, req: ReqMeta, f: FailureInfo, now:
   // writes the failing chain already made
   const cw = env.chainWrites(op);
   if (cw.length) out.push(fact(`Before this failure its chain wrote ${cw.slice(0, 4).map((w) => w.path).join(", ")}.`, "outcome", true));
+  // whether the server may have applied it (F5), the failure's scope across endpoints, the endpoint's schedule (F6)
+  const commit = commitAmbiguity(req.method, f, env.base.latency(req.signature));
+  if (commit) out.push(fact(commit.text, "outcome", true));
+  out.push(...scopeFacts(env, req.signature, now));
+  const cf = cadenceFact(env, req.signature, now);
+  if (cf) out.push(cf);
   return [...out, ...requestCommon(env, "failure", op, req, now)];
 }
 
@@ -454,6 +513,9 @@ function stallFacts(env: SitEnv, op: OpRec, req: ReqMeta, now: number): Fact[] {
   else out.push(fact(`The request #${op.id} has been in flight for ${secs(waited)}.`, "baseline", false));
   const slowPeers = [...env.ops.inFlight].filter((o) => o.id !== op.id && o.name === op.name && lat && now - o.start > 3 * lat.median);
   if (slowPeers.length) out.push(fact(`${plural(slowPeers.length, `other ${req.signature} request`)} ${slowPeers.length === 1 ? "is" : "are"} also running past 3× the usual latency.`, "concurrency", true));
+  out.push(...scopeFacts(env, req.signature, now));
+  const cf = cadenceFact(env, req.signature, now);
+  if (cf) out.push(cf);
   return [...out, ...requestCommon(env, "stall", op, req, now)];
 }
 
@@ -488,6 +550,10 @@ function inconsistencyFacts(env: SitEnv, vs: Violation[], now: number): Fact[] {
       out.push(fact(`${path} was written ${secs(now - h.t)} ago by ${opLabel(w)}${h.user ? " (user)" : ""}: ${changeText({ path, before: h.before, after: h.after }, env.redact)}.`, "versions", true));
     }
   }
+  // values known to be suspicious (F9), lists reloaded after a create (read-your-writes)
+  const fields = vs.flatMap((v) => v.fields);
+  out.push(...markFacts(env, fields, now));
+  out.push(...rywFacts(env, storeLists(env, fields), now));
   out.push(lastConsistentFact(env, now));
   const inflight = env.ops.inFlight.size;
   out.push(fact(inflight ? `${plural(inflight, "operation")} ${inflight === 1 ? "is" : "are"} in flight.` : "No operations are in flight (the app is settled).", "concurrency", true));
@@ -537,6 +603,9 @@ function transitionFacts(env: SitEnv, op: OpRec, unusual: Unusual[], now: number
       const v = env.hub.valueAt(f);
       if (v !== undefined || env.hub.field(f)) out.push(fact(`${f} is now ${describe(v, f, env.redact, 60)}.`, "delta", true));
     }
+    const concrete = matchFields(env, [...op.chain.keys()]);
+    out.push(...markFacts(env, concrete, now));
+    out.push(...rywFacts(env, storeLists(env, concrete), now));
   }
   out.push(lastConsistentFact(env, now, env.ops.rootOf(op)));
   return out;
@@ -559,6 +628,7 @@ function errorFacts(env: SitEnv, e: { name: string; message: string; source?: st
           true,
         ),
       );
+      out.push(...markFacts(env, writes.map((w) => w.path), now));
     } else out.push(fact("Its chain wrote no state before the error.", "versions", true));
   } else out.push(fact("No operation was active when it was thrown.", "provenance", true));
   const same = env.recentErrors().filter((x) => x.key === e.key);
