@@ -47,7 +47,11 @@ describe("default mode is observe (MVP)", () => {
     const { rt, clock, server, fetch } = setup({
       mode: undefined,
       triage: "always",
-      script: defaultScript({ mutation: { diagnosis: "stale", action: "discard", p: 0.99 }, request: { diagnosis: "overload", action: "block", p: 0.99 } }),
+      script: defaultScript({
+        mutation: { diagnosis: "stale", action: "discard", p: 0.99 },
+        request: { diagnosis: "overload", action: "block", p: 0.99 },
+        delivery: { diagnosis: "stale", action: "discard", p: 0.99 },
+      }),
     });
     const detections: Detection[] = [];
     rt.on("detect", (d) => detections.push(d));
@@ -63,10 +67,10 @@ describe("default mode is observe (MVP)", () => {
     await clock.flush();
     expect(a.get()).toBe(1);
     const ds = rt.decisions();
-    expect(ds.map((d) => d.trigger).sort()).toEqual(["mutation", "request"]);
+    expect(ds.map((d) => d.trigger).sort()).toEqual(["delivery", "mutation", "request"]); // the response too (not held)
     expect(ds.every((d) => !d.executed)).toBe(true);
     expect(rt.interventions()).toEqual([]);
-    expect(detections.map((d) => d.diagnosis).sort()).toEqual(["overload", "stale"]);
+    expect(detections.map((d) => `${d.trigger} ${d.diagnosis}`).sort()).toEqual(["delivery stale", "mutation stale", "request overload"]);
   });
 
   it("never waits for the model: with a model that never answers, nothing is delayed", async () => {

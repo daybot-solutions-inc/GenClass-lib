@@ -104,8 +104,12 @@ describe("policy gate (CONTRACT §8)", () => {
     expect(rt.decisions().filter((d) => d.trigger === "request").pop()!.executed).toBe(true);
   });
 
-  it("observe mode never holds: writes and requests proceed while decisions are still reported", async () => {
-    const { rt, clock, server, fetch } = setup({ mode: "observe", triage: "always", script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" }, request: { diagnosis: "overload", action: "block" } }) });
+  it("observe mode never holds: writes, requests and responses proceed while decisions are still reported", async () => {
+    const { rt, clock, server, fetch } = setup({
+      mode: "observe",
+      triage: "always",
+      script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" }, request: { diagnosis: "overload", action: "block" }, delivery: { diagnosis: "stale", action: "discard" } }),
+    });
     server.on("GET", "/api/x", { body: 1, latency: 5 });
     const a = rt.atom("a", 0);
     void rt.op("w", () => a.set(1));
@@ -116,7 +120,8 @@ describe("policy gate (CONTRACT §8)", () => {
     await p;
     expect(server.log[0].t).toBe(t0);
     const ds = rt.decisions();
-    expect(ds.length).toBe(2);
+    // the response's delivery is decided in the background too (it was not held)
+    expect(ds.map((d) => d.trigger).sort()).toEqual(["delivery", "mutation", "request"]);
     expect(ds.every((d) => !d.executed && /observe mode/.test(d.reason ?? ""))).toBe(true);
     expect(rt.interventions().length).toBe(0);
   });

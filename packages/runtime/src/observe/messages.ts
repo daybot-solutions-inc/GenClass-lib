@@ -18,8 +18,14 @@ export interface MsgHost {
   startOp(name: string, o: Omit<StartOpts, "startSeq" | "t">): OpRec;
   endOp(op: OpRec, status: OpStatus, o?: EndOpts): void;
   event(name: string, data: Record<string, unknown>, op?: OpRec): void;
-  /** The delivery gate (runtime): `release` delivers the message, synchronously when nothing is salient. */
-  deliverMessage(o: { op: OpRec; channel: "websocket" | "eventsource"; message: { path: string; summary: string }; queuedAhead: number; body?: () => Promise<unknown> }, release: () => void): void;
+  /**
+   * The delivery gate (runtime): `release` delivers the message, synchronously when nothing is salient or nothing
+   * can be held. `bodyNow` is the parsed message itself (in memory), for an analysis before the app's listeners run.
+   */
+  deliverMessage(
+    o: { op: OpRec; channel: "websocket" | "eventsource"; message: { path: string; summary: string }; queuedAhead: number; body?: () => Promise<unknown>; bodyNow?: () => unknown },
+    release: () => void,
+  ): void;
   /** A live channel went down (closed or errored after it was open) or came up (opened). */
   channel?(state: "down" | "up", channel: "websocket" | "eventsource", path: string, code?: number | string): void;
 }
@@ -141,6 +147,7 @@ export class MessageGate {
         message: { path: this.path, summary: item.summary },
         queuedAhead: first ? 0 : this.queue.indexOf(item),
         body: () => Promise.resolve(parseJsonBody((item.ev as MessageEvent).data as string)),
+        bodyNow: () => parseJsonBody((item.ev as MessageEvent).data as string),
       },
       () => {
         if (sync) {

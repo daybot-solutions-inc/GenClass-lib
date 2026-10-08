@@ -169,7 +169,10 @@ export function installXHR(host: NetHost): (() => void) | null {
     host.endOp(op, "ok", { code: status });
     host.ctx.stick(op);
     if (!host.gated(op)) return;
-    const body = () => Promise.resolve(xhrJson(xhr));
+    // the response is in memory: `body.now` reads it synchronously (when the delivery cannot be held, the gate
+    // releases it at once and analyzes it before the app's listeners run, for detection only)
+    const json = () => xhrJson(xhr);
+    const body = Object.assign(() => Promise.resolve(json()), { now: json });
     if (st.req.method !== "GET" && st.req.method !== "HEAD" && status < 300) host.noteResponse?.({ op, req: st.req, status, body });
     st.dlv = "held";
     let sync = true;

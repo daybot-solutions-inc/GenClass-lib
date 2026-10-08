@@ -59,7 +59,7 @@ import type { ChainWriteInfo, CreateRec, DeliverySpec, ErrorInfo, OutcomeRec, Re
 import { conflictsOn, matchFields, predictedWrites } from "./situation/conflicts.js";
 import { installEventSource } from "./observe/eventsource.js";
 import { opLabel } from "./situation/describe.js";
-import { BUILTIN_ACTIONS, diagnosisVocabulary, PASSIVE } from "./situation/questions.js";
+import { BUILTIN_ACTIONS, diagnosisVocabulary, PASSIVE, TRIGGER_ACTIONS } from "./situation/questions.js";
 import { STATE_CHAR_BUDGET, stateText } from "./situation/serialize.js";
 import { DeciderQueue } from "./decide/decider.js";
 import { gate, holdBudget, permittedActions, policyConfig, RateLimiter, restriction, type PolicyConfig } from "./decide/policy.js";
@@ -188,6 +188,10 @@ export class RuntimeImpl implements Runtime {
   private outcomesBuf: OutcomeRec[] = [];
   /** Live channels that went down: path -> when and why (F9 marks when they come back). */
   private channelsDown = new Map<string, { t: number; code: number | string; channel: "websocket" | "eventsource" }>();
+  /** Deliveries released without waiting whose background decision is pending: it covers their chain's writes. */
+  private deliveryPending = new WeakSet<OpRec>();
+  /** Deliveries released without a hold whose content analysis waits for the body: cut short at their chain's first write. */
+  private deliveryAnalysis = new Map<OpRec, () => void>();
 
   constructor(o: CreateOptions & { decider?: DecisionProvider | null; ownsDecider?: boolean } = {}) {
     this.clock = o.clock ?? browserClock;
@@ -231,6 +235,7 @@ export class RuntimeImpl implements Runtime {
       applied: (m, s, changes, writer) => this.onApplied(m, s, changes, writer),
       discarded: () => this.scheduleSettle(),
       proposed: (m) => {
+        if (this.deliveryAnalysis.size) this.finalizeDeliveries(m.cause);
         try {
           const h: { id: number; store: string; paths: string[]; cause?: number; changes: ReturnType<typeof toChanges> } = {
             id: m.id,
@@ -323,7 +328,11 @@ export class RuntimeImpl implements Runtime {
       watchStall: (op, req, ctl) => this.watchStall(op, req, ctl),
       failureStreak: (sig) => this.base.stats(sig)?.failStreak ?? 0,
       uniqueId: () => `uniq:${++this.uniq}`,
-      deliver: (o, release) => this.runDelivery({ op: o.op, channel: "response", req: o.req, status: o.status, ...(o.body ? { body: o.body } : {}) }, release),
+      deliver: (o, release) => {
+        // an observer whose body is already in memory (XHR) exposes it synchronously as `body.now`
+        const now = (o.body as { now?: () => unknown } | undefined)?.now;
+        this.runDelivery({ op: o.op, channel: "response", req: o.req, status: o.status, ...(o.body ? { body: o.body } : {}), ...(typeof now === "function" ? { bodyNow: now } : {}) }, release);
+      },
       noteResponse: (o) => this.noteResponse(o),
       setIdentity: (op, req, identity) => {
         if (op.identity === identity) return;
@@ -352,8 +361,10 @@ export class RuntimeImpl implements Runtime {
       startOp: (name: string, o: Omit<StartOpts, "startSeq" | "t">) => this.startOp("ws", name, o),
       endOp: (op: OpRec, status: OpStatus, eo?: EndOpts) => this.endOp(op, status, eo),
       event: (name: string, data: Record<string, unknown>, op?: OpRec) => this.events.push(this.clock.now(), "custom", name, { ...(op ? { op: op.id } : {}), data }),
-      deliverMessage: (o: { op: OpRec; channel: "websocket" | "eventsource"; message: { path: string; summary: string }; queuedAhead: number; body?: () => Promise<unknown> }, release: () => void) =>
-        this.runDelivery(o, release),
+      deliverMessage: (
+        o: { op: OpRec; channel: "websocket" | "eventsource"; message: { path: string; summary: string }; queuedAhead: number; body?: () => Promise<unknown>; bodyNow?: () => unknown },
+        release: () => void,
+      ) => this.runDelivery(o, release),
       channel: (state: "down" | "up", channel: "websocket" | "eventsource", path: string, code?: number | string) => this.onChannel(state, channel, path, code),
     };
   }
@@ -526,6 +537,16 @@ export class RuntimeImpl implements Runtime {
     // Never hold when nothing could be done, or when the model is not expected to answer within the hold budget
     // (decide in the background instead: detection, late revert)
     const waits = opts.hold && permitted.length > 0 && !this.paused && this.expectedLatency() <= this.holdBudgetMs();
+    // A delivery that does not wait while its chain's writes can still be discarded or late-reverted by their own
+    // decisions (guard, heal: it was not held only because the model would not answer in time): those writes are
+    // decided on their own, as before, and the delivery itself only when a question forces it (covering nothing).
+    const writesAct = !waits && spec.trigger === "delivery" && this.writesCanAct();
+    if (writesAct && !built.forced && this.triage !== "always") return passive();
+    // Otherwise (observe, no permitted action) it is decided in the background: while that decision is pending, its
+    // chain's predicted writes are covered by it (no second, mutation decision about the same writes). Registered
+    // before the passive action, which may run the app's listeners (and their writes) synchronously.
+    const background = !waits && spec.trigger === "delivery" && !writesAct ? spec.op : null;
+    if (background) this.deliveryPending.add(background);
     if (!waits) passive();
     let expired = false;
     let budgetTimer: unknown = null;
@@ -541,20 +562,30 @@ export class RuntimeImpl implements Runtime {
     // shortly after it applied); background decisions within a few seconds
     const lateOk = waits && !!ctl.revert;
     const deadline = waits ? t0 + budget + (lateOk ? LATE_REVERT_MS : 0) : t0 + BACKGROUND_DEADLINE_MS;
+    // A delivery's controller is stale once the delivery was released: that only makes a queued decision useless
+    // when the delivery waits for it. A delivery released without waiting is still decided (detection, reports,
+    // standing questions); the decision cannot act any more (see onDecision).
+    const stale = ctl.stale && (waits || spec.trigger !== "delivery") ? () => !!ctl.stale!() : undefined;
     this.queue
       .submit(
         { trigger: spec.trigger, state: built.situation.state, questions: built.situation.questions, priority: waits ? opts.priority : Math.min(opts.priority, 1), subject: built.subjectRef },
         deadline,
-        ctl.stale ? () => !!ctl.stale!() : undefined,
+        stale,
       )
       .then((res) => {
         if (budgetTimer !== null) this.clock.clearTimeout(budgetTimer);
-        if (this.destroyed) return passive();
-        if (!res) return passive();
-        this.onDecision(built, res.answers, this.clock.now() - t0, ctl, passive, { waits, expired, passiveRan: () => passiveRan, hold: opts.hold });
+        try {
+          if (this.destroyed) return passive();
+          if (!res) return passive();
+          this.onDecision(built, res.answers, this.clock.now() - t0, ctl, passive, { waits, covers: background !== null, expired, passiveRan: () => passiveRan, hold: opts.hold });
+        } finally {
+          // decided (onDecision marked the delivery decided) or dropped (its later writes are decided on their own)
+          if (background) this.deliveryPending.delete(background);
+        }
       })
       .catch((e) => {
         this.log("decision failed", e);
+        if (background) this.deliveryPending.delete(background);
         passive();
       });
   }
@@ -565,7 +596,7 @@ export class RuntimeImpl implements Runtime {
     latencyMs: number,
     ctl: Controller,
     passive: () => void,
-    st: { waits: boolean; expired: boolean; passiveRan: () => boolean; hold: boolean },
+    st: { waits: boolean; covers: boolean; expired: boolean; passiveRan: () => boolean; hold: boolean },
   ): void {
     const trigger = built.spec.trigger;
     const passiveName = PASSIVE[trigger];
@@ -584,12 +615,16 @@ export class RuntimeImpl implements Runtime {
     let late = false;
     // the subject already went its way (write applied, response delivered, request sent): an action now is late
     const proceeded = ctl.proceeded ? ctl.proceeded() : st.hold && (st.expired || st.passiveRan());
-    if (trigger === "delivery" && !proceeded) {
+    // a delivery decided while held, or decided in the background when it covers its chain's writes (see trigger):
+    // its chain's predicted writes are covered by this decision (a held delivery released at its budget is not: its
+    // writes are decided on their own)
+    if (trigger === "delivery" && (!proceeded || st.covers)) {
       const op = (built.spec as DeliverySpec).op;
       if (op.delivery) op.delivery.decided = true;
     }
     const custom = run ? built.actions.find((a) => a.name === run)?.custom : undefined;
-    if (run && proceeded && !custom) {
+    // a delivery that was already released can only take the passive action (custom actions included)
+    if (run && proceeded && (!custom || trigger === "delivery")) {
       if (run === "discard" && ctl.revert && ctl.revertable) {
         // late revert: the write already applied; revert exactly that write when nothing depends on it
         const why = ctl.revertable();
@@ -856,7 +891,10 @@ export class RuntimeImpl implements Runtime {
     this.trigger({ trigger: "mutation", m }, this.mutationController(m, null), { hold: false, priority: 1 });
   }
 
-  /** The write's causal chain went through the delivery gate, which predicted these fields and decided in time. */
+  /**
+   * The write's causal chain went through the delivery gate, which predicted these fields and decided in time (or
+   * is deciding in the background: the delivery did not wait for its decision).
+   */
   private covered(m: MutationRec): boolean {
     if (this.triage === "always") return false; // every trigger is asked
     let op: OpRec | undefined = m.cause ?? undefined;
@@ -865,7 +903,7 @@ export class RuntimeImpl implements Runtime {
       if (d) {
         if (!d.known) return false;
         const all = m.changes.every((c) => d.patterns.has(c.path) || d.patterns.has(normalizeFieldPath(c.path)));
-        return all && (!d.salient || d.decided);
+        return all && (!d.salient || d.decided || this.deliveryPending.has(op));
       }
       op = this.ops.get(op.cause);
     }
@@ -896,9 +934,27 @@ export class RuntimeImpl implements Runtime {
    * signature writes has newer data or a pending local change; then the delivery waits for the model (only extra
    * latency). discard: deliver, but drop the writes X's chain makes over newer data; defer: wait for the related
    * in-flight operations, then decide again (twice at most).
+   *
+   * When no hold is possible (observe mode, no permitted action, the model not ready or not expected to answer within
+   * the hold budget), the delivery is released synchronously, before any body read: the app gets it exactly as
+   * without GenClass. The content analysis and the decision follow in the background (detection, reports, standing
+   * questions), still on the state the delivery was released into: a body already in memory (`bodyNow`: XHR,
+   * WebSocket, EventSource) is analyzed right away, before the app's listeners run; a body still being read (fetch)
+   * is not waited for past the first write of the delivery's chain (decided without it then). In guard or heal mode
+   * (the model too slow to hold for), the chain's writes keep their own decisions (late revert) instead: see trigger().
    */
   runDelivery(
-    o: { op: OpRec; channel: "response" | "websocket" | "eventsource"; req?: ReqMeta; status?: number; message?: { path: string; summary: string }; queuedAhead?: number; body?: () => Promise<unknown> },
+    o: {
+      op: OpRec;
+      channel: "response" | "websocket" | "eventsource";
+      req?: ReqMeta;
+      status?: number;
+      message?: { path: string; summary: string };
+      queuedAhead?: number;
+      body?: () => Promise<unknown>;
+      /** The same body, synchronously, when it is already in memory. */
+      bodyNow?: () => unknown;
+    },
     release: () => void,
     defers = 0,
   ): void {
@@ -925,14 +981,18 @@ export class RuntimeImpl implements Runtime {
     if (o.status !== undefined) spec.status = o.status;
     if (o.message) spec.message = o.message;
     const what = o.channel === "response" ? `the response to ${opLabel(op)}` : `message ${opLabel(op)}`;
+    /**
+     * Delivered over newer data (or a pending local change) without a decision to drop it: its chain's writes to
+     * those fields are marked as possibly stale (F9).
+     */
+    const markOverNewer = () => {
+      if (!conflicts.length || !op.delivery?.salient) return;
+      const c0 = conflicts[0];
+      op.delivery.overNewer = { paths: new Set(conflicts.map((c) => c.path)), by: c0.writer ? opLabel(c0.writer) : "a newer operation", kind: c0.kind };
+    };
     const ctl: Controller = {
       passive: () => {
-        // delivered over newer data (or a pending local change) without a decision to drop it: its chain's writes
-        // to those fields are marked as possibly stale (F9)
-        if (!released && conflicts.length && op.delivery?.salient) {
-          const c0 = conflicts[0];
-          op.delivery.overNewer = { paths: new Set(conflicts.map((c) => c.path)), by: c0.writer ? opLabel(c0.writer) : "a newer operation", kind: c0.kind };
-        }
+        if (!released) markOverNewer();
         rel();
       },
       proceeded: () => released,
@@ -970,31 +1030,33 @@ export class RuntimeImpl implements Runtime {
         throw new Error(`unsupported action ${action}`);
       },
     };
-    const go = () => {
-      if (!released) this.trigger(spec, ctl, { hold: true, priority: 2 });
-    };
     // text fields the user typed into after this op started: salient only if the body would replace that text (F2)
     const typed = matched.filter((p) => typeof this.hub.valueAt(p) === "string" && this.hub.writesSince(p, op.startSeq).some((h) => h.user && !this.inChainOf(op, h.writer)));
     const always = this.triage === "always" || this.standing.some((q) => q.always && q.on.includes("delivery"));
+    if (!conflicts.length && !typed.length && !always) return rel();
+    // No hold is possible: deliver now, before any body read; analyze and decide in the background (see above)
+    const background = !this.deliveryHoldable(op, matched, defers);
+    if (background) rel();
     /** Decide without (more) content: newer applied data is salient; pending changes and typed text need the body. */
     const settle = (salient: boolean) => {
       if (op.delivery) op.delivery.salient = salient;
+      if (background) {
+        // already delivered: the passive action, then the decision for detection only (it cannot act)
+        markOverNewer();
+        if (salient || always) this.trigger(spec, ctl, { hold: false, priority: 2 });
+        return;
+      }
       if (!salient && !always) return rel();
-      go();
+      if (!released) this.trigger(spec, ctl, { hold: true, priority: 2 });
     };
-    if (!conflicts.length && !typed.length && !always) return rel();
     if (!o.body) return settle(newer.length > 0);
-    // read the body first (a clone, bounded in time)
     let done = false;
-    const timer = this.clock.setTimeout(() => {
-      if (done) return;
-      done = true;
-      settle(newer.length > 0);
-    }, BODY_WAIT_MS);
+    let timer: unknown = null;
     const finish = (body: unknown) => {
       if (done) return;
       done = true;
-      this.clock.clearTimeout(timer);
+      if (timer !== null) this.clock.clearTimeout(timer);
+      if (background) this.deliveryAnalysis.delete(op);
       if (body === undefined || this.destroyed) return settle(newer.length > 0);
       try {
         spec.body = body;
@@ -1021,6 +1083,35 @@ export class RuntimeImpl implements Runtime {
         return settle(newer.length > 0);
       }
     };
+    if (background && o.bodyNow) {
+      // the body is in memory: analyze it now, before the app's listeners run (and never break the delivery)
+      let body: unknown;
+      try {
+        body = o.bodyNow();
+      } catch {
+        body = undefined;
+      }
+      try {
+        finish(body);
+      } catch (e) {
+        this.log("background delivery analysis failed", e);
+      }
+      return;
+    }
+    // read the body first (a clone, bounded in time)
+    timer = this.clock.setTimeout(() => finish(undefined), BODY_WAIT_MS);
+    // the delivery's chain is about to write: decide now, without the body (see finalizeDeliveries). Without newer
+    // data, only the body could tell whether it puts back what a pending local change replaced or replaces typed
+    // text (F1/F2): the delivery is not decided then, and its chain's writes are decided on their own (mutation
+    // triggers: covered() never covers a salient, undecided delivery's writes)
+    if (background)
+      this.deliveryAnalysis.set(op, () => {
+        if (newer.length || always) return finish(undefined);
+        if (done) return;
+        done = true;
+        if (timer !== null) this.clock.clearTimeout(timer);
+        if (op.delivery) op.delivery.salient = true;
+      });
     let p: Promise<unknown>;
     try {
       p = o.body();
@@ -1028,6 +1119,54 @@ export class RuntimeImpl implements Runtime {
       p = Promise.resolve(undefined);
     }
     p.then(finish, () => finish(undefined));
+  }
+
+  /**
+   * Whether a delivery could wait for its decision at all (what trigger() requires before holding): never in observe
+   * mode or while paused, nor while the model is not ready, nor when mode and policy permit no non-passive delivery
+   * action, nor when the model is not expected to answer within the hold budget.
+   */
+  private deliveryHoldable(op: OpRec, matched: string[], defers: number): boolean {
+    if (this._mode === "observe" || this.paused || this.decider?.status.state !== "ready") return false;
+    const permitted = (name: string, tier: Tier) => tier !== "passive" && restriction(this.policy, this._mode, { name, tier }) === null;
+    let any = false;
+    for (const name of TRIGGER_ACTIONS.delivery) {
+      const b = BUILTIN_ACTIONS[name];
+      if (!b || !permitted(name, b.tier)) continue;
+      // defer is offered only when related work is in flight (and twice at most)
+      if (name === "defer" && (defers >= 2 || !relatedInFlight(this.env, op, matched).length)) continue;
+      any = true;
+      break;
+    }
+    // custom actions: their applicable() needs the situation, so a permitted one counts as possible
+    if (!any) any = this.customActions.some((d) => d.on.includes("delivery") && permitted(d.name, d.tier ?? "heal"));
+    return any && this.expectedLatency() <= this.holdBudgetMs();
+  }
+
+  /** Whether a write's own decision could still change it (discard while held, late revert once applied). */
+  private writesCanAct(): boolean {
+    return !this.paused && restriction(this.policy, this._mode, BUILTIN_ACTIONS.discard) === null;
+  }
+
+  /**
+   * A write is about to apply: deliveries in its causal chain that were released without a hold and whose content
+   * analysis still waits for the body are decided now, without it, so the situation shows the state they were
+   * delivered into (not their own writes).
+   */
+  private finalizeDeliveries(cause: OpRec | null): void {
+    let op: OpRec | undefined = cause ?? undefined;
+    for (let n = 0; op && n < 16; n++) {
+      const cut = this.deliveryAnalysis.get(op);
+      if (cut) {
+        this.deliveryAnalysis.delete(op);
+        try {
+          cut();
+        } catch (e) {
+          this.log("background delivery analysis failed", e);
+        }
+      }
+      op = this.ops.get(op.cause);
+    }
   }
 
   private inChainOf(x: OpRec, writer: number | null): boolean {
@@ -1919,6 +2058,7 @@ export class RuntimeImpl implements Runtime {
     this.destroyed = true;
     this.hub.gating = false;
     this.queue.dispose();
+    this.deliveryAnalysis.clear();
     this.reporter.dispose();
     if (this.settleTimer !== null) this.clock.clearTimeout(this.settleTimer);
     if (this.persistTimer !== null) this.clock.clearTimeout(this.persistTimer);
