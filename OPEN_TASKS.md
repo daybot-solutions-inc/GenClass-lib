@@ -5,6 +5,8 @@ The runtime decides through a trained local model; nothing here is hardcoded per
 
 ## Done
 
+- **npm 0.1.0-beta.1** (latest) + **model 0.2.0** (r17-v2dT, gain gate, cautious/balanced/eager profiles) + the `genclass-runtime` alias
+  are published (2026-10-08). The registry e2e passes: guard fixes 6/6 and clean typing makes 0 model calls.
 - **npm:** `@genclass/runtime@0.1.0-beta.0` (latest) and `@genclass/runtime-model@0.1.0` (r17-v2b, with gates refit on on-policy data)
   are published. Checked on 2026-10-08 against the registry tarballs: guard fixed an out-of-order typeahead 6/6, observe detected it, and
   clean typing made 0 model calls. The `genclass-runtime` alias is not published yet; its tarball is in `packages/runtime/.publish/`.

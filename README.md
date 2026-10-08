@@ -26,10 +26,11 @@ bugs; the model infers from runtime context.
            search.results written 0.4 s ago by a newer GET /api/search?q=react. Dropped it. (stale, 0.97)
 ```
 
-> **Status: beta.** [`@genclass/runtime@0.1.0-beta.0`](https://www.npmjs.com/package/@genclass/runtime) and the model
-> [`@genclass/runtime-model@0.1.0`](https://www.npmjs.com/package/@genclass/runtime-model) (9.6 MB, loaded at idle and
-> cached) are on npm. In a fresh app installed from the registry, guard mode fixed an out-of-order typeahead in 6 of 6
-> trials, and clean typing made 0 model calls. Measured precision and recall: [RESULTS.md](docs/runtime/RESULTS.md).
+> **Status: beta.** [`@genclass/runtime@0.1.0-beta.1`](https://www.npmjs.com/package/@genclass/runtime) with the model
+> [`@genclass/runtime-model@0.2.0`](https://www.npmjs.com/package/@genclass/runtime-model) (10 MB, loaded at idle and
+> cached). Choose how eager it is with `aggressiveness: "cautious" | "balanced" | "eager"`. Installed from the
+> registry into a fresh app, guard mode fixed an out-of-order typeahead in 6 of 6 trials, and clean typing made 0
+> model calls. Measured numbers per profile: [RESULTS.md](docs/runtime/RESULTS.md). Options: [OPTIONS-SPEC.md](docs/runtime/OPTIONS-SPEC.md).
 > Remaining work: [OPEN_TASKS.md](OPEN_TASKS.md). Agents continuing the work: [HANDOFF.md](HANDOFF.md).
 
 ## What's in this repo
