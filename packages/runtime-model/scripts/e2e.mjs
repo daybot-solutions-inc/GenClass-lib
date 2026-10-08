@@ -13,7 +13,8 @@
 //   RUNTIME_TGZ=... MODEL_TGZ=... node scripts/e2e.mjs        (WORK=/data/install/model-e2e, TRIALS=6)
 
 import { chromium } from "@playwright/test";
-import { execSync } from "node:child_process";
+import { exec, execSync } from "node:child_process";
+import { promisify } from "node:util";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { serve } from "../../runtime/test/install/server.mjs";
@@ -90,10 +91,12 @@ const ORT_DIST = join(APP, "node_modules", "onnxruntime-web", "dist");
 
 // the package layout works with the runtime's own downloader: fetch-model from a server of files/, then info
 const modelSrv = await serve({ mounts: { "/model/": MODEL_FILES } });
+// (asynchronously: the file server runs in this process)
+const run = async (cmd) => (await promisify(exec)(cmd, { cwd: APP, maxBuffer: 16 << 20 })).stdout;
 let selfHost;
 try {
-  const fetched = sh(`npx genclass-runtime fetch-model public/genclass-model --from ${modelSrv.url}/model/ 2>&1`, APP);
-  const info = sh("npx genclass-runtime info public/genclass-model 2>&1", APP);
+  const fetched = await run(`npx genclass-runtime fetch-model public/genclass-model --from ${modelSrv.url}/model/ 2>&1`);
+  const info = await run("npx genclass-runtime info public/genclass-model 2>&1");
   selfHost = { ok: !/MISMATCH|MISSING|WARNING/.test(info), fetched: fetched.trim().split("\n"), info: info.trim().split("\n") };
 } catch (e) {
   selfHost = { ok: false, error: String(e.message).slice(0, 500) };
@@ -147,11 +150,13 @@ async function runMode(mode) {
     const s = window.__rt.status;
     return { state: s.state, mode: window.__rt.mode, device: s.device, variant: s.variant, model: s.model, version: s.version, worker: s.worker, threads: s.threads, loadMs: s.loadMs, warmupMs: s.warmupMs, latency: s.latency, error: s.error, budget: window.__rt.holdBudgetMs(), situationChars: window.__rt.situationBudget() };
   });
+  // the thresholds in force: r17-v2b ships its own (meta.json gate), so every source must be "model"
+  status.gates = await page.evaluate(() => Object.fromEntries([undefined, "delivery", "mutation", "request", "stall", "failure"].map((t) => [t ?? "default", window.__rt.gates(t)])));
   await page.evaluate(() => {
     window.__ev = [];
     for (const k of ["decide", "detect", "act"]) window.__rt.on(k, (x) => window.__ev.push({ k, id: x.id, decisionId: x.decisionId }));
   });
-  const decisions = () => page.evaluate(() => window.__rt.decisions(500).map((d) => ({ id: d.id, trigger: d.trigger, subject: d.subject, diagnosis: d.diagnosis, diagnosisConfidence: d.diagnosisConfidence, action: d.action, confidence: d.confidence, candidate: d.candidate, mass: d.mass, executed: d.executed, reason: d.reason, latencyMs: d.latencyMs, tier: d.tier })));
+  const decisions = () => page.evaluate(() => window.__rt.decisions(500).map((d) => ({ id: d.id, trigger: d.trigger, subject: d.subject, diagnosis: d.diagnosis, diagnosisConfidence: d.diagnosisConfidence, action: d.action, confidence: d.confidence, candidate: d.candidate, mass: d.mass, executed: d.executed, reason: d.reason, latencyMs: d.latencyMs, tier: d.tier, threshold: d.threshold, thresholdSource: d.thresholdSource, reportThreshold: window.__rt.gates(d.trigger).report })));
   const events = () => page.evaluate(() => window.__ev.slice());
   const shown = () => page.evaluate(() => document.getElementById("results").dataset.for);
   const settle = (ms) => page.waitForTimeout(ms);
@@ -213,6 +218,9 @@ async function runMode(mode) {
       correctAtEnd: (await shown()) === w,
       decisions: ds,
       detections: ev.filter((e) => e.k === "detect").length,
+      // a detection is exactly a decision whose top diagnosis is not "expected" with p >= gate.report
+      detectionsByRule: ds.filter((d) => d.diagnosis !== "expected" && d.diagnosisConfidence >= d.reportThreshold).length,
+      detectedIds: ev.filter((e) => e.k === "detect").map((e) => e.id),
       actions: acted.length,
     });
   }
@@ -231,10 +239,11 @@ try {
     const s = r.status;
     console.log(`model ${s.state} ${s.model ?? ""} ${s.version ?? ""} device=${s.device} variant=${s.variant} worker=${s.worker} threads=${s.threads} load=${s.loadMs}ms warmup=${s.warmupMs}ms holdBudget=${s.budget}ms situation=${s.situationChars} chars ${s.error ?? ""}`);
     console.log(`served from the default URL path: ${r.served.join(", ")}`);
+    for (const [t, g] of Object.entries(s.gates)) console.log(`gates ${t.padEnd(8)} report ${g.report} (${g.source.report})  guard ${g.guard} (${g.source.guard})  heal ${g.heal} (${g.source.heal})`);
     console.log(`clean slow typing: ${r.cleanSlow.modelCalls} model calls; clean fast typing: ${r.cleanFast.modelCalls} model calls`);
     for (const t of r.trials) {
-      const d = t.decisions.map((x) => `${x.trigger}:${x.diagnosis} ${x.diagnosisConfidence?.toFixed(2)} -> ${x.action} ${x.confidence?.toFixed(2)}${x.executed ? " EXECUTED" : ""} ${x.latencyMs}ms${x.reason ? ` (${x.reason})` : ""}`).join(" | ");
-      console.log(`trial ${t.word}: decisions=${t.decisions.length} detections=${t.detections} actions=${t.actions} shown=${t.shownAtEnd} correct=${t.correctAtEnd} :: ${d}`);
+      const d = t.decisions.map((x) => `${x.trigger}:${x.diagnosis} ${x.diagnosisConfidence?.toFixed(2)} -> ${x.action} ${x.confidence?.toFixed(2)}${x.executed ? " EXECUTED" : ""} ${Math.round(x.latencyMs)}ms [threshold ${x.threshold ?? "-"} ${x.thresholdSource ?? ""}]${x.reason ? ` (${x.reason})` : ""}`).join(" | ");
+      console.log(`trial ${t.word}: decisions=${t.decisions.length} detections=${t.detections} (by gate.report rule ${t.detectionsByRule}) actions=${t.actions} shown=${t.shownAtEnd} correct=${t.correctAtEnd} :: ${d}`);
     }
     if (r.errors.length) console.log(`console errors: ${r.errors.slice(0, 5).join(" | ")}`);
   }

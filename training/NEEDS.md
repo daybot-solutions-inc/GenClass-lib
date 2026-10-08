@@ -150,7 +150,17 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     12,495,440), 104 gz shards + `manifest.json`, 16 GB gz; seeds 16e9 + NN·1e8.
   - Throughput: gold ≈ 278 rows/s per F80 (20 nodes ≈ 5.5k rows/s, 31 min); unlabeled ≈ 21k rows/s per F80
     (2 min). Global dedupe test-first dropped < 0.001 %.
-  - On-policy: waits for TRAIN's first v2 export (`--on-policy <dir>`).
+  - **On-policy round a** `train:/data/sim-out/v2-onpol-a/` — 1,248,131 rows (train 906,907 / dev 37,837 / test
+    303,387), 684 MB gz, policy **r17-v2a** (`meta.policy_model`), runtime **situation-v2.1** (`meta.runtime_tag`),
+    S1+S2 counterfactual labels at the model's own decision points. Two policies (`meta.gate`): `shipping` (runtime
+    defaults 0.9/0.8, c01+c02, seeds 22e9+NN·1e8) and `explore` (0.5 summed mass, diagnosis gate kept; c10, c11,
+    data; seeds 24e9+NN·1e8). Per row: `model_probs`, `model_choice`, `model_diagnosis`, `ran`, `false_intervention`,
+    `ran_harm` (mean cost of what ran minus passive), `miss`. Report by gate × trigger with worst row ids:
+    `onpolicy_report.md` / `.json` in the same directory.
+  - **v2.3 gold top-up** (running 08:20 UTC) → `train:/data/sim-out/v2.3-gold/` (2M rows, situation-v2.3, seeds
+    26e9+NN·1e8); then **on-policy round b** (r17-v2b with its meta.json gates, situation-v2.3; seeds 28e9 / 30e9
+    + NN·1e8) → `train:/data/sim-out/v2-onpol-b/`. From these builds on rows also carry `meta.request` and
+    `meta.not_offered`; on-policy rows `gate_threshold` / `gate_source` / `gate_mass`.
 - Distributed batches (gz shards + `manifest.json`, deduped, test-first): collected per run under
   `data:~/simdata/<run>/` — locations listed here as they land.
 
