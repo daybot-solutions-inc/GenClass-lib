@@ -1,0 +1,4 @@
+# /etc/cron.d/genclass-ci : nightly GenClass CI against the published npm packages (06:00 UTC; the VM runs in UTC)
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+0 6 * * * root flock -n /run/genclass-ci.lock bash /opt/genclass-ci/nightly.sh >> /var/log/genclass-ci.log 2>&1

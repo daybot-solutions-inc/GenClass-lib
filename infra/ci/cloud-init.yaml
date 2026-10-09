@@ -1,0 +1,27 @@
+#cloud-config
+# vm-genclass-ci (Standard_B2s, Ubuntu 24.04): nightly CI runner for GenClass against the PUBLISHED npm packages.
+# Installs node 22, git, Playwright 1.63 Chromium (+ OS deps), the Azure CLI (managed identity for blob uploads),
+# psql (CI results -> Postgres) and a 4 GB swapfile (the monorepo install peaks above the B2s's 4 GB RAM).
+# The CI scripts themselves (infra/ci/*.sh, *.mjs, the cron file) are copied in afterwards; see infra/README.md.
+package_update: true
+packages:
+  - git
+  - jq
+  - zip
+  - unzip
+  - ca-certificates
+  - curl
+  - gnupg
+  - postgresql-client
+swap:
+  filename: /swapfile
+  size: 4294967296
+runcmd:
+  - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  - apt-get install -y nodejs
+  - curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+  - npx -y playwright@1.63.0 install-deps chromium
+  - sudo -u azureuser -H npx -y playwright@1.63.0 install chromium
+  - mkdir -p /opt/genclass-ci /var/lib/genclass-ci
+  - chown azureuser:azureuser /var/lib/genclass-ci
+  - touch /var/lib/cloud-init.genclass.done
