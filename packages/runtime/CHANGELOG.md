@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.1.0-beta.2 (2026-10-08)
+
+Merges the 0.1.0-beta.1 work (model 0.2.0, aggressiveness, batch 12 options) with the fixes that shipped in
+0.1.0-beta.0 but were missing from 0.1.0-beta.1, which was published from a branch without them.
+
+- **Default mode is `observe` again.** `GenClass.init()` with no `mode` reports what it sees and never changes
+  execution; `guard` is opt-in and `heal` is experimental (0.1.0-beta.1 defaulted to `guard`). `aggressiveness`
+  still defaults to `"balanced"`; its action gates apply once you opt into `guard` or `heal` (in observe mode it
+  only picks the profile's report threshold for detections: 0.95 / 0.90 / 0.70 for cautious / balanced / eager). `shadow: "guard"` in observe mode records what guard
+  would have done, background delivery decisions included.
+- **Observe never holds or delays a delivery.** A response or push message is released synchronously, before any
+  body read, whenever no hold is possible (observe, sample cap, breaker downgrade, an observe / off route scope, a
+  protected or cross-origin subject, no permitted action, or a model too slow for the remaining hold budget). The
+  delivery decision is still made in the background and recorded (`executed: false`), on the state the delivery was
+  released into; while it is pending it covers its chain's writes, so they are not decided twice.
+- **Redaction fixes:** the "would replace text the user typed" fact no longer prints characters of a redacted
+  field, and numbers and arrays under a secret-named container (`payment.cvv.value`, `login.otp.code`) are redacted.
+- **Install CLI fixes:** `init` without `--mode` writes the observe import, and `--mode guard|heal|observe` writes
+  `/auto/<mode>` (or `data-mode` on the script tag) and switches it in place when run again; `remove` deletes only
+  what `init` wrote, including formatter-rewrapped lines, and changes nothing when you edited inside a marked block;
+  Node servers and libraries are refused; SRI only for this version's own jsDelivr / unpkg file; `typesVersions`
+  for `"moduleResolution": "node"`.
+- **`fetch-model` downloads from jsDelivr by default:** `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/`,
+  the same directory as the runtime's `DEFAULT_MODEL_BASE_URL` (a test keeps them equal).
+- **CI:** GitHub Actions runs typecheck, build, the unit tests and review-perf (separately, with retries) against a
+  committed root `package-lock.json`.
+
+## 0.1.0-beta.1 (2026-10-08)
+
+Published from the `runtime` branch; it did not include the 0.1.0-beta.0 observe default, delivery, redaction and
+install fixes listed above (0.1.0-beta.2 restores them).
+
+- **Model 0.2.0** (`@genclass/runtime-model@0.2.0`, `genclass-runtime-r17` 2.0.0-rc4t, run `r17-v2dT`) is the
+  default model: a gain gate and three aggressiveness profiles in `meta.json`. Numbers in `docs/runtime/RESULTS.md`.
+- **`aggressiveness`** (runtime batch 11): `"cautious" | "balanced" | "eager"` or a number 0–1, per route too;
+  `rt.setAggressiveness()`, `?genclass-aggr` (demote only unless `debug`), a devtools selector, `rt.gates()`.
+- **Batch 12, 19 options** (`docs/runtime/OPTIONS-SPEC.md`): `enabled`, `rt.disable({ undo })`, `sample`, `routes`,
+  `requests.{ignore, protect, labels, correlate, crossOrigin}`, `breaker`, `shadow`, `onBeforeAction` + `vetoMode`,
+  `policy.actionLimits` (60/min, 10/min per subject, 200 per session), `policy.holdBudgetMs` as a hard ceiling,
+  `sinks`, `session`, `report: "interventions"`, `rt.summary()`, typed `rt.on()` events, and `model.{loadIf,
+  threads, timeoutMs, maxDecisionsPerMinute, unloadAfterIdleMs}`.
+
 ## 0.1.0-beta.0 (2026-10-08)
 
 - **Ships with a model.** A default `GenClass.init()` now loads `@genclass/runtime-model@0.1.0`

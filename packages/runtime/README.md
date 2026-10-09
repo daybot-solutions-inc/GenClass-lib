@@ -22,26 +22,25 @@ import { GenClass } from "@genclass/runtime";
 GenClass.init(); // observe mode: reports only, never takes an action (see Known limitations)
 ```
 
-> **Status: beta (`0.1.0-beta.0`), the first version with a trained model.**
+> **Status: beta (`0.1.0-beta.2`), with model `@genclass/runtime-model@0.2.0`.**
 >
-> - **The model loads by default.** A default `GenClass.init()` loads `@genclass/runtime-model@0.1.0` (9.6 MB,
->   `genclass-runtime-r17` 2.0.0-rc2) from jsDelivr at idle, in a Web Worker, and caches it. Self-hosting and
->   `model: false` are under [Performance](#performance).
+> - **The model loads by default.** A default `GenClass.init()` loads `@genclass/runtime-model@0.2.0` (10.2 MB q8,
+>   `genclass-runtime-r17` 2.0.0-rc4t, run `r17-v2dT`, with a gain gate and three aggressiveness profiles) from
+>   jsDelivr at idle, in a Web Worker, and caches it. Self-hosting and `model: false` are under
+>   [Performance](#performance).
 > - **Observe is the default.** The model diagnoses salient situations and the runtime reports likely problems; it
->   never changes what your app does. `guard` is opt-in and `heal` is experimental.
-> - **The model is precise when it acts, but timid, and observe mode shows some false flags.**
->   - Diagnosis is right on about 84% of held-out decisions (83.6% on real apps).
->   - It flags 1.4% (simulated apps) to 3.8% (real apps) of held-out decisions where nothing was wrong. On real apps,
->     most of those came from one app.
->   - In `guard` / `heal` it intervened wrongly on 0.01% / 0.07% of held-out simulated cases, and never on held-out
->     real apps, but it acts on under 6% of the cases where acting would help.
->
->   Details: [Model quality](#model-quality) and the
+>   never changes what your app does and never holds or delays a response. `guard` is opt-in and `heal` is
+>   experimental. Once you opt in, `aggressiveness` (`"cautious"`, `"balanced"` (default), `"eager"`) sets how eager
+>   it acts.
+> - **The model is precise when it acts, but misses most problems.** On held-out simulated apps, at `balanced`:
+>   guard intervened wrongly on 0.13% of cases and heal on 0.59%, slightly above our 0.1% / 0.5% targets; at
+>   `cautious`, 0.005% and 0.26%, under them. No wrong interventions were seen on held-out real apps. At `balanced`,
+>   guard acts on under 8% of the cases where acting would help. Details: [Model quality](#model-quality) and the
 >   [model card](https://www.npmjs.com/package/@genclass/runtime-model).
-> - **Older versions.** `0.1.0-alpha.1` is the v2 runtime without the install commands, without the model's gate
->   support, and with a delivery delay in observe mode. `0.1.0-alpha.0` is the older v1 runtime: guard by default,
->   it holds store writes, and it can crash when app state contains `NaN`. Do not use it. Both load this model too,
->   from the same default URL, but were not tested with it.
+> - **Older versions.** `0.1.0-beta.1` has model 0.2.0 and the new options but defaults to `guard`, and lacks the
+>   observe-delivery, redaction and install fixes of `0.1.0-beta.0` (all back in `0.1.0-beta.2`). `0.1.0-beta.0`
+>   ships model 0.1.0. `0.1.0-alpha.1` and `0.1.0-alpha.0` (v1 runtime: guard by default, holds store writes, `NaN`
+>   crash) predate the model; do not use them.
 >
 > Progress: [OPEN_TASKS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/OPEN_TASKS.md) ·
 > measured results: [RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md).
@@ -58,7 +57,7 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 
 Run your app as usual. When the model flags something, the console gets one plain-English line per detection or
 intervention, followed by a collapsed group with the evidence. Here a typeahead's slow response for "rea" lands
-after the response for "reac". This is real output of `0.1.0-beta.0` with its default model (q8 on WASM, in Node),
+after the response for "reac". This is real output of `0.1.0-beta.0` with model 0.1.0 (q8 on WASM, in Node),
 in the default observe mode. The response reaches the app at once, exactly as without GenClass, and the decision is
 made in the background, for the report only:
 
@@ -69,7 +68,7 @@ started (version 1 → 3), last 0.69s ago by GET /api/search?q=reac (#8), which 
 user action (#7). (stale, 0.96)
 ```
 
-The same run in guard mode. The model's `discard` (0.98) passed the model's delivery gate (0.80), so the results
+The same run in guard mode. The model's `discard` (0.98) passed model 0.1.0's delivery gate (0.80), so the results
 for "reac" stayed:
 
 ```
@@ -142,7 +141,7 @@ SSR or in Node, `/auto` installs nothing and returns an inert runtime.
 It exposes `window.GenClass` and loads the model worker, ONNX Runtime Web and the overlay on demand from the same
 version on the CDN. `data-mode` takes `observe` (the default), `guard` or `heal`; `data-devtools="local"` shows the
 overlay only on localhost; `data-manual` skips the automatic `GenClass.init()`. Pin a version in production
-(`https://cdn.jsdelivr.net/npm/@genclass/runtime@0.1.0-beta.0`); the plain-HTML path of `init` writes a pinned
+(`https://cdn.jsdelivr.net/npm/@genclass/runtime@0.1.0-beta.2`); the plain-HTML path of `init` writes a pinned
 jsDelivr URL with SRI.
 
 **4. By hand:**
@@ -183,7 +182,7 @@ These hold for the runtime; whether the model's decisions are good is a separate
 - **Off in one step.** `?genclass=off` in the URL installs nothing, and observe (the default) never changes
   execution.
 - **Small.** The main entry is about 83 KB gzip (minified, without the optional devtools). The default model is
-  9.6 MB on WASM (13.6 MB fp16 on WebGPU with `shader-f16`), downloaded once at idle and cached.
+  10.2 MB on WASM (13.6 MB fp16 on WebGPU with `shader-f16`), downloaded once at idle and cached.
 
 ## Modes
 
@@ -224,13 +223,15 @@ GenClass.init({ mode: "guard" });
   runtime's defaults: report 0.6, guard 0.9, heal 0.8. `policy.thresholds: { report, guard, heal }` overrides both.
   `rt.gates(trigger)` shows the values in force and where each came from (`"policy"`, `"model"` or `"default"`).
 - **Detections.** In every mode, a decision is reported as a detection when its top diagnosis is not `expected` and
-  its probability is at least the report threshold: 0.85 with the default model.
-- **Limits.** Actions are limited to 60 per minute (`policy.maxActionsPerMinute`). A held decision that misses the
+  its probability is at least the report threshold of the active profile: 0.95 / 0.90 / 0.70 for cautious /
+  balanced / eager with the default model.
+- **Limits.** Actions are limited to 60 per minute overall, 10 per minute on the same subject and 200 per session
+  (`policy.actionLimits`). A held decision that misses the
   hold budget runs the passive action; a background write decision can still revert the write late.
 - **Control.** The `allow` / `deny` lists are in `policy`. Switch at runtime with `rt.setMode(mode)`, or stop
   consulting the model with `rt.pause()` / `rt.resume()`.
 
-**The default changed.** `0.1.0-alpha.0` defaulted to `guard`. Now `GenClass.init()` with no `mode` (and
+**The default changed.** `0.1.0-alpha.0` and `0.1.0-beta.1` defaulted to `guard`. Now `GenClass.init()` with no `mode` (and
 `@genclass/runtime/auto`, and the script tag without `data-mode`) observes only; pass `mode: "guard"` to let it act.
 
 **Kill switch.** Append `?genclass=off` to the URL, or set `localStorage.genclass = "off"`, and nothing is installed.
@@ -487,42 +488,48 @@ onIncident(() => rt.disable({ undo: true }));
 
 **Rollout recipe:** start with `mode: "observe", shadow: "guard"`, and compare the shadow records with your undo and complaint rates. Then switch to `mode: "guard", sample: 0.05`. Watch `rt.summary().undos` and `breaker` events, and widen `sample` as they stay quiet. For QA, `?genclass-sample=1` together with `debug: true` forces a session into the acting group.
 
-## Status
-
 ## Model quality
 
-The default model is `genclass-runtime-r17` 2.0.0-rc2 (`@genclass/runtime-model@0.1.0`): an 8.8M-parameter encoder
-trained on simulated apps and on real apps driven in headless Chromium. Every number below is on held-out data:
+The default model is `genclass-runtime-r17` 2.0.0-rc4t (`@genclass/runtime-model@0.2.0`, run `r17-v2dT`): a
+GenClass encoder trained on simulated apps and on real apps driven in headless Chromium. It ships a gain gate (act
+only when the model's expected gain over doing nothing clears a margin) with one fitted profile per aggressiveness
+level. Held-out test, from
+[RESULTS.md §1](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md):
 
-- simulated test rows, including apps built from features held out of training;
-- real-app test rows from 10 apps, 7 of which never appeared in training.
+| profile | guard false interventions | guard recall (clear / real) | heal false interventions | heal recall (clear / real) | report threshold |
+|---|---|---|---|---|---|
+| `cautious` | 0.005% | 2.4% / 1.4% | 0.26% | 3.7% / 3.8% | 0.95 |
+| **`balanced` (default)** | 0.13% | 7.8% / 7.5% | 0.59% | 7.1% / 10.4% | 0.90 |
+| `eager` | 0.54% | 14.2% / 21.0% | 1.84% | 17.1% / 24.2% | 0.70 |
 
-Full tables, per-trigger gates and how each threshold was fitted: the
-[model card](https://www.npmjs.com/package/@genclass/runtime-model).
+False interventions are on simulated apps; on held-out real apps they were 0.00% for every profile. Our targets are
+0.1% (guard) and 0.5% (heal): `cautious` meets both, `balanced` is slightly over both, `eager` trades well over
+them for about twice `balanced`'s recall. Pick `cautious` if a wrong intervention costs more than a missed one.
 
-| | Simulated apps | Real apps |
+The observe-mode numbers below were measured on the previous model, 0.1.0 (`r17-v2b`, report threshold 0.85), and
+have not been re-measured for 0.2.0:
+
+| model 0.1.0 | Simulated apps | Real apps |
 |---|---|---|
 | Diagnosis accuracy | 84.2% | 83.6% |
 | Action accuracy | 77.8% | 80.0% |
 | **Observe:** decisions flagged where nothing was wrong (report 0.85) | 1.41% (149 / 10,582) | 3.78% (305 / 8,079); 1.05% without one app |
 | Observe: problem decisions flagged | 65% | 61% |
 | Observe: flags with the right diagnosis | 94% | 89% |
-| **Guard:** false interventions | 0.01% (1 / 8,987) | 0.00% (0 / 66) |
-| Guard: cases acted on | 0.7% of clear cases | 0.0% of actionable cases |
-| **Heal:** false interventions | 0.07% (11 / 16,290) | 0.00% (0 / 1,124) |
-| Heal: cases acted on | 2.9% of clear cases | 5.7% of actionable cases |
 
 What this means in practice:
 
-- **Observe (default).** Expect roughly 1 to 4 false flags per 100 decisions where nothing was wrong.
+- **Observe (default).** Expect roughly 1 to 4 false flags per 100 decisions where nothing was wrong (model 0.1.0;
+  `cautious` raises the report threshold to 0.95, `eager` lowers it to 0.70).
   - In one held-out real app, `oss-rtk-conduit`, the model flagged 25% of clean decisions as `stale`, all on its
     `article.inProgress` field. A single recurring pattern in your app can do the same.
   - Each flag names its evidence, and identical lines within a minute are summarised.
   - Raise `policy.thresholds.report` to see fewer flags. At 0.9: 0.9% (simulated) and 3.4% (real) false, with 58% and
     52% of problems flagged.
 - **Guard (opt-in).** When it acts, it is almost always right, but it rarely acts. Expect it to miss most problems.
-- **Heal (experimental).** Heal actions on failures (`retry`, `serve_cached`) are the least precise: wrong on 0.19%
-  of held-out simulated failures where doing nothing was best (target 0.5%), at a failure threshold of 0.95.
+  `balanced` is slightly above the 0.1% false-intervention target; `cautious` is under it.
+- **Heal (experimental).** At `balanced`, 0.59% of heal interventions were wrong on simulated apps (target 0.5%);
+  with model 0.1.0, heal actions on failures (`retry`, `serve_cached`) were its least precise actions.
 - **Not yet met:** diagnosis ≥ 95%, clear-case recall ≥ 80%, and false flags ≤ 1% on held-out data. Training
   continues (a larger teacher model, distillation, more real-app data).
 - **Format.** The model was trained on situations rendered by the runtime at `situation-v2`. This version renders
@@ -578,7 +585,7 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
   `Cross-Origin-Embedder-Policy: require-corp` enables WASM threads (about 3× faster with 4 threads in Chromium,
   measured with the round-1 model of the same size).
 - **Loading:** the model loads at idle after page load (`model.preload: "idle"`) from
-  `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/`. It is cached in Cache Storage and checked
+  `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/`. It is cached in Cache Storage and checked
   with sha256. To self-host, `npx @genclass/runtime fetch-model public/genclass-model` downloads it, and
   `model: { baseUrl: "/genclass-model/" }` points the runtime at it. `model: false` loads no model (nothing is
   detected or prevented then).
@@ -602,7 +609,8 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
   - The "would replace text the user typed" fact shows a character diff only when the redactor leaves both values
     unchanged; otherwise it prints `[redacted] → [redacted]` (or your redactor's replacement).
   - Pass your own `redact(path, value)` for app-specific secrets or PII. The default has gaps (see below).
-  - The container rule for numbers and arrays and the typed-text rule are new in `0.1.0-beta.0`.
+  - The container rule for numbers and arrays and the typed-text rule are new in `0.1.0-beta.0` (missing from
+    `0.1.0-beta.1`, back in `0.1.0-beta.2`).
 
 ## Known limitations
 

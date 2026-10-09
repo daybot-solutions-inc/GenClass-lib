@@ -6,11 +6,20 @@ release commit 806a296); `mvp-v2-merge` merges the two. Spec:
 [docs/runtime/CONTRACT.md](docs/runtime/CONTRACT.md). Results and numbers: [docs/runtime/RESULTS.md](docs/runtime/RESULTS.md).
 The runtime decides through a trained local model; nothing here is hardcoded per bug pattern.
 
-The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). Since 2026-10-08 (~13:40 UTC) `@genclass/runtime-model@0.1.0` (`r17-v2b`) and
-`@genclass/runtime@0.1.0-beta.0` are on npm (`latest`), so the default model URL resolves (Done).
+The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). On npm (`latest`): `@genclass/runtime@0.1.0-beta.1`
+with `@genclass/runtime-model@0.2.0` (`r17-v2dT`); `0.1.0-beta.2` (the merge of both branches, observe default) is
+packed on `mvp-v2-b6` and waits to be published (Done, Next).
 
 ## Done
 
+- **`@genclass/runtime@0.1.0-beta.2` prepared, not published** (2026-10-08, branch `mvp-v2-b6`): merges
+  `origin/runtime` at 696b1b4 (tag `v0.1.0-beta.1`: model 0.2.0 `r17-v2dT` with gain gate and aggressiveness
+  profiles, batch 11 `aggressiveness`, batch 12 options, perSubject 10/min) and restores what `0.1.0-beta.1` lacked:
+  default mode `observe` (guard opt-in, `aggressiveness` default `balanced` applies once you opt in), observe never
+  holding or delaying deliveries with background delivery decisions recorded (now also for sample / breaker / route
+  scope demotions and protected / cross-origin subjects), the redaction fixes, the install CLI fixes, and
+  `fetch-model` defaulting to `@genclass/runtime-model@0.2.0` on jsDelivr (equal to `DEFAULT_MODEL_BASE_URL`). The
+  `genclass-runtime` alias is bumped to `0.1.0-beta.2` and pins it. 461 unit tests + 14 skipped, plus 4 review-perf.
 - **npm 0.1.0-beta.1** (latest) + **model 0.2.0** (r17-v2dT, gain gate, cautious/balanced/eager profiles) + the `genclass-runtime` alias
   are published (2026-10-08). The registry e2e passes: guard fixes 6/6 and clean typing makes 0 model calls.
 - **npm:** `@genclass/runtime@0.1.0-beta.0` (latest) and `@genclass/runtime-model@0.1.0` (r17-v2b, with gates refit on on-policy data)
@@ -111,9 +120,16 @@ Mehar operates the Azure cluster; nobody else touches Azure. The jobs below run 
 The usual order (HANDOFF.md): v2 data collected → teacher → labels → distillation → DAgger → EVAL → model
 package → demos rerun → runtime release.
 
-- **Push `mvp-v2-b6` and the tags** (`v0.1.0-beta.0`, `runtime-model-v0.1.0`, `v0.1.0-alpha.1`) through an account with
-  write access to daybot-solutions-inc/GenClass-lib. GitHub releases for them are optional.
-- **Model `0.2.0` (`r17-v2c`)**: the next model package.
+- **Publish `@genclass/runtime@0.1.0-beta.2`** (`--tag latest`) and the `genclass-runtime@0.1.0-beta.2` alias from
+  the packed tarballs (RELEASE.md, top note), then deprecate `0.1.0-beta.1` ("defaults to guard and lacks the
+  observe/redaction/install fixes; use 0.1.0-beta.2 or later") after checking with Mehar.
+- **Push `mvp-v2-b6` and the tags** (`v0.1.0-beta.0`, `runtime-model-v0.1.0`, `v0.1.0-alpha.1`, and `v0.1.0-beta.2`
+  once published) through an account with write access to daybot-solutions-inc/GenClass-lib; merge it back into
+  `runtime` so the two branches stop diverging on the default mode. GitHub releases are optional.
+- **Re-measure observe mode on model 0.2.0** (false flags per profile's report threshold 0.95 / 0.90 / 0.70); the
+  READMEs still quote model 0.1.0's observe numbers.
+- **`balanced` is slightly over the FIR targets** (guard 0.13% vs 0.1%, heal 0.59% vs 0.5% on simulated apps): refit
+  with the real-app certification set (RESULTS.md §1) or make `cautious` the default for guard.
 
 6. **Check the v2 data before training on it** (from the review findings): SIM samples budget 3,200 for ~40% of
    trajectories (`sim/src/world/scenario.ts` → `budget`), above the v2 device budgets; unlabeled rows hard-label

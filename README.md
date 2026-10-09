@@ -23,32 +23,36 @@ generic facts about each write, request and response, and asks a small GenClass 
 The model runs in the browser (WebGPU or WASM, in a Web Worker). It answers two questions: what is happening, and
 which available action is best. There is no list of known bugs in the code.
 
-> **Status: beta. `@genclass/runtime@0.1.0-beta.0` ships with its first trained model,
-> `@genclass/runtime-model@0.1.0`.**
+> **Status: beta. `@genclass/runtime@0.1.0-beta.2` with the model `@genclass/runtime-model@0.2.0`.**
 >
 > - **Runtime:** works and is unit-tested (situation format tag `situation-v2.3`). Install with
 >   `npx @genclass/runtime init`, one import (`@genclass/runtime/auto`) or one script tag.
 > - **Default mode** is `observe`: the model diagnoses salient situations and the runtime reports likely problems,
->   without changing what the app does. `guard` is opt-in; `heal` is experimental.
-> - **Model:** `genclass-runtime-r17` 2.0.0-rc2 (9.6 MB, WASM or WebGPU), loaded from jsDelivr by default.
->   - On held-out data it diagnoses about 84% of decisions correctly (83.6% on real apps).
->   - In observe mode it flags 1.4% (simulated) to 3.8% (real) of decisions where nothing was wrong.
->   - When it acts, it is rarely wrong (0.01% guard, 0.07% heal on simulated apps; none seen on held-out real apps),
->     but it acts on under 6% of the cases where acting would help.
+>   without changing what the app does (it never holds or delays a response). `guard` is opt-in; `heal` is
+>   experimental.
+> - **How eager it acts** once you opt in: `aggressiveness: "cautious" | "balanced" (default) | "eager"`.
+> - **Model:** `genclass-runtime-r17` 2.0.0-rc4t (`r17-v2dT`, gain gate, 10 MB, WASM or WebGPU), loaded from jsDelivr
+>   at idle and cached. On held-out data ([RESULTS.md](docs/runtime/RESULTS.md) §1):
 >
->   See the [model card](packages/runtime-model/MODEL_CARD.md).
-> - **Older versions on npm:** `0.1.0-alpha.1` (the v2 runtime without the install commands or model gates) and
->   `0.1.0-alpha.0` (the v1 runtime: guard by default, holds store writes, `NaN` crash). Use `0.1.0-beta.0`.
+>   | profile | guard FIR | guard recall (clear / real) | heal FIR | heal recall (clear / real) | report threshold |
+>   |---|---|---|---|---|---|
+>   | `cautious` | 0.005% | 2.4% / 1.4% | 0.26% | 3.7% / 3.8% | 0.95 |
+>   | `balanced` (default) | 0.13% | 7.8% / 7.5% | 0.59% | 7.1% / 10.4% | 0.90 |
+>   | `eager` | 0.54% | 14.2% / 21.0% | 1.84% | 17.1% / 24.2% | 0.70 |
+>
+>   Our targets are guard FIR ≤ 0.1% and heal FIR ≤ 0.5%. `cautious` stays under both; `balanced` is slightly over
+>   both (0.13% and 0.59% on simulated apps); `eager` is well over. FIR on held-out real apps was 0.00% for every
+>   profile. Recall is still low: at `balanced`, guard acts on under 8% of the cases where acting would help.
+>   Installed from the registry into a fresh app, guard mode fixed an out-of-order typeahead in 6 of 6 trials, and
+>   clean typing made 0 model calls. See the [model card](packages/runtime-model/MODEL_CARD.md).
+> - **Options** (activation, route scopes, protected endpoints, breaker, shadow, veto, action limits, sinks):
+>   [OPTIONS-SPEC.md](docs/runtime/OPTIONS-SPEC.md).
+> - **Older versions on npm:** `0.1.0-beta.1` (model 0.2.0 and the options, but `guard` by default and without the
+>   observe-delivery, redaction and install fixes), `0.1.0-beta.0` (model 0.1.0), `0.1.0-alpha.1` and
+>   `0.1.0-alpha.0` (no model). Use `0.1.0-beta.2`.
 >
 > What's next: [OPEN_TASKS.md](OPEN_TASKS.md). Picking up the work: [HANDOFF.md](HANDOFF.md). AI coding agents:
 > start at [AGENTS.md](AGENTS.md).
-
-> **Status: beta.** [`@genclass/runtime@0.1.0-beta.1`](https://www.npmjs.com/package/@genclass/runtime) with the model
-> [`@genclass/runtime-model@0.2.0`](https://www.npmjs.com/package/@genclass/runtime-model) (10 MB, loaded at idle and
-> cached). Choose how eager it is with `aggressiveness: "cautious" | "balanced" | "eager"`. Installed from the
-> registry into a fresh app, guard mode fixed an out-of-order typeahead in 6 of 6 trials, and clean typing made 0
-> model calls. Measured numbers per profile: [RESULTS.md](docs/runtime/RESULTS.md). Options: [OPTIONS-SPEC.md](docs/runtime/OPTIONS-SPEC.md).
-> Remaining work: [OPEN_TASKS.md](OPEN_TASKS.md). Agents continuing the work: [HANDOFF.md](HANDOFF.md).
 
 ## How it works
 
@@ -71,12 +75,12 @@ which available action is best. There is no list of known bugs in the code.
 
    | mode | behaviour |
    |---|---|
-   | `observe` (default) | reports only |
-   | `guard` (opt-in) | `discard`, `defer`, `coalesce`, `delay`, only when the permitted actions' summed probability reaches the model's fitted guard threshold for that trigger (0.80; 0.95 on mutations) |
-   | `heal` (experimental) | also `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync` and custom actions, at the heal threshold for that trigger (0.85; 0.95 on failures) |
+   | `observe` (default) | reports only; never holds, delays or changes anything |
+   | `guard` (opt-in) | `discard`, `defer`, `coalesce`, `delay`, only when the model's gate for that trigger says acting beats doing nothing by the margin of the chosen `aggressiveness` profile |
+   | `heal` (experimental) | also `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync` and custom actions, at the heal margin of the profile |
 
-   Detections are reported when the top diagnosis is not `expected` with probability ≥ 0.85 (the model's report
-   threshold).
+   Detections are reported when the top diagnosis is not `expected` with probability at or above the profile's
+   report threshold (0.95 / 0.90 / 0.70 for cautious / balanced / eager). `rt.gates()` shows what is in force.
 
 6. **Explain.**
    - Every detection and intervention is logged in plain English, with the exact situation text the model read.
@@ -95,12 +99,12 @@ All numbers are on held-out data, with each recall reported next to its false-in
 |---|---|
 | Round 1 model, R17 (9.6 MB int8; **previous format** `situation-v1`), simulated apps | diagnosis 90.5%, action 81.9%, guard FIR 0.05%, heal FIR 0.24%, calibration error 0.009. Recall on clear stale/duplicate cases is only 7.7% (precise but timid). |
 | Why round 1 was timid ([sim/SEPARABILITY.md](sim/SEPARABILITY.md)) | Many clear cases had benign twins with identical visible facts; 24% of clear rows were mislabelled `expected`; labels assumed knowledge a runtime cannot have. v2 adds measured facts and fixes the labels. |
-| **r17-v2b** (`situation-v2`; shipped as `@genclass/runtime-model@0.1.0`) | Simulated apps: diagnosis 84.2%, action 77.8%. Real apps: diagnosis 83.6%, action 80.0%. Gates refit on the model's own on-policy traffic. Guard FIR 0.01% simulated, 0.00% on held-out real apps; heal FIR 0.07% / 0.00%. Recall: heal acts on 2.9% of clear simulated cases and 5.7% of actionable real-app cases; guard on 0.7%. |
-| Observe mode with r17-v2b (report threshold 0.85, fitted on dev data) | Held-out test: 1.41% of decisions where nothing was wrong flagged on simulated apps (3.1% on the model's own on-policy traffic), 3.78% on real apps (1.05% without one app); 61–65% of problem decisions flagged, 89–94% of flags with the right diagnosis |
+| **r17-v2dT** (`situation-v2`; shipped as `@genclass/runtime-model@0.2.0`, default since `0.1.0-beta.1`) | Gain gate with three profiles (table above). `balanced`: guard FIR 0.13%, heal FIR 0.59% on simulated apps (slightly over the 0.1% / 0.5% targets); `cautious`: 0.005% / 0.26% (under). 0.00% on held-out real apps for every profile. Calibration error 0.009. |
+| r17-v2b (shipped as `@genclass/runtime-model@0.1.0`) | Simulated apps: diagnosis 84.2%, action 77.8%. Real apps: diagnosis 83.6%, action 80.0%. Guard FIR 0.01%, heal FIR 0.07%; heal acts on 2.9% of clear simulated cases and 5.7% of actionable real-app cases; guard on 0.7%. |
 | Training continues | teacher model, distillation, DAgger rounds; ~10M simulated gold rows, ~50M unlabeled rows, ~0.6M real-app rows |
 | Never make a correct app worse (always-passive model, heal vs observe, 66 real apps × 6 seeds) | 0/396 clean runs changed: final page text (inputs and alerts excluded) and server state. Request timing and store contents are not compared, nor is observe mode against no runtime. With chaos: 3/198 changed. |
 | Same check on the v1 runtime (store-write holds) | 4/198 clean runs changed; the React/Redux RealWorld app never rendered its home feed |
-| Demos | Baseline only, with the untrained GenClass 0.1 model: guard took 0 actions. Not yet re-run with r17-v2b. |
+| Demos | Baseline only, with the untrained GenClass 0.1 model: guard took 0 actions. Not yet re-run with model 0.2.0. |
 
 ## What's in this repo
 
@@ -132,7 +136,7 @@ NODE_OPTIONS=--expose-gc npx vitest run test/review-perf.test.ts --retry=2   # t
 The same steps run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml), Node 22) on pushes to `main`,
 `runtime`, `mvp` and `mvp-v2`, on pull requests, and on manual dispatch.
 
-Last full local run (2026-10-08, branch `mvp-v2-b6`, version `0.1.0-beta.0`): 419 tests passed and 14 skipped, plus
+Last full local run (2026-10-08, branch `mvp-v2-b6`, version `0.1.0-beta.2`): 461 tests passed and 14 skipped, plus
 the 4 perf tests run alone. The skips are model-parity tests, which need `GENCLASS_MODEL_DIR`. The perf tests time a
 5,000-item store and can fail under parallel load.
 
