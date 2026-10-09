@@ -376,10 +376,9 @@ export class StoreHub {
       this.hooks.dropped?.(m, dropped, false);
       return false;
     }
-    if (m.commit) {
-      // a library commit (redux dispatch) cannot be applied in part: apply it whole (fail-open)
-      return true;
-    }
+    // A library write (redux dispatch, zustand set) is applied in part too: its commit receives the patched value
+    // (the redux enhancer dispatches the original action with that state as the reducer's result; zustand replaces
+    // the state with it). Applying it whole here made a delivery `discard` a silent no-op on those stores.
     const p = patchValue(
       s.name,
       base,
