@@ -446,6 +446,8 @@ export interface ModelOptions {
 
 export interface DeviceEnv {
   deviceMemoryGB?: number;
+  /** navigator.userAgentData.mobile (Chromium browsers; undefined elsewhere, e.g. Safari). */
+  mobile?: boolean;
   saveData?: boolean;
   effectiveType?: string;
   cores?: number;

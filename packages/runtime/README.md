@@ -25,7 +25,8 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 > **Privacy notice: anonymous diagnostics are on by default since `0.1.0-beta.3`.** `GenClass.init()` in a browser
 > sends GenClass's decisions, including the redacted situation text the model read, to the GenClass maintainers to
 > improve the model. Never typed passwords or payment fields, cookies, headers, bodies or IP addresses. Opt out with
-> `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`, or `localStorage["genclass.telemetry"] = "off"`;
+> `npx @genclass/runtime init --no-telemetry`, `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`, or
+> `localStorage["genclass.telemetry"] = "off"`;
 > browsers sending Global Privacy Control are never collected. Details: [Privacy and telemetry](#privacy-and-telemetry)
 > and [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
 
@@ -57,7 +58,8 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 [Install](#install) · [Why it's an easy yes](#why-its-an-easy-yes-measured) · [Modes](#modes) ·
 [What it looks for](#what-it-looks-for) · [State it can protect](#state-it-can-protect) ·
 [Ask it questions](#ask-it-questions) · [Observability](#observability) · [Extend it](#extend-it) ·
-[Model quality](#model-quality) · [Performance](#performance) · [Privacy and telemetry](#privacy-and-telemetry) ·
+[Model quality](#model-quality) · [Performance](#performance) · [Costs](#costs) ·
+[Content-Security-Policy and self-hosting](#content-security-policy-and-self-hosting) · [Privacy and telemetry](#privacy-and-telemetry) ·
 [Known limitations](#known-limitations) · [API reference](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md)
 
 ## What it looks like
@@ -104,6 +106,22 @@ npx @genclass/runtime remove             # undo exactly what init added
 
 Other flags: `--no-install`, `--no-devtools`, `--cwd <dir>`, `--cdn <url>` and `--no-sri` (plain HTML),
 `remove --keep-package`.
+
+Options without editing code (also on a project `init` already set up; `remove` takes them out too):
+
+```bash
+npx @genclass/runtime init --no-telemetry                # anonymous diagnostics off (--telemetry: explicitly on)
+npx @genclass/runtime init --model-url /genclass-model/  # a self-hosted model (see Content-Security-Policy below)
+```
+
+They go into a marked `genclass.config.ts` (or `.js`) next to your entry, which sets `window.GENCLASS_CONFIG` and is
+imported right before the `/auto` import (an ES module's imports run before its own code, so options cannot be set
+above the import in the same file). Any `GenClass.init()` option works in that file. Plain HTML gets
+`data-telemetry="off"` (and `data-model`, `data-ort`) on the script tag, Astro a `<meta name="genclass">` line.
+
+`init` also says that telemetry is on by default and how to turn it off, and when your app sets a
+Content-Security-Policy (`next.config` headers, a proxy or middleware, a `<meta http-equiv>`, helmet, `vercel.json`,
+`_headers`, ...) it prints the steps to self-host the model.
 
 - **What `init` edits.** It only edits browser apps. It stops and says why for a Node server, a library (a UI
   framework as a peer dependency, or an `exports`, `module`, `types` or `bin` field), or an entry file that imports
@@ -190,8 +208,9 @@ These hold for the runtime; whether the model's decisions are good is a separate
   it changed carry an `x-genclass` header.
 - **Off in one step.** `?genclass=off` in the URL installs nothing, and observe (the default) never changes
   execution.
-- **Small.** The main entry is about 83 KB gzip (minified, without the optional devtools). The default model is
-  10.2 MB on WASM (13.6 MB fp16 on WebGPU with `shader-f16`), downloaded once at idle and cached.
+- **Small on the main thread.** The main entry is about 89 KB gzip (minified, without the optional devtools). The
+  default model is 10.2 MB on WASM (13.6 MB fp16 on WebGPU with `shader-f16`), downloaded once at idle and cached.
+  It runs in a worker that holds 190 to 280 MB while loaded: see [Costs](#costs).
 
 ## Modes
 
@@ -492,6 +511,11 @@ onLogout(() => rt.learn.clear());
 onIncident(() => rt.disable({ undo: true }));
 ```
 
+**What is in force:** `rt.status.effectiveMode` is the mode the runtime acts in now (the requested mode, demoted by
+`sample`, the breaker and the matching `routes` rule). `rt.status.scope` is the same for the current route:
+`{ route, mode, aggressiveness }`, plus `rule` (index into `routes`) and `ceiling` (that rule's mode) when a rule
+matches. Route rules only ever lower the mode. `rt.gates()` carries the same `mode` next to the thresholds.
+
 **Recommended `requests.protect` starter** (it is not built in; adapt it to your endpoints):
 `[/\/(auth|login|logout|oauth|token|session)\b/, /\/(payment|checkout|billing)\b/]`
 
@@ -574,10 +598,14 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
   | Redux-style dispatch on 5,000 entities | about 0.7 ms |
   | settled-point check | 0.3 ms |
 
-- **Bundle:** the main entry is about 240 KB minified / 83 KB gzip, measured with esbuild and onnxruntime-web
-  external. ONNX Runtime Web (the only dependency) is loaded by the model worker on demand: about 2.7 MB brotli for
-  the WASM-only path, 4.7 MB with WebGPU. The script-tag file is about 255 KB / 86 KB gzip without ONNX
-  Runtime; its model worker (16 KB gzip) and ONNX Runtime glue (25–39 KB gzip) load on demand.
+- **Bundle:** what every page loads is about 264 KB minified / 89 KB gzip for `@genclass/runtime/auto` (88 KB for
+  the main entry with `GenClass.init()`), measured with esbuild (`test/bundle.test.ts` keeps it under 92 KB). It was
+  97 to 99 KB up to `0.1.0-beta.3`, whose README said 83 KB. The model worker, ONNX Runtime Web's JavaScript (about
+  70 KB gzip for WASM, 115 KB with WebGPU, minified) and the devtools are separate chunks loaded on demand. ONNX
+  Runtime's own `.wasm` (14 MB, 3.1 MB brotli; 27 MB, 5.5 MB brotli with WebGPU) is never part of your build: the
+  runtime fetches it when the model loads (from jsDelivr, or `model.ortWasmPaths`). Up to `0.1.0-beta.3`, bundlers
+  copied both `.wasm` builds (41 MB, one file over 25 MiB) into every app's build output unused. The script-tag file
+  is about 255 KB / 86 KB gzip; its model worker and ONNX Runtime glue load on demand.
 - **Model:** the default model is 9.6 MB (q8, pruned 16k vocabulary) on WASM and 13.6 MB (fp16) on WebGPU with
   `shader-f16`. With onnxruntime-web 1.30 on single-thread WASM, measured in Node on the training VM, a forward pass
   took about 176 / 320 / 583 ms at 500 / 780 / 1,170 tokens (p50 315 ms on runtime-sized requests). Single-thread
@@ -595,15 +623,71 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
   measured with the round-1 model of the same size).
 - **Loading:** the model loads at idle after page load (`model.preload: "idle"`) from
   `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/`. It is cached in Cache Storage and checked
-  with sha256. To self-host, `npx @genclass/runtime fetch-model public/genclass-model` downloads it, and
-  `model: { baseUrl: "/genclass-model/" }` points the runtime at it. `model: false` loads no model (nothing is
-  detected or prevented then).
+  with sha256. To self-host, see [Content-Security-Policy and self-hosting](#content-security-policy-and-self-hosting).
+  `model: false` loads no model (nothing is detected or prevented then).
+
+## Costs
+
+Measured in a real app (Troy trial, 2026-10-09: a Next.js 16 ordering site, production build, Playwright Chromium,
+390×844 mobile viewport, 4× CPU throttling, medians of 5 runs, observe mode, `0.1.0-beta.3`), the same build with and
+without `?genclass=off`:
+
+| | with GenClass |
+|---|---|
+| JavaScript on every page (first load, gzip) | +97 KB with `0.1.0-beta.3`; `0.1.0-beta.4` cuts the runtime itself to about 89 KB (see Performance) |
+| Main thread: load event, LCP, long tasks | no measurable change; main JS heap +0.4 MB |
+| **Memory: renderer process (holds the model worker)** | **+190 to 280 MB RSS** while the model is loaded (cold 448 vs 169 MB, warm 361 vs 171 MB) |
+| **First visit download** | **12.7 MB** after the load event (q8 model 9.45 MB, ONNX Runtime wasm 3.07 MB brotli, tokenizer 207 KB); WebGPU devices: 13.6 MB fp16 model plus the larger ONNX Runtime build |
+| Later visits | about 1 KB (`model.json` revalidated); the rest comes from Cache Storage, checked with sha256 |
+| Model load | WASM (1 thread): 0.9 to 1.3 s cold, 0.4 s warm. WebGPU (Apple M-series): 12 s cold, 2 s warm |
+| App build output | `0.1.0-beta.3`: +41 MB of unused ONNX Runtime files. `0.1.0-beta.4`: none |
+
+**On phones** the memory and the download are what matter (the page may also run a call, the camera or a
+recorder). Options that exist today:
+
+```ts
+GenClass.init({
+  model: {
+    // no model on phones (Chromium reports userAgentData.mobile; Safari does not), or on small devices
+    loadIf: (env) => !env.mobile && (env.deviceMemoryGB ?? 8) >= 4,
+    // or: loadIf: { minDeviceMemoryGB: 4, saveData: "skip" }   (skip on Save-Data connections too)
+    preload: "lazy",            // download on the first salient situation, not at idle on every page
+    unloadAfterIdleMs: 60_000,  // free the worker's memory after a minute without a decision
+  },
+});
+```
+
+`model: false` keeps the runtime observing (console reports, `rt.status`, devtools) with no download and no worker.
+The default `loadIf` already loads lazily on Save-Data connections.
+
+## Content-Security-Policy and self-hosting
+
+By default the model files and ONNX Runtime's wasm come from `https://cdn.jsdelivr.net`, fetched by a worker. A
+policy whose `connect-src` does not allow that origin blocks them: GenClass then keeps observing without a model and
+prints **one** console warning naming the blocked origin and the fix (`status.blocked` has the details). Either allow
+`https://cdn.jsdelivr.net` in `connect-src`, or self-host (no third-party origin):
+
+```bash
+npx @genclass/runtime fetch-model public/genclass-model   # model + ONNX Runtime files (into public/genclass-model/ort/)
+npx @genclass/runtime init --model-url /genclass-model/   # or pass the options yourself:
+```
+
+```ts
+GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-model/ort/" } });
+```
+
+- `fetch-model` downloads every model variant and both ONNX Runtime builds (about 64 MB). `--variant q8 --ort wasm`
+  is about 24 MB; then also set `model.device: "wasm"` (`init --model-url` does it when it finds only the WASM
+  build there). The WebGPU build's wasm is 27 MB, over the 25 MiB per-file limit of some static hosts (Cloudflare).
+- The policy also needs `'wasm-unsafe-eval'` in `script-src` (WebAssembly) and `worker-src 'self'` (or `blob:`
+  for the script tag).
 
 ## Privacy and telemetry
 
 - **The model runs locally.** Situations are built and decided in the browser; no app data is sent anywhere to make
   a decision. The default configuration downloads the model files (and ONNX Runtime's WASM when the model loads)
-  from cdn.jsdelivr.net. `model.baseUrl` and `model.ortWasmPaths` self-host them; `model: false` loads nothing.
+  from cdn.jsdelivr.net. `model.baseUrl` and `model.ortWasmPaths` self-host them (`fetch-model` downloads both);
+  `model: false` loads nothing.
 - **Anonymous diagnostics (telemetry) are on by default** with `GenClass.init()` in a browser (since
   `0.1.0-beta.3`; off in Node/SSR and with `createRuntime()` unless enabled). They go to the GenClass maintainers'
   collector (a Cloudflare Worker storing to a private R2 bucket) to measure and improve the model. The console says
@@ -619,7 +703,7 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
     two-letter country, and stores no IP address or user agent.
   - **Situation text can still contain app data** the redactor does not recognise as secret (a product name, a
     search term). `telemetry: { include: { situation: false } }` keeps the text out; `redact` hides more.
-  - **Opt out** (any one): `GenClass.init({ telemetry: false })` (also `telemetry=off` in the meta tag or
+  - **Opt out** (any one): `npx @genclass/runtime init --no-telemetry`, `GenClass.init({ telemetry: false })` (also `telemetry=off` in the meta tag or
     `data-telemetry="off"` on the script tag), `?genclass=no-telemetry` (or `?genclass=off`) in the URL,
     `localStorage.setItem("genclass.telemetry", "off")`. Browsers that send **Global Privacy Control**
     (`navigator.globalPrivacyControl`) are never collected, as California's CCPA/CPRA requires for opt-out signals.

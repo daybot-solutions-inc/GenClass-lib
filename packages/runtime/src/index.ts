@@ -58,8 +58,15 @@ function skippedProvider(reason: string): DecisionProvider {
 
 /** What the page can tell about the device (OPTIONS-SPEC §4.15). Unknown values stay undefined (= allowed). */
 export function deviceEnv(g: Record<string, unknown>): DeviceEnv {
-  const nav = (g.navigator ?? {}) as { deviceMemory?: number; hardwareConcurrency?: number; gpu?: unknown; connection?: { saveData?: boolean; effectiveType?: string } };
+  const nav = (g.navigator ?? {}) as {
+    deviceMemory?: number;
+    hardwareConcurrency?: number;
+    gpu?: unknown;
+    connection?: { saveData?: boolean; effectiveType?: string };
+    userAgentData?: { mobile?: boolean };
+  };
   const env: DeviceEnv = { webgpu: !!nav.gpu };
+  if (typeof nav.userAgentData?.mobile === "boolean") env.mobile = nav.userAgentData.mobile;
   if (typeof nav.deviceMemory === "number") env.deviceMemoryGB = nav.deviceMemory;
   if (typeof nav.hardwareConcurrency === "number") env.cores = nav.hardwareConcurrency;
   if (typeof nav.connection?.saveData === "boolean") env.saveData = nav.connection.saveData;

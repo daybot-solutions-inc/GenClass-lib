@@ -1,7 +1,7 @@
 // Batch 12: configuration options (docs/runtime/OPTIONS-SPEC.md). One block per option.
 import { describe, expect, it } from "vitest";
 import { defaultScript, FakeClock, setup } from "./helpers.js";
-import { evalLoadIf, IdleUnloadProvider } from "../src/index.js";
+import { deviceEnv, evalLoadIf, IdleUnloadProvider } from "../src/index.js";
 import type { DecisionProvider, ModelStatus, SinkRecord } from "../src/types.js";
 
 const DELAY = defaultScript({ request: { diagnosis: "overload", action: "delay" } });
@@ -238,6 +238,14 @@ describe("model.loadIf", () => {
     const w: string[] = [];
     expect(evalLoadIf({ loadIf: () => { throw new Error("x"); } }, { webgpu: false }, (s) => void w.push(s))).toBe("load");
     expect(w.length).toBe(1);
+  });
+  it("env.mobile (navigator.userAgentData.mobile) lets a predicate keep the model off phones (README: Costs)", () => {
+    expect(deviceEnv({ navigator: { userAgentData: { mobile: true }, deviceMemory: 4 } }).mobile).toBe(true);
+    expect(deviceEnv({ navigator: { userAgentData: { mobile: false } } }).mobile).toBe(false);
+    expect(deviceEnv({ navigator: {} }).mobile).toBeUndefined(); // Safari: unknown
+    const notOnPhones = { loadIf: (env: { mobile?: boolean }) => (env.mobile ? false : true) };
+    expect(evalLoadIf(notOnPhones, deviceEnv({ navigator: { userAgentData: { mobile: true } } }), warn)).toEqual({ skip: "loadIf" });
+    expect(evalLoadIf(notOnPhones, deviceEnv({ navigator: { userAgentData: { mobile: false } } }), warn)).toBe("load");
   });
 });
 
