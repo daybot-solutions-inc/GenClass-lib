@@ -4,7 +4,14 @@
 > **Read this when:** you are asked to cut a release, prepare a tarball for the user to publish, or package a trained model.
 > **Source of truth:** the code. Verified 2026-10-08 (~07:00 UTC) against branch `mvp-v2-merge` at f107013. That branch is `mvp-v2` (release commit 806a296), merged with origin/runtime eff18cb (dabbce2), plus the two runtime fixes 054da38 and f107013. Newer commits on origin/runtime (up to 5bc40c9) were read with `git show` and are not merged on this branch. If this doc and the code disagree, the code wins.
 
-> **Next release: `@genclass/runtime@0.1.0-beta.2` (prepared on `mvp-v2-b6`, not published).** It merges
+> **Next release: `@genclass/runtime@0.1.0-beta.3` (prepared on `mvp-v2-b6`, not published; privacy-relevant).**
+> `0.1.0-beta.2` plus default-on anonymous telemetry (`packages/runtime/TELEMETRY.md`, collector `telemetry-worker/`
+> deployed at `https://genclass-telemetry.mehar-144.workers.dev`). The alias `genclass-runtime@0.1.0-beta.3` pins it.
+> Publish from `packages/runtime`: `npm publish genclass-runtime-0.1.0-beta.3.tgz --access public --tag latest`, then
+> from `packages/genclass-runtime`: `npm publish genclass-runtime-0.1.0-beta.3.tgz --access public --tag latest`.
+> `src/version.ts` -> `RUNTIME_VERSION` must equal `package.json` `version` on every bump (a unit test checks it).
+>
+> **Previous: `@genclass/runtime@0.1.0-beta.2` (prepared on `mvp-v2-b6`).** It merges
 > `0.1.0-beta.1` (published by Mehar from `runtime` at 696b1b4 with `@genclass/runtime-model@0.2.0`, defaulting to
 > `guard`) with the `0.1.0-beta.0` fixes: observe default, observe never delaying deliveries, redaction, install CLI,
 > jsDelivr `fetch-model` default (model `0.2.0`). The alias `genclass-runtime@0.1.0-beta.2` pins it. Publish from

@@ -7,8 +7,9 @@ release commit 806a296); `mvp-v2-merge` merges the two. Spec:
 The runtime decides through a trained local model; nothing here is hardcoded per bug pattern.
 
 The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). On npm (`latest`): `@genclass/runtime@0.1.0-beta.1`
-with `@genclass/runtime-model@0.2.0` (`r17-v2dT`); `0.1.0-beta.2` (the merge of both branches, observe default) is
-packed on `mvp-v2-b6` and waits to be published (Done, Next).
+with `@genclass/runtime-model@0.2.0` (`r17-v2dT`); `0.1.0-beta.2` (the merge of both branches, observe default) was
+packed on `mvp-v2-b6` for publishing, and `0.1.0-beta.3` (beta.2 + default-on telemetry, privacy-relevant) is
+packed on top of it and waits to be published (Done, Next).
 
 ## Done
 
@@ -125,10 +126,11 @@ Mehar operates the Azure cluster; nobody else touches Azure. The jobs below run 
 The usual order (HANDOFF.md): v2 data collected → teacher → labels → distillation → DAgger → EVAL → model
 package → demos rerun → runtime release.
 
-- **Publish `@genclass/runtime@0.1.0-beta.2`** (`--tag latest`) and the `genclass-runtime@0.1.0-beta.2` alias from
-  the packed tarballs (RELEASE.md, top note), then deprecate `0.1.0-beta.1` ("defaults to guard and lacks the
-  observe/redaction/install fixes; use 0.1.0-beta.2 or later") after checking with Mehar.
-- **Push `mvp-v2-b6` and the tags** (`v0.1.0-beta.0`, `runtime-model-v0.1.0`, `v0.1.0-alpha.1`, and `v0.1.0-beta.2`
+- **Publish `@genclass/runtime@0.1.0-beta.3`** (`--tag latest`) and the `genclass-runtime@0.1.0-beta.3` alias from
+  the packed tarballs (RELEASE.md, top note; `0.1.0-beta.2` may already be published), then deprecate `0.1.0-beta.1`
+  ("defaults to guard and lacks the observe/redaction/install fixes; use 0.1.0-beta.2 or later") after checking
+  with Mehar. Decide the telemetry owner items under "Needs the user" first or right after.
+- **Push `mvp-v2-b6` and the tags** (`v0.1.0-beta.0`, `runtime-model-v0.1.0`, `v0.1.0-alpha.1`, `v0.1.0-beta.2` and `v0.1.0-beta.3`
   once published) through an account with write access to daybot-solutions-inc/GenClass-lib; merge it back into
   `runtime` so the two branches stop diverging on the default mode. GitHub releases are optional.
 - **Re-measure observe mode on model 0.2.0** (false flags per profile's report threshold 0.95 / 0.90 / 0.70); the

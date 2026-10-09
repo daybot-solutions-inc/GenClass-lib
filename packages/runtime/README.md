@@ -29,7 +29,7 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 > browsers sending Global Privacy Control are never collected. Details: [Privacy and telemetry](#privacy-and-telemetry)
 > and [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
 
-> **Status: beta (`0.1.0-beta.2`), with model `@genclass/runtime-model@0.2.0`.**
+> **Status: beta (`0.1.0-beta.3`), with model `@genclass/runtime-model@0.2.0`.**
 >
 > - **The model loads by default.** A default `GenClass.init()` loads `@genclass/runtime-model@0.2.0` (10.2 MB q8,
 >   `genclass-runtime-r17` 2.0.0-rc4t, run `r17-v2dT`, with a gain gate and three aggressiveness profiles) from
@@ -44,7 +44,7 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 >   `cautious`, 0.005% and 0.26%, under them. No wrong interventions were seen on held-out real apps. At `balanced`,
 >   guard acts on under 8% of the cases where acting would help. Details: [Model quality](#model-quality) and the
 >   [model card](https://www.npmjs.com/package/@genclass/runtime-model).
-> - **Older versions.** `0.1.0-beta.1` has model 0.2.0 and the new options but defaults to `guard`, and lacks the
+> - **Older versions.** `0.1.0-beta.2` is this release without telemetry. `0.1.0-beta.1` has model 0.2.0 and the new options but defaults to `guard`, and lacks the
 >   observe-delivery, redaction and install fixes of `0.1.0-beta.0` (all back in `0.1.0-beta.2`). `0.1.0-beta.0`
 >   ships model 0.1.0. `0.1.0-alpha.1` and `0.1.0-alpha.0` (v1 runtime: guard by default, holds store writes, `NaN`
 >   crash) predate the model; do not use them.
@@ -148,7 +148,7 @@ SSR or in Node, `/auto` installs nothing and returns an inert runtime.
 It exposes `window.GenClass` and loads the model worker, ONNX Runtime Web and the overlay on demand from the same
 version on the CDN. `data-mode` takes `observe` (the default), `guard` or `heal`; `data-devtools="local"` shows the
 overlay only on localhost; `data-manual` skips the automatic `GenClass.init()`. Pin a version in production
-(`https://cdn.jsdelivr.net/npm/@genclass/runtime@0.1.0-beta.2`); the plain-HTML path of `init` writes a pinned
+(`https://cdn.jsdelivr.net/npm/@genclass/runtime@0.1.0-beta.3`); the plain-HTML path of `init` writes a pinned
 jsDelivr URL with SRI.
 
 **4. By hand:**
