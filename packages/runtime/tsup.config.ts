@@ -43,14 +43,16 @@ const cdnOrt = {
 // (for a proxy worker). The runtime never lets ORT fetch those (it hands ORT the wasm bytes itself, from
 // `ortWasmPaths` or jsDelivr: src/model/backend.ts -> prefetchWasm), so they were 41 MB of dead weight in every app
 // build (and the 27 MB file is over the 25 MiB per-file limit of some static hosts). Reading import.meta.url through a
-// variable hides the pattern from every bundler; the value at runtime is the same.
+// variable hides the pattern from every bundler; the value at runtime is the same. Not a plain alias
+// (`const u = import.meta.url`): Turbopack propagates that constant and still resolves `new URL("<file>", u)`
+// (found with Next 16.3 in the Troy trial); an array element read is opaque to it, webpack and Rollup/Vite.
 export const ORT_URL_VAR = "__genclassOrtUrl";
 const ortNoAssets = {
   name: "genclass-ort-no-assets",
   setup(build: { onLoad(o: { filter: RegExp }, cb: (a: { path: string }) => Promise<{ contents: string; loader: "js" }>): void }) {
     build.onLoad({ filter: /[\\/]onnxruntime-web[\\/]dist[\\/][^\\/]+\.m?js$/ }, async (args) => {
       const src = await readFile(args.path, "utf8");
-      return { contents: `const ${ORT_URL_VAR} = import.meta.url;\n${src.split("import.meta.url").join(ORT_URL_VAR)}`, loader: "js" };
+      return { contents: `const ${ORT_URL_VAR} = [import.meta.url][0];\n${src.split("import.meta.url").join(ORT_URL_VAR)}`, loader: "js" };
     });
   },
 };

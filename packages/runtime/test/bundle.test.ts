@@ -31,6 +31,8 @@ describe.skipIf(!built)("dist as an app bundles it", () => {
     for (const f of ["ort-webgpu.js", "ort-wasm.js"]) {
       const src = readFileSync(join(DIST, "cdn", f), "utf8");
       expect(src).not.toMatch(/new\s+\w+\(\s*["'][^"']+["']\s*,\s*import\.meta\.url\s*\)/);
+      // nor a plain alias of it, which Turbopack (Next 16) propagates into those calls
+      expect(src).not.toMatch(/\b[\w$]+\s*=\s*import\.meta\.url\s*[;,]/);
       expect(src).toContain("ort-wasm-simd-threaded"); // still the real ORT (it names its files)
     }
   });
