@@ -91,6 +91,7 @@ import { installPerf } from "./observe/perf.js";
 import { installWebSocket } from "./observe/websocket.js";
 import { installTimers } from "./observe/timers.js";
 import { defaultRedact, normalizeFieldPath, plural, ratio, secs, truncate, type Redactor } from "./util.js";
+import { blockedMessage } from "./model/blocked.js";
 
 const DECISIONS_KEPT = 200;
 /** A held write that applied because its hold budget expired can still be reverted this long after it applied. */
@@ -431,7 +432,9 @@ export class RuntimeImpl implements Runtime {
       const off = this.decider.onStatus((s) => {
         this.fire("status", s);
         if (s.state === "ready") this.emitReport({ kind: "status", message: `[GenClass] Model ready (${[s.model, s.device, s.variant].filter(Boolean).join(", ")}${s.loadMs !== undefined ? `, ${secs(s.loadMs)}` : ""}). Mode: ${this._mode}.` });
-        if (s.state === "error") this.emitReport({ kind: "status", message: `[GenClass] Model unavailable (${s.error ?? "error"}); observing only.` });
+        // a blocked download (CSP, most often): one warning naming the origin and the fix, instead of the bare error
+        if (s.state === "error" && s.blocked) this.warnOnce("model-blocked", blockedMessage(s.blocked));
+        else if (s.state === "error") this.emitReport({ kind: "status", message: `[GenClass] Model unavailable (${s.error ?? "error"}); observing only.` });
       });
       this.uninstall.push(off);
     }

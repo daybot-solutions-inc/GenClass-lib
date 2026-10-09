@@ -3,6 +3,7 @@
 
 import type { Answer } from "../types.js";
 import type { BackendLoadOptions, ModelHostStatus } from "./backend.js";
+import type { CspViolation } from "./blocked.js";
 import type { SerializedError } from "./errors.js";
 
 export type ToWorker =
@@ -22,5 +23,7 @@ export type FromWorker =
   /** Posted once when the worker module (and onnxruntime-web) finished loading. */
   | { type: "hello" }
   | { type: "status"; status: ModelHostStatus }
+  /** A securitypolicyviolation in the worker (a CSP blocked one of its downloads); the host keeps it for the load error. */
+  | { type: "csp"; violation: CspViolation }
   | { type: "result"; id: number; ok: true; value: unknown }
   | { type: "result"; id: number; ok: false; error: SerializedError };

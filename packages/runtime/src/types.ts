@@ -87,6 +87,11 @@ export interface ModelStatus {
   worker?: boolean;
   /** Why the Worker was not used (inline fallback). */
   workerError?: string;
+  /**
+   * state "error" only: the browser blocked a model or onnxruntime-web download (a Content-Security-Policy, else
+   * probably one: see src/model/blocked.ts). The runtime then prints one warning naming the origin and the fix.
+   */
+  blocked?: { url: string; origin: string; csp: boolean; directive?: string };
   /** What the WebGPU probe found. */
   gpu?: string;
   /** Plans that failed before the one that loaded (or all of them, on error). */

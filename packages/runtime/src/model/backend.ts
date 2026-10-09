@@ -298,7 +298,7 @@ export class ModelBackend {
         }
       }
       throw new ModelLoadError(
-        `no plan could run the model: ${attempts.map((a) => `${a.variant}/${a.device}: ${a.error}`).join("; ") || "the card has no usable variant"}`,
+        `${this.wasmError ? `${this.wasmError}; ` : ""}no plan could run the model: ${attempts.map((a) => `${a.variant}/${a.device}: ${a.error}`).join("; ") || "the card has no usable variant"}`,
         attempts,
       );
     } catch (e) {
@@ -344,7 +344,11 @@ export class ModelBackend {
       const got = await fetchFile(fenv, url, { file }, `onnxruntime-web@${version}`);
       w.wasmBinary = got.bytes;
       await got.stored;
-    } catch {
+    } catch (e) {
+      // kept for the load error (it names the URL, so a CSP or network block can be told apart); ORT tries itself
+      const url = new URL(ORT_WASM_FILES[build], wasmBase).href;
+      const msg = errorMessage(e);
+      this.wasmError = msg.includes(url) ? `onnxruntime-web wasm ${msg}` : `onnxruntime-web wasm download failed for ${url}: ${msg}`;
       w.wasmPaths = wasmBase;
     }
   }

@@ -24,6 +24,7 @@ import {
   errorMessage,
   serializeError,
 } from "./errors.js";
+import { blockedFetch, violationOf, type CspViolation } from "./blocked.js";
 import type { DevicePreference, GpuInfo } from "./loader.js";
 import type { EvaluateOk, FromWorker, ToWorker } from "./protocol.js";
 import { toJsonValue } from "./serialize.js";
@@ -264,6 +265,9 @@ class Host implements ModelHost {
   private readonly clock: Clock;
   private readonly loadOptions: BackendLoadOptions;
   private readonly st0: ModelHostStats = { requests: 0, completed: 0, failed: 0, timeouts: 0, busy: 0, notReady: 0 };
+  /** CSP violations seen while loading (page and worker), for status.blocked. */
+  private readonly violations: CspViolation[] = [];
+  private cspOff: (() => void) | null = null;
 
   constructor(private readonly opts: ModelHostOptions) {
     this.clock = opts.clock ?? browserClock;
@@ -307,6 +311,11 @@ class Host implements ModelHost {
   }
 
   private setStatus(s: ModelHostStatus): void {
+    if (s.state === "error" && !s.blocked) {
+      const b = blockedFetch(s.error, this.violations, pageOrigin());
+      if (b) s = { ...s, blocked: b };
+    }
+    if (s.state === "ready") this.stopCspWatch();
     this.st = s;
     this.notify();
     if (s.state === "ready") this.settleReady(null);
@@ -321,12 +330,31 @@ class Host implements ModelHost {
 
   // -------------------------------------------------------------------------------------- loading
 
+  /** The page's securitypolicyviolation events while the model loads (inline downloads, a blocked worker). */
+  private watchCsp(): void {
+    if (this.cspOff) return;
+    const d = (globalThis as { document?: { addEventListener?: (t: string, f: (e: unknown) => void) => void; removeEventListener?: (t: string, f: (e: unknown) => void) => void } }).document;
+    if (!d?.addEventListener) return;
+    const fn = (ev: unknown) => {
+      const v = violationOf(ev);
+      if (v && this.violations.length < 16) this.violations.push(v);
+    };
+    d.addEventListener("securitypolicyviolation", fn);
+    this.cspOff = () => d.removeEventListener?.("securitypolicyviolation", fn);
+  }
+
+  private stopCspWatch(): void {
+    this.cspOff?.();
+    this.cspOff = null;
+  }
+
   /** Creates the transport (worker, else inline) and starts the load. */
   private start(): void {
     if (this.started || this.disposed) return;
     this.started = true;
     this.idleCancel?.();
     this.idleCancel = null;
+    this.watchCsp();
     if (this.opts.worker !== false) {
       let w: WorkerLike | null = null;
       try {
@@ -458,6 +486,9 @@ class Host implements ModelHost {
   private onMessage(m: FromWorker): void {
     if (this.disposed) return;
     switch (m.type) {
+      case "csp":
+        if (this.violations.length < 16) this.violations.push(m.violation);
+        break;
       case "hello":
         this.hello = true;
         this.clock.clearTimeout(this.helloTimer);
@@ -690,6 +721,7 @@ class Host implements ModelHost {
     if (this.disposed) return;
     this.disposed = true;
     this.idleCancel?.();
+    this.stopCspWatch();
     this.clock.clearTimeout(this.helloTimer);
     this.clock.clearTimeout(this.stallTimer);
     const err = new ModelDisposedError();
@@ -709,6 +741,16 @@ class Host implements ModelHost {
       }
     }
     this.listeners.clear();
+  }
+}
+
+/** The page's origin (null outside a page). */
+function pageOrigin(): string | null {
+  try {
+    const o = (globalThis as { location?: { origin?: string } }).location?.origin;
+    return typeof o === "string" && o !== "null" ? o : null;
+  } catch {
+    return null;
   }
 }
 

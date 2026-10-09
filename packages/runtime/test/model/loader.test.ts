@@ -379,4 +379,41 @@ describe("ModelBackend load", () => {
     for (const o of opts) expect(o).toMatchObject({ logSeverityLevel: 3, logVerbosityLevel: 0 });
     expect(ort.env.logLevel).toBe("error");
   });
+
+  it("a failed ORT wasm download is named (with its URL) in the load error", async () => {
+    const d = modelDir();
+    const ort = fakeOrt();
+    ort.InferenceSession.create = async () => {
+      throw new Error("no available backend found. ERR: [wasm] TypeError: Failed to fetch");
+    };
+    const blockedFetch = (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith(".wasm")) throw new TypeError("Failed to fetch");
+      return d.fetch(input);
+    }) as typeof fetch;
+    const statuses: ModelHostStatus[] = [];
+    const b = new ModelBackend({ ort: async () => ort, fetch: blockedFetch, caches: null, clock: browserClock, emit: (s) => statuses.push(s), probeGpu: async () => NO_GPU, inWorker: true });
+    await b.load({ baseUrl: "https://cdn.test/model/", warmup: false }).catch(() => undefined);
+    const err = statuses.at(-1)?.error ?? "";
+    expect(err).toContain(`onnxruntime-web wasm download failed for https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/${ORT_WASM_FILES.wasm}: Failed to fetch`);
+    expect(ort.env.wasm.wasmPaths).toBe("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/"); // ORT then tries itself
+  });
+
+  it("WASM threads take ORT's glue from the wasm directory (a self-hosted ortWasmPaths wins over ORT's own URL)", async () => {
+    const g = globalThis as { crossOriginIsolated?: boolean };
+    const had = Object.getOwnPropertyDescriptor(g, "crossOriginIsolated");
+    Object.defineProperty(g, "crossOriginIsolated", { value: true, configurable: true });
+    try {
+      const d = modelDir();
+      const ort = fakeOrt();
+      ort.env.wasm.wasmPaths = { mjs: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort-wasm-simd-threaded.mjs" }; // what dist/cdn/ort-*.js set
+      const { b, statuses } = backend(d, null, NO_GPU, ort);
+      await b.load({ baseUrl: "https://cdn.test/model/", ortWasmPaths: "https://app.test/genclass-model/ort/", warmup: false });
+      expect(statuses.at(-1)).toMatchObject({ state: "ready", ortBuild: "wasm" });
+      expect(ort.env.wasm.numThreads).toBeGreaterThan(1); // Node reports navigator.hardwareConcurrency
+      expect(ort.env.wasm.wasmPaths).toEqual({ mjs: `https://app.test/genclass-model/ort/${ORT_GLUE_FILES.wasm}` });
+    } finally {
+      if (had) Object.defineProperty(g, "crossOriginIsolated", had);
+      else delete g.crossOriginIsolated;
+    }
+  });
 });

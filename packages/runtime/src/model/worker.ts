@@ -12,6 +12,7 @@
 import { browserClock } from "../clock.js";
 import { ModelBackend, type OrtBuild } from "./backend.js";
 import type { OrtLike } from "./engine.js";
+import { violationOf } from "./blocked.js";
 import { serializeError } from "./errors.js";
 import type { FromWorker, ToWorker } from "./protocol.js";
 
@@ -19,6 +20,7 @@ interface WorkerScope {
   name?: string;
   postMessage(m: FromWorker): void;
   addEventListener(type: "message", fn: (ev: MessageEvent<ToWorker>) => void): void;
+  addEventListener(type: "securitypolicyviolation", fn: (ev: unknown) => void): void;
   close(): void;
   fetch: typeof fetch;
   caches?: CacheStorage;
@@ -47,6 +49,12 @@ if (!isOrtThread) {
     clock: browserClock,
     emit: (status) => post({ type: "status", status }),
     inWorker: true,
+  });
+
+  // A CSP blocking one of this worker's downloads fires here, not on the page: tell the host (src/model/blocked.ts).
+  scope.addEventListener("securitypolicyviolation", (ev) => {
+    const violation = violationOf(ev);
+    if (violation) post({ type: "csp", violation });
   });
 
   scope.addEventListener("message", (ev) => {
