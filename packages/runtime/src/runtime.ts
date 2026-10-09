@@ -174,6 +174,21 @@ export interface RuntimeInternals {
   readonly clock: Clock;
 }
 
+
+/** Fan-out siblings start within this window of each other (one callback issuing several requests). */
+export const FANOUT_WINDOW_MS = 100;
+
+/**
+ * A writer that is x's fan-out sibling: a request of the same kind (fetch, xhr) started by the same direct cause
+ * within FANOUT_WINDOW_MS of x (one timer tick or user action fetching several items at once). See runDelivery.
+ */
+export function fanOutSibling(
+  x: { cause?: number | null; kind: string; start: number },
+  w: { cause?: number | null; kind: string; start: number } | undefined,
+): boolean {
+  return !!w && x.cause !== undefined && x.cause !== null && w.cause === x.cause && w.kind === x.kind && Math.abs(w.start - x.start) <= FANOUT_WINDOW_MS;
+}
+
 export class RuntimeImpl implements Runtime {
   readonly clock: Clock;
   readonly global: Record<string, unknown>;
@@ -1717,7 +1732,12 @@ export class RuntimeImpl implements Runtime {
     // salience (situation v2): newer data that is already applied (a newer request of the same signature still in
     // flight makes newer-data conflicts neutral, see conflicts.ts); a pending local change or text the user typed
     // only when the body shows the response would overwrite it (put back the older value / replace the text)
-    const newer = conflicts.filter((c) => c.kind === "newer");
+    // Triage: a newer-data conflict whose writer is a fan-out sibling (a request started by the same operation at the
+    // same moment: one timer tick or user action fetching several items) is not salient. Siblings are concurrent peers
+    // of one intent, so their completion order is arbitrary rather than older vs newer (a status board polling six
+    // services that each also write a shared `updatedAt` made every round look stale). Only salience changes: when the
+    // delivery is decided for another reason, its situation still lists every conflict.
+    const newer = conflicts.filter((c) => c.kind === "newer" && !fanOutSibling(op, c.writer));
     const pending = conflicts.filter((c) => c.kind === "pending");
     op.delivery = { patterns: new Set(predicted.patterns), known: predicted.source !== "unknown", salient: newer.length > 0, decided: false };
     const spec: DeliverySpec = { trigger: "delivery", op, channel: o.channel, predicted, matched, conflicts, defers, queuedAhead: o.queuedAhead ?? 0 };
