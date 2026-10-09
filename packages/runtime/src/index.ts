@@ -7,6 +7,8 @@ import type { Clock, CreateOptions, DecisionProvider, DeviceEnv, EvaluateRequest
 import { browserClock } from "./clock.js";
 import { RuntimeImpl } from "./runtime.js";
 import { createModelHost } from "./model/host.js";
+import { startTelemetry } from "./telemetry/index.js";
+import { telemetryOff } from "./telemetry/client.js";
 
 export * from "./types.js";
 export { browserClock } from "./clock.js";
@@ -32,6 +34,8 @@ export { stateText, stateChars, sectionLimits, STATE_CHAR_BUDGET, COMPACT_BUDGET
 export { BUILTIN_ACTIONS, TRIGGER_ACTIONS, PASSIVE, DEFAULT_DIAGNOSES } from "./situation/questions.js";
 export { describeElement } from "./observe/dom-user.js";
 export { RuntimeImpl } from "./runtime.js";
+export { DEFAULT_TELEMETRY_ENDPOINT, TELEMETRY_SCHEMA, TELEMETRY_NOTICE } from "./telemetry/index.js";
+export { RUNTIME_VERSION } from "./version.js";
 
 /** fetch as it was when this module loaded: the model host downloads with it, so GenClass never observes itself. */
 const NATIVE_FETCH: typeof fetch | undefined =
@@ -174,7 +178,10 @@ export class IdleUnloadProvider implements DecisionProvider {
 }
 
 
-/** Advanced/headless runtime (sim, tests, SSR). No model unless `model` options or a `decider` are given. */
+/**
+ * Advanced/headless runtime (sim, tests, SSR). No model unless `model` options or a `decider` are given. No
+ * telemetry unless `telemetry` is set (GenClass.init turns it on by default in a browser).
+ */
 export function createRuntime(options: CreateOptions = {}): Runtime {
   let decider: DecisionProvider | null | undefined = options.decider;
   let owns = false;
@@ -184,7 +191,16 @@ export function createRuntime(options: CreateOptions = {}): Runtime {
     const nf = options.global ? (typeof g.fetch === "function" ? g.fetch.bind(g) : undefined) : NATIVE_FETCH;
     decider = makeHost(options.model, nf, options.clock, (options.global ?? globalThis) as never);
   }
-  return new RuntimeImpl({ ...options, decider: decider ?? null, ownsDecider: owns });
+  const rt = new RuntimeImpl({ ...options, decider: decider ?? null, ownsDecider: owns });
+  if (options.enabled === false) rt.telemetry = telemetryOff("disabled");
+  else
+    rt.telemetry = startTelemetry(rt, options.telemetry, false, {
+      model: owns ? "local" : decider ? "custom" : "off",
+      ...(options.triage ? { triage: options.triage } : {}),
+      ...(options.shadow ? { shadow: options.shadow } : {}),
+      ...(options.policy?.holdWrites ? { holdWrites: true } : {}),
+    });
+  return rt;
 }
 
 const MODES: readonly Mode[] = ["observe", "guard", "heal"];
@@ -235,7 +251,7 @@ export const GenClass = {
     } catch (e) {
       const g = globalThis as unknown as Record<string, unknown>;
       (g.console as Console | undefined)?.warn?.(`[GenClass] Could not start (${(e as Error)?.message ?? e}); running without it.`);
-      current = createRuntime({ observe: ALL_OFF, decider: null, report: "silent", mode: "observe" });
+      current = createRuntime({ observe: ALL_OFF, decider: null, report: "silent", mode: "observe", telemetry: false });
       return current;
     }
   },
@@ -256,7 +272,8 @@ function initUnsafe(options: InitOptions): Runtime {
     const ks = killSwitch(g);
     if (ks === "off") {
       (g.console as Console | undefined)?.info?.('[GenClass] Disabled by ?genclass=off or localStorage.genclass = "off": nothing is installed.');
-      current = createRuntime({ observe: ALL_OFF, model: false, decider: null, report: "silent", mode: "observe" });
+      current = createRuntime({ observe: ALL_OFF, model: false, decider: null, report: "silent", mode: "observe", telemetry: false });
+      (current as RuntimeImpl).telemetry = telemetryOff("kill-switch");
       return current;
     }
     // the kill switch may only demote (OPTIONS-SPEC §3), unless debug
@@ -270,6 +287,8 @@ function initUnsafe(options: InitOptions): Runtime {
     }
     const o: CreateOptions = { ...options };
     if (mode) o.mode = mode;
+    // anonymous diagnostics: on by default in a browser (TELEMETRY.md); opt-outs are checked in resolveTelemetry
+    o.telemetry = options.telemetry ?? true;
     if (options.decider === undefined && options.model !== false && options.enabled !== false) {
       o.model = options.model ?? {};
       // a dynamic enabled source: never download before it says on

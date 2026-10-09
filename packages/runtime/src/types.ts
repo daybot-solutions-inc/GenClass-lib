@@ -639,6 +639,49 @@ export interface InitOptions {
    * (webgpu 2,400; wasm 1,000 at 1 thread to 2,000 at 4 threads, linear; unknown device 2,400).
    */
   situation?: { budget?: number | "auto" };
+  /**
+   * Anonymous diagnostics sent to the GenClass maintainers to improve the model (packages/runtime/TELEMETRY.md):
+   * session info, every decision (trigger, the redacted situation text the model read, its calibrated answers, the
+   * gate and what ran), action outcomes, detections, model errors and periodic counts. Never raw input values, cookies,
+   * headers or storage. **Default: on with `GenClass.init()` in a browser** (one console notice per page); off in
+   * Node/SSR and with `createRuntime()` unless set here. Off with `false`, `?genclass=no-telemetry` (or `off`),
+   * `localStorage["genclass.telemetry"] = "off"`, or when the browser sends Global Privacy Control
+   * (`navigator.globalPrivacyControl === true`).
+   */
+  telemetry?: boolean | TelemetryOptions;
+}
+
+/** InitOptions.telemetry as an object (enables telemetry). */
+export interface TelemetryOptions {
+  /** Collector URL (default DEFAULT_TELEMETRY_ENDPOINT). */
+  endpoint?: string;
+  /** Fraction of page sessions that send (0..1, default 1), drawn once per page load. */
+  sample?: number;
+  /** Batch interval in ms (default 10,000). Batches are also sent on pagehide / when the tab is hidden. */
+  flushMs?: number;
+  /** Max events per request (default 100; requests are also kept under 60 KB for keepalive/sendBeacon). */
+  maxBatch?: number;
+  /** situation (default true): include the redacted situation text the model read in decision events. */
+  include?: { situation?: boolean };
+  /** Advanced (tests, custom pipelines): replaces the network transport. Errors are swallowed. */
+  transport?: TelemetryTransport;
+}
+
+export interface TelemetryTransport {
+  /** `beacon`: the page is going away (pagehide / hidden); prefer navigator.sendBeacon. */
+  send(url: string, body: string, o: { beacon: boolean }): void | Promise<unknown>;
+}
+
+/** runtime.telemetry: whether this page sends diagnostics, and why not. */
+export interface TelemetryStatus {
+  readonly enabled: boolean;
+  /** Off: "option", "headless", "url", "localStorage", "gpc", "sampled-out", "no-crypto", "no-transport", "kill-switch". */
+  readonly reason?: string;
+  readonly endpoint?: string;
+  /** Random per page load (not persisted). */
+  readonly sessionId?: string;
+  /** Send what is queued now (resolves when the requests settle; never rejects). */
+  flush(): Promise<void>;
 }
 
 export interface CreateOptions extends InitOptions {
@@ -974,4 +1017,6 @@ export interface Runtime {
   pause(): void;
   resume(): void;
   destroy(): void;
+  /** Anonymous diagnostics for this page (InitOptions.telemetry). */
+  readonly telemetry?: TelemetryStatus;
 }

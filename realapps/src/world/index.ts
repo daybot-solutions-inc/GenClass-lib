@@ -61,11 +61,13 @@ declare global {
 
   const ALL_OFF = { fetch: false, xhr: false, user: false, errors: false, nav: false, storage: false, perf: false, websocket: false, timers: false };
   w.__GENCLASS_INIT__ = cfg.ideal
-    ? { mode: "observe", model: false, decider: null, report: "silent", observe: ALL_OFF, hooks: probe.hooks(), plugins: [probe.plugin()] }
+    ? { mode: "observe", model: false, decider: null, report: "silent", telemetry: false, observe: ALL_OFF, hooks: probe.hooks(), plugins: [probe.plugin()] }
     : {
         mode: cfg.mode ?? "heal",
         decider: probe.decider(),
         report: "silent",
+        // harness runs are synthetic: never send them to the telemetry collector
+        telemetry: false,
         triage: "salient",
         observe: cfg.observe,
         policy: { thresholds: { report: 0, guard: 0.5, heal: 0.5 }, holdBudgetMs: 1e9, maxActionsPerMinute: 1e9, requireDiagnosis: false },

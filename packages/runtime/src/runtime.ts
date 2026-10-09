@@ -1,6 +1,7 @@
 // Runtime: wires trace, state, learn, situation and decide together (CONTRACT §2-§9).
 
 import type {
+  TelemetryStatus,
   ActionContext,
   ActionDef,
   AdapterHandle,
@@ -116,6 +117,17 @@ interface ExplainRec {
   answers: Record<string, Answer>;
   action?: ActionRecord;
   gates: EffectiveGates;
+  /** The subject waited for this decision (false: decided in the background). */
+  held: boolean;
+  budget: number;
+  compact: boolean;
+}
+
+/** Internal observation points for telemetry (src/telemetry): counts only, never input to a decision. */
+export interface RuntimeTap {
+  modelError?(e: unknown): void;
+  /** A salient situation ran the passive action without an answer: "not-ready", "no-answer", "error". */
+  failOpen?(reason: string, trigger: TriggerKind): void;
 }
 
 type Listeners = { [K in keyof RuntimeEvents]: Set<(v: RuntimeEvents[K]) => void> };
@@ -234,6 +246,11 @@ export class RuntimeImpl implements Runtime {
   private learnVersion: string | undefined;
   private reportMode: "console" | "interventions" | "silent" | "fn" = "console";
   private uninstall: (() => void)[] = [];
+  private teardowns: (() => void)[] = [];
+  /** Telemetry observation points (src/telemetry). */
+  tap: RuntimeTap | null = null;
+  /** runtime.telemetry (set by createRuntime). */
+  telemetry?: TelemetryStatus;
   private plugins = new Map<Plugin, { cleanup?: () => void }>();
   private customActions: ActionDef[] = [];
   private standing: StandingQuestion[] = [];
@@ -335,6 +352,11 @@ export class RuntimeImpl implements Runtime {
       // the model could not fit the situation: use smaller automatic budgets from now on
       if ((e as { code?: string })?.code === "max_tokens_exceeded") this.budgetScale = Math.max(0.5, this.budgetScale * 0.8);
       this.log("model error", e);
+      try {
+        this.tap?.modelError?.(e);
+      } catch {
+        /* telemetry never breaks the runtime */
+      }
     });
     // model.maxDecisionsPerMinute: default 30 for the built-in model; custom providers only when set
     const mo = o.model && typeof o.model === "object" ? o.model : undefined;
@@ -1114,6 +1136,7 @@ export class RuntimeImpl implements Runtime {
     if (provider.status.state !== "ready") {
       // lazy preload: the first salient situation starts loading; this one fails open
       void this.ready;
+      this.tapFailOpen("not-ready", spec.trigger);
       return passive();
     }
     // gate steps 1–3: protected, cross-origin or off/observe-scoped subjects are never acted on (nor held)
@@ -1183,7 +1206,10 @@ export class RuntimeImpl implements Runtime {
         if (waits) this.sum.held(this.clock.now() - (opts.heldSince ?? t0));
         try {
           if (this.destroyed) return passive();
-          if (!res) return passive();
+          if (!res) {
+            this.tapFailOpen("no-answer", spec.trigger);
+            return passive();
+          }
           this.sum.decision(res.latencyMs);
           this.onDecision(built, res.answers, this.clock.now() - t0, ctl, passive, { waits, covers: background !== null, expired, passiveRan: () => passiveRan, hold: opts.hold, budget, block, subjectOp });
         } finally {
@@ -1194,6 +1220,7 @@ export class RuntimeImpl implements Runtime {
       .catch((e) => {
         this.log("decision failed", e);
         if (background) this.deliveryPending.delete(background);
+        this.tapFailOpen("error", spec.trigger);
         passive();
       });
   }
@@ -1359,7 +1386,17 @@ export class RuntimeImpl implements Runtime {
     if (reason) decision.reason = reason;
     this.decisionsBuf.push(decision);
     if (this.decisionsBuf.length > DECISIONS_KEPT) this.decisionsBuf.shift();
-    const rec: ExplainRec = { decision, situationText: stateText(built.situation.state), facts: built.situation.facts, timeline: built.parts.timeline, answers, gates };
+    const rec: ExplainRec = {
+      decision,
+      situationText: stateText(built.situation.state),
+      facts: built.situation.facts,
+      timeline: built.parts.timeline,
+      answers,
+      gates,
+      held: st.waits,
+      budget: built.situation.budget,
+      compact: built.situation.compact,
+    };
     this.explainMap.set(decision.id, rec);
     if (this.explainMap.size > DECISIONS_KEPT * 2) {
       const first = this.explainMap.keys().next().value;
@@ -2806,6 +2843,25 @@ export class RuntimeImpl implements Runtime {
     return built.situation;
   }
 
+  /** Telemetry (src/telemetry): what explain() has plus whether the subject waited. Internal. */
+  decisionInfo(id: string): { situationText: string; held: boolean; budget: number; compact: boolean; gates: EffectiveGates } | null {
+    const r = this.explainMap.get(id);
+    return r ? { situationText: r.situationText, held: r.held, budget: r.budget, compact: r.compact, gates: r.gates } : null;
+  }
+
+  /** Run fn first when the runtime is destroyed (telemetry's final flush). Internal. */
+  addTeardown(fn: () => void): void {
+    this.teardowns.push(fn);
+  }
+
+  private tapFailOpen(reason: string, trigger: TriggerKind): void {
+    try {
+      this.tap?.failOpen?.(reason, trigger);
+    } catch {
+      /* telemetry never breaks the runtime */
+    }
+  }
+
   explain(id: string): Explanation | null {
     const r = this.explainMap.get(id);
     if (!r) return null;
@@ -2861,6 +2917,13 @@ export class RuntimeImpl implements Runtime {
 
   destroy(): void {
     if (this.destroyed) return;
+    for (const t of this.teardowns.splice(0)) {
+      try {
+        t();
+      } catch {
+        /* ignore */
+      }
+    }
     this.destroyed = true;
     this.hub.gating = false;
     this.queue.dispose();
