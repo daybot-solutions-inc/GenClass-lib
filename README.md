@@ -23,7 +23,7 @@ generic facts about each write, request and response, and asks a small GenClass 
 The model runs in the browser (WebGPU or WASM, in a Web Worker). It answers two questions: what is happening, and
 which available action is best. There is no list of known bugs in the code.
 
-> **Status: beta. `@genclass/runtime@0.1.0-beta.3` with the model `@genclass/runtime-model@0.2.0`.**
+> **Status: beta. `@genclass/runtime@0.1.0-beta.4` with the model `@genclass/runtime-model@0.2.0`.**
 >
 > - **Runtime:** works and is unit-tested (situation format tag `situation-v2.3`). Install with
 >   `npx @genclass/runtime init`, one import (`@genclass/runtime/auto`) or one script tag.
@@ -49,7 +49,9 @@ which available action is best. There is no list of known bugs in the code.
 >   [OPTIONS-SPEC.md](docs/runtime/OPTIONS-SPEC.md).
 > - **Older versions on npm:** `0.1.0-beta.1` (model 0.2.0 and the options, but `guard` by default and without the
 >   observe-delivery, redaction and install fixes), `0.1.0-beta.0` (model 0.1.0), `0.1.0-alpha.1` and
->   `0.1.0-alpha.0` (no model). `0.1.0-beta.2` is `0.1.0-beta.3` without telemetry. Use `0.1.0-beta.3`.
+>   `0.1.0-alpha.0` (no model). `0.1.0-beta.2` is `0.1.0-beta.3` without telemetry. `0.1.0-beta.3` lacks the
+>   `0.1.0-beta.4` fixes from the Troy trial (no ONNX Runtime wasm in app builds, one clear warning for a CSP-blocked
+>   model, `init --no-telemetry`, a smaller main entry). Use `0.1.0-beta.4`.
 >
 > - **Privacy notice (since `0.1.0-beta.3`): anonymous diagnostics are on by default** in browsers. GenClass sends
 >   its decisions, including the redacted situation text the model read, to the GenClass maintainers to improve the
@@ -158,7 +160,7 @@ NODE_OPTIONS=--expose-gc npx vitest run test/review-perf.test.ts --retry=2   # t
 The same steps run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml), Node 22) on pushes to `main`,
 `runtime`, `mvp` and `mvp-v2`, on pull requests, and on manual dispatch.
 
-Last full local run (2026-10-09, branch `mvp-v2-b6`, version `0.1.0-beta.3`): 474 tests passed and 14 skipped, plus
+Last full local run (2026-10-09, branch `mvp-v2-b6`, version `0.1.0-beta.4`): 514 tests passed and 14 skipped, plus
 the 4 perf tests run alone. The skips are model-parity tests, which need `GENCLASS_MODEL_DIR`. The perf tests time a
 5,000-item store and can fail under parallel load.
 

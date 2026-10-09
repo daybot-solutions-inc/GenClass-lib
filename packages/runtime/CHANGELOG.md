@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.1.0-beta.4 (2026-10-09)
+
+Fixes from the first real-app trial (Troy, a Next.js 16 site with a strict Content-Security-Policy, observe mode,
+`0.1.0-beta.3`). No change to what the model sees (no situation or model-visible text change) and none to the
+telemetry payload.
+
+- **No ONNX Runtime wasm in app builds.** Bundlers (Next/Turbopack, webpack, Vite) copied onnxruntime-web's two
+  `.wasm` builds and two `.mjs` bundles (41 MB, one file 26.8 MB, over Cloudflare's 25 MiB per-file limit) into every
+  app's build output, unused: the runtime fetches the wasm itself. The model worker and the inline fallback now
+  import the prepared ORT copies in `dist/cdn/ort-*.js`, whose `new URL("<file>", import.meta.url)` patterns are
+  hidden from bundlers (same value at runtime). A minimal Vite app went from 40 MB to 772 KB of output.
+  onnxruntime-web is pinned to exactly `1.30.0` (the version bundled and fetched).
+- **Smaller first load.** The inline (no-Worker) fallback loads the tokenizer, packer, engine and loader on first
+  use. `/auto` is about 89 KB gzip (was 99 KB), the main entry with `GenClass.init()` 88 KB (was 98 KB). The README
+  said 83 KB before; it now gives the measured number, and `test/bundle.test.ts` keeps it under 92 KB.
+- **A CSP-blocked model says so, once.** When the model or ORT download is blocked (a `securitypolicyviolation`
+  in the page or the worker, or a network-type failure of a cross-origin URL), the runtime prints one
+  `console.warn` naming the blocked origin and the fix (self-host with `fetch-model` + `model.baseUrl` /
+  `ortWasmPaths`, or allow the origin in `connect-src`) instead of a bare "Failed to fetch" at info level.
+  `status.blocked` = `{ url, origin, csp, directive? }`. A failed ORT wasm download is named in the load error.
+- **`fetch-model` self-hosts ONNX Runtime too** (`--ort all|wasm|webgpu|none`, default all, into `<dir>/ort/`, with
+  `ort/ort.json`), and prints the options to pass, so `connect-src 'self'` is enough.
+- **`init --no-telemetry`, `--telemetry`, `--model-url <url>`** write options without hand-editing: a marked
+  `genclass.config.(ts|js)` that sets `window.GENCLASS_CONFIG`, imported right before the `/auto` import (plain HTML:
+  `data-telemetry="off"` etc. on the script tag; Astro: a `<meta name="genclass">` line). Re-running `init` with
+  them changes the options in place; `remove` takes everything out.
+- **`init` discloses telemetry** (on by default, what it sends, how to turn it off, links to TELEMETRY.md and
+  PRIVACY.md), and **detects a Content-Security-Policy** (next.config/proxy/middleware headers, meta tags, helmet,
+  hosting header files) and prints the self-host steps.
+- **ORT warnings no longer hit `console.error`.** Sessions are created with ORT's log cut to errors
+  (`logSeverityLevel: 3`): the two benign WebGPU lines ("Some nodes were not assigned to the preferred execution
+  providers ...") are gone; real failures still reject and are reported.
+- **`status.scope` reports the effective mode.** `status.scope.mode` was the route ceiling ("heal" with no `routes`
+  rule) and read as if the page ran in heal mode; it is now the effective mode on the current route (as
+  `effectiveMode`), with `rule` and `ceiling` when a rule matches. `rt.gates()` carries `mode`.
+- `DeviceEnv.mobile` (from `navigator.userAgentData.mobile`) for `model.loadIf` predicates, and a README "Costs"
+  section with the trial's measurements (+190 to 280 MB renderer memory with the model worker, 12.7 MB first-visit
+  download) and the options for phones.
+
 ## 0.1.0-beta.3 (2026-10-09)
 
 > **Privacy-relevant change: anonymous telemetry is now on by default.** Review

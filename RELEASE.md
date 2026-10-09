@@ -4,7 +4,16 @@
 > **Read this when:** you are asked to cut a release, prepare a tarball for the user to publish, or package a trained model.
 > **Source of truth:** the code. Verified 2026-10-08 (~07:00 UTC) against branch `mvp-v2-merge` at f107013. That branch is `mvp-v2` (release commit 806a296), merged with origin/runtime eff18cb (dabbce2), plus the two runtime fixes 054da38 and f107013. Newer commits on origin/runtime (up to 5bc40c9) were read with `git show` and are not merged on this branch. If this doc and the code disagree, the code wins.
 
-> **Next release: `@genclass/runtime@0.1.0-beta.3` (prepared on `mvp-v2-b6`, not published; privacy-relevant).**
+> **Next release: `@genclass/runtime@0.1.0-beta.4` (prepared on `mvp-v2-b6`, not published).** `0.1.0-beta.3`
+> plus the Troy trial fixes (CHANGELOG): no ORT wasm in app builds, one clear warning for a CSP-blocked model,
+> `fetch-model` self-hosting ORT, `init --no-telemetry` / `--telemetry` / `--model-url`, CSP detection and telemetry
+> disclosure in `init`, no ORT `console.error` noise, `status.scope` = effective mode, smaller first load. The alias
+> `genclass-runtime@0.1.0-beta.4` pins it. Publish from `packages/runtime`:
+> `npm publish genclass-runtime-0.1.0-beta.4.tgz --access public --tag latest`, then from `packages/genclass-runtime`:
+> `npm publish genclass-runtime-0.1.0-beta.4.tgz --access public --tag latest`. onnxruntime-web is now pinned to
+> exactly `1.30.0` (tsup refuses another installed version).
+>
+> **Previous: `@genclass/runtime@0.1.0-beta.3` (prepared on `mvp-v2-b6`, not published; privacy-relevant).**
 > `0.1.0-beta.2` plus default-on anonymous telemetry (`packages/runtime/TELEMETRY.md`, collector `telemetry-worker/`
 > deployed at `https://genclass-telemetry.mehar-144.workers.dev`). The alias `genclass-runtime@0.1.0-beta.3` pins it.
 > Publish from `packages/runtime`: `npm publish genclass-runtime-0.1.0-beta.3.tgz --access public --tag latest`, then

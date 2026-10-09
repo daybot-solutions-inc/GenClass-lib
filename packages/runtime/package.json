@@ -1,6 +1,6 @@
 {
   "name": "@genclass/runtime",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.4",
   "description": "A client-side AI runtime for web apps: a local GenClass model watches user actions, async work, network, state and errors, and prevents stale writes, races, duplicates, inconsistent state and failure storms in real time.",
   "type": "module",
   "license": "Apache-2.0",
