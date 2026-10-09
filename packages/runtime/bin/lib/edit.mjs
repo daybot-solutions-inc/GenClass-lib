@@ -121,6 +121,10 @@ const AUTO_SPEC = String.raw`"@genclass/runtime/auto(?:/(?:observe|guard|heal))?
 const DEVTOOLS_CALL = String.raw`import\("@genclass/runtime/devtools"\)\.then\(d=>d\.mountDevtools\(genclass\)\)`;
 const COND = String.raw`[^;{}]+?`;
 const IMPORT_AUTO = String.raw`import(?:genclassfrom)?${AUTO_SPEC};?`;
+// the options file init writes with --no-telemetry / --telemetry / --model-url, imported right before /auto
+const IMPORT_CONFIG = String.raw`import"(?:\.{1,2}/)+(?:[\w.-]+/)*genclass\.config(?:\.[cm]?[jt]s)?";?`;
+const CONFIG_STATEMENT = String.raw`(?:\(globalThisas\{GENCLASS_CONFIG\?:\w+\}\)|globalThis)\.GENCLASS_CONFIG=\{[^;]*\};?`;
+const META_CONFIG = String.raw`<metaname="genclass"content="[^"]*"/?>`;
 const DEV_LINE = String.raw`if\(${COND}\)${DEVTOOLS_CALL};?`;
 // the same with braces (ESLint's `curly` fix)
 const DEV_BLOCK = String.raw`if\(${COND}\)\{${DEVTOOLS_CALL};?\}`;
@@ -129,6 +133,8 @@ const LINE_RE = new RegExp(
   "^(?:" +
     [
       IMPORT_AUTO,
+      IMPORT_CONFIG,
+      META_CONFIG,
       DEV_LINE,
       DEV_BLOCK,
       String.raw`import\{isDevModeasgenclassDevMode\}from"@angular/core";?`,
@@ -145,6 +151,8 @@ const BLOCK_RE = new RegExp(
     [
       String.raw`"useclient";?`,
       IMPORT_AUTO,
+      IMPORT_CONFIG,
+      CONFIG_STATEMENT,
       DEV_LINE,
       DEV_BLOCK,
       String.raw`importtype\{AppProps\}from"next/app";?`,
@@ -164,7 +172,8 @@ const INLINE = [
 ];
 const INLINE_RES = INLINE.map((x) => x.re);
 // The only comment line init writes inside a block (planNext, the layout strategy's genclass-init component).
-const BLOCK_COMMENT = /^\s*\/\/ Starts GenClass Runtime when this module loads in the browser \(on the server it is inert\)\.\s*$/;
+const BLOCK_COMMENT =
+  /^\s*\/\/ (?:Starts GenClass Runtime when this module loads in the browser \(on the server it is inert\)\.|Read by @genclass\/runtime\/auto, imported right after this file: any GenClass\.init\(\) option works here \(see the README\)\.)\s*$/;
 const MAX_UP = 8;
 const MAX_DOWN = 4;
 
@@ -420,4 +429,118 @@ export function bodyTagEnd(text) {
     }
   }
   return -1;
+}
+
+// ------------------------------------------------------------------------------------------- options
+//
+// init --no-telemetry / --telemetry / --model-url write options without hand-editing. An ES module's imports run
+// before its own code, so options cannot be set in the entry file above the /auto import: init writes them to a
+// file of their own, genclass.config.(ts|js), which sets window.GENCLASS_CONFIG (read by /auto), and imports it
+// right before the /auto import. A plain HTML page gets data attributes on the script tag instead, an Astro layout
+// a `<meta name="genclass">` line. All of it is marked, so `remove` takes it out.
+
+export const CONFIG_COMMENT = "// Read by @genclass/runtime/auto, imported right after this file: any GenClass.init() option works here (see the README).";
+
+const isEmptyConfig = (cfg) => !cfg || (cfg.telemetry === undefined && !cfg.model);
+export { isEmptyConfig };
+
+const modelLiteral = (m) => `model: { baseUrl: ${JSON.stringify(m.baseUrl)}, ortWasmPaths: ${JSON.stringify(m.ortWasmPaths)}${m.device ? `, device: ${JSON.stringify(m.device)}` : ""} }`;
+
+/** The object init writes: `{ telemetry: false, model: { baseUrl: "/genclass-model/", ortWasmPaths: "..." } }`. */
+export function configLiteral(cfg) {
+  const parts = [];
+  if (cfg.telemetry !== undefined) parts.push(`telemetry: ${cfg.telemetry ? "true" : "false"}`);
+  if (cfg.model) parts.push(modelLiteral(cfg.model));
+  return parts.length ? `{ ${parts.join(", ")} }` : "{}";
+}
+
+/** The statement in genclass.config.(ts|js). */
+export const configStatement = (cfg, ts) => `${ts ? "(globalThis as { GENCLASS_CONFIG?: object })" : "globalThis"}.GENCLASS_CONFIG = ${configLiteral(cfg)};`;
+
+/** Sets telemetry / model in an existing GENCLASS_CONFIG statement (other keys a user added stay). */
+export function updateConfigText(text, cfg) {
+  return text.replace(/(GENCLASS_CONFIG\s*=\s*\{)([^;]*)(\}\s*;?)/, (_m, open, body, close) => {
+    let b = body;
+    if (cfg.telemetry !== undefined) {
+      const v = `telemetry: ${cfg.telemetry ? "true" : "false"}`;
+      b = /\btelemetry\s*:\s*(?:true|false)/.test(b) ? b.replace(/\btelemetry\s*:\s*(?:true|false)/, v) : `${v}, ${b.trim()}`;
+    }
+    if (cfg.model) b = /\bmodel\s*:\s*\{[^}]*\}/.test(b) ? b.replace(/\bmodel\s*:\s*\{[^}]*\}/, modelLiteral(cfg.model)) : `${b.trim().replace(/,\s*$/, "")}, ${modelLiteral(cfg.model)}`;
+    b = b.trim().replace(/^,\s*/, "").replace(/,\s*$/, "");
+    return b ? `${open} ${b} ${close.trimStart()}` : `${open}${close.trimStart()}`;
+  });
+}
+
+/** `telemetry=off, model=/genclass-model/, ort=/genclass-model/ort/` (meta content), "" when nothing to say. */
+export function metaContent(cfg) {
+  const parts = [];
+  if (cfg.telemetry === false) parts.push("telemetry=off");
+  if (cfg.model) parts.push(`model=${cfg.model.baseUrl}`, `ort=${cfg.model.ortWasmPaths}`, ...(cfg.model.device ? [`device=${cfg.model.device}`] : []));
+  return parts.join(", ");
+}
+
+const TAG_ATTRS = { telemetry: "data-telemetry", model: "data-model", ort: "data-ort", device: "data-device" };
+const attrRe = (name) => new RegExp(String.raw`\s+${name}\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)`, "i");
+
+/** A script tag with data-telemetry / data-model / data-ort set for cfg (telemetry true removes the opt-out). */
+export function tagWithConfig(tag, cfg) {
+  const set = (t, name, value) => {
+    const re = attrRe(name);
+    if (value === null) return t.replace(re, "");
+    const attr = ` ${name}="${value}"`;
+    if (re.test(t)) return t.replace(re, attr);
+    const close = /\s*\/?>$/.exec(t);
+    return `${t.slice(0, close.index)}${attr}${t.slice(close.index)}`;
+  };
+  let t = tag;
+  if (cfg.telemetry !== undefined) t = set(t, TAG_ATTRS.telemetry, cfg.telemetry ? null : "off");
+  if (cfg.model) {
+    t = set(t, TAG_ATTRS.model, cfg.model.baseUrl);
+    t = set(t, TAG_ATTRS.ort, cfg.model.ortWasmPaths);
+    if (cfg.model.device) t = set(t, TAG_ATTRS.device, cfg.model.device);
+  }
+  return t;
+}
+
+/** Applies cfg to the script tags init added (inline or on marked lines). Same text when nothing changes. */
+export function switchTagConfig(text, cfg) {
+  let t = text;
+  for (const re of INLINE_RES) t = t.replace(re, (m) => m.replace(SCRIPT_SRC_RE, (tag) => tagWithConfig(tag, cfg)));
+  const parts = partsOf(t);
+  const { ranges } = markedRanges(parts);
+  for (const [a, b] of ranges) {
+    const seg = parts.slice(a, b + 1).join("");
+    if (!/<script\b[^>]*\bsrc\s*=/i.test(seg)) continue;
+    parts[a] = seg.replace(SCRIPT_SRC_RE, (tag) => tagWithConfig(tag, cfg));
+    for (let x = a + 1; x <= b; x++) parts[x] = "";
+  }
+  return parts.join("");
+}
+
+/**
+ * Astro: the marked `<meta name="genclass">` line (before init's `<script>` line) carries cfg; added, rewritten, or
+ * dropped when it would be empty. Same text when nothing changes or init's script line is not found.
+ */
+export function switchMetaConfig(text, cfg) {
+  const lines = partsOf(text);
+  const metaAt = lines.findIndex((l) => l.includes(MARK) && /<meta\s+name=["']genclass["']/i.test(l));
+  if (metaAt >= 0) {
+    const cur = /content=["']([^"']*)["']/i.exec(lines[metaAt])?.[1] ?? "";
+    const pairs = Object.fromEntries(cur.split(/[,;]\s*/).filter(Boolean).map((p) => [p.split("=")[0].trim(), p.slice(p.indexOf("=") + 1).trim()]));
+    if (cfg.telemetry === false) pairs.telemetry = "off";
+    if (cfg.telemetry === true) delete pairs.telemetry;
+    if (cfg.model) Object.assign(pairs, { model: cfg.model.baseUrl, ort: cfg.model.ortWasmPaths, ...(cfg.model.device ? { device: cfg.model.device } : {}) });
+    const content = Object.entries(pairs).map(([k, v]) => `${k}=${v}`).join(", ");
+    if (!content) {
+      lines[metaAt] = "";
+      return lines.join("");
+    }
+    lines[metaAt] = lines[metaAt].replace(/content=["'][^"']*["']/i, `content="${content}"`);
+    return lines.join("");
+  }
+  const content = metaContent(cfg);
+  if (!content) return text;
+  const scriptAt = lines.findIndex((l) => l.includes(`// ${MARK}</script>`));
+  if (scriptAt < 0) return text;
+  return insertLineAt(text, scriptAt, `${indentOf(lines[scriptAt])}<meta name="genclass" content="${content}" /> <!-- ${MARK} -->`);
 }

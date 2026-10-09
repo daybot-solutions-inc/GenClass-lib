@@ -10,9 +10,9 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { detectProject, detectState, htmlFiles, isDir, isFile, readText, walkSkipped, walkSources } from "./detect.mjs";
-import { MARK, hasMarker, planRemoval, removeMarked, switchMode } from "./edit.mjs";
-import { AUTO, planInit, scriptTag } from "./plan.mjs";
+import { detectCsp, detectProject, detectState, htmlFiles, isDir, isFile, readText, walkSkipped, walkSources } from "./detect.mjs";
+import { MARK, hasMarker, isEmptyConfig, planRemoval, removeMarked, switchMetaConfig, switchMode, switchTagConfig, updateConfigText } from "./edit.mjs";
+import { AUTO, configFileChange, configFileFor, planInit, scriptTag } from "./plan.mjs";
 import { banner, c, confirm, err, out, printChange, row, sym } from "./ui.mjs";
 
 const PKG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -27,8 +27,13 @@ const CMD = "npx @genclass/runtime";
 const PKG = "@genclass/runtime";
 const MODES = ["observe", "guard", "heal"];
 
+const REPO = "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main";
+export const TELEMETRY_URL = `${REPO}/packages/runtime/TELEMETRY.md`;
+export const PRIVACY_URL = `${REPO}/PRIVACY.md`;
+
 export const USAGE = `Usage:
-  genclass-runtime init   [--mode observe|guard|heal] [--yes] [--dry-run] [--no-install] [--no-devtools] [--cwd <dir>]
+  genclass-runtime init   [--mode observe|guard|heal] [--no-telemetry | --telemetry] [--model-url <url>]
+                          [--yes] [--dry-run] [--no-install] [--no-devtools] [--cwd <dir>]
   genclass-runtime remove [--yes] [--dry-run] [--keep-package] [--cwd <dir>]
 
 init     finds your framework, installs ${PKG}, adds one import to your entry file (and a dev-only devtools
@@ -38,6 +43,12 @@ remove   takes out exactly what init added (the lines and blocks marked "${MARK}
          one of them was edited) and uninstalls the package if nothing else imports it.
 
   --mode <m>       observe (default: reports, never changes anything), guard or heal
+  --no-telemetry   turn off GenClass's anonymous diagnostics (on by default; see TELEMETRY.md and
+                   PRIVACY.md). Written as an option file (genclass.config.ts/js, imported right before
+                   the auto import), or data-telemetry="off" on a plain HTML script tag
+  --telemetry      keep them on, written explicitly (on an existing setup: undoes --no-telemetry)
+  --model-url <u>  use a self-hosted model directory (made with \`fetch-model\`), e.g. /genclass-model/,
+                   with ONNX Runtime from <u>ort/ (for a Content-Security-Policy without cdn.jsdelivr.net)
   --yes, -y        apply without asking
   --dry-run        show what would change; write nothing
   --no-install     do not run the package manager
@@ -59,10 +70,12 @@ const BOOL = {
   "no-devtools": "noDevtools",
   "keep-package": "keepPackage",
   "no-sri": "noSri",
+  "no-telemetry": "noTelemetry",
+  telemetry: "telemetry",
   help: "help",
   h: "help",
 };
-const VALUE = { mode: "mode", from: "from", cdn: "cdn", cwd: "cwd", strategy: "strategy" };
+const VALUE = { mode: "mode", from: "from", cdn: "cdn", cwd: "cwd", strategy: "strategy", "model-url": "modelUrl" };
 
 function parse(argv) {
   const o = {};
@@ -84,6 +97,7 @@ function parse(argv) {
     throw new UsageError(`unknown option ${a}`);
   }
   if (o.mode && !MODES.includes(o.mode)) throw new UsageError(`--mode must be observe, guard or heal`);
+  if (o.noTelemetry && o.telemetry) throw new UsageError(`--telemetry and --no-telemetry contradict each other`);
   if (o.strategy && !["instrumentation", "layout", "pages"].includes(o.strategy)) throw new UsageError(`--strategy must be instrumentation, layout or pages`);
   return o;
 }
@@ -236,11 +250,116 @@ function printRecommendations(recs) {
   out();
 }
 
+// ----------------------------------------------------------------------------------------- options
+
+/** The options init writes: { telemetry?, model? } (empty: none). */
+export function configOf(o) {
+  const c = {};
+  if (o.noTelemetry) c.telemetry = false;
+  else if (o.telemetry) c.telemetry = true;
+  if (o.modelUrl) {
+    const u = o.modelUrl.endsWith("/") ? o.modelUrl : `${o.modelUrl}/`;
+    c.model = { baseUrl: u, ortWasmPaths: `${u}ort/` };
+  }
+  return c;
+}
+
+/** Telemetry disclosure: it is on by default, what it sends, how to turn it off, where the policy is. */
+function telemetryNotice(cfg, where) {
+  if (cfg.telemetry === false) {
+    row("Telemetry", `off ${c.gray(`(--no-telemetry${where ? `, written to ${where}` : ""})`)}`);
+    return;
+  }
+  row("Telemetry", `${c.bold("on")}${cfg.telemetry ? c.gray(" (--telemetry)") : c.gray(" (the default)")}`);
+  out(`             GenClass sends anonymous diagnostics to its maintainers: its decisions with the redacted`);
+  out(`             situation text the model read, action outcomes, model status and counts (never input values,`);
+  out(`             cookies or IP addresses). Turn it off: ${c.cyan(`${CMD} init --no-telemetry`)}`);
+  out(`             (or GenClass.init({ telemetry: false }), ?genclass=no-telemetry in the URL).`);
+  out(`             What is sent: ${TELEMETRY_URL}`);
+  out(`             Privacy policy: ${PRIVACY_URL}`);
+}
+
+/** Where to put the self-hosted model: the folder the framework serves as-is. */
+const publicDir = (project) => (project.framework === "sveltekit" ? "static" : project.framework === "angular" && isDir(join(project.dir, "src", "assets")) && !isDir(join(project.dir, "public")) ? "src/assets" : "public");
+
+/** A Content-Security-Policy that may block the default model download: say so and print the self-host steps. */
+function cspAdvice(project, files, cfg) {
+  const csp = detectCsp(project.dir, files, project.pkg);
+  if (!csp) return;
+  out();
+  out(`  ${c.yellow(sym.warn)} ${c.bold("Content-Security-Policy found")} ${c.gray(`(${csp.files.slice(0, 4).join(", ")}${csp.files.length > 4 ? ", ..." : ""})`)}`);
+  if (!cfg.model) {
+    out(`    By default GenClass downloads its model and ONNX Runtime's wasm from https://cdn.jsdelivr.net, at idle,`);
+    out(
+      csp.cdnMentioned
+        ? `    which your policy mentions: make sure its connect-src allows https://cdn.jsdelivr.net where it runs.`
+        : `    which your policy does not allow (connect-src). The model would then not load (GenClass only observes and`,
+    );
+    if (!csp.cdnMentioned) out(`    says so once in the console). Self-host it instead:`);
+    else out(`    Or self-host it (no third-party origin at all):`);
+    const pub = publicDir(project);
+    out(`      1. ${c.cyan(`${CMD} fetch-model ${pub}/genclass-model`)} ${c.gray("(model and ONNX Runtime files: about 64 MB; --variant q8 --ort wasm: about 24 MB)")}`);
+    out(`      2. ${c.cyan(`${CMD} init --model-url /genclass-model/`)} ${c.gray("(writes model.baseUrl and ortWasmPaths)")}`);
+    out(`    or add https://cdn.jsdelivr.net to connect-src.`);
+  } else {
+    out(`    The model loads from ${cfg.model.baseUrl} (same origin): connect-src 'self' is enough.`);
+  }
+  if (!csp.wasmEval) out(`    The model runs WebAssembly: script-src needs 'wasm-unsafe-eval'.`);
+}
+
+/**
+ * init with options on a project init already set up: the options file (or the script tag's attributes, or the
+ * Astro meta line) changes in place, or is added next to the marked auto import. Returns the changes (may be empty).
+ */
+function planConfigSwitch(project, cwd, marked, cfg, readText) {
+  const changes = [];
+  const rel = (f) => posix(relative(cwd, f));
+  const cfgFile = marked.find((f) => /genclass\.config\.[cm]?[jt]s$/.test(f));
+  if (cfgFile) {
+    const before = readText(cfgFile) ?? "";
+    const after = updateConfigText(before, cfg);
+    if (after !== before) changes.push({ file: cfgFile, rel: rel(cfgFile), kind: "modify", before, after });
+    return { changes, where: rel(cfgFile) };
+  }
+  let where = null;
+  for (const f of marked) {
+    const before = readText(f) ?? "";
+    let after = before;
+    if (/\.html?$/.test(f)) after = switchTagConfig(before, cfg);
+    else if (/\.astro$/.test(f)) after = switchMetaConfig(before, cfg);
+    else if (!isEmptyConfig({ ...cfg, telemetry: cfg.telemetry === true && !cfg.model ? undefined : cfg.telemetry })) {
+      // the JS line init wrote: put the options import right before it
+      const lines = before.split("\n");
+      // (a marked line, or a line inside a block init created)
+      const at = lines.findIndex((l) => /^\s*import\b[^;]*["']@genclass\/runtime\/auto(?:\/\w+)?["']/.test(l));
+      if (at < 0) continue;
+      const file = configFileFor(project, f);
+      if (isFile(file)) continue;
+      const q = lines[at].includes("'") ? "'" : '"';
+      const semi = /;\s*(?:\/\/.*)?\r?$/.test(lines[at]) ? ";" : "";
+      let spec = posix(relative(dirname(f), file)).replace(/\.[cm]?[jt]sx?$/, "");
+      if (!spec.startsWith(".")) spec = `./${spec}`;
+      const indent = /^\s*/.exec(lines[at])[0];
+      lines.splice(at, 0, `${indent}import ${q}${spec}${q}${semi}${lines[at].includes(`// ${MARK}`) ? ` // ${MARK}` : ""}`);
+      after = lines.join("\n");
+      const ch = configFileChange(file, cfg);
+      changes.push({ ...ch, rel: rel(file) });
+      where = rel(file);
+    }
+    if (after !== before) {
+      changes.push({ file: f, rel: rel(f), kind: "modify", before, after });
+      where ??= rel(f);
+    }
+  }
+  return { changes, where };
+}
+
 // ------------------------------------------------------------------------------------------------ init
 
-/** init --mode <m> on a project init already set up in another mode: rewrite the marked code in place. */
-async function switchModes(o, project, changes, install, spec, cwd) {
-  row("Mode", `${o.mode} ${c.gray("(switching what init added)")}`);
+/** init --mode <m> / --no-telemetry / ... on a project init already set up: rewrite the marked code in place. */
+async function switchModes(o, project, changes, install, spec, cwd, what) {
+  if (what.mode) row("Mode", `${o.mode} ${c.gray("(switching what init added)")}`);
+  if (what.options) row("Options", `${what.options} ${c.gray("(changing what init added)")}`);
   out();
   out(`  ${c.bold("Changes")}`);
   out();
@@ -253,7 +372,7 @@ async function switchModes(o, project, changes, install, spec, cwd) {
     return 0;
   }
   if (!o.yes) {
-    const ok = await confirm(`Switch to ${o.mode} mode?`);
+    const ok = await confirm(what.mode ? `Switch to ${o.mode} mode${what.options ? ` (${what.options})` : ""}?` : `Apply ${what.options}?`);
     if (ok === null) {
       out(`  Not a terminal, so nothing was written. Re-run with ${c.bold("--yes")} to apply.`);
       out();
@@ -271,15 +390,45 @@ async function switchModes(o, project, changes, install, spec, cwd) {
     return 1;
   }
   for (const ch of changes) writeChange(ch);
-  out(`  ${c.green(sym.ok)} ${c.bold(`GenClass Runtime now starts in ${o.mode} mode.`)} ${c.gray(`(${changes.map((ch) => ch.rel).join(", ")})`)}`);
+  const done = [what.mode ? `now starts in ${o.mode} mode` : null, what.options ? `options: ${what.options}` : null].filter(Boolean).join("; ");
+  out(`  ${c.green(sym.ok)} ${c.bold(`GenClass Runtime ${done}.`)} ${c.gray(`(${changes.map((ch) => ch.rel).join(", ")})`)}`);
   out();
   return 0;
+}
+
+/** "telemetry off, model /genclass-model/" */
+const describeConfig = (cfg) => [cfg.telemetry === false ? "telemetry off" : cfg.telemetry ? "telemetry on" : null, cfg.model ? `model ${cfg.model.baseUrl}` : null].filter(Boolean).join(", ");
+
+/** Telemetry as the marked files set it (an existing setup): false when init wrote the opt-out. */
+function currentConfig(files) {
+  for (const f of files) {
+    const t = readText(f) ?? "";
+    if (/GENCLASS_CONFIG\s*=\s*\{[^;]*\btelemetry\s*:\s*false/.test(t) || /data-telemetry=["']?off/.test(t) || /<meta[^>]*name=["']genclass["'][^>]*telemetry=off/.test(t)) return { telemetry: false };
+  }
+  return {};
+}
+
+/**
+ * --model-url pointing into the app's public folder that `fetch-model --ort wasm` filled: no WebGPU ONNX Runtime
+ * there, so the model must run on WASM (device "wasm"), else WebGPU devices would fail to load it.
+ */
+function withLocalDevice(cfg, project) {
+  if (!cfg.model || !/^\//.test(cfg.model.baseUrl)) return cfg;
+  try {
+    const rec = JSON.parse(readFileSync(join(project.dir, publicDir(project), cfg.model.baseUrl, "ort", "ort.json"), "utf8"));
+    const files = Object.keys(rec?.files ?? {});
+    if (files.length && !files.some((f) => /asyncify\.wasm$/.test(f))) return { ...cfg, model: { ...cfg.model, device: "wasm" } };
+  } catch {
+    /* not fetched there (yet): leave the device to the runtime */
+  }
+  return cfg;
 }
 
 async function init(o) {
   const cwd = projectDir(o);
   banner("init");
   const project = detectProject(cwd);
+  const cfg = withLocalDevice(configOf(o), project);
   if (project.refused) {
     out(`  ${c.yellow(sym.warn)} Not adding GenClass to ${c.bold(cwd)}: ${project.refused}.`);
     out(`  If this is a browser app, add the import as the first line of its browser entry file yourself:`);
@@ -316,9 +465,23 @@ async function init(o) {
           })
           .filter((ch) => ch.after !== ch.before)
       : [];
-    if (switches.length) return switchModes(o, project, switches, install, spec, cwd);
+    // --no-telemetry / --telemetry / --model-url again: change (or add) the options init wrote, on top of a mode switch
+    if (marked.length && !isEmptyConfig(cfg)) {
+      const byFile = new Map(switches.map((ch) => [ch.file, ch]));
+      const sw = planConfigSwitch(project, cwd, marked, cfg, (f) => byFile.get(f)?.after ?? readText(f));
+      for (const ch of sw.changes) {
+        const prev = byFile.get(ch.file);
+        byFile.set(ch.file, prev ? { ...ch, before: prev.before } : ch);
+      }
+      switches.splice(0, switches.length, ...[...byFile.values()].filter((ch) => ch.after !== ch.before));
+    }
+    const optionsChanged = switches.some((ch) => !o.mode || ch.kind === "create" || switchMode(ch.before, o.mode) !== ch.after);
+    out();
+    telemetryNotice(isEmptyConfig(cfg) ? currentConfig(marked) : { ...currentConfig(marked), ...cfg }, null);
+    cspAdvice(project, files, cfg);
+    out();
+    if (switches.length) return switchModes(o, project, switches, install, spec, cwd, { mode: !!o.mode && switches.some((ch) => switchMode(ch.before, o.mode) !== ch.before), options: optionsChanged && !isEmptyConfig(cfg) ? describeConfig(cfg) : null });
     if (!install) {
-      out();
       out(`  ${c.green("Nothing to do.")}${marked.length ? ` To take it out: ${c.cyan(`${CMD} remove`)}` : ""}`);
       out();
       return 0;
@@ -338,7 +501,7 @@ async function init(o) {
   }
 
   const devtools = !o.noDevtools;
-  const plan = planInit(project, { mode: o.mode, devtools, cdn: o.cdn, sri: !o.noSri, strategy: o.strategy }, { pkgDir: PKG_DIR, version: VERSION });
+  const plan = planInit(project, { mode: o.mode, devtools, cdn: o.cdn, sri: !o.noSri, strategy: o.strategy, config: cfg }, { pkgDir: PKG_DIR, version: VERSION });
   if (plan.manual || !plan.changes.length) {
     out(`  ${c.yellow(sym.warn)} Could not add GenClass automatically: ${plan.manual ?? "nothing to change"}.`);
     out();
@@ -347,6 +510,9 @@ async function init(o) {
   }
   row("Entry", posix(relative(cwd, plan.entry)));
   row("Mode", `${o.mode ?? "observe"}${o.mode ? "" : c.gray(" (default: reports only, never changes anything; --mode guard lets it act)")}`);
+  const cfgAt = plan.changes.find((ch) => /genclass\.config\.[cm]?[jt]s$/.test(ch.file))?.rel ?? (cfg.telemetry === false ? plan.changes[0]?.rel : null);
+  telemetryNotice(cfg, cfgAt);
+  cspAdvice(project, files, cfg);
   out();
   out(`  ${c.bold("Changes")}`);
   out();

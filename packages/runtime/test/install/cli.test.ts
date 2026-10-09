@@ -639,3 +639,156 @@ describe("package.json", () => {
     for (const f of bare) expect(PKG_JSON.sideEffects, f).toContain(f);
   });
 });
+
+describe("init options: --no-telemetry / --telemetry / --model-url (Troy trial, 2026-10-09)", () => {
+  const next16 = (extra: Record<string, string> = {}) =>
+    project({
+      "package.json": pkg({ next: "16.0.0", react: "^19" }),
+      "tsconfig.json": "{}\n",
+      "node_modules/next/package.json": JSON.stringify({ name: "next", version: "16.0.1" }),
+      "app/layout.tsx": `export default function L({ children }: { children: React.ReactNode }) {\n  return <html><body>{children}</body></html>;\n}\n`,
+      ...extra,
+    });
+
+  it("Vite: --no-telemetry writes src/genclass.config.js and imports it right before /auto; remove restores the files", () => {
+    const after = roundTrip(viteVue(), "--no-telemetry");
+    const lines = after["src/main.js"].split("\n");
+    expect(lines[0]).toBe(`import "./genclass.config"; // genclass:init`);
+    expect(lines[1]).toBe(`import genclass from "@genclass/runtime/auto"; // genclass:init`);
+    expect(after["src/genclass.config.js"]).toContain(`globalThis.GENCLASS_CONFIG = { telemetry: false };`);
+    expect(after["src/genclass.config.js"]).toContain("genclass:init start");
+  });
+
+  it("Next.js 16: the options import goes into instrumentation-client.ts, the file is TypeScript", () => {
+    const after = roundTrip(next16(), "--no-telemetry", "--model-url", "/genclass-model");
+    expect(after["instrumentation-client.ts"]).toMatch(/import "\.\/genclass\.config";\nimport genclass from "@genclass\/runtime\/auto";/);
+    expect(after["genclass.config.ts"]).toContain(
+      `(globalThis as { GENCLASS_CONFIG?: object }).GENCLASS_CONFIG = { telemetry: false, model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-model/ort/" } };`,
+    );
+  });
+
+  it("the written statement is what /auto reads (window.GENCLASS_CONFIG)", () => {
+    const dir = viteVue();
+    cli(dir, "init", "--yes", "--no-install", "--no-telemetry", "--model-url", "/m/");
+    const stmt = readFileSync(join(dir, "src/genclass.config.js"), "utf8").split("\n").find((l) => l.startsWith("globalThis."))!;
+    const win: Record<string, unknown> = {};
+    new Function("globalThis", stmt)(win);
+    expect(fromPairs({})).toEqual({});
+    expect(mergeConfig({ mode: "observe" }, win.GENCLASS_CONFIG as object)).toEqual({ mode: "observe", telemetry: false, model: { baseUrl: "/m/", ortWasmPaths: "/m/ort/" } });
+  });
+
+  it("on an existing setup: --no-telemetry adds the options file, --telemetry flips it, remove takes everything out", () => {
+    const dir = viteVue();
+    const before = snapshot(dir);
+    expect(cli(dir, "init", "--yes", "--no-install").code).toBe(0);
+    const r = cli(dir, "init", "--yes", "--no-install", "--no-telemetry");
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toContain("telemetry off");
+    expect(readFileSync(join(dir, "src/main.js"), "utf8").split("\n").slice(0, 2)).toEqual([`import "./genclass.config"; // genclass:init`, `import genclass from "@genclass/runtime/auto"; // genclass:init`]);
+    expect(cli(dir, "init", "--yes", "--no-install", "--telemetry").code).toBe(0);
+    expect(readFileSync(join(dir, "src/genclass.config.js"), "utf8")).toContain("GENCLASS_CONFIG = { telemetry: true };");
+    expect(cli(dir, "init", "--yes", "--no-install", "--telemetry").out).toContain("Nothing to do");
+    expect(cli(dir, "remove", "--yes").code).toBe(0);
+    expect(snapshot(dir)).toEqual(before);
+  });
+
+  it("a user's own key in the options file survives --telemetry, and remove still takes the file out", () => {
+    const dir = next16();
+    const before = snapshot(dir);
+    cli(dir, "init", "--yes", "--no-install", "--no-telemetry");
+    const f = join(dir, "genclass.config.ts");
+    writeFileSync(f, readFileSync(f, "utf8").replace("{ telemetry: false }", "{ telemetry: false, debug: true }"));
+    cli(dir, "init", "--yes", "--no-install", "--telemetry");
+    expect(readFileSync(f, "utf8")).toContain("{ telemetry: true, debug: true }");
+    const r = cli(dir, "remove", "--yes");
+    expect(r.code, r.out).toBe(0);
+    expect(snapshot(dir)).toEqual(before);
+  });
+
+  it("plain HTML: data-telemetry=\"off\" on the script tag; --telemetry takes it off again", () => {
+    const after = roundTrip(project({ "index.html": PAGE }), "--no-telemetry", "--no-sri");
+    expect(after["index.html"]).toContain(` data-devtools="local" data-telemetry="off"></script> <!-- genclass:init -->`);
+    const dir = project({ "index.html": PAGE });
+    cli(dir, "init", "--yes", "--no-install", "--no-telemetry", "--no-sri");
+    cli(dir, "init", "--yes", "--no-install", "--telemetry");
+    expect(readFileSync(join(dir, "index.html"), "utf8")).not.toContain("data-telemetry");
+  });
+
+  it("Astro: a marked <meta name=\"genclass\"> line before init's script", () => {
+    const dir = project({
+      "package.json": pkg({ astro: "^5" }),
+      "src/layouts/Layout.astro": `---\n---\n<html>\n\t<head>\n\t\t<title>x</title>\n\t</head>\n\t<body><slot /></body>\n</html>\n`,
+    });
+    const after = roundTrip(dir, "--no-telemetry");
+    expect(after["src/layouts/Layout.astro"]).toMatch(/\t\t<meta name="genclass" content="telemetry=off" \/> <!-- genclass:init -->\n\t\t<script>import genclass/);
+  });
+
+  it("Next pages router and Nuxt: the options file stays out of routed / auto-loaded folders", () => {
+    const pages = project({
+      "package.json": pkg({ next: "14.2.0", react: "^18" }),
+      "node_modules/next/package.json": JSON.stringify({ name: "next", version: "14.2.0" }),
+      "pages/index.js": `export default function P() { return null; }\n`,
+    });
+    const a = roundTrip(pages, "--no-telemetry");
+    expect(a["genclass.config.js"]).toContain("telemetry: false");
+    expect(a["pages/_app.jsx"]).toContain(`import "../genclass.config";`);
+    const nuxt = project({ "package.json": pkg({ nuxt: "^3" }), "app.vue": "<template><div /></template>\n", "nuxt.config.ts": "export default {}\n" });
+    const b = roundTrip(nuxt, "--no-telemetry");
+    expect(b["genclass.config.js"]).toContain("telemetry: false");
+    expect(b["plugins/genclass.client.js"]).toContain(`import "../genclass.config";`);
+  });
+
+  it("--telemetry with --no-telemetry is a usage error", () => {
+    const r = cli(viteVue(), "init", "--telemetry", "--no-telemetry");
+    expect(r.code).toBe(2);
+    expect(r.out).toContain("contradict");
+  });
+
+  it("discloses that telemetry is on by default, how to turn it off, and links TELEMETRY.md and PRIVACY.md", () => {
+    const r = cli(viteVue(), "init", "--dry-run");
+    expect(r.out).toMatch(/Telemetry\s+on \(the default\)/);
+    expect(r.out).toContain("npx @genclass/runtime init --no-telemetry");
+    expect(r.out).toContain("https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md");
+    expect(r.out).toContain("packages/runtime/TELEMETRY.md");
+    expect(cli(viteVue(), "init", "--dry-run", "--no-telemetry").out).toMatch(/Telemetry\s+off/);
+    const usage = cli(project({}), "init", "--help").out;
+    expect(usage).toContain("--no-telemetry");
+    expect(usage).toContain("--model-url");
+  });
+});
+
+describe("init finds a Content-Security-Policy and prints the self-host steps", () => {
+  const CSP_CONFIG = `const csp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'";\nexport default { async headers() { return [{ source: "/(.*)", headers: [{ key: "Content-Security-Policy", value: csp }] }]; } };\n`;
+  const next = (files: Record<string, string>) =>
+    project({ "package.json": pkg({ next: "16.0.0", react: "^19" }), "node_modules/next/package.json": JSON.stringify({ name: "next", version: "16.0.1" }), "app/page.tsx": "export default function P() { return null; }\n", ...files });
+
+  it("next.config headers(): names the file, the blocked origin and both fixes", () => {
+    const r = cli(next({ "next.config.ts": CSP_CONFIG }), "init", "--dry-run");
+    expect(r.out).toContain("Content-Security-Policy found (next.config.ts)");
+    expect(r.out).toContain("which your policy does not allow (connect-src)");
+    expect(r.out).toContain("npx @genclass/runtime fetch-model public/genclass-model");
+    expect(r.out).toContain("npx @genclass/runtime init --model-url /genclass-model/");
+    expect(r.out).toContain("or add https://cdn.jsdelivr.net to connect-src");
+    expect(r.out).not.toContain("wasm-unsafe-eval'.");
+  });
+
+  it("a meta tag, helmet, or a headers file count too; a policy without wasm-unsafe-eval gets that note", () => {
+    const meta = cli(project({ "index.html": PAGE.replace("<title>", `<meta http-equiv="Content-Security-Policy" content="default-src 'self'">\n  <title>`) }), "init", "--dry-run");
+    expect(meta.out).toContain("Content-Security-Policy found (index.html)");
+    expect(meta.out).toContain("script-src needs 'wasm-unsafe-eval'");
+    const headers = cli(next({ "vercel.json": `{"headers":[{"source":"/(.*)","headers":[{"key":"Content-Security-Policy","value":"default-src 'self'"}]}]}` }), "init", "--dry-run");
+    expect(headers.out).toContain("Content-Security-Policy found (vercel.json)");
+  });
+
+  it("a test that mentions CSP is not a policy; no policy, no message; --model-url says same-origin is enough", () => {
+    expect(cli(next({ "test/csp.test.ts": `it("sets Content-Security-Policy", () => {});\n` }), "init", "--dry-run").out).not.toContain("Content-Security-Policy found");
+    expect(cli(next({}), "init", "--dry-run").out).not.toContain("Content-Security-Policy");
+    expect(cli(next({ "next.config.ts": CSP_CONFIG }), "init", "--dry-run", "--model-url", "/genclass-model/").out).toContain("(same origin): connect-src 'self' is enough");
+  });
+
+  it("--model-url into a public folder that fetch-model filled with the WASM ORT only also pins device wasm", () => {
+    const dir = next({ "next.config.ts": CSP_CONFIG, "public/genclass-model/ort/ort.json": JSON.stringify({ files: { "ort-wasm-simd-threaded.wasm": {}, "ort-wasm-simd-threaded.mjs": {} } }) });
+    cli(dir, "init", "--yes", "--no-install", "--model-url", "/genclass-model/");
+    expect(readFileSync(join(dir, "genclass.config.js"), "utf8")).toContain(`device: "wasm"`);
+  });
+});

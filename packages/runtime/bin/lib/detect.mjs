@@ -333,3 +333,35 @@ export function detectState(project, files) {
   }
   return found;
 }
+
+// ------------------------------------------------------------------------------------- Content-Security-Policy
+
+const CSP_RE = /Content-Security-Policy/i;
+const HELMET_RE = /\bhelmet\s*\(|\bcontentSecurityPolicy\s*[:(]/;
+const TEST_FILE_RE = /(?:^|[\\/])(?:test|tests|__tests__|e2e|spec)[\\/]|\.(?:test|spec)\.[cm]?[jt]sx?$/;
+const HEADER_FILES = ["vercel.json", "netlify.toml", "_headers", "public/_headers", "static/_headers", "staticwebapp.config.json", "firebase.json", "nginx.conf", "Caddyfile"];
+
+/**
+ * Where the app sets a Content-Security-Policy: next.config / proxy / middleware headers(), a
+ * `<meta http-equiv="Content-Security-Policy">`, helmet, or a hosting headers file. Returns null when nothing does,
+ * else { files (relative), cdnMentioned (cdn.jsdelivr.net appears there), wasmEval ('wasm-unsafe-eval' or
+ * 'unsafe-eval' appears there) }. A heuristic over the source text: it cannot tell which policy is in force.
+ */
+export function detectCsp(dir, files, pkg) {
+  const found = [];
+  let text = "";
+  const look = (f) => {
+    if (TEST_FILE_RE.test(relative(dir, f)) || /genclass\.config\.[cm]?[jt]s$/.test(f)) return;
+    const t = readText(f);
+    if (t && (CSP_RE.test(t) || HELMET_RE.test(t))) {
+      found.push(relative(dir, f).split(sep).join("/"));
+      text += `\n${t}`;
+    }
+  };
+  for (const f of files) look(f);
+  for (const h of HEADER_FILES) if (isFile(join(dir, h))) look(join(dir, h));
+  const helmet = !!(pkg?.dependencies && Object.prototype.hasOwnProperty.call(pkg.dependencies, "helmet"));
+  if (!found.length && helmet) found.push("package.json (helmet sets a Content-Security-Policy by default)");
+  if (!found.length) return null;
+  return { files: found, cdnMentioned: /cdn\.jsdelivr\.net/.test(text), wasmEval: /wasm-unsafe-eval|'unsafe-eval'/.test(text) };
+}

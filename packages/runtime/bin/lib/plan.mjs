@@ -5,7 +5,25 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { firstFile, htmlFiles, htmlModuleEntry, isDir, isFile, readText, walkSources, withExts } from "./detect.mjs";
-import { AUTO, MARK, MARK_INLINE, appendEnd, bodyTagEnd, codeStyle, indentOf, indentUnit, insertLineAt, insertTop, lineIndexAt, linesOf } from "./edit.mjs";
+import {
+  AUTO,
+  CONFIG_COMMENT,
+  MARK,
+  MARK_INLINE,
+  appendEnd,
+  bodyTagEnd,
+  codeStyle,
+  configStatement,
+  indentOf,
+  indentUnit,
+  insertLineAt,
+  insertTop,
+  isEmptyConfig,
+  lineIndexAt,
+  linesOf,
+  switchMetaConfig,
+  tagWithConfig,
+} from "./edit.mjs";
 
 export { AUTO };
 const HEADER = `${MARK} start: GenClass Runtime, added by \`npx @genclass/runtime init\` (\`npx @genclass/runtime remove\` takes it out)`;
@@ -25,13 +43,17 @@ const DEV = {
   node: 'process.env.NODE_ENV === "development"',
 };
 
-/** The two snippets every JS entry gets: the auto import (top) and the dev-only overlay (end). */
-function snippets(style, { mode, devtools, devCond }) {
+/**
+ * The snippets every JS entry gets: the auto import (top), the dev-only overlay (end) and, when init writes options,
+ * the import of genclass.config right before the auto import (`file` is where these lines go).
+ */
+function snippets(style, { mode, devtools, devCond, configFile }, file) {
   const { q, semi } = style;
   const auto = AUTO(mode);
   return {
     top: devtools ? `import genclass from ${q}${auto}${q}${semi}` : `import ${q}${auto}${q}${semi}`,
     dev: devtools ? `if (${devCond}) import(${q}@genclass/runtime/devtools${q}).then((d) => d.mountDevtools(genclass))${semi}` : null,
+    cfg: configFile && file ? `import ${q}${specifier(file, configFile)}${q}${semi}` : null,
   };
 }
 
@@ -39,8 +61,8 @@ function snippets(style, { mode, devtools, devCond }) {
 function editEntry(file, opts, extraTop = []) {
   const before = readText(file) ?? "";
   const style = codeStyle(before);
-  const s = snippets(style, opts);
-  let after = insertTop(before, [s.top, ...(s.dev ? extraTop.map((l) => l(style)) : [])].map(mark));
+  const s = snippets(style, opts, file);
+  let after = insertTop(before, [...(s.cfg ? [s.cfg] : []), s.top, ...(s.dev ? extraTop.map((l) => l(style)) : [])].map(mark));
   if (s.dev) after = appendEnd(after, [mark(s.dev)]);
   return { file, kind: "modify", before, after };
 }
@@ -115,18 +137,19 @@ function planSvelteKit(p, o) {
   const existing = firstFile(p.dir, ["src/hooks.client.ts", "src/hooks.client.js"]);
   if (existing) return { entry: existing, changes: [editEntry(existing, { ...o, devCond: DEV.vite })] };
   const file = join(p.dir, "src", `hooks.client.${p.ts ? "ts" : "js"}`);
-  const s = snippets(DQ, { ...o, devCond: DEV.vite });
-  return { entry: file, changes: [createFile(file, [s.top, ...(s.dev ? [s.dev] : [])])] };
+  const s = snippets(DQ, { ...o, devCond: DEV.vite }, file);
+  return { entry: file, changes: [createFile(file, [...(s.cfg ? [s.cfg] : []), s.top, ...(s.dev ? [s.dev] : [])])] };
 }
 
 function planNuxt(p, o) {
   const pluginsDir = join(p.details.srcDir, "plugins");
   const file = join(pluginsDir, `genclass.client.${p.ts || isFile(join(p.dir, "tsconfig.json")) ? "ts" : "js"}`);
   if (isFile(file)) return { changes: [], manual: `${posix(relative(p.dir, file))} already exists` };
-  const s = snippets(DQ, { ...o, devCond: DEV.nuxt });
+  const s = snippets(DQ, { ...o, devCond: DEV.nuxt }, file);
+  const top = [...(s.cfg ? [s.cfg] : []), s.top];
   const body = s.dev
-    ? [s.top, "", "export default defineNuxtPlugin(() => {", `  ${s.dev}`, "});"]
-    : [s.top, "", "export default defineNuxtPlugin(() => {});"];
+    ? [...top, "", "export default defineNuxtPlugin(() => {", `  ${s.dev}`, "});"]
+    : [...top, "", "export default defineNuxtPlugin(() => {});"];
   return { entry: file, changes: [createFile(file, body)] };
 }
 
@@ -147,14 +170,14 @@ function planNext(p, o) {
   const jsx = p.ts ? "tsx" : "jsx";
   const modern = !version || version.major > 15 || (version.major === 15 && version.minor >= 3);
   const strategy = o.strategy || (modern ? "instrumentation" : appDir ? "layout" : "pages");
-  const s = snippets(DQ, { ...o, devCond: DEV.node });
-
   if (strategy === "instrumentation") {
     // Next.js >= 15.3 runs instrumentation-client before the app's own code, in the browser only.
     const existing = firstFile(srcDir, withExts("instrumentation-client", ["ts", "js", "mts", "mjs"]));
     if (existing) return { entry: existing, changes: [editEntry(existing, { ...o, devCond: DEV.node })] };
     const file = join(srcDir, `instrumentation-client.${ext}`);
-    const body = s.dev ? [s.top, "", `if (process.env.NODE_ENV === "development") {`, `  import("@genclass/runtime/devtools").then((d) => d.mountDevtools(genclass));`, "}"] : [s.top];
+    const s = snippets(DQ, { ...o, devCond: DEV.node }, file);
+    const top = [...(s.cfg ? [s.cfg] : []), s.top];
+    const body = s.dev ? [...top, "", `if (process.env.NODE_ENV === "development") {`, `  import("@genclass/runtime/devtools").then((d) => d.mountDevtools(genclass));`, "}"] : top;
     return { entry: file, changes: [createFile(file, body)] };
   }
 
@@ -163,10 +186,12 @@ function planNext(p, o) {
     const layout = firstFile(appDir, withExts("layout", ["tsx", "jsx", "js", "ts"]));
     if (!layout) return { changes: [], manual: "no app/layout.* found" };
     const comp = join(appDir, `genclass-init.${jsx}`);
+    const s = snippets(DQ, { ...o, devCond: DEV.node }, comp);
     const body = [
       '"use client";',
       "",
       "// Starts GenClass Runtime when this module loads in the browser (on the server it is inert).",
+      ...(s.cfg ? [s.cfg] : []),
       s.top,
       "",
       ...(s.dev ? [`if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {`, `  import("@genclass/runtime/devtools").then((d) => d.mountDevtools(genclass));`, "}", ""] : []),
@@ -199,9 +224,10 @@ function planNext(p, o) {
   const devCond = `${DEV.node} && typeof window !== "undefined"`;
   if (existing) return { entry: existing, changes: [editEntry(existing, { ...o, devCond })] };
   const file = join(dir, `_app.${jsx}`);
-  const sd = snippets(DQ, { ...o, devCond });
+  const sd = snippets(DQ, { ...o, devCond }, file);
   const body = [
     ...(p.ts ? ['import type { AppProps } from "next/app";'] : []),
+    ...(sd.cfg ? [sd.cfg] : []),
     sd.top,
     "",
     ...(sd.dev ? [sd.dev, ""] : []),
@@ -266,7 +292,8 @@ export function scriptTag(o, pkgDir, version) {
   // no data-mode: observe, the runtime's default
   if (o.mode) attrs.push(`data-mode="${o.mode}"`);
   if (o.devtools) attrs.push('data-devtools="local"');
-  return `<script ${attrs.join(" ")}></script>`;
+  const open = isEmptyConfig(o.config) ? `<script ${attrs.join(" ")}>` : tagWithConfig(`<script ${attrs.join(" ")}>`, o.config);
+  return `${open}</script>`;
 }
 
 function planHtml(p, o, ctx) {
@@ -317,11 +344,41 @@ const PLANNERS = {
   html: planHtml,
 };
 
-/** { entry?, changes, notes?, manual? } for the detected project. */
+/**
+ * Where init writes the options file for an entry: next to it, except where that folder is routed or auto-loaded
+ * (Nuxt's plugins/, Next's pages/): then the source root.
+ */
+export function configFileFor(p, entry) {
+  const ts = /\.[cm]?tsx?$/.test(entry);
+  let dir = dirname(entry);
+  if (p.framework === "nuxt") dir = p.details.srcDir;
+  else if (p.framework === "next" && /[\\/]pages[\\/]_app\.[cm]?[jt]sx?$/.test(entry)) dir = dirname(dir);
+  return join(dir, `genclass.config.${ts ? "ts" : "js"}`);
+}
+
+/** The options file: one marked block setting window.GENCLASS_CONFIG. */
+export const configFileChange = (file, cfg) => createFile(file, [CONFIG_COMMENT, configStatement(cfg, /\.[cm]?tsx?$/.test(file))]);
+
+/** { entry?, changes, notes?, manual? } for the detected project. opts.config: { telemetry?, model? } to write. */
 export function planInit(project, opts, ctx) {
   const planner = PLANNERS[project.framework];
   if (!planner) return { changes: [], manual: "the project type was not recognised" };
-  const r = planner(project, opts, ctx);
+  const cfg = opts.config;
+  let r = planner(project, opts, ctx);
+  if (!isEmptyConfig(cfg) && !r.manual && r.entry && project.framework !== "html") {
+    if (project.framework === "astro") {
+      for (const ch of r.changes) {
+        const next = switchMetaConfig(ch.after, cfg);
+        if (next === ch.after) (r.notes ??= []).push(`${posix(relative(project.dir, ch.file))}: GenClass is inline in <head>, so its options were not written there: add <meta name="genclass" content="telemetry=off"> yourself.`);
+        ch.after = next;
+      }
+    } else {
+      const file = configFileFor(project, r.entry);
+      if (isFile(file)) return { changes: [], manual: `${posix(relative(project.dir, file))} already exists (init writes its options there)` };
+      r = planner(project, { ...opts, configFile: file }, ctx);
+      r.changes.push(configFileChange(file, cfg));
+    }
+  }
   for (const ch of r.changes) ch.rel = posix(relative(project.dir, ch.file));
   return r;
 }
