@@ -61,7 +61,13 @@ export interface ModelStatus {
   /** runtime.status only: this session may act (false when sampled out). */
   sampled?: boolean;
   breaker?: { tripped: boolean; at?: number; reason?: string };
-  scope?: { route?: string; mode: ModeOrOff; aggressiveness: number };
+  /**
+   * runtime.status only: what is in force on the current route. `mode` is the effective mode there (the same as
+   * effectiveMode: the requested mode, demoted by sampling, the breaker and the matching `routes[]` rule) and
+   * `aggressiveness` the effective level (min of the global and the rule's). With a matching rule: `rule` (its
+   * index in `routes`) and `ceiling` (the mode that rule caps the route at; rules only ever lower the mode).
+   */
+  scope?: { route?: string; mode: ModeOrOff; aggressiveness: number; rule?: number; ceiling?: ModeOrOff };
   modelBudget?: { decisionsLastMinute: number; dropped: number };
   /** Download progress while loading (bytes). */
   progress?: { loaded: number; total: number };
@@ -147,6 +153,8 @@ export type GateSource = "policy" | "model" | "default";
  */
 export interface EffectiveGates {
   kind: GateKind;
+  /** runtime.gates() only: the effective mode on the current route (observe/off: no gate here leads to an action). */
+  mode?: ModeOrOff;
   /** The aggressiveness level in force (0 cautious … 1 eager) and its name when it is one of the three. */
   aggressiveness: number;
   level?: "cautious" | "balanced" | "eager";

@@ -113,7 +113,12 @@ interface InitOptions {
 Runtime additions: `rt.disable({ undo? })` (permanent; `undo: true` rolls back the last minute's actions),
 `rt.summary(): SessionSummary`, `rt.setSession({ id?, tags? })`, `rt.breaker.{tripped, reset()}`, `rt.learn.clear()`,
 events `shadow`, `breaker`, `limit`, `modelBudget`. `status` adds `effectiveMode`, `sampled`, `breaker`, `scope`,
-`modelBudget`, and states `"disabled" | "skipped" | "unloaded"`.
+`modelBudget`, and states `"disabled" | "skipped" | "unloaded"`. `status.scope` is what is in force on the current
+route: `mode` is the effective mode there (equal to `effectiveMode`: the requested mode demoted by sampling, the breaker
+and the matching `routes[]` rule) and `aggressiveness` the effective level; with a matching rule it also has `rule`
+(its index) and `ceiling` (the mode that rule caps the route at; rules only lower the mode). Before 0.1.0-beta.4,
+`scope.mode` was that ceiling ("heal" when no rule matched). `rt.gates()` carries `mode` (the same effective mode).
+`status.blocked` (state "error"): `{ url, origin, csp, directive? }` when the browser blocked a model or ORT download.
 
 Gate order (each request/decision): protected → cross-origin → op scope (created under off/observe) →
 mode/allow/deny/requireDiagnosis (at the effective mode) → thresholds → `policy.actionLimits`

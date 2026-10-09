@@ -2454,7 +2454,15 @@ export class RuntimeImpl implements Runtime {
       effectiveMode: this.effectiveMode(),
       sampled: this.sampled,
       breaker: this.breakerImpl?.tripped ? { tripped: true, at: this.breakerImpl.tripped.at, reason: this.breakerImpl.tripped.reason } : { tripped: false },
-      scope: { ...(this.routeScope.route ? { route: this.routeScope.route } : {}), mode: this.routeScope.mode, aggressiveness: this.routeScope.aggressiveness },
+      // what is in force on the current route: the effective mode and aggressiveness (route rules can only lower
+      // them), plus the matching routes[] rule and its cap. routeScope.mode alone is a ceiling ("heal" without a
+      // rule), which read as if the page ran in heal mode.
+      scope: {
+        ...(this.routeScope.route ? { route: this.routeScope.route } : {}),
+        mode: this.effectiveMode(),
+        aggressiveness: this.effectiveAggr(),
+        ...(this.routeScope.rule !== undefined ? { rule: this.routeScope.rule, ceiling: this.routeScope.mode } : {}),
+      },
       modelBudget: this.queue.budget(),
     };
     if (this.enabledState === "disabled" || this.enabledState === "off") {
@@ -2466,7 +2474,7 @@ export class RuntimeImpl implements Runtime {
 
   /** The gate thresholds in force for a trigger kind: policy overrides, else the model's meta gate, else defaults. */
   gates(trigger?: TriggerKind): EffectiveGates {
-    return this.gatesAt(trigger, this.effectiveAggr());
+    return { ...this.gatesAt(trigger, this.effectiveAggr()), mode: this.effectiveMode() };
   }
 
   private gatesAt(trigger: TriggerKind | undefined, level: number): EffectiveGates {
