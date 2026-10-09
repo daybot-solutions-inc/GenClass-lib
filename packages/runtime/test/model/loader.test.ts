@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { browserClock } from "../../src/clock.js";
-import { ModelBackend, ORT_WASM_FILES, type ModelHostStatus, type OrtBuild } from "../../src/model/backend.js";
+import { ModelBackend, ORT_GLUE_FILES, ORT_SESSION_LOG, ORT_WASM_FILES, type ModelHostStatus, type OrtBuild } from "../../src/model/backend.js";
 import type { OrtLike } from "../../src/model/engine.js";
 import { ModelIntegrityError, ModelLoadError, ModelNotReadyError, ModelUnsupportedError } from "../../src/model/errors.js";
 import { fetchCard, fetchFile, parseCard, planOrder, type GpuInfo } from "../../src/model/loader.js";
@@ -361,5 +361,22 @@ describe("ModelBackend load", () => {
     expect(err).toBeInstanceOf(ModelLoadError);
     expect(statuses.at(-1)).toMatchObject({ state: "error", attempts: [{ variant: "q8", device: "wasm", error: "bad model" }] });
     await expect(b.evaluate({}, {})).rejects.toBeInstanceOf(ModelNotReadyError);
+  });
+
+  it("creates every session with ORT's log cut to errors (no benign WebGPU warnings on console.error)", async () => {
+    const d = modelDir();
+    const ort = fakeOrt();
+    const opts: Record<string, unknown>[] = [];
+    const create = ort.InferenceSession.create;
+    ort.InferenceSession.create = async (bytes: Uint8Array, o?: Record<string, unknown>) => {
+      opts.push(o ?? {});
+      return create(bytes, o);
+    };
+    const { b } = backend(d, null, GPU_F16, ort);
+    await b.load({ baseUrl: "https://cdn.test/model/", warmup: false });
+    expect(ORT_SESSION_LOG).toEqual({ logSeverityLevel: 3, logVerbosityLevel: 0 });
+    expect(opts.length).toBe(3); // webgpu fp16, webgpu q8, wasm q8
+    for (const o of opts) expect(o).toMatchObject({ logSeverityLevel: 3, logVerbosityLevel: 0 });
+    expect(ort.env.logLevel).toBe("error");
   });
 });

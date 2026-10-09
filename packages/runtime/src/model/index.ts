@@ -3,7 +3,7 @@
 
 export { createModelHost, DEFAULT_MODEL_BASE_URL, DEFAULT_TIMEOUT_MS, DEFAULT_MAX_QUEUE } from "./host.js";
 export type { ModelHost, ModelHostOptions, ModelHostStats, ModelEvaluateRequest, WorkerLike, ModelHostStatus, EvaluateOk } from "./host.js";
-export { ModelBackend, ORT_WASM_FILES, ortCdnBase, WARMUP_STATE, WARMUP_QUESTIONS } from "./backend.js";
+export { ModelBackend, ORT_WASM_FILES, ORT_GLUE_FILES, ORT_SESSION_LOG, ortCdnBase, WARMUP_STATE, WARMUP_QUESTIONS } from "./backend.js";
 export type { BackendLoadOptions, BackendEnv, LatencyStats, OrtBuild } from "./backend.js";
 export { Engine, FEEDS, tensorFloats } from "./engine.js";
 export type { EngineOptions, EngineResult, ModelMeta, OrtLike, OrtSessionLike, OrtTensorLike } from "./engine.js";

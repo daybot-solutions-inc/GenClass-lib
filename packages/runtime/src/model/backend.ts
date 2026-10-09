@@ -113,7 +113,20 @@ export const ORT_WASM_FILES: Record<OrtBuild, string> = {
   webgpu: "ort-wasm-simd-threaded.asyncify.wasm",
   wasm: "ort-wasm-simd-threaded.wasm",
 };
+/** The JS glue ORT's WASM threads (pthread workers) load by URL, next to each build's .wasm. */
+export const ORT_GLUE_FILES: Record<OrtBuild, string> = {
+  webgpu: "ort-wasm-simd-threaded.asyncify.mjs",
+  wasm: "ort-wasm-simd-threaded.mjs",
+};
 export const ortCdnBase = (version: string): string => `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/`;
+
+/**
+ * Session options for every InferenceSession. ORT's own log is cut to errors: at its default (warning) the WebGPU
+ * provider prints two benign lines through console.error on every load ("Some nodes were not assigned to the
+ * preferred execution providers ...", which is ORT placing shape ops on the CPU on purpose), which error monitors
+ * then report. Real failures still reject session creation or inference (and are reported by the runtime).
+ */
+export const ORT_SESSION_LOG = { logSeverityLevel: 3, logVerbosityLevel: 0 } as const;
 
 const PROGRESS_STEP_MS = 100;
 /** Used for the CDN path only if onnxruntime-web does not report its version. */
@@ -341,7 +354,7 @@ export class ModelBackend {
     opts: BackendLoadOptions,
   ): Promise<Engine> {
     const ms = plan.device === "webgpu" ? (opts.sessionTimeoutMs?.webgpu ?? 60_000) : (opts.sessionTimeoutMs?.wasm ?? 180_000);
-    const creating = ort.InferenceSession.create(bytes, { executionProviders: [plan.device], graphOptimizationLevel: "all" });
+    const creating = ort.InferenceSession.create(bytes, { executionProviders: [plan.device], graphOptimizationLevel: "all", ...ORT_SESSION_LOG });
     let session: OrtSessionLike;
     try {
       session = await withTimeout(creating, ms, this.env.clock, `${plan.device} session creation`);
