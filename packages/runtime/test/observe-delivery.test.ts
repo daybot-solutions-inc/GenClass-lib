@@ -114,9 +114,11 @@ describe("observe mode: fetch responses are never held", () => {
     expect(x.st.get().items).toEqual(["a-1"]);
     const [req] = deliveryCalls(x);
     expect(req).toBeDefined();
-    const text = JSON.stringify(req.state);
-    expect(text).toContain("ab-1"); // search.items still holds the newer result
-    expect(text).not.toContain('a-1\\"]');
+    // the state lines show what the app holds when the response arrives (the newer result), never the response's own
+    // value; a fact may quote the response ("The response has search.items = ...") when its body was read in time
+    const stateLines = JSON.stringify((req.state as { state?: unknown }).state);
+    expect(stateLines).toContain("ab-1"); // search.items still holds the newer result
+    expect(stateLines).not.toContain('a-1\\"]');
     expect(x.rt.decisions().map((d) => d.trigger)).toEqual(["delivery"]);
   });
 

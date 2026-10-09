@@ -211,8 +211,6 @@ package → demos rerun → runtime release.
 ## Needs the user
 
 - **Telemetry owner decisions (before or right after publishing `0.1.0-beta.3`):**
-  - **Retention policy** for the R2 bucket `genclass-telemetry` (then add an R2 lifecycle rule; command in
-    `telemetry-worker/README.md`). Until then data is kept until deleted.
   - **Privacy policy page** for the collection (who is the controller, purpose, retention, contact, rights), linked
     from `packages/runtime/TELEMETRY.md` and the READMEs.
   - **Data processing terms** for apps that ship GenClass (their users' data reaches our collector), or guidance

@@ -8,8 +8,9 @@ Cloudflare Worker that receives the default-on diagnostics batches from `@gencla
 - **Storage:** R2 bucket `genclass-telemetry`, one gzip JSON Lines object per accepted batch at
   `events/dt=YYYY-MM-DD/rt=<runtime version>/model=<model version|none>/<uuid>.jsonl.gz` (date = server UTC date).
   Each line is `{ sid, runtime, model, sent, receivedAt, country, event }`.
-- **Retention:** not set yet (owner decision, `OPEN_TASKS.md`). Add an R2 lifecycle rule once decided, e.g.
-  `npx --yes wrangler@4 r2 bucket lifecycle add genclass-telemetry expire-events events/ --expire-days <N>`.
+- **Retention:** 90 days, enforced by the R2 lifecycle rule `expire-90d` (prefix `events/`, set 2026-10-09):
+  `npx --yes wrangler@4 r2 bucket lifecycle add genclass-telemetry expire-90d events/ --expire-days 90`.
+  Check it with `npx --yes wrangler@4 r2 bucket lifecycle list genclass-telemetry`.
 
 ## Routes
 

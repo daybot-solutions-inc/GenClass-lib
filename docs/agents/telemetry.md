@@ -69,7 +69,7 @@
 - Deploy: `cd telemetry-worker && npx --yes wrangler@4 deploy`. List objects: Cloudflare API
   `GET /client/v4/accounts/<id>/r2/buckets/genclass-telemetry/objects?prefix=events/` (wrangler has no list);
   read with `npx --yes wrangler@4 r2 object get "genclass-telemetry/<key>" --remote --file out.gz`.
-- **Retention is not set** (owner decision; `OPEN_TASKS.md`). Add an R2 lifecycle rule once decided.
+- **Retention: 90 days**, by the R2 lifecycle rule `expire-90d` on prefix `events/` (set 2026-10-09; owner may change it).
 
 ## How to change it safely
 
@@ -85,7 +85,7 @@
 
 ## Drift and open issues
 
-- Owner decisions open: retention period, a published privacy policy page, data processing terms (`OPEN_TASKS.md`).
+- Owner decisions open: a published privacy policy page and data processing terms (`OPEN_TASKS.md`). Retention: 90 days.
 - The demos (`demos/src/shared/genclass.ts`) and `test/smoke/smoke.sh` call `GenClass.init` in a real browser and
   would send telemetry when run; they were left unchanged (honest-evaluation separation for demos). Add
   `?genclass=no-telemetry` or `telemetry: false` there if those runs should not reach the collector.

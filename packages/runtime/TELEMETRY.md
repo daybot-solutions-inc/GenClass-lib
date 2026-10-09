@@ -92,7 +92,8 @@ Numbers are rounded to 4 decimals. The source of truth is `packages/runtime/src/
   batch and the visitor's coarse **country** (two letters, from Cloudflare). It does not store IP addresses, user
   agents, cookies or any request header, and it drops unknown fields.
 - **Use:** model evaluation and training by the GenClass maintainers. Not sold, not used for advertising.
-- **Retention:** to be decided by the owner (see `OPEN_TASKS.md`); until then data is kept until deleted.
+- **Retention:** 90 days. An R2 lifecycle rule (`expire-90d`, prefix `events/`) deletes every stored batch 90 days after it
+  was written. The maintainers may change this later; changes are recorded in the CHANGELOG.
 - **Your own endpoint:** `telemetry: { endpoint: "https://…" }` sends the same batches to a collector you run
   instead (the worker in `telemetry-worker/` deploys to any Cloudflare account).
 
