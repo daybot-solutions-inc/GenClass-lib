@@ -1,10 +1,23 @@
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { join, resolve, sep } from "node:path";
 import { defineConfig, type Options } from "tsup";
 
 // tsup runs in the package directory (the entries below are relative to it too).
-const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf8")) as { version: string };
+const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf8")) as { version: string; dependencies: Record<string, string> };
+
+// dist/cdn/ort-*.js bundle onnxruntime-web, and the runtime fetches the wasm for the version it bundled (from
+// jsDelivr, or a self-hosted ortWasmPaths that `fetch-model` fills for package.json's version): the installed copy
+// must be exactly the pinned one.
+{
+  const want = pkg.dependencies["onnxruntime-web"];
+  const req = createRequire(resolve("package.json"));
+  const main = req.resolve("onnxruntime-web"); // its exports hide ./package.json
+  const dir = main.slice(0, main.lastIndexOf(`${sep}onnxruntime-web${sep}`) + `${sep}onnxruntime-web`.length);
+  const have = (JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { version: string }).version;
+  if (have !== want) throw new Error(`onnxruntime-web ${have} is installed, package.json pins ${want}: run npm install`);
+}
 
 // The script-tag builds write into dist/ next to the main build, whose clean leaves them alone (the configs run in
 // parallel): remove their old outputs here, before any build starts.

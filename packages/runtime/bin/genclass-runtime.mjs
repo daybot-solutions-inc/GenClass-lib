@@ -5,9 +5,10 @@
 //   genclass-runtime remove [--yes] [--dry-run] [--keep-package]
 //       Set GenClass up in a project (framework detection, install, one marked import in the entry file) and take it
 //       out again. Implemented in bin/lib/ (owner: INSTALL).
-//   genclass-runtime fetch-model <dir> [--from <baseUrl>] [--variant q8|fp16|all] [--force] [--quiet]
-//       Download a GenClass model directory (model.json + model files) so an app can self-host it:
-//       GenClass.init({ model: { baseUrl: "/genclass-model/" } }). Follows redirects (GitHub release URLs work),
+//   genclass-runtime fetch-model <dir> [--from <baseUrl>] [--variant q8|fp16|all] [--ort wasm|webgpu|all|none] [--ort-from <url>] [--force] [--quiet]
+//       Download a GenClass model directory (model.json + model files) so an app can self-host it, plus the
+//       onnxruntime-web files the runtime loads (into <dir>/ort/, the version the runtime bundles):
+//       GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-model/ort/" } }). Follows redirects (GitHub release URLs work),
 //       verifies sizes and sha256, skips files that are already present and valid, and writes a model.json that
 //       lists exactly the downloaded files with their sizes and hashes. Default --from: @genclass/runtime-model@0.2.0
 //       on jsDelivr (https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/), the runtime's default model.
@@ -16,9 +17,10 @@
 //       the card rule "any fp16 tensor -> needs: shader-f16" (WebGPU without shader-f16 cannot run fp16 tensors).
 
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
@@ -26,12 +28,31 @@ import { pipeline } from "node:stream/promises";
 // (src/model/host.ts -> DEFAULT_MODEL_BASE_URL; test/install/cli.test.ts checks they stay equal).
 const DEFAULT_FROM = "https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/";
 const CARD_FORMAT = "genclass-runtime-model/1";
+
+// onnxruntime-web: the runtime bundles this exact version (package.json pins it; tsup.config.ts checks the installed
+// copy matches) and asks for its wasm by that version, so self-hosted files must be the same version.
+const ORT_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"));
+    const v = String(pkg.dependencies?.["onnxruntime-web"] ?? "");
+    return /^\d+\.\d+\.\d+$/.test(v) ? v : "1.30.0";
+  } catch {
+    return "1.30.0";
+  }
+})();
+const ortFrom = (version) => `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/`;
+// What each onnxruntime-web build loads (src/model/backend.ts -> ORT_WASM_FILES, ORT_GLUE_FILES): the .wasm, and the
+// .mjs glue that WASM threads (crossOriginIsolated pages) start their workers from.
+const ORT_FILES = {
+  wasm: ["ort-wasm-simd-threaded.wasm", "ort-wasm-simd-threaded.mjs"],
+  webgpu: ["ort-wasm-simd-threaded.asyncify.wasm", "ort-wasm-simd-threaded.asyncify.mjs"],
+};
 const ROLES = ["tokenizer", "calibration", "meta"];
 
 const USAGE = `Usage:
   genclass-runtime init [--mode observe|guard|heal] [--yes] [--dry-run] [--no-install] [--no-devtools]
   genclass-runtime remove [--yes] [--dry-run] [--keep-package]
-  genclass-runtime fetch-model <dir> [--from <baseUrl>] [--variant q8|fp16|all] [--force] [--quiet]
+  genclass-runtime fetch-model <dir> [--from <baseUrl>] [--variant q8|fp16|all] [--ort wasm|webgpu|all|none] [--ort-from <url>] [--force] [--quiet]
   genclass-runtime info <dir>
 
 init sets GenClass up in the current project (shows the diff and asks first); remove undoes it
@@ -39,7 +60,11 @@ init sets GenClass up in the current project (shows the diff and asks first); re
 fetch-model downloads a GenClass model directory for self-hosting (default --variant all). The default --from is
 @genclass/runtime-model@0.2.0 on npm via jsDelivr, the runtime's own default model:
   ${DEFAULT_FROM}
-Serve <dir> and point the runtime at it: GenClass.init({ model: { baseUrl: "/genclass-model/" } }).`;
+It also downloads the onnxruntime-web files the runtime loads into <dir>/ort/ (--ort all, the default: the WASM
+build, 14 MB, and the WebGPU one, 27 MB; --ort wasm for the WASM build only, then also set model.device "wasm";
+--ort none to keep loading them from jsDelivr). Serve <dir> (e.g. as public/genclass-model) and point the runtime at it:
+  GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-model/ort/" } })
+With both self-hosted, a Content-Security-Policy needs no third-party origin (connect-src 'self').`;
 
 class UsageError extends Error {}
 
@@ -357,6 +382,48 @@ async function fetchModel(dirArg, flags) {
   out.variants = Object.fromEntries(Object.keys(card.variants).filter((v) => out.variants[v]).map((v) => [v, out.variants[v]]));
   await writeFile(join(dir, "model.json"), JSON.stringify(out, null, 2) + "\n");
   say(`wrote       ${join(dir, "model.json")} (${Object.keys(out.variants).join(", ")}; ${mb(total)} downloaded or verified)`);
+  const ort = await fetchOrt(dir, flags, say, log);
+  say("");
+  say(`Serve ${dirArg} at a URL path (public/genclass-model -> /genclass-model/) and pass:`);
+  say(`  GenClass.init({ model: { baseUrl: "/genclass-model/"${ort.length ? `, ortWasmPaths: "/genclass-model/ort/"` : ""}${ort.length && !ort.includes("webgpu") ? `, device: "wasm"` : ""} } })`);
+  say(`(or <meta name="genclass" content="model=/genclass-model/${ort.length ? ", ort=/genclass-model/ort/" : ""}${ort.length && !ort.includes("webgpu") ? ", device=wasm" : ""}"> with @genclass/runtime/auto)`);
+}
+
+/** The onnxruntime-web files for self-hosting, into <dir>/ort/ (ort.json records their sizes and hashes). Returns the builds. */
+async function fetchOrt(dir, flags, say, log) {
+  const want = String(flags.ort ?? "all");
+  if (!["all", "wasm", "webgpu", "none"].includes(want)) throw new UsageError("--ort must be wasm, webgpu, all or none");
+  if (want === "none") return [];
+  const builds = want === "all" ? ["wasm", "webgpu"] : [want];
+  const ortDir = join(dir, "ort");
+  const version = ORT_VERSION;
+  const from = flags["ort-from"] ? new URL(String(flags["ort-from"]).replace(/\/?$/, "/")).href : ortFrom(version);
+  let prev = null;
+  try {
+    prev = JSON.parse(await readFile(join(ortDir, "ort.json"), "utf8"));
+  } catch {
+    prev = null;
+  }
+  const record = { name: "onnxruntime-web", version, source: from, files: {} };
+  say(`onnxruntime-web ${version}  ${from}`);
+  for (const b of builds) {
+    for (const file of ORT_FILES[b]) {
+      const path = safeJoin(ortDir, file);
+      const known = prev && prev.version === version ? prev.files?.[file] : null;
+      let got = known && !flags.force ? await validLocal(path, { file, bytes: known.bytes, sha256: known.sha256 }) : null;
+      let note = "present, verified";
+      if (!got) {
+        got = await download(new URL(file, from).href, path, { file }, log);
+        note = "downloaded";
+      }
+      record.files[file] = { bytes: got.bytes, sha256: got.sha256 };
+      say(`  ort/${file.padEnd(36)} ${mb(got.bytes).padStart(9)}  ${note}`);
+    }
+  }
+  await writeFile(join(ortDir, "ort.json"), JSON.stringify(record, null, 2) + "\n");
+  if (builds.includes("webgpu"))
+    say(`  note: ort-wasm-simd-threaded.asyncify.wasm is 27 MB, over some static hosts' per-file limit (Cloudflare: 25 MiB); there, use --ort wasm and model.device "wasm"`);
+  return builds;
 }
 
 async function info(dirArg) {

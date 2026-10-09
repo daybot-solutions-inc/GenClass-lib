@@ -107,7 +107,7 @@
     "test:browser": "playwright test --config test/browser/playwright.config.ts"
   },
   "dependencies": {
-    "onnxruntime-web": "^1.30.0"
+    "onnxruntime-web": "1.30.0"
   },
   "peerDependencies": {
     "react": ">=18",
