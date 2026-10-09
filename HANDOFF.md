@@ -76,6 +76,19 @@ generic action. It has no hardcoded bug rules.
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Push to `origin runtime` as you go. Keep
   `OPEN_TASKS.md` and this file current.
 
+## Azure cost protection (do not disable)
+
+The user requires that their card is never charged.
+- **Hourly guard:** Automation account `aa-cost-guard` (rg-jev-train) runs `CostGuard` every 15 minutes.
+  - It estimates live spend from running VMs and stops every VM outside `rg-genclass-hub` if the remaining credit would
+    drop below a CA$3,000 reserve within 6 hours, or once CA$10,000 has been billed.
+  - It cancels the subscription at CA$12,500 billed, or on 2028-07-15.
+  - It reads the Automation variables `CreditTotalCad` and `ReserveCad`. Raise `CreditTotalCad` whenever Microsoft
+    grants more credit.
+- **Budget alerts:** budget `sponsorship-credit-guard` emails **mehar@daybot.ca** (the Azure account email).
+- **Credit milestones:** `rg-genclass-hub` holds the always-on, credit-earning workloads (Microsoft for Startups:
+  5 or more workloads for 60 days unlocks $25k; 7 or more unlocks $50k). Keep each of them above $1 of spend.
+
 ## How to continue
 
 1. `git pull origin runtime`. Read `OPEN_TASKS.md`, `training/LOG.md` (tail) and `training/NEEDS.md`.
