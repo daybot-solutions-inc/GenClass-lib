@@ -94,8 +94,14 @@ import { defaultRedact, normalizeFieldPath, plural, ratio, secs, truncate, type 
 import { blockedMessage } from "./model/blocked.js";
 
 const DECISIONS_KEPT = 200;
-/** A held write that applied because its hold budget expired can still be reverted this long after it applied. */
-const LATE_REVERT_MS = 2000;
+/**
+ * A write that applied before its decision arrived (not held, or its hold budget expired) can still be reverted this
+ * long after it applied. 800 ms (the hold budget's ceiling, HOLD_MAX_MS) since heal/overnight, was 2,000 ms: in the
+ * demos benchmark every late revert decided ≥ 0.88 s after its write ended in a user-visible bug (5 of 5, two of
+ * them on clean runs where the reverted write was the right answer), while those decided ≤ 0.65 s were mostly fixes.
+ * After about a second the user has been looking at the new value; reverting it is a second visible change.
+ */
+export const LATE_REVERT_MS = 800;
 /** Non-held triggers (stall, inconsistency, transition, error) are not worth answering after this long. */
 const BACKGROUND_DEADLINE_MS = 5000;
 /** A delivery `discard` keeps dropping the chain's writes over newer data for this long. */

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { holdBudget, policyConfig } from "../src/decide/policy.js";
+import { LATE_REVERT_MS } from "../src/runtime.js";
 import { sectionLimits, stateChars, stateText } from "../src/situation/serialize.js";
 import type { EvaluateRequest } from "../src/types.js";
 import { ManualDecider, defaultScript, setup, type Setup } from "./helpers.js";
@@ -161,7 +162,7 @@ describe("hold budget", () => {
     void rt.op("w2", () => b.set(1)); // queued behind w1
     expect(manual.pending.length).toBe(1);
     const first: EvaluateRequest = manual.pending[0].req;
-    expect(first.timeoutMs).toBe(200 + 2000); // held write: budget + late-revert window
+    expect(first.timeoutMs).toBe(200 + LATE_REVERT_MS); // held write: budget + late-revert window
     await clock.advance(2300);
     manual.answer(defaultScript()); // w1 answered after w2's deadline passed
     await clock.flush();
