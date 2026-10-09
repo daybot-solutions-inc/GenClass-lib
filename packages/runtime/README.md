@@ -625,8 +625,7 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
     (`navigator.globalPrivacyControl`) are never collected, as California's CCPA/CPRA requires for opt-out signals.
   - **If you ship GenClass**, the data comes from your users' browsers: you may need to mention it in your privacy
     policy and, where you need consent for analytics (GDPR/ePrivacy), start with `telemetry: false` until consent.
-    Stored data is deleted after 90 days. The maintainers' privacy policy and data processing terms are not
-    published yet.
+    Stored data is deleted after 90 days. Privacy policy: [PRIVACY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md).
   - `telemetry: { endpoint, sample, flushMs, maxBatch, include }` sends to your own collector, samples page loads,
     or tunes batching. `runtime.telemetry` tells whether it is on and why not.
 - **Inputs:** typed values of password fields, `cc-*` / `one-time-code` / password autocomplete fields, and fields
