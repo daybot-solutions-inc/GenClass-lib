@@ -133,7 +133,7 @@ def gemm_to_matmul(m) -> int:
     return done
 
 
-def make_q8(src: Path, dst: Path, vocab: int, block: int = 32) -> dict:
+def make_q8(src: Path, dst: Path, vocab: int, block: int = 32, keep_heads: bool = False) -> dict:
     import onnx
     from onnx import numpy_helper
     from onnxruntime.quantization.matmul_nbits_quantizer import DefaultWeightOnlyQuantConfig, MatMulNBitsQuantizer
@@ -142,7 +142,11 @@ def make_q8(src: Path, dst: Path, vocab: int, block: int = 32) -> dict:
     n_gemm = gemm_to_matmul(m)
     cfg = DefaultWeightOnlyQuantConfig(block_size=block, is_symmetric=True, bits=8, op_types_to_quantize=("MatMul",),
                                        quant_axes=(("MatMul", 0),))
-    qz = MatMulNBitsQuantizer(m, algo_config=cfg)
+    inits = {i.name for i in m.graph.initializer}
+    head_nodes = [n.name for n in m.graph.node if n.op_type == "MatMul" and keep_heads and
+                  (any(h in n.name for h in ("choice_mlp", "score_mlp", "noul_mlp", "gain_mlp")) or
+                   any(i.startswith("heads.") for i in n.input if i in inits))]
+    qz = MatMulNBitsQuantizer(m, algo_config=cfg, nodes_to_exclude=head_nodes)
     qz.process()
     m = qz.model.model
     left = [n.name for n in m.graph.node if n.op_type == "MatMul" and any(i.name in n.input for i in m.graph.initializer)]
@@ -155,6 +159,7 @@ def make_q8(src: Path, dst: Path, vocab: int, block: int = 32) -> dict:
     if f16_inits or f16_casts:
         raise ValueError(f"q8 graph contains fp16 tensors {f16_inits[:3]} / casts {f16_casts[:3]}")
     st["fp16_free"] = True
+    st["heads_kept_fp32"] = head_nodes
     st["matmul_unquantized_with_weight"] = left
     st["matmulnbits"] = sum(1 for n in m.graph.node if n.op_type == "MatMulNBits")
     st["gemm_converted"] = n_gemm
@@ -217,6 +222,7 @@ def main() -> None:
     ap.add_argument("--opset", type=int, default=17)
     ap.add_argument("--threads", type=int, default=16)
     ap.add_argument("--block", type=int, default=32)
+    ap.add_argument("--q8-keep-heads", action="store_true", help="keep the decision heads' MatMuls fp32 inside the q8 graph")
     args = ap.parse_args()
 
     import onnx
@@ -271,7 +277,7 @@ def main() -> None:
                           opset_version=args.opset, do_constant_folding=True, dynamo=False)
     onnx.checker.check_model(onnx.load(str(fp32)))
     q8_path, f16_path = out / f"{args.name}-q8.onnx", out / f"{args.name}-fp16.onnx"
-    st_q8 = make_q8(fp32, q8_path, vocab, args.block)
+    st_q8 = make_q8(fp32, q8_path, vocab, args.block, keep_heads=args.q8_keep_heads)
     st_16 = make_fp16(fp16_raw, f16_path, vocab)
     print(f"exported in {time.time() - t0:.1f}s; q8 {q8_path.stat().st_size / 1e6:.1f} MB, "
           f"fp16 {f16_path.stat().st_size / 1e6:.1f} MB", flush=True)

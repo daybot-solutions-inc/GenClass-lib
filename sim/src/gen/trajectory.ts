@@ -96,7 +96,7 @@ function explorePolicy(scale: number, rngT: Rng): ExplorePolicy | undefined {
 export const ONPOLICY_MAX_CALLS = 80;
 
 /** Runtime build the rows come from (meta.runtime_tag; SIM_RUNTIME_TAG overrides). */
-export const RUNTIME_TAG = (typeof process !== "undefined" && process.env.SIM_RUNTIME_TAG) || "situation-v2.2";
+export const RUNTIME_TAG = (typeof process !== "undefined" && process.env.SIM_RUNTIME_TAG) || "situation-v2.3";
 
 /** On-policy: favour points where the model acted (false-intervention candidates) or stayed passive on a problem. */
 function pickOnPolicy(decs: DecisionRec[], max: number, rng: Rng): DecisionRec[] {
@@ -249,6 +249,7 @@ export async function generateTrajectory(seed: number, o: GenOptions): Promise<T
               on_policy: true,
               gate: o.gate ?? "shipping",
               policy_model: o.modelName ?? null,
+              ...(p.gate ? { gate_threshold: p.gate.threshold, gate_source: p.gate.source, gate_mass: p.gate.mass, gate_candidate: p.gate.candidate } : {}),
               model_probs: p.modelProbs ?? null,
               model_choice: p.modelChoice ?? null,
               model_diagnosis: p.modelDiagnosis ?? null,

@@ -48,6 +48,8 @@ export interface DecisionRec {
   feature?: string;
   /** `delivery` decisions: diagnosis = verdict of the first write this op / push caused (filled after the run). */
   diagFrom?: { op?: number; push?: number };
+  /** On-policy: the gate's threshold for this decision and where it came from (policy / model / default). */
+  gate?: { threshold: number; source: string | null; mass: number | null; candidate: string | null };
   /** The runtime's Situation.notOffered, when the evaluate request carries it (copied verbatim into meta). */
   notOffered?: Record<string, string>;
   /** SIM_PROBE=1: separability probes (oracle/probe.ts). */
@@ -391,8 +393,13 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
   /** On-policy: decisions awaiting the runtime's `decide` event (what the gate actually ran). */
   const pendingRan: DecisionRec[] = [];
   const exploreRng = new Rng(hashAll("explore", scn.seed));
+  const simStatus: DecisionProvider["status"] = { state: "ready", model: "genclass-sim" };
   const decider: DecisionProvider = {
-    status: { state: "ready", model: "genclass-sim" },
+    // On-policy: the model host's own status, so the runtime gates with the model's meta.json `gate` (situation-v2.1+);
+    // explicit policy.thresholds (explore gate, forced branches) still win.
+    get status(): DecisionProvider["status"] {
+      return o.onPolicy?.model.status ?? simStatus;
+    },
     ready: () => Promise.resolve(),
     evaluate: (req: EvaluateRequest) => {
       const idx = k++;
@@ -608,7 +615,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
     backend = { atom: (name, initial, opts) => rt.atom(name, initial, opts) };
     if (o.onPolicy) {
       rt.on("decide", (v: unknown) => {
-        const d = v as { trigger: string; subjectRef?: Record<string, unknown>; ran?: string; executed?: boolean; action?: string };
+        const d = v as { trigger: string; subjectRef?: Record<string, unknown>; ran?: string; executed?: boolean; action?: string; threshold?: number; thresholdSource?: string; mass?: number; candidate?: string };
         const subj = d.subjectRef ? { ...d.subjectRef } : {};
         delete subj.error;
         const key = `${d.trigger}|${JSON.stringify(subj)}`;
@@ -618,6 +625,7 @@ export async function runScenario(scn: Scenario, o: RunOptions): Promise<RunResu
         const passive = PASSIVE[rec.trigger] ?? rec.actions[0] ?? "";
         const ran = d.ran ?? (d.executed && d.action ? d.action : passive);
         rec.ran = ran;
+        if (d.threshold !== undefined) rec.gate = { threshold: d.threshold, source: d.thresholdSource ?? null, mass: d.mass ?? null, candidate: d.candidate ?? null };
         // Replays force what actually ran, exactly like explored actions in base runs.
         rec.chosen = ran;
         rec.explored = ran !== passive;

@@ -6,7 +6,7 @@
 import type { OpRec, StartOpts } from "../trace/ops.js";
 import type { Context } from "../trace/context.js";
 import type { EndOpts } from "../decide/exec.js";
-import type { OpStatus } from "../types.js";
+import type { OpScope, OpStatus } from "../types.js";
 import { describe, truncate, type Redactor } from "../util.js";
 import { parseJsonBody } from "../situation/content.js";
 
@@ -16,6 +16,8 @@ export interface MsgHost {
   redact(): Redactor;
   baseHref(): string | undefined;
   startOp(name: string, o: Omit<StartOpts, "startSeq" | "t">): OpRec;
+  /** The channel's scope (protect, labels), or "ignore" (OPTIONS-SPEC §4.4). */
+  scopeOf?(r: { url: string; method: string; channel: "fetch" | "xhr" | "ws" | "sse" }): OpScope | "ignore";
   endOp(op: OpRec, status: OpStatus, o?: EndOpts): void;
   event(name: string, data: Record<string, unknown>, op?: OpRec): void;
   /**
@@ -84,6 +86,7 @@ export class MessageGate {
     private readonly channel: "websocket" | "eventsource",
     private readonly path: string,
     private readonly addRaw: (type: string, fn: (e: Event) => void) => void,
+    private readonly scope?: OpScope,
   ) {}
 
   /** Register the gate's first listener for an event type (once). */
@@ -115,7 +118,7 @@ export class MessageGate {
     let item: Item;
     try {
       const summary = messageSummary((e as MessageEvent).data, this.host.redact());
-      const op = this.host.startOp(this.opName(e.type), { cause: null, instant: true, detail: summary });
+      const op = this.host.startOp(this.opName(e.type), { cause: null, instant: true, detail: summary, ...(this.scope ? { scope: this.scope } : {}) });
       this.host.event(`${this.channel === "websocket" ? "ws" : "sse"}.message`, { path: this.path, summary, type: e.type }, op);
       item = { ev: e, op, summary, ready: false, deciding: false };
     } catch {

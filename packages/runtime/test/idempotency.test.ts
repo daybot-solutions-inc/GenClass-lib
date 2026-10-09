@@ -30,6 +30,16 @@ describe("retry by HTTP semantics", () => {
     expect(r.status).toBe(500);
   });
 
+  it("EvaluateRequest.notOffered carries the same reasons to the provider (never in the model's state)", async () => {
+    const r = await failOnce("POST");
+    expect(r.f!.notOffered).toEqual(r.notOffered);
+    expect(r.f!.notOffered!.retry).toMatch(NO_KEY);
+    expect(r.f!.notOffered!.serve_cached).toBe("POST responses are never served from cache");
+    expect(JSON.stringify(r.f!.state)).not.toContain("idempotency key");
+    const ok = await failOnce("PUT");
+    expect(ok.f!.notOffered?.retry).toBeUndefined();
+  });
+
   it("a request id or tracing header is not an idempotency key", async () => {
     const r = await failOnce("POST", { "X-Request-Id": "abc", traceparent: "00-1-2-01" });
     expect(actionsOf(r.f)).not.toContain("retry");

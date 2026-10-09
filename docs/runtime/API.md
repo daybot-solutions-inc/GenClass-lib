@@ -61,11 +61,52 @@ interface InitOptions {
   historySize?: number;                                 // events kept, default 500
   debug?: boolean;                                      // console.debug every decision
   learn?: { persist?: boolean };                        // keep transition profiles in localStorage
+  aggressiveness?: "cautious" | "balanced" | "eager" | number; // how eagerly to act (default "balanced"; see Policy)
   vocabulary?: { diagnoses?: Record<string, string>; actions?: Record<string, string> };
   settleMs?: number;                                    // quiet time that makes a settled point, default 60
   situation?: { budget?: number | "auto" };             // size of what the model reads, in characters (default "auto")
+
+  // batch 12 (docs/runtime/OPTIONS-SPEC.md); defaults in brackets
+  enabled?: boolean | (() => boolean | Promise<boolean>) | { get(): boolean | Promise<boolean>; subscribe?(cb: () => void): () => void };
+                                                        // [true]; false: nothing installed, model never downloaded; a predicate/source forces preload "lazy"
+  sample?: number;                                      // [1] fraction of sessions that act (stable per session); the rest observe
+  routes?: { match: string | RegExp | ((route: string) => boolean); mode?: Mode | "off"; aggressiveness?: Aggressiveness }[];
+                                                        // first match wins; demote only
+  requests?: {
+    ignore?: RequestMatcher[];                          // not observed at all (native pass-through)
+    protect?: RequestMatcher[];                         // observed, never held/retried/cached/discarded; a throwing predicate = protected
+    crossOrigin?: "observe" | "ignore";                 // ["observe"]; cross-origin is always passive
+    labels?: { match: RequestMatcher; label: string }[];// names for reports/sinks ([A-Za-z0-9 _-], ≤ 5 words, ≤ 40 chars)
+    labelsToModel?: boolean;                            // [false] labels appear in situation text only when true
+    correlate?: (r: { url: string; method: string; headers: Record<string, string> }) => string | undefined; // redacted, ≤ 128 chars
+  };
+  breaker?: { undos?: number; errorsAfterAction?: number; attributionMs?: number; windowMs?: number; downgradeTo?: "observe" | "guard"; persist?: "session" | false } | false;
+                                                        // [{2, 3, 5000, 600000, "observe", "session"}]
+  shadow?: "guard" | "heal" | false;                    // [false] dry-run gate at a higher mode; Decision.shadow, "shadow" event
+  onBeforeAction?: (a: ActionRequest) => boolean | void;// final sync veto (false or throw); counts against the hold budget
+  vetoMode?: "enforce" | "report";                      // ["enforce"]; "report" records would-veto and runs the action
+  sinks?: (SinkFn | { send: SinkFn; kinds?: SinkKind[]; sampleRate?: number; evidence?: boolean; flush?(): Promise<void> })[];
+  session?: { id?: string; tags?: Record<string, string | number | boolean> }; // never shown to the model
+  redact?: (path: string, value: unknown, kind?: "state" | "url" | "header" | "input") => unknown; // runs after built-in redaction; a throw → "[redacted]"
+  report?: "console" | "interventions" | "silent" | ((r: Report) => void);    // "interventions": console prints interventions, undos, breaker only
+  learn?: { persist?: boolean | "local" | "session"; key?: string; version?: string }; // version defaults to session.tags.release; mismatch discards
+  // model: also loadIf [{ saveData: "lazy" }], inlineFallback [true], threads ["auto"], timeoutMs [10000],
+  //        maxDecisionsPerMinute [30], unloadAfterIdleMs [false]
 }
 ```
+
+Runtime additions: `rt.disable({ undo? })` (permanent; `undo: true` rolls back the last minute's actions),
+`rt.summary(): SessionSummary`, `rt.setSession({ id?, tags? })`, `rt.breaker.{tripped, reset()}`, `rt.learn.clear()`,
+events `shadow`, `breaker`, `limit`, `modelBudget`. `status` adds `effectiveMode`, `sampled`, `breaker`, `scope`,
+`modelBudget`, and states `"disabled" | "skipped" | "unloaded"`.
+
+Gate order (each request/decision): protected → cross-origin → op scope (created under off/observe) →
+mode/allow/deny/requireDiagnosis (at the effective mode) → thresholds → `policy.actionLimits`
+(`limit:perMinute|perSubject|perSession`; defaults 60/min global, 10/min per subject, 200 per session) → `onBeforeAction` (`vetoed`, `would-veto`, or
+`limit:hold` past the budget) → execute. effectiveMode = min(mode, sample cap, breaker cap, route rule); URL overrides
+(`?genclass`, `?genclass-mode`, `?genclass-aggr`, `?genclass-sample`) only demote unless `debug: true`.
+`policy.holdBudgetMs` is a hard ceiling that includes defers and the veto hook. Hidden tabs skip background
+evaluation and release held items unevaluated.
 
 Performance: GenClass computes cheap facts for every write and request, and asks the model only about salient ones.
 The situation the model reads is sized to the device (`situation.budget: "auto"`): 2,400 characters (about 1,000
@@ -304,12 +345,27 @@ interface PolicyOptions {
 }
 ```
 
-Thresholds: the model's action probabilities are calibrated against the thresholds it ships with (`gate` in its
-meta.json: `{ report?, guard: { default, byTrigger? }, heal: { default, byTrigger? } }`, visible as
-`runtime.status.gate`). For each trigger kind the effective threshold is your `policy.thresholds` value when set,
-else the model's value for that trigger kind, else its tier default, else 0.6 / 0.9 / 0.8. `runtime.gates(trigger?)`
-returns the thresholds in force and where each comes from (`policy`, `model`, `default`); every decision records the
-threshold it was compared with (`threshold`, `thresholdSource`) and `explain(id).gates` the full set.
+Thresholds: the model's action probabilities are calibrated against the gate it ships with (`gate` in its
+meta.json, visible as `runtime.status.gate`). Two gate kinds exist:
+- `kind: "mass"` (the default, also when meta.json has no kind): the most probable permitted action runs when the
+  summed probability of the permitted actions reaches its tier's threshold (`{ report?, guard: { default,
+  byTrigger? }, heal: {...} }`, probabilities; defaults 0.9 / 0.8).
+- `kind: "gain"` (`{ kind: "gain", tauGain, guard: { default, byTrigger? }, heal: {...}, report? }`): for the most
+  probable permitted action a, ĝ(a) = tauGain · ln(p(a) / p(passive)) estimates its gain over the passive action in
+  cost units; a runs when ĝ(a) is above its tier's margin (defaults 2 / 2; tauGain default 1). Probabilities are
+  clamped to ≥ 1e-6; when the model gives no probability for the passive action, the mass it left over is used.
+Aggressiveness (`InitOptions.aggressiveness`: "cautious" | "balanced" | "eager" | 0–1, default "balanced";
+`runtime.setAggressiveness(x)`; URL `?genclass-aggr=…`) selects the gate: when meta.json has `gate.profiles: {
+cautious, balanced, eager }` (each a gate of either kind, report included), a named level uses its profile and a
+number interpolates thresholds/margins, report and tauGain linearly between the neighbouring profiles (the nearer
+profile's kind when they differ). Without profiles the single gate (or the defaults) is shifted: cautious +0.05 on
+thresholds / +1 on margins, eager −0.05 / −1 (linear in between, clamped). `runtime.aggressiveness`,
+`runtime.status.aggressiveness` and `runtime.gates()` (`aggressiveness`, `level`, `levelSource`) show the level.
+For each trigger kind the effective value is your `policy.thresholds` value when set, read in the active kind
+(probabilities for "mass", margins for "gain"; `report` is always a probability), else the model's value for that
+trigger kind, else its tier default, else the defaults. `runtime.gates(trigger?)` returns the kind, values and where
+each comes from (`policy`, `model`, `default`); every decision records `gateKind`, and `threshold` (mass) or `gain`
+and `margin` (gain), with `thresholdSource`; `explain(id).gates` has the full set.
 
 The permitted actions are the applicable non-passive actions the mode allows (observe: none; guard: guard tier;
 heal: both), minus denied ones (only allowed ones when `allow` is set). GenClass runs the most probable permitted
@@ -409,7 +465,7 @@ const rt = createRuntime({
 interface DecisionProvider {
   readonly status: ModelStatus;
   ready(): Promise<void>;
-  evaluate(req: { trigger; state; questions; priority?; subject?; timeoutMs? }): Promise<Record<string, Answer>>;
+  evaluate(req: { trigger; state; questions; priority?; subject?; notOffered?; timeoutMs? }): Promise<Record<string, Answer>>;
   onStatus?(fn): () => void;
   dispose?(): void;
 }
@@ -448,13 +504,14 @@ interface Decision {
   probabilities: Record<string, number>; executed: boolean; reason?: string; facts: string[];
   tier: "passive" | "guard" | "heal"; ran: string; answers: Record<string, Answer>; subjectRef?: SubjectRef;
   candidate?: string /* most probable permitted action */; mass?: number /* summed probability of the permitted actions */;
-  threshold?: number /* what mass was compared with */; thresholdSource?: "policy" | "model" | "default";
+  gateKind?: "mass" | "gain"; threshold?: number /* mass gate: what mass was compared with */;
+  gain?: number; margin?: number /* gain gate: ĝ of the candidate and its tier margin */; thresholdSource?: "policy" | "model" | "default";
 }
 type Detection = Decision;
 interface ActionRecord { id: string; decisionId: string; action: string; tier; trigger; subject: string; at: number; ok: boolean; error?: string; changed: string; undo?: () => void; late?: boolean; dropped?: string[] /* delivery discard: fields dropped */ }
 type SubjectRef = { kind: "delivery"; op: number; paths?: string[]; store?: string } | { kind: "mutation"; ... } | ...
 interface Explanation { message: string; decision: Decision; situationText: string; facts: string[]; timeline: string[]; answers: Record<string, Answer>; action?: ActionRecord; changed?: string; gates?: EffectiveGates }
-interface EffectiveGates { trigger?: TriggerKind; report: number; guard: number; heal: number; source: { report: "policy" | "model" | "default"; guard: …; heal: … } }
+interface EffectiveGates { kind: "mass" | "gain"; tauGain?: number; trigger?: TriggerKind; report: number; guard: number; heal: number; source: { report: "policy" | "model" | "default"; guard: …; heal: … } }
 interface RtEvent { seq: number; t: number; kind: "user"|"op.start"|"op.end"|"state"|"error"|"nav"|"perf"|"storage"|"custom"|"decision"|"action"; name: string; op?: number; cause?: number; data?: Record<string, unknown> }
 interface Op { id: number; kind: "user"|"fetch"|"xhr"|"ws"|"task"|"timer"|"genclass"; name: string /* e.g. "GET /api/x", "WS message /live", "SSE update /stream" */; detail?: string; start: number; end?: number; status?: "ok"|"error"|"aborted"|"blocked"; code?: number | string; cause?: number; root?: number; attempt: number; reads: Map<string, number>; identity?: string }
 ```

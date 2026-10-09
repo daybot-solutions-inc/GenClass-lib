@@ -3,7 +3,8 @@
 //   import { GenClass } from "@genclass/runtime";
 //   GenClass.init();
 
-import type { Clock, CreateOptions, DecisionProvider, InitOptions, Mode, ModelOptions, ModelStatus, ObserverName, Runtime } from "./types.js";
+import type { Clock, CreateOptions, DecisionProvider, DeviceEnv, EvaluateRequest, InitOptions, Mode, ModelOptions, ModelStatus, ObserverName, Runtime } from "./types.js";
+import { browserClock } from "./clock.js";
 import { RuntimeImpl } from "./runtime.js";
 import { createModelHost } from "./model/host.js";
 
@@ -46,13 +47,132 @@ function failedProvider(message: string): DecisionProvider {
   };
 }
 
-function makeHost(m: ModelOptions, fetchFn: typeof fetch | undefined, clock: Clock | undefined): DecisionProvider {
+function skippedProvider(reason: string): DecisionProvider {
+  const err = new Error(`model skipped: ${reason}`);
+  return { status: { state: "skipped", reason }, ready: () => Promise.reject(err), evaluate: () => Promise.reject(err) };
+}
+
+/** What the page can tell about the device (OPTIONS-SPEC §4.15). Unknown values stay undefined (= allowed). */
+export function deviceEnv(g: Record<string, unknown>): DeviceEnv {
+  const nav = (g.navigator ?? {}) as { deviceMemory?: number; hardwareConcurrency?: number; gpu?: unknown; connection?: { saveData?: boolean; effectiveType?: string } };
+  const env: DeviceEnv = { webgpu: !!nav.gpu };
+  if (typeof nav.deviceMemory === "number") env.deviceMemoryGB = nav.deviceMemory;
+  if (typeof nav.hardwareConcurrency === "number") env.cores = nav.hardwareConcurrency;
+  if (typeof nav.connection?.saveData === "boolean") env.saveData = nav.connection.saveData;
+  if (typeof nav.connection?.effectiveType === "string") env.effectiveType = nav.connection.effectiveType;
+  return env;
+}
+
+/** loadIf → "load" | "lazy" | skip reason. A throwing predicate counts as allowed. */
+export function evalLoadIf(m: ModelOptions, env: DeviceEnv, warn: (s: string) => void): "load" | "lazy" | { skip: string } {
+  const li = m.loadIf ?? { saveData: "lazy" as const };
+  if (typeof li === "function") {
+    try {
+      const v = li(env);
+      return v === "lazy" ? "lazy" : v === false ? { skip: "loadIf" } : "load";
+    } catch (e) {
+      warn(`model.loadIf threw (${(e as Error)?.message ?? e}); loading anyway.`);
+      return "load";
+    }
+  }
+  if (typeof li.minDeviceMemoryGB === "number" && typeof env.deviceMemoryGB === "number" && env.deviceMemoryGB < li.minDeviceMemoryGB) return { skip: "device-memory" };
+  const sd = li.saveData ?? "lazy";
+  if (env.saveData === true && sd === "skip") return { skip: "save-data" };
+  if (env.saveData === true && sd === "lazy") return "lazy";
+  return "load";
+}
+
+function hostOptions(m: ModelOptions, env: DeviceEnv): Record<string, unknown> {
+  const { loadIf: _l, inlineFallback: _i, threads, timeoutMs, maxDecisionsPerMinute: _d, unloadAfterIdleMs: _u, ...rest } = m;
+  const out: Record<string, unknown> = { ...rest };
+  if (typeof threads === "number" && threads >= 1) out.maxThreads = Math.floor(threads);
+  else if (threads === "auto" && typeof env.cores === "number") out.maxThreads = Math.min(4, Math.max(1, env.cores - 1));
+  if (typeof timeoutMs === "number" && timeoutMs > 0) out.timeoutMs = timeoutMs;
+  // inlineFallback:false needs a host option (src/model/**, not CORE): flagged, passed through for the host to honour.
+  if (m.inlineFallback === false) out.inlineFallback = false;
+  return out;
+}
+
+function makeHost(m: ModelOptions, fetchFn: typeof fetch | undefined, clock: Clock | undefined, g: Record<string, unknown> = globalThis as never): DecisionProvider {
   try {
-    return createModelHost({ ...m, ...(fetchFn ? { fetch: fetchFn } : {}), ...(clock ? { clock } : {}) });
+    const env = deviceEnv(g);
+    const warn = (s: string) => (g.console as Console | undefined)?.warn?.(`[GenClass] ${s}`);
+    const li = evalLoadIf(m, env, warn);
+    if (typeof li === "object") return skippedProvider(li.skip);
+    const mo: ModelOptions = li === "lazy" ? { ...m, preload: "lazy" } : m;
+    const create = () => createModelHost({ ...(hostOptions(mo, env) as ModelOptions), ...(fetchFn ? { fetch: fetchFn } : {}), ...(clock ? { clock } : {}) });
+    const idle = m.unloadAfterIdleMs;
+    if (typeof idle === "number" && idle > 0) return new IdleUnloadProvider(create, idle, clock ?? browserClock);
+    return create();
   } catch (e) {
     return failedProvider(`model host unavailable: ${(e as Error)?.message ?? e}`);
   }
 }
+
+/**
+ * model.unloadAfterIdleMs (OPTIONS-SPEC §4.18): tears the host down after `idleMs` without an evaluation (state
+ * "unloaded"); the next evaluation starts a reload from the cache and is itself rejected (fail open: released unchanged).
+ */
+export class IdleUnloadProvider implements DecisionProvider {
+  private host: DecisionProvider | null;
+  private timer: unknown = null;
+  private subs = new Set<(s: ModelStatus) => void>();
+  private unsub: (() => void) | null = null;
+  constructor(
+    private readonly create: () => DecisionProvider,
+    private readonly idleMs: number,
+    private readonly clock: Clock,
+  ) {
+    this.host = this.attach(create());
+    this.arm();
+  }
+  private attach(h: DecisionProvider): DecisionProvider {
+    this.unsub = h.onStatus?.((s) => this.subs.forEach((f) => f(s))) ?? null;
+    return h;
+  }
+  private arm(): void {
+    if (this.timer !== null) this.clock.clearTimeout(this.timer);
+    this.timer = this.clock.setTimeout(() => this.unload(), this.idleMs);
+  }
+  private unload(): void {
+    this.timer = null;
+    const h = this.host;
+    if (!h) return;
+    this.host = null;
+    this.unsub?.();
+    this.unsub = null;
+    h.dispose?.();
+    const s = this.status;
+    this.subs.forEach((f) => f(s));
+  }
+  get status(): ModelStatus {
+    return this.host ? this.host.status : { state: "unloaded" };
+  }
+  ready(): Promise<void> {
+    if (!this.host) this.host = this.attach(this.create());
+    return this.host.ready();
+  }
+  evaluate(req: EvaluateRequest): ReturnType<DecisionProvider["evaluate"]> {
+    this.arm();
+    if (!this.host) {
+      this.host = this.attach(this.create());
+      return Promise.reject(new Error("model reloading after idle unload"));
+    }
+    return this.host.evaluate(req);
+  }
+  onStatus(fn: (s: ModelStatus) => void): () => void {
+    this.subs.add(fn);
+    return () => this.subs.delete(fn);
+  }
+  dispose(): void {
+    if (this.timer !== null) this.clock.clearTimeout(this.timer);
+    this.timer = null;
+    this.unsub?.();
+    this.host?.dispose?.();
+    this.host = null;
+  }
+}
+
 
 /** Advanced/headless runtime (sim, tests, SSR). No model unless `model` options or a `decider` are given. */
 export function createRuntime(options: CreateOptions = {}): Runtime {
@@ -62,7 +182,7 @@ export function createRuntime(options: CreateOptions = {}): Runtime {
     owns = true;
     const g = (options.global ?? globalThis) as { fetch?: typeof fetch };
     const nf = options.global ? (typeof g.fetch === "function" ? g.fetch.bind(g) : undefined) : NATIVE_FETCH;
-    decider = makeHost(options.model, nf, options.clock);
+    decider = makeHost(options.model, nf, options.clock, (options.global ?? globalThis) as never);
   }
   return new RuntimeImpl({ ...options, decider: decider ?? null, ownsDecider: owns });
 }
@@ -139,7 +259,10 @@ function initUnsafe(options: InitOptions): Runtime {
       current = createRuntime({ observe: ALL_OFF, model: false, decider: null, report: "silent", mode: "observe" });
       return current;
     }
-    const mode = ks && (MODES as readonly string[]).includes(ks) ? (ks as Mode) : options.mode;
+    // the kill switch may only demote (OPTIONS-SPEC §3), unless debug
+    const rank = (m: string | undefined) => (m === "heal" ? 2 : m === "guard" ? 1 : 0);
+    const base = options.mode ?? "guard";
+    const mode = ks && (MODES as readonly string[]).includes(ks) && (options.debug || rank(ks) <= rank(base)) ? (ks as Mode) : options.mode;
     if (typeof g.window !== "object" || typeof g.document !== "object") {
       // Not a browser (SSR, Node, workers): never instrument a server's fetch or load the model there.
       current = createRuntime({ ...options, observe: ALL_OFF, model: false, decider: options.decider ?? null, report: options.report ?? "silent", ...(mode ? { mode } : {}) });
@@ -147,7 +270,11 @@ function initUnsafe(options: InitOptions): Runtime {
     }
     const o: CreateOptions = { ...options };
     if (mode) o.mode = mode;
-    if (options.decider === undefined && options.model !== false) o.model = options.model ?? {};
+    if (options.decider === undefined && options.model !== false && options.enabled !== false) {
+      o.model = options.model ?? {};
+      // a dynamic enabled source: never download before it says on
+      if (typeof options.enabled === "function" || (typeof options.enabled === "object" && options.enabled)) o.model = { ...o.model, preload: "lazy" };
+    }
     current = createRuntime(o);
     return current;
   }

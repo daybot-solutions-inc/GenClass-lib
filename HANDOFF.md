@@ -18,7 +18,7 @@ It observes user actions, async ops, network, state writes, errors, timing and c
 salient it asks a small local GenClass model (ONNX on WebGPU or WASM, in a Web Worker) for a diagnosis and a
 generic action. It has no hardcoded bug rules.
 
-- **Modes:** observe → guard (default; minimal reversible actions at ≥ 0.9) → heal.
+- **Modes:** observe (default since mvp-v2; reports only) → guard (opt-in; minimal reversible actions at ≥ 0.9 with the balanced profile) → heal (experimental).
 - **Product principle:** never make a correct app worse; false positives kill it; everything must be observable
   and undoable.
 
@@ -59,7 +59,14 @@ generic action. It has no hardcoded bug rules.
   - **The nightly auto-shutdown schedules are DISABLED** (the user OK'd it for the training push). Deallocate every
     idle node yourself, and **re-enable the schedules when the push ends**:
     `az resource update -g rg-jev-train --resource-type Microsoft.DevTestLab/schedules -n shutdown-computevm-vm-jev-<vm> --set properties.status=Enabled`.
-  - Claim nodes in `training/NEEDS.md`. Never delete VMs.
+  - **Node lock protocol.** Before using a node:
+    - check for other agents' processes:
+      `pgrep -f "sim/dist/gen|realapps.*gen.js|jev_local.train.train"`;
+    - claim the node with `mkdir ~/.gcl-claim && echo "<agent> <job> <time>" > ~/.gcl-claim/owner`, and take
+      it only if the existing owner's process is gone;
+    - remove the lock before you deallocate.
+
+    Also record claims in `training/NEEDS.md`. Never delete VMs.
 - **zsh:** write rsync/scp destinations as `"user@${IP}:dir/"`; an unbraced `$IP:` silently copies locally.
 - **The training format is frozen** at `situation-v2`. Any change to `packages/runtime/src/situation/*` changes
   the model's input, so it means a new tag and regenerated data. Coordinate before touching it.

@@ -31,6 +31,7 @@ def main() -> None:
     a = ap.parse_args()
     import torch
 
+    from jev_local.engine.encoder.calibrate import header_key
     from jev_local.engine.encoder.engine import load_checkpoint
     from jev_local.engine.encoder.heads import build_plan
     from jev_local.engine.encoder.tokenize_pack import Packer, collate_tree
@@ -68,7 +69,7 @@ def main() -> None:
                 t = row.targets.get(qi.qid)
                 rec = {"id": row.example_id, "qid": qi.qid, "kind": "choice", "labels": list(qi.labels),
                        "logits": [float(x) for x in ch[ref.group, :K]],
-                       "target": (t.dist if t is not None else [1.0 / K] * K), "header": ""}
+                       "target": (t.dist if t is not None else [1.0 / K] * K), "header": header_key(qi.header)}
                 if gn is not None and qi.qid == "action":
                     rec["gain_pred"] = [round(float(x), 4) for x in gn[ref.group, :K]]
                 fout.write(json.dumps(rec) + "\n")

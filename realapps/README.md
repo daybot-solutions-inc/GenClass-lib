@@ -247,7 +247,12 @@ realapps/scripts/cluster.sh status c10 && realapps/scripts/cluster.sh stop c10  
 
 `gen.js` flags:
 - `--out`, `--seed` (first scenario seed), `--trajectories`, `--workers` (one Chromium each), `--apps a,b`;
-- `--max-points 6`, `--futures 3`, `--test-keep 0.5`, `--clean` (clean trajectories only), `--unlabeled 40`.
+- `--max-points 6`, `--futures 3`, `--test-keep 0.5`, `--clean` (clean trajectories only), `--unlabeled 40`;
+- `--split dev` (only seeds whose scenario has that split; `--trajectories` then counts accepted seeds, scanned from
+  `--seed`), `--cert clean|chaos` (certification runs without exploration: `clean` = calm network and benign user
+  with sampled flags, `chaos` = the usual chaos mix, never a clean run), `--per-trigger 10` (implied by `--cert`:
+  label every decision point, at most 10 per trigger per trajectory, with `meta.cert_weight`), `--diag-only 3`,
+  `--no-ask`. `scripts/cert.sh` runs a certification batch across nodes with the cluster lock protocol.
 
 Outputs per batch:
 - `{train,dev,test}.jsonl` and `unlabeled-{train,dev,test}.jsonl`;
@@ -330,6 +335,13 @@ Runtime tag `situation-v2` (6e5e86e), 96 apps (128 for the top-up). Sweeps befor
 | `v2c1..4` | 96 | 4 × 20k | 511,333 | 439,006 | `train:/data/real-out/v2c{1..4}` |
 | `v2d1..2` (top-up) | 32 (wave 4) | 2 × 8k | 105,104 | 84,096 | `train:/data/real-out/v2d{1,2}` |
 | **total v2** | 128 | 96k | **616,437** | 523,102 | |
+| `v23e1..2` (`situation-v2.3`) | 62 (waves 4–5) | 2 × 10k | 142,723 | 101,434 | `train:/data/real-out/v23e{1,2}` |
+| `v23e3..4` (`situation-v2.3`) | 96 (earlier) | 2 × 6k | 78,463 | 57,200 | `train:/data/real-out/v23e{3,4}` |
+| `v23-eval` | 158 | — | 10,402 eval rows | — | `train:/data/real-out/v23-eval/real_eval.jsonl` |
+
+On `situation-v2.3` (CORE batch 8, relation-learner precision) the same 96 apps produce far fewer inconsistency
+triggers: 2.6% of decision rows instead of 18.3% (on clean runs 3.4% instead of 35%), and 40% of them are genuine
+(`inconsistent`) instead of 10%.
 | `v2-eval` | 96 | — | 16,600 eval rows | — | `train:/data/real-out/v2-eval/real_eval.jsonl` |
 
 Throughput on F80 nodes: ≈ 7.5–8.5 trajectories/s and ≈ 46 gold + 40 unlabeled rows/s per node (70 workers), i.e.
@@ -352,6 +364,36 @@ Harness determinism fixes found at scale:
 
 The pre-fix batches `v2b1..3` (≈ 380k gold, 66 apps, stopped) are kept on `train:/data/real-out/` with valid action
 labels but pre-fix diagnosis labels; see `training/NEEDS.md`.
+
+## Certification dev set `v23-cert` (`situation-v2.3`)
+
+TRAIN certifies its gates per trigger on benign dev rows, so this set has many passive-best rows for each trigger.
+
+How it was generated (`scripts/cert.sh`, 10 F80 nodes, about 30 min of generation):
+- **Dev split only.** Seeds whose scenario has `splitOf` = dev, so there are no test or held-out apps. The seeds
+  start at 40M and 50M, disjoint from every earlier batch and from both eval sets.
+- **Two modes, 25k trajectories each, no exploration.**
+  - `--cert clean`: calm network and benign user, flags sampled as usual.
+  - `--cert chaos`: the usual chaos mix.
+- **Labelling.** Every decision point gets counterfactual labels, capped at 10 per trigger per trajectory and
+  weighted by `meta.cert_weight`. Single-action points become diagnosis-only rows.
+
+Result: 427,576 dev rows. Passive-best rows per trigger:
+
+| trigger | passive-best rows |
+|---|---|
+| request | 147k |
+| mutation | 65k |
+| delivery | 45k |
+| failure | 15.6k |
+| inconsistency | 8.8k |
+| transition | 8.7k |
+| stall | 7.9k |
+| error | 3.1k |
+
+`error` is the one trigger that is too rare: almost all of its rows come from one app. Counts per trigger × mode ×
+category are in `train:/data/real-out/v23-cert/cert_report.md` (`scripts/cert_report.py`), and the summary is in
+`training/NEEDS.md` item 19.
 
 ## Throughput (pilot, train VM)
 

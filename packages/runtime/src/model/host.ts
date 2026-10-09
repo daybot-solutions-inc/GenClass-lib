@@ -32,7 +32,7 @@ export type { ModelHostStatus } from "./backend.js";
 export type { EvaluateOk } from "./protocol.js";
 
 /** Where the runtime model is published (the @genclass/runtime-model npm package on jsDelivr). */
-export const DEFAULT_MODEL_BASE_URL = "https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/";
+export const DEFAULT_MODEL_BASE_URL = "https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/";
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
 export const DEFAULT_MAX_QUEUE = 32;

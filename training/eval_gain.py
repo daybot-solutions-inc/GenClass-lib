@@ -112,8 +112,9 @@ def evaluate(rows: dict, recs: dict, cal: dict, t1_tau: float | None) -> dict:
             oracle += max(0.0, max(gains.values()))
             n_clear += cls[0] == "clear"
             n_benign += cls[0] == "benign"
-            p = softmax(ra["logits"], tau_c)
-            pd = softmax(rd["logits"], tau_c)
+            bh = cal.get("by_header") or {}
+            p = softmax(ra["logits"], float(bh.get(ra.get("header"), tau_c)))
+            pd = softmax(rd["logits"], float(bh.get(rd.get("header"), tau_c)))
             top_d = list(rd["labels"])[int(pd.argmax())]
             idx = {a: i for i, a in enumerate(names)}
             A = [a for a in gains if a in idx]

@@ -110,12 +110,7 @@ from an existing node, ettin bases, TRAIN data): `c12–c15` Standard_F80ams_v7 
 | c01, c10, c11 | REAL (TRAIN processes killed 03:35; c01 clean) | — | real-browser rows |
 | c02–c09, c12–c23 (20 nodes) | SIM (done 04:05–05:00 UTC, **all deallocated**) | was: from the situation-v2 freeze, ≈ 45–60 min | big v2 runs: ≥ 10M gold + ≥ 50M unlabeled (seeds 11e9 / 16e9 + NN·1e8), collected to `train:/data/sim-out/v2-*`; each node deallocated as soon as its share is collected. c01 (TRAIN workbench) and c10–c11 (REAL) left alone. |
 
-| **c02** | **TRAIN workbench (v2)** | from 05:05 UTC | v2 import, curriculum replay, eval, export |
-| **c03–c09, c13** | **TRAIN `r17-v2a`** (R17 on v2 gold) | from ≈ 05:30 UTC, ≈ 1.5 h | first v2 R17 export |
-| **c12, c14–c23** | **TRAIN `t150-v2a`** (teacher on v2 gold) | from ≈ 05:30 UTC, ≈ 5 h | teacher for labelling/distillation |
-(TRAIN starts these after SIM's deallocation pass of 05:00 finishes; SIM: the nodes above are TRAIN's from then on.)
-
-| c01, c02, c10, c11, data | SIM (claim, lead-assigned 06:40 UTC; c09 released 06:55 to TRAIN's `collect_gain.py` eval, which started there at 06:39) | until ≥ 1M on-policy rows are collected (≈ 1.3 h, 5 × 216k) | on-policy (DAgger) rounds with r17-v2a (shipping + explore gates) → `train:/data/sim-out/v2-onpol-a/`; each node deallocated as soon as its share is collected |
+| c01–c23 | TRAIN: none claimed (all TRAIN nodes deallocated 16:35 UTC; locks released) | — | — |
 
 SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead); please add your own rows.
 
@@ -148,7 +143,25 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     12,495,440), 104 gz shards + `manifest.json`, 16 GB gz; seeds 16e9 + NN·1e8.
   - Throughput: gold ≈ 278 rows/s per F80 (20 nodes ≈ 5.5k rows/s, 31 min); unlabeled ≈ 21k rows/s per F80
     (2 min). Global dedupe test-first dropped < 0.001 %.
-  - On-policy: waits for TRAIN's first v2 export (`--on-policy <dir>`).
+  - **On-policy round a** `train:/data/sim-out/v2-onpol-a/` — 1,248,131 rows (train 906,907 / dev 37,837 / test
+    303,387), 684 MB gz, policy **r17-v2a** (`meta.policy_model`), runtime **situation-v2.1** (`meta.runtime_tag`),
+    S1+S2 counterfactual labels at the model's own decision points. Two policies (`meta.gate`): `shipping` (runtime
+    defaults 0.9/0.8, c01+c02, seeds 22e9+NN·1e8) and `explore` (0.5 summed mass, diagnosis gate kept; c10, c11,
+    data; seeds 24e9+NN·1e8). Per row: `model_probs`, `model_choice`, `model_diagnosis`, `ran`, `false_intervention`,
+    `ran_harm` (mean cost of what ran minus passive), `miss`. Report by gate × trigger with worst row ids:
+    `onpolicy_report.md` / `.json` in the same directory.
+  - **v2.3 gold top-up** DONE 08:49 UTC → `train:/data/sim-out/v2.3-gold/`: 2,107,824 rows (train 1,531,938 / dev
+    64,136 / test 511,750), 1.1 GB gz, situation-v2.3, 46 features, S1+S2, seeds 26e9+NN·1e8, same held-out lists.
+    Trigger mix vs v2 gold (first train shard each): inconsistency 5.5 % → 1.6 % of rows (batch 8), its labelled
+    passive-best 80 % → 68 % and `inconsistent` share of its diagnoses 23 % → 50 %; failure: half the failure rows are
+    now diagnosis-only (v2.2: un-keyed POST/PATCH failures offer only `deliver`), labelled failure passive-best 69 % →
+    57 %; other triggers unchanged within ±2 points. Then **on-policy round b** DONE 10:12 UTC →
+    `train:/data/sim-out/v2-onpol-b/`: 1,094,953 rows (train 797,922 / dev 33,731 / test 263,300), 612 MB gz,
+    policy **r17-v2b** with its meta.json gates (`gate_source: model`), runtime **situation-v2.3**; shipping on c01
+    (seeds 28.1e9) + c02 until 09:04 (1 part), explore 0.5 on c10, c11, data (seeds 31.0–31.2e9); report
+    `onpolicy_report.md` / `.json` there. (Original plan text: (r17-v2b with its meta.json gates, situation-v2.3; seeds 28e9 / 30e9
+    + NN·1e8) → `train:/data/sim-out/v2-onpol-b/`. From these builds on rows also carry `meta.request` and
+    `meta.not_offered`; on-policy rows `gate_threshold` / `gate_source` / `gate_mass`.)
 - Distributed batches (gz shards + `manifest.json`, deduped, test-first): collected per run under
   `data:~/simdata/<run>/` — locations listed here as they land.
 
@@ -214,3 +227,73 @@ SIM/REAL: claim any node above after TRAIN marks it free here (or ask the lead);
     Lit, every SWR app (`TEST_LIBS`), apps `swr-status`, `alpine-tasks`, `xhr-autocomplete`, `oss-rtk-conduit`, and
     `TEST_PATTERNS`. Next: a top-up for waves 4–5 (62 apps) on `situation-v2.3` once tagged
     (`realapps/scripts/topup.sh`), landing in `train:/data/real-out/v23e<n>/`. REAL holds no nodes now.
+18. **REAL v2.3 top-up (`situation-v2.3`, b107f20) — LANDED 09:45 UTC.** Generated on c01/c10/c11/data until SIM's
+    round b took them (~08:40), then resumed on c14/c15 (claimed with `~/.gcl-claim`, locks released, both deallocated
+    09:44–09:45; the train-VM lock was released too). On `train:/data/real-out/`:
+    - `v23e1`, `v23e2`: the 62 wave-4+5 apps, 2 × 10k trajectories (seeds 21M/22M+): gold 142,723 (train 134,220 /
+      dev 3,984 / test 4,519) + unlabeled 101,434.
+    - `v23e3`, `v23e4`: the 96 earlier apps, 2 × 6k trajectories (seeds 23M/24M+): gold 78,463 (train 72,215 /
+      dev 2,632 / test 3,616) + unlabeled 57,200.
+    - **v2.3 total: 221,186 gold + 158,634 unlabeled**, 158 apps (all v2.3-era behaviour). Grand total REAL v2+v2.3
+      gold: 837,623.
+    - Batch 8 shows: on the same 96 apps, inconsistency rows fall from 18.3% (v2c) to 2.6% of decision rows (on clean
+      runs from 35% to 3.4%), and the genuine share of inconsistency rows rises from 10% to 40% (`inconsistent` 447
+      vs `expected` 553). The v2c/v2d inconsistency rows therefore reflect v2's noisier relation learner: prefer v2.3
+      rows for the inconsistency trigger.
+    - **v2.3 eval set:** `train:/data/real-out/v23-eval/real_eval.jsonl` (10,402 rows: benign-salient 4,000,
+      duplicate-submit 4,000, stale-overwrite 940, clean-benign 827, genuine-break 635). Use it for the inconsistency
+      categories (genuine-break, and inconsistency rows in benign-salient / clean-benign); `v2-eval` remains valid for
+      request/mutation/delivery cases. Sweeps on v2.3: determinism 316/316, interference 0/158.
+    REAL holds no nodes now.
+19. **REAL certification dev set `v23-cert` (`situation-v2.3`) — LANDED 14:55 UTC** for per-trigger gate
+    certification. `train:/data/real-out/v23-cert/cert-{clean,chaos}-cNN/dev.jsonl` (10 parts, 1.9 GB), report
+    `v23-cert/cert_report.md` / `.json`.
+    - **Dev split only.** Seeds 40M–44M (clean) and 50M–54M (chaos) were scanned and kept only when
+      `splitOf(app, flags)` = dev, so there are no test or held-out apps. The seeds are disjoint from every earlier
+      batch (all < 25M), so no row overlaps `v2-eval` or `v23-eval`.
+    - **Two modes, 25k trajectories each.**
+      - `meta.cert = "clean"`: calm network, benign user, flags sampled as usual; `meta.clean` true.
+      - `meta.cert = "chaos"`: the usual chaos mix, never a clean run.
+      - Both use **no exploration** (`meta.explore` 0), so the base run is the passive run.
+    - **Every decision point is labelled with counterfactuals** (K = 3 adaptive futures), but at most 10 per trigger
+      per trajectory, sampled uniformly within the trigger.
+      - `meta.cert_weight` = (that trigger's points in the trajectory) / (points labelled). Weight by it to get the
+        natural per-trigger mix.
+      - `meta.trigger_points` gives the raw count.
+      - Every single-action decision point is a diagnosis-only row. There are no unlabeled rows and no ask rows.
+    - **Rows.** 427,576 in total (dev): 364,094 action-labelled plus 63,482 diagnosis-only.
+    - **Passive-best (benign) rows per trigger** (clean / chaos · distinct trajectories · apps):
+
+      | trigger | passive-best | clean / chaos | trajectories | apps |
+      |---|---|---|---|---|
+      | request | 147,471 | 73,160 / 74,311 | 35,988 | 90 |
+      | mutation | 64,967 | 24,916 / 40,051 | 17,023 | 70 |
+      | delivery | 45,396 | 16,514 / 28,882 | 16,645 | 76 |
+      | failure | 15,622 | 0 / 15,622 | 6,322 | 69 |
+      | inconsistency | 8,829 | 5,112 / 3,717 | 4,577 | 43 |
+      | transition | 8,716 | 3,459 / 5,257 | 4,555 | 71 |
+      | stall | 7,853 | 932 / 6,921 | 5,066 | 65 |
+      | **error** | **3,102** | 1,489 / 1,613 | 356 | 7 |
+
+      All triggers except `error` meet the 5,000 target.
+    - **`error` is too rare in real apps.** 3,026 of its 3,102 passive-best rows come from one app (`svelte-chat`,
+      bursts of up to 334 error decisions per trajectory), and only 356 trajectories contribute. Treat it as
+      uncertifiable from REAL data alone.
+    - **`failure` and `stall` come almost entirely from chaos runs.** Clean runs have 1 labelled failure row and
+      1,075 stall rows. Most failure and stall points offer a single action and appear as diagnosis-only rows
+      (43,306 and 14,181).
+    - **Action-best cases** (best action, both modes):
+      - request: 32,749 (coalesce 16,103, block 8,740, delay 5,797, serve_cached 2,109);
+      - failure: 11,071 (retry 6,888, serve_cached 4,183);
+      - delivery: 8,737 (discard 7,469, defer 1,268);
+      - mutation: 4,681 (discard 4,680);
+      - inconsistency: 2,304 (rollback 1,965, resync 339);
+      - stall: 1,880 (hedge 914, serve_cached 966);
+      - transition: 524;
+      - error: 192 (rollback).
+    - **Eval-style cases** (`evalset.py` rules): clean-benign 15,622, benign-salient 8,876, duplicate-submit 6,175,
+      stale-overwrite 1,931, genuine-break 2,962. The per trigger × mode × category breakdown (confident, salient,
+      best action, diagnoses, cases, top apps) is in `cert_report.md`.
+    - **Correlation caveat for Wilson bounds.** Rows from one trajectory are correlated. Use the trajectory counts
+      above, or cluster by `meta.seed`, if certification assumes independent rows.
+    REAL holds no nodes now.

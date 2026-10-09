@@ -99,4 +99,33 @@ describe("default mode is observe (MVP)", () => {
     expect(manual.pending.length).toBeGreaterThan(0); // the model is still asked, in the background
     expect(rt.interventions()).toEqual([]);
   });
+
+  it("aggressiveness and shadow do not make the observe default act; shadow records what guard would have done", async () => {
+    const { rt, clock, server, fetch } = setup({
+      mode: undefined,
+      aggressiveness: "eager",
+      shadow: "guard",
+      triage: "always",
+      script: defaultScript({
+        mutation: { diagnosis: "stale", action: "discard", p: 0.99 },
+        request: { diagnosis: "overload", action: "delay", p: 0.99 },
+        delivery: { diagnosis: "stale", action: "discard", p: 0.99 },
+      }),
+    });
+    expect(rt.mode).toBe("observe");
+    server.on("GET", "/api/x", { body: 1, latency: 5 });
+    const t0 = clock.now();
+    const p = fetch("/api/x");
+    await clock.advance(5);
+    expect((await p).status).toBe(200);
+    expect(server.log[0].t).toBe(t0);
+    await clock.flush();
+    const ds = rt.decisions();
+    expect(ds.map((d) => d.trigger).sort()).toEqual(["delivery", "request"]);
+    expect(ds.every((d) => !d.executed)).toBe(true);
+    expect(rt.interventions()).toEqual([]);
+    // the background delivery decision is recorded, with the dry run at the shadow mode
+    const del = ds.find((d) => d.trigger === "delivery")!;
+    expect(del.shadow?.action).toBe("discard");
+  });
 });

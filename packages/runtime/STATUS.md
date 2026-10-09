@@ -1,6 +1,6 @@
 # @genclass/runtime: status (CORE)
 
-Updated: 2026-10-08 (batch 8: relation learner precision; batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
+Updated: 2026-10-08 (batch 11: aggressiveness; batch 10: gain gate kind; batch 9: EvaluateRequest.notOffered; batch 8: relation learner precision; batch 7: retry by HTTP semantics; batch 6: model gate thresholds, no-baseline stalls; batch 5: REAL's text fixes, SIM's separability facts). Owner: CORE. SIM, DEMOS, UI, REAL and
 MODEL read this file. Contract: docs/runtime/CONTRACT.md. API reference: docs/runtime/API.md.
 
 ## State
@@ -38,6 +38,51 @@ observe mode on the same scenario (`debug.js --interference`):
 | situation | `src/situation/*.ts` | facts, version conflicts (`conflicts.ts`), response content vs store (`content.ts`), evidence facts (`evidence.ts`), budget-shaped serializer, compact questions, triage, subject refs |
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
+
+## Batch 11 (done): aggressiveness
+
+`InitOptions.aggressiveness` ("cautious" | "balanced" | "eager" | number 0–1, default "balanced"), URL override
+`?genclass-aggr=…` (wins over the option), `runtime.setAggressiveness(x)`, `runtime.aggressiveness`. meta.json
+`gate.profiles: { cautious, balanced, eager }` (each a full gate, mass or gain, report included; parsed per profile):
+a named level uses its profile; a number interpolates thresholds/margins (per trigger), report and tauGain linearly
+between the neighbouring profiles; profiles of different kinds → the nearer one. No profiles: the single gate (or the
+defaults) shifted by (0.5 − level) × 2 × 0.05 on thresholds / × 1 on margins, clamped ([0, 1] / ≥ 0). `policy.thresholds`
+still win. Exposed in `runtime.gates()` (`aggressiveness`, `level`, `levelSource`: profiles | scaled), `status.aggressiveness`,
+`explain(id).gates`, the devtools (a cautious/balanced/eager selector next to the mode switch; the Gates section shows
+the level), API.md and the README ("How eager should it be?"). Tests: `test/gates.test.ts` (parsing, interpolation,
+fallback shift and clamp, override precedence, option/URL/setAggressiveness/status), `test/gates-devtools.test.ts`
+(selector).
+
+## Batch 10 (done): gain gate kind (selected by the model's meta.json)
+
+- TRAIN's T1 models are trained on expected-advantage labels and need a per-action gain gate. meta.json `gate.kind`
+  selects it: `"mass"` (default, also when `kind` is absent: today's rule, the permitted actions' summed probability
+  vs the candidate tier's threshold) or `"gain"`: for the most probable permitted action a,
+  ĝ(a) = tauGain · ln(p(a) / p(passive)), with the trigger's passive action, probabilities clamped to ≥ 1e-6, and, when
+  the model gave no probability for the passive action, the mass it left over (1 − Σ others). a runs iff ĝ(a) > the
+  margin of a's tier for that trigger kind, the top diagnosis is not `expected` (unless `requireDiagnosis: false`),
+  and the usual mode / allow / deny / rate-limit / hold-budget rules pass.
+- Meta shape: `gate: { kind: "gain", tauGain, guard: { default, byTrigger }, heal: { default, byTrigger }, report }`;
+  guard/heal are margins in cost units (any finite number; defaults 2 / 2 when absent; tauGain default 1, must be
+  > 0). `parseGate` validates per kind (mass: probabilities in [0, 1]).
+- `policy.thresholds` overrides still win and are read in the active kind (margins under "gain"); `report` is always
+  a probability.
+- Exposed: `runtime.gates()` → `{ kind, tauGain?, guard, heal, report, source }`; `Decision.gateKind`, `threshold`
+  (mass) or `gain` + `margin` (gain), `thresholdSource`; `explain(id).gates`; the devtools Now view's Gates section
+  shows the kind and τ ("kind: gain (per-action gain over the passive action, τ 1.5)", "guard margin 3 (model)").
+  Gain reasons read "gain 0.27 of discard over apply is not above the guard margin 1".
+- Tests (`test/gates.test.ts`, `test/gates-devtools.test.ts`): parsing per kind; mass stays the default without a
+  kind; the gain gate acts where the mass gate would not and records gain/margin; below the margin with the reason; an
+  app override read as a margin; a missing passive probability (left-over mass; clamped); `expected` diagnosis still
+  blocks; the Now view. All suites on the VM: 47 files, 394 tests, passing; tsc and tsup clean.
+
+## Batch 9 (done): `EvaluateRequest.notOffered` (SIM seam)
+
+`EvaluateRequest.notOffered` (action → reason, a copy of `Situation.notOffered`) is passed to every decision provider
+so non-model providers (sim, realapps, tests) can record which built-in actions were withheld and why. It is never
+part of the state the model reads, and the model host does not forward it to its worker (only state and questions
+cross). No text or format change. Test: `test/idempotency.test.ts` (the provider receives the same reasons as
+`situation().notOffered`; absent when everything is offered; not in the serialized state).
 
 ## Batch 8 (done): relation learner precision (situation-v2.3)
 
@@ -1147,6 +1192,36 @@ questions:
     ignore: leave the state as it is
     rollback: restore the affected state to its last consistent snapshot
 ```
+
+## Batch 12: configuration options (docs/runtime/OPTIONS-SPEC.md)
+
+Implemented: `enabled` + `rt.disable({undo})`, `sample`, `routes`, `requests` {ignore, protect, crossOrigin, labels,
+labelsToModel, correlate}, `breaker` + `rt.breaker.reset()`, `shadow`, `onBeforeAction`/`vetoMode`,
+`policy.actionLimits` (`maxActionsPerMinute` alias), `holdBudgetMs` as a hard ceiling (defers and the veto hook count;
+the defer wait is capped at the remaining budget), `redact(path, value, kind)` (built-in redaction runs first),
+`sinks` + `rt.summary()`, `session`/`rt.setSession()`, `report: "interventions"`, `learn` {persist local|session, key,
+version} + `rt.learn.clear()`, `model.loadIf/threads/timeoutMs/maxDecisionsPerMinute/unloadAfterIdleMs`, events
+`shadow/breaker/limit/modelBudget`, hidden-tab skipping, the §0 gate order and the §8 defaults. New files:
+`src/util/match.ts`, `src/decide/breaker.ts`, `src/decide/summary.ts`, `test/options.test.ts` (27 tests). Suite: 413
+passed, 14 skipped; tsc clean.
+
+Behaviour changes (all toward safety): breaker on by default; `perSubject: 10` per subject per rolling 60 s (beta.1: was 5, too low for a typeahead) / `perSession: 200` absolute cap; reasons
+`rate limit` → `limit:perMinute`; URL overrides (`?genclass`, `?genclass-mode`, `?genclass-aggr`) only demote unless
+`debug: true`; cross-origin requests are always passive; ops created under an off/observe route scope are never
+action targets.
+
+Deviations / not done:
+- **Query-value redaction in situation text (spec §8 item 6) is NOT implemented**: it changes model input and needs a
+  format-tag decision from the coordinator. Only sink evidence redacts URLs.
+- The scope block only adds `notOffered` entries; the action questions sent to the model are unchanged.
+- `enabled` source turning off mid-session is a soft disable (observers stay installed as pass-through);
+  `rt.disable()` is permanent (destroy).
+- `model.inlineFallback: false` is passed through to the host as `inlineFallback`, but `src/model/host.ts` (not CORE)
+  does not read it yet: the MODEL owner needs to honour it (state `skipped`, reason `worker-unavailable`).
+- `unloadAfterIdleMs` is a provider wrapper in `index.ts`: the evaluation that triggers the reload is rejected (fails
+  open, held items released unchanged); hidden time counts as idle because the timer is wall time.
+- Labels/tags/correlation ids never reach the model; with `labelsToModel: true` an op label shows as
+  `label (METHOD /path) (#id)`.
 
 ## Deviations from the contract (and why)
 

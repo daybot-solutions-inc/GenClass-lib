@@ -4,6 +4,10 @@
 //
 //   node dist/harness/gen.js --out ~/gcl/real-out/pilot --seed 1 --trajectories 300 --workers 48
 //   options: --apps a,b  --max-points 6  --futures 3  --test-keep 0.5  --clean  --unlabeled 40
+//            --split dev (only seeds whose scenario has this split; --trajectories counts accepted seeds)
+//            --cert clean|chaos (certification runs: no exploration; clean = calm network + benign user with sampled
+//            flags, chaos = the usual chaos mix, never clean; implies --per-trigger 10)  --diag-only 3  --no-ask
+//            --per-trigger K (label every decision point, at most K per trigger per trajectory)
 
 import { fork, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -11,7 +15,7 @@ import { cpus } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TrajectoryOut } from "./trajectory.js";
-import { TEST_APPS, TEST_FRAMEWORKS, TEST_PATTERNS } from "./scenario.js";
+import { scenarioHead, scenarioOpts, TEST_APPS, TEST_FRAMEWORKS, TEST_PATTERNS } from "./scenario.js";
 import { APPS } from "./apps.gen.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -37,12 +41,39 @@ const opts = {
   apps: arg("apps")?.split(",").filter(Boolean),
   clean: arg("clean") === "true",
   unlabeled: Number(arg("unlabeled", "40")),
+  ...(arg("cert") ? { cert: arg("cert") as "clean" | "chaos" } : {}),
+  ...(arg("split") ? { split: arg("split") as "train" | "dev" | "test" } : {}),
+  ...(arg("diag-only") ? { diagOnly: Number(arg("diag-only")) } : {}),
+  ...(arg("no-ask") === "true" ? { ask: false } : {}),
+  // certification runs label every decision point up to 10 per trigger per trajectory (meta.cert_weight)
+  ...(arg("per-trigger") || arg("cert") ? { perTrigger: Number(arg("per-trigger", "10")) } : {}),
 };
+if (opts.cert && opts.cert !== "clean" && opts.cert !== "chaos") throw new Error("--cert clean|chaos");
+const RUNTIME_TAG = (() => {
+  try {
+    return readFileSync(join(HERE, "..", "runtime-tag.txt"), "utf8").trim();
+  } catch {
+    return "unknown";
+  }
+})();
 mkdirSync(out, { recursive: true });
 const doneFile = join(out, "done.txt");
 const done = new Set<number>(existsSync(doneFile) ? readFileSync(doneFile, "utf8").split("\n").filter(Boolean).map(Number) : []);
 const todo: number[] = [];
-for (let s = seed0; s < seed0 + n; s++) if (!done.has(s)) todo.push(s);
+let seedLast = seed0 + n - 1;
+if (opts.split) {
+  // scan seeds from seed0 until n of them have the wanted split (deterministic, so a resumed run picks the same seeds)
+  const pool = opts.apps?.length ? APPS.filter((a) => opts.apps!.includes(a.name)) : APPS;
+  const so = scenarioOpts(opts);
+  let accepted = 0;
+  for (let s = seed0; accepted < n; s++) {
+    if (s - seed0 > n * 1000) throw new Error(`--split ${opts.split}: only ${accepted} of ${n} seeds in ${n * 1000} tried`);
+    if (scenarioHead(s, pool, so).split !== opts.split) continue;
+    accepted++;
+    seedLast = s;
+    if (!done.has(s)) todo.push(s);
+  }
+} else for (let s = seed0; s < seed0 + n; s++) if (!done.has(s)) todo.push(s);
 
 const stats = {
   started: new Date().toISOString(),
@@ -64,6 +95,10 @@ const statsFile = join(out, "stats.json");
 if (existsSync(statsFile) && done.size) {
   try {
     Object.assign(stats, JSON.parse(readFileSync(statsFile, "utf8")));
+    // stats.json stores mean harms; a resumed run starts fresh harm samples
+    for (const b of Object.values(stats.byTrigger)) for (const a of Object.keys(b.harm ?? {})) if (!Array.isArray(b.harm[a])) b.harm[a] = [];
+    stats.notes ??= {};
+    stats.unlabeled ??= { train: 0, dev: 0, test: 0 };
   } catch {
     /* fresh stats */
   }
@@ -133,8 +168,10 @@ function manifest(): Record<string, unknown> {
   return {
     dir: out,
     source: "realapps",
-    runtime: "situation-v1 (packages/runtime/src bundled from source)",
-    seeds: [seed0, seed0 + n - 1],
+    runtime: RUNTIME_TAG,
+    seeds: [seed0, seedLast],
+    ...(opts.split ? { split_filter: opts.split } : {}),
+    ...(opts.cert ? { cert: opts.cert } : {}),
     trajectories: stats.trajectories,
     gold: stats.rows,
     unlabeled: stats.unlabeled,

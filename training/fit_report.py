@@ -32,6 +32,7 @@ import numpy as np
 GRID = [round(0.50 + 0.05 * i, 2) for i in range(10)] + [0.97, 0.99]
 LIM = {"real_benign": 0.01, "sim_expected": 0.02}
 BENIGN = {"clean-benign", "benign-salient"}
+DEV_MARGIN = 0.8  # the dev fit must meet 0.8 × each limit (coordinator, 08:00: no test-informed choices)
 CASE_DIAG = {"stale-overwrite": "stale", "duplicate-submit": "duplicate", "genuine-break": "inconsistent"}
 
 
@@ -50,10 +51,15 @@ def softmax(z, tau):
     return e / e.sum()
 
 
-def load(spec: str, tau: float) -> tuple[str, list[dict]]:
+def load(spec: str, cal: dict) -> tuple[str, list[dict]]:
     name, rest = spec.split("=", 1)
     parts = rest.split(":")
     filt = parts[2] if len(parts) > 2 else ""
+    trig_in = trig_out = None
+    want_gate = parts[4].split("=", 1)[1] if len(parts) > 4 and parts[4].startswith("gate=") else None
+    if len(parts) > 3 and parts[3]:
+        k, _, v = parts[3].partition("=")
+        trig_in, trig_out = (set(v.split(",")), None) if k == "only" else (None, set(v.split(",")))
     rows = {}
     with open(parts[0]) as f:
         for line in f:
@@ -72,10 +78,18 @@ def load(spec: str, tau: float) -> tuple[str, list[dict]]:
             split, m, gold = rows[q["id"]]
             if (filt == "test" and split != "test") or (filt == "notest" and split == "test"):
                 continue
-            p = softmax(q["logits"], tau)
+            trg = m.get("trigger")
+            if (trig_in is not None and trg not in trig_in) or (trig_out is not None and trg in trig_out):
+                continue
+            if want_gate is not None and m.get("gate") != want_gate:
+                continue
+            bh = cal.get("by_header") or {}
+            p = softmax(q["logits"], float(bh[q.get("header")]) if q.get("header") in bh else float(cal.get("choice", 1.0)))
             k = int(p.argmax())
             pb = m.get("passive_best")
-            out.append({"top": q["labels"][k], "p": float(p[k]), "gold": gold, "passive_best": bool(pb) if pb is not None else None,
+            out.append({"cluster": (f"traj:{m.get('seed')}" if name.startswith("realp") else f"row:{q['id']}"),
+                        "benign_gold": name.startswith("realp") and gold == "expected" and bool(pb),
+                        "top": q["labels"][k], "p": float(p[k]), "gold": gold, "passive_best": bool(pb) if pb is not None else None,
                         "case": m.get("eval_case"), "trigger": m.get("trigger")})
     return name, out
 
@@ -101,9 +115,12 @@ def table(items: list[dict], r: float, is_sim: bool) -> dict:
     if is_sim:
         pbr = [d for it, d in zip(items, det) if it["passive_best"]]
         res["false_on_sim_passive"] = [sum(pbr), len(pbr)]
-    ben = [d for it, d in zip(items, det) if it["case"] in BENIGN]
+    ben = [(it["cluster"], d) for it, d in zip(items, det) if it["case"] in BENIGN or (it.get("benign_gold"))]
     if ben:
-        res["false_on_real_benign"] = [sum(ben), len(ben)]
+        cl = {}
+        for c, d in ben:  # cluster-robust (cert-set trajectories count once)
+            cl[c] = cl.get(c, False) or d
+        res["false_on_real_benign"] = [sum(cl.values()), len(cl)]
         cases = defaultdict(lambda: [0, 0, 0])
         for it, d in zip(items, det):
             if it["case"]:
@@ -131,7 +148,7 @@ def fit(fit_sets: dict[str, list[dict]]) -> tuple[float, dict]:
                 ben_n += t["false_on_real_benign"][1]
         ub_s, ub_b = wilson_upper(sim_k, sim_n), wilson_upper(ben_k, ben_n)
         curve[r] = {"sim_expected": [sim_k, sim_n, round(ub_s, 5)], "real_benign": [ben_k, ben_n, round(ub_b, 5)]}
-        if ub_s > LIM["sim_expected"] or ub_b > LIM["real_benign"]:
+        if ub_s > DEV_MARGIN * LIM["sim_expected"] or ub_b > DEV_MARGIN * LIM["real_benign"]:
             break
         best = r
     return best, curve
@@ -161,10 +178,19 @@ def main() -> None:
     ap.add_argument("--test", action="append", required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--write-meta", type=Path, default=None)
+    ap.add_argument("--limits", default=None, help='JSON {"real_benign": .., "sim_expected": ..}')
+    ap.add_argument("--margin", type=float, default=None)
     a = ap.parse_args()
-    tau = float(json.loads(a.cal.read_text()).get("choice", 1.0))
-    fit_sets = dict(load(s, tau) for s in a.fit)
-    test_sets = dict(load(s, tau) for s in a.test)
+    global LIM, DEV_MARGIN
+    if a.limits:
+        LIM = json.loads(a.limits)
+    if a.margin is not None:
+        DEV_MARGIN = a.margin
+    cal = json.loads(a.cal.read_text())
+    fit_sets = {f"{n}#{i}": it for i, (n, it) in enumerate(load(s, cal) for s in a.fit)}  # names may repeat
+    test_sets = {}
+    for n, it in (load(s, cal) for s in a.test):
+        test_sets[n if n not in test_sets else f"{n}#{len(test_sets)}"] = it
     r, curve = fit(fit_sets)
     res = {"report": r, "limits": LIM, "fit_curve": curve, "test": {}}
     for name, items in test_sets.items():

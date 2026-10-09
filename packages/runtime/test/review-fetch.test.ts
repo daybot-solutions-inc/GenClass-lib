@@ -64,10 +64,10 @@ describe("review: coalesce never hangs the app's fetch", () => {
       defaultScript({ request: { diagnosis: "duplicate", action: "coalesce" } }),
     );
     clockRef = h.clock;
-    void h.fetch("http://cdn.test/pixel.gif", { mode: "no-cors" }).catch(() => undefined);
+    void h.fetch("http://app.test/pixel.gif", { mode: "no-cors" }).catch(() => undefined);
     await h.clock.advance(10);
     let settled = false;
-    h.fetch("http://cdn.test/pixel.gif", { mode: "no-cors" }).then(
+    h.fetch("http://app.test/pixel.gif", { mode: "no-cors" }).then(
       () => (settled = true),
       () => (settled = true),
     );

@@ -11,6 +11,11 @@ The training format is frozen at tag **`situation-v2`** (commit 6e5e86e). Since 
 
 ## Done
 
+- **npm 0.1.0-beta.1** (latest) + **model 0.2.0** (r17-v2dT, gain gate, cautious/balanced/eager profiles) + the `genclass-runtime` alias
+  are published (2026-10-08). The registry e2e passes: guard fixes 6/6 and clean typing makes 0 model calls.
+- **npm:** `@genclass/runtime@0.1.0-beta.0` (latest) and `@genclass/runtime-model@0.1.0` (r17-v2b, with gates refit on on-policy data)
+  are published. Checked on 2026-10-08 against the registry tarballs: guard fixed an out-of-order typeahead 6/6, observe detected it, and
+  clean typing made 0 model calls. The `genclass-runtime` alias is not published yet; its tarball is in `packages/runtime/.publish/`.
 - **Published `@genclass/runtime@0.1.0-beta.0` (dist-tag `latest`, published 2026-10-08 ~13:40 UTC by `karanvir1729` with 2FA, from the clean release worktree at 1f0f617, branch `release/runtime-0.1.0-beta.0`, local annotated tag `v0.1.0-beta.0` not pushed; 52 files, 1.1 MB, shasum a15d2fb0d054ded5df81e9cb2ae87b1fd3f67e88)** and **`@genclass/runtime-model@0.1.0` (dist-tag `latest`, same session; `r17-v2b` = `genclass-runtime-r17` 2.0.0-rc2 with gates guard 0.80 (mutation 0.95), heal 0.85 (failure 0.95, inconsistency 0.85), report 0.85; 9 files, 21.7 MB, shasum 84f3334428f0eea4d0e1a2a636b0003d8df3175f; local tag `runtime-model-v0.1.0`)**. jsDelivr serves `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/` (`model.json` 200; all 5 files' sha256 match `model.json`). Browser check: a plain HTML page with the jsDelivr script tag (`genclass.global.min.js` @0.1.0-beta.0) in Chromium: mode `observe`, model ready in a Web Worker on WebGPU (fp16), `loadMs` 4750, every gate's source `model`, `decide()` 72 ms. `@genclass/runtime@0.1.0-alpha.0` deprecated: "Old situation-v1 build that defaults to guard; use 0.1.0-beta.0 or later". Nothing was pushed and no GitHub release was created (the user's GitHub account is read-only on daybot-solutions-inc/GenClass-lib).
 - **Published `@genclass/runtime@0.1.0-alpha.1` to npm** (published 2026-10-08 (~05:33 UTC) by `karanvir1729` under dist-tag `latest`, from release commit 806a296 (local annotated tag `v0.1.0-alpha.1`, not pushed); 26 files, 486.8 kB, shasum 9e3e82bcf752d6eb34db0620d072e6a913508dff). It ships the NaN fix (ad24804), the
   situation-v2 runtime (decisions at the network boundary via the `delivery` trigger; store writes not held by default),
@@ -197,6 +202,10 @@ package → demos rerun → runtime release.
   (`training/LOG.md`, 05:22).
 
 ## Known risks
+
+- **Query-value redaction in model input** (OPTIONS-SPEC §8.6) is deferred: it changes the model's input, so it needs a new
+  situation tag, regenerated data and retraining. For now only sink evidence redacts URLs. Also `model.inlineFallback: false`
+  is passed through but the model host doesn't read it yet.
 
 - **Stall detection for requests with no latency history** (realapps wave 4): a hung non-GET request with no
   baseline produced zero decisions, because `stall` needs at least 5 latency samples. Consider a generic

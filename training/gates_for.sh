@@ -15,7 +15,7 @@ $HOME/jev/.venv/bin/python training/fit_gates.py --cal out/cal/$M-sim2e.json \
   --test sim=data/sim2f/test.jsonl:$R/${M}__sim2f__test.jsonl \
   --test real=data/realev/test.jsonl:$R/${M}__realev__test.jsonl:test \
   --test realc=data/real2e/test.jsonl:$R/${M}__real2e__test.jsonl \
-  --out out/gates/$M.json "${W[@]}"
+  --out out/gates/$M.json --kind "${GATE_KIND:-mass}" --tau-gain "${TAU_GAIN:-1.0}" "${W[@]}"
 # observe-mode detections: gate.report (fit on dev, verify on test) → same meta.json
 $HOME/jev/.venv/bin/python training/fit_report.py --cal out/cal/$M-sim2e.json \
   --fit sim=data/sim2g/dev.jsonl:$R/${M}__sim2g__dev.jsonl \

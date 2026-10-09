@@ -327,20 +327,45 @@ function external(app: AppManifest, rng: Rng, tUser: number): ExternalEvent[] {
 
 // ---------------------------------------------------------------------------------------------- build
 
-export function buildScenario(seed: number, apps: AppManifest[], opts: { app?: string; chaos?: Chaos; clean?: boolean } = {}): Scenario {
+export interface ScenarioOpts {
+  app?: string;
+  chaos?: Chaos;
+  /** true: a clean run (calm network, benign user, no exploration, every flag at its first option). */
+  clean?: boolean;
+  /** Clean network and user like `clean`, but flags sampled as usual (certification runs). */
+  calm?: boolean;
+  /** Override the sampled exploration rate. */
+  explore?: number;
+}
+
+/** Scenario options for a generation mode (gen.ts --clean / --cert clean|chaos). */
+export function scenarioOpts(o: { clean?: boolean; cert?: "clean" | "chaos" }): ScenarioOpts {
+  if (o.cert === "clean") return { calm: true, explore: 0 };
+  if (o.cert === "chaos") return { clean: false, explore: 0 };
+  return o.clean ? { clean: true } : {};
+}
+
+/** App, flags and split of a seed's scenario (cheap: no session, network or events; used to filter splits). */
+export function scenarioHead(seed: number, apps: AppManifest[], opts: ScenarioOpts = {}) {
   const R = new Rng(hashAll("realapps-scenario-v1", seed));
   const app = opts.app ? apps.find((a) => a.name === opts.app)! : R.fork("app").pick(apps);
   if (!app) throw new Error(`unknown app ${opts.app}`);
   const rv = R.fork("variant");
   const variant: Record<string, unknown> = {};
   const patterns: string[] = [];
-  const clean = opts.clean ?? R.fork("clean").bool(0.08);
+  const clean = opts.calm ? true : (opts.clean ?? R.fork("clean").bool(0.08));
+  const firstOptions = clean && !opts.calm;
   for (const [k, vals] of Object.entries(app.variants ?? {})) {
     // clean runs use the first option (the app's default, guarded wording where the manifest lists it first)
-    const v = clean ? vals[0]! : rv.pick(vals);
+    const v = firstOptions ? vals[0]! : rv.pick(vals);
     variant[k] = v;
     patterns.push(`${app.name}/${k}:${v}`);
   }
+  return { R, app, variant, patterns, clean, split: splitOf(app, patterns) };
+}
+
+export function buildScenario(seed: number, apps: AppManifest[], opts: ScenarioOpts = {}): Scenario {
+  const { R, app, variant, patterns, clean } = scenarioHead(seed, apps, opts);
   if (app.localStorage) variant.__localStorage = app.localStorage;
   if (app.cookies) variant.__cookies = app.cookies;
   const rT = R.fork("timing");
@@ -385,7 +410,7 @@ export function buildScenario(seed: number, apps: AppManifest[], opts: { app?: s
     tEnd,
     budget: R.fork("budget").weighted([[3200, 40], [2000, 30], [1000, 30]] as const),
     modelMs: R.fork("model").float(6, 25),
-    explore: clean ? 0 : R.fork("explore").weighted([[0, 4], [0.08, 3], [0.2, 2]] as const),
+    explore: opts.explore ?? (clean ? 0 : R.fork("explore").weighted([[0, 4], [0.08, 3], [0.2, 2]] as const)),
     vocab,
     split: splitOf(app, patterns),
     epoch: Date.UTC(2026, 3, 1, 9, 0, 0) + (seed % 1000) * 86400000,

@@ -22,12 +22,14 @@ case "$cmd" in
       done
     done ;;
   unl) RUN="$1"; ROWS="$2"; shift 2; SEED_BASE=16000000000 REFRESH=1 bash "$HERE/orchestrate.sh" run "$RUN" unlabeled "$ROWS" "$@" ;;
-  gold) RUN="$1"; ROWS="$2"; shift 2; SEED_BASE=11000000000 bash "$HERE/orchestrate.sh" run "$RUN" gold "$ROWS" "$@" ;;
+  gold) RUN="$1"; ROWS="$2"; shift 2; SEED_BASE="${SEED_BASE:-11000000000}" REFRESH="${REFRESH:-0}" bash "$HERE/orchestrate.sh" run "$RUN" gold "$ROWS" "$@" ;;
   # onpol RUN GATE ROWS NODES...: on-policy with the bundled model (MODEL_NAME, default r17-v2a); seed bases
   # shipping 22e9, explore 24e9 (+ NN*1e8).
   onpol)
     RUN="$1"; G="$2"; ROWS="$3"; shift 3
     case "$G" in shipping) SB=22000000000 ;; explore) SB=24000000000 ;; *) echo "gate: shipping|explore" >&2; exit 2 ;; esac
+    # ROUND_BASE shifts both bases for later rounds (round b: +6e9 -> 28e9 / 30e9).
+    SB=$((SB + ${ROUND_BASE:-0}))
     SEED_BASE=$SB GATE=$G MAXP="${MAXP:-10}" REFRESH="${REFRESH:-1}" bash "$HERE/orchestrate.sh" run "$RUN" "onpolicy:/home/azureuser/simgen/model/${MODEL_NAME:-r17-v2a}" "$ROWS" "$@" ;;
   wait)
     RUN="$1"; shift

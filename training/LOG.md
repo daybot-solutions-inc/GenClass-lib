@@ -304,3 +304,99 @@ Dated entries: what ran, where, how long, results, cost. Times UTC. F80 node ≈
 - `eval_real.py`, `eval_real_sets.sh`: REAL eval-set metrics per case (and per held-out test split) under the gate.
 - c09 restarted 06:40 as the gate/eval workbench (serves `sim2g.tar` on :8805).
 - Cost since 05:22: 20 nodes × ≈ 1.8 h ≈ $195. **Total ≈ $635.** Burn now 19 nodes ≈ $105/h.
+
+### 07:10–07:55 r17-v2b delivered (2.0.0-rc2); observe-mode detections; `gate.report`
+- `r17-v2b` eval (real2e action 80.0 / diagnosis 83.6 / ECE 0.021 vs v2a 78.7 / 77.8 / 0.059; SIM unchanged), gates
+  fitted; first export failed on c03 (no onnx — installed on c03/c06 with node_init's pins) → re-exported, delivered to
+  `train:~/gcl/train-out/v2b/r17/` and `packages/runtime-model/files/r17/` (replaces rc1).
+- `fit_report.py` (observe mode: per-class detection precision/recall, false detections, REAL eval categories over
+  r = 0.50–0.99) → `gate.report = 0.70` for v2b (fit on dev; on held-out test REAL clean+benign-salient 0.62% ✓, SIM
+  gold-expected 2.6% / 3.6% ✗ — 0.85 would pass; coordinator's call). SIM passive-best rows replaced by gold-expected
+  rows as the SIM false-detection set (≈ 45% of passive-best rows are real anomalies). `gates_for.sh` runs both fits.
+- Teacher labelling probe (intermediate t150-v2a on c09): 9.6 rows/s per node fp32, 14 rows/s with bf16 autocast
+  (`label_teacher.py --amp`, max |Δp| 0.008) → ≈ 1M rows/h on 20 nodes. `collect_gain.py --amp`, `collect_parts.sh`,
+  `teacher_eval.sh` (teacher eval spread over its nodes; tested with R17 on c09).
+- c03, c04, c05, c13 deallocated when idle. Runtime notes for the next round: v2.2 retry applicability (in all gate
+  metrics), v2.3 relation learner (down-weight inconsistency; v2.3 top-ups; v2.3 eval slice).
+- Running: teacher (11 nodes, ETA 08:30), r17-v2t (3 nodes, ETA 08:15), c09 workbench. ≈ $80/h. **Total ≈ $700.**
+
+### 07:55–09:10 v2b gate.report 0.85; teacher evaluated (not used); T1 on v2; v2c launched; v2.3 prep
+- Coordinator: `gate.report = 0.85` for v2b (test-informed choice, recorded); dev fits from now on at 0.8 × each limit
+  (`DEV_MARGIN` in fit_gates/fit_report). v2b re-delivered: meta.json sha256 59d4b608…, model.json 64f12f2a….
+- Teacher `t150-v2a` finished 08:30 (525 steps); `teacher_eval.sh` across its 11 nodes in ≈ 12 min (bf16
+  `collect_parts.sh`): below r17-v2b everywhere (EVAL.md) → no labelling/distillation; c12, c14–c23 deallocated 08:52.
+- `r17-v2t` (T1 on v2): per-action gain gate captures ≈ 1.5× v2a's gain at matched FIR on sim2e; summed-mass gates
+  never fire for heal → shipping T1 needs the runtime's gain gate (CORE adding `gate.kind: "gain"`). EVAL.md.
+- SIM on-policy round a → `prep_v2c.py`: `sim2r` (v2 gold from raw gz with the v2.2 retry rule: 464k rows changed;
+  inconsistency rows kept at 60%), `onpa` 814k / `onpax` 92.6k flagged (false_intervention, ran_harm > 1, miss), eval
+  `onpae` (20k test / 8k dev). `r17-v2c` launched 08:34 on c07 c08 c02 c03 c04 c05 c13 (from v2b, 1.5B tokens,
+  `mix_v2c`), ETA ≈ 09:45; a ≈ 13-min slowdown early on (c02 load — coordinator reports a SIM collision there).
+- Node claim protocol adopted (`claim.sh claim|release|show`: other agents' processes check + `~/.gcl-claim` lock);
+  all current TRAIN nodes claimed. Port 8810 on `train` is SIM's bundle server — TRAIN uses 8803/8804/8806/8809/8812.
+- Next round prepared: `fit_gates.py --kind gain` (margins on ĝ = τ_gain·ln(p(cand)/p(passive)), grid −1…8, 99 =
+  never; meta `gate.kind/tauGain`), per-header temperatures (`HEADER_CAL=1` in eval_sim.sh; `tau_of` in fit_gates /
+  fit_report / eval_gain / eval_real; collect_gain records now carry the header key), v2.3 gold (`sim3`: 1.53M train,
+  eval `sim3e` 20k / 8k, held-out features `sim3f` 18.9k) prepared on c09.
+- Running: v2c (7 nodes) + c09. ≈ $45/h. **Total ≈ $790.**
+
+### 09:10–10:55 v2c vs v2b; v2b gate refit (published 0.1.0); v2d / v2dT; q8-based fitting
+- `r17-v2c` (from v2b + on-policy round a, 1.5B tokens): SIM unchanged, on-policy test heal FIR 0.50% vs 0.65% at 0.8,
+  REAL duplicate recall up; with on-policy-dev gates it beats v2b at equal safety (no test-informed change). Delivered
+  to `train:~/gcl/train-out/v2c/r17/` (q8 parity 222/223, gate@0.8 98.9% — see below).
+- v2b gates refit with on-policy dev (round a + b) and the certification rule (per-trigger thresholds only where dev
+  evidence certifies every limit; else max(default, SIM-certified value)); heal failure 0.95 (coordinator,
+  test-informed); re-delivered — published as `@genclass/runtime-model@0.1.0` (meta.json c3358947…, model.json
+  9e2a42bd…). `fit_gates.py` / `fit_report.py`: certifiability rule, per-trigger source filters (`only=` / `not=`),
+  gain-gate kind (runtime formula: τ·ln(p(a)/p(passive)) > margin, p ≥ 1e-6), per-header temperatures.
+- REAL v2.3 top-up (`real3`, 295,760 gold rows from v2d1/2 + v23e1–4 minus both REAL eval sets) and its eval sets
+  (`real3e`, `realev3` = v23-eval 10,402 rows); SIM v2.3 gold (`sim3`, `sim3e`, `sim3f`).
+- `r17-v2d` (mass gate, SIM labels; c08 c02–c05 c13) and `r17-v2dT` (gain gate, T1 labels on every SIM/REAL bucket;
+  c06 c12 c16–c19), both from v2c, same data/schedule (`mix_v2d` / `mix_v2dT`). v2dT first crashed at start
+  ("Too many open files": every bucket under data/s3 is opened — ulimit 1024) → unused buckets moved to data/s3x,
+  relaunched 10:39.
+- q8 parity: v2c's q8 (block 32) agreed 222/223, gate@0.8 98.9%, max |Δp| 0.07. Keeping the heads fp32 did not help
+  (222/223, +2 MB); keeping all FFN MatMuls fp32 did (223/223, 0.023) but 17.6 MB; **block 16** gives 223/223, gates
+  100%, 10.2 MB → default for the next exports (`--block 16`; `--q8-keep-heads` kept as an option).
+- Coordinator 10:40: fit and verify every gate on the shipped q8 ONNX outputs. `collect_onnx.py` (onnxruntime CPU on
+  the exported q8 file, packed like the export parity/runtime), `collect_onnx_parts.sh`, `refresh_card.py`,
+  `dist_post3.sh` (export → q8 logits on all sets across the run's nodes → q8-fitted calibration (per kind + header) →
+  reports → gates + gate.report on q8 records → meta/model.json). Running for v2d (c08…), v2dT (c06…) and the v2c
+  baseline (c09 + c20–c23).
+- Running ≈ 17 nodes ≈ $95/h. **Total ≈ $930.**
+
+### 10:55–11:50 q8-based post-processing; head-to-head v2c / v2d / v2dT
+- `dist_post3.sh` ran for v2c (c09 + c20–c23), v2d (c08 + c02–c05, c13) and v2dT (c06 + c12, c16–c19): export
+  (block 16), q8 logits for 17 dev/test sets across the run's nodes (≈ 10 min), q8-fitted calibration (per header),
+  reports, gates + gate.report on q8 records, meta/model.json refreshed. Fixes on the way: `logs/` missing on nodes that
+  never ran a post script (v2d's first attempt and two helpers' collection shares failed silently → restarted);
+  `report_fix.sh` re-fits gate.report with both REAL eval sets in full as benign evidence (the per-trigger REAL split
+  for action gates left only 1,019 benign rows → report 1.0).
+- Results (EVAL.md): at equal FIR v2dT captures the most gain (heal +20–35%), but its dev-certified margins are
+  conservative (REAL action recall 0.7% at the shipped margins); v2d is the safest; v2c's looser heal gate gives the
+  highest shipped gain. All three delivered to `train:~/gcl/train-out/{v2dT,v2d,v2c-q8}/r17/`.
+- All TRAIN nodes deallocated except c09. **Total ≈ $1,000.**
+
+### 11:50–12:00 waiting for REAL's certification dev set; refit prepared
+- Coordinator: refit gates + gate.report for v2dT / v2d / v2c-q8 on q8 outputs with REAL's certification dev set
+  (`train:/data/real-out/v23-cert/`) added to dev, on-policy rows only from the shipping-gate policy (meta.gate ==
+  "shipping"; explore-gate rows excluded from fit and test), then pick 0.2.0 by shipped gain at the FIR limits
+  (detection quality as tiebreak) and stage it in `packages/runtime-model/files/r17-0.2.0/`.
+- `fit_gates.py`: 5th spec field `gate=shipping`; source kind `realp` (REAL gold rows whose passive-best rows are REAL
+  FIR evidence). `fit_report.py`: same filter; `realp` gold-`expected` passive-best rows count as REAL benign
+  evidence. **Bug fixed:** fit_report keyed fit sets by name, so two `--fit real=…` sets overwrote each other — the
+  10:55 report fits for v2c-q8 / v2d / v2dT used only v23-eval as REAL benign evidence; the refit corrects this.
+- `cert_refit.sh` (Mac-side): imports the cert set on c09 (eval-set ids removed), collects q8 logits on it per model
+  across R0 + helpers, refits, refreshes model.json, prints the h2h summary. All nodes deallocated while waiting.
+
+### 12:00–16:35 certification refit; aggressiveness profiles; 0.2.0 staged
+- REAL `v23-cert` landed in 10 per-node parts (~13:00–15:00). First refit attempts broke on: Mac-side orchestration
+  killed by the session restart, a truncated own-part (the R0 curl'd its own part from its own http server while
+  serving it), mixed cert-set versions across nodes (9-part vs 10-part), and helpers whose stale parts satisfied the
+  gather check. Clean rerun: node-side `cert_gather.sh` (done markers per share, never re-downloads its own part),
+  5 shares per model across 15 nodes, 427,576 cert rows → 791,670 records per model, ≈ 10 min.
+- `fit_gates.py`: cluster-robust counts (cert rows clustered by trajectory), `--limits/--margin/--fallback`,
+  `error` never certifiable, joint guard raise so heal-mode limits hold; `fit_report.py`: same clustering and
+  `--limits/--margin`. `profiles.sh` fits cautious / balanced / eager and writes `gate` + `gate.profiles`.
+- Result (EVAL.md): v2dT ships as 0.2.0 (wins guard mode; ties overall; v2d better in heal mode). Staged in
+  `packages/runtime-model/files/r17-0.2.0/`; files/r17/ (0.1.0) untouched. All TRAIN nodes deallocated 16:35.
+- Cost since 11:50 ≈ $130 (15 nodes × ≈ 0.5 h + workbench/R0s). **Total ≈ $1,150.**

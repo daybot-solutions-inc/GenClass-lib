@@ -337,7 +337,7 @@ describe("modes: observe is the default; --mode guard / heal install those modes
   it("fetch-model's default --from is the runtime's default model directory (npm via jsDelivr), not a GitHub release", () => {
     const src = readFileSync(BIN, "utf8");
     expect(src.match(/^const DEFAULT_FROM = "([^"]+)";$/m)?.[1]).toBe(DEFAULT_MODEL_BASE_URL);
-    expect(DEFAULT_MODEL_BASE_URL).toBe("https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/");
+    expect(DEFAULT_MODEL_BASE_URL).toBe("https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/");
     const r = cli(project({}), "--help");
     expect(r.code).toBe(0);
     expect(r.out).toContain(DEFAULT_MODEL_BASE_URL);

@@ -80,7 +80,7 @@ files on disk with their hashes. `genclass-runtime info <dir>` verifies a direct
 `ModelOptions` (types.ts) plus `fetch` (native, for the inline path), `clock`, `timeoutMs` (default 10 s, also while
 queued), `maxQueue` (32), `warmup`, `maxThreads`, `helloTimeoutMs` (15 s), `loadStallMs` (180 s), and test hooks
 (`workerFactory`, `ortLoader`, `probeGpu`). Default `baseUrl`: `DEFAULT_MODEL_BASE_URL` =
-`https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.1.0/files/`.
+`https://cdn.jsdelivr.net/npm/@genclass/runtime-model@0.2.0/files/`.
 
 - Worker by default: `new Worker(new URL("./worker.js", import.meta.url), { type: "module" })`. Inline fallback
   (dynamic `import("onnxruntime-web/webgpu")` on the main thread) when `Worker` is missing, construction throws, the

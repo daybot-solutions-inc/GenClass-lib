@@ -52,6 +52,8 @@ export function opPhrase(op: OpRec): string {
 /** "GET /api/search?q=re (#14)" */
 export function opLabel(op: OpRec | undefined | null): string {
   if (!op) return "an earlier operation";
+  // labels reach the model only when the app opted in (requests.labelsToModel)
+  if (op.scope?.label && op.scope.labelToModel) return `${op.scope.label} (${truncate(opPhrase(op), 90)}) (#${op.id})`;
   return `${truncate(opPhrase(op), 90)} (#${op.id})`;
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "genclass-runtime",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-beta.1",
   "description": "Short alias for the @genclass/runtime CLI: npx genclass-runtime init sets up GenClass Runtime in your app.",
   "type": "module",
   "license": "Apache-2.0",
@@ -8,6 +8,6 @@
   "homepage": "https://www.npmjs.com/package/@genclass/runtime",
   "bin": { "genclass-runtime": "./cli.mjs" },
   "files": ["cli.mjs", "README.md", "LICENSE"],
-  "dependencies": { "@genclass/runtime": "0.1.0-beta.0" },
+  "dependencies": { "@genclass/runtime": "0.1.0-beta.1" },
   "engines": { "node": ">=20" }
 }

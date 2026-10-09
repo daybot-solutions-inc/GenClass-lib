@@ -53,7 +53,16 @@ export type TriggerKind =
   | "ask";
 
 export interface ModelStatus {
-  state: "off" | "loading" | "ready" | "error";
+  state: "off" | "loading" | "ready" | "error" | "skipped" | "unloaded" | "disabled";
+  /** skipped / unloaded / disabled: why. */
+  reason?: string;
+  /** runtime.status only: the effective mode (requested mode demoted by sample, breaker, route). */
+  effectiveMode?: ModeOrOff;
+  /** runtime.status only: this session may act (false when sampled out). */
+  sampled?: boolean;
+  breaker?: { tripped: boolean; at?: number; reason?: string };
+  scope?: { route?: string; mode: ModeOrOff; aggressiveness: number };
+  modelBudget?: { decisionsLastMinute: number; dropped: number };
   /** Download progress while loading (bytes). */
   progress?: { loaded: number; total: number };
   device?: "webgpu" | "wasm";
@@ -86,6 +95,8 @@ export interface ModelStatus {
   ort?: string;
   /** Data-derived gate thresholds shipped with the model (meta.json `gate`), validated. */
   gate?: ModelGate;
+  /** runtime.status only: the aggressiveness level in force (0 cautious … 1 eager). */
+  aggressiveness?: number;
 }
 
 /** Thresholds of one tier: a default and optional per-trigger values. */
@@ -94,18 +105,50 @@ export interface GateTier {
   byTrigger?: Partial<Record<TriggerKind, number>>;
 }
 
-/** The model's own gate thresholds (meta.json `gate`): the action probabilities are calibrated to these. */
+/**
+ * The model's own gate (meta.json `gate`). `kind: "mass"` (default): guard/heal are probability thresholds for the
+ * summed probability of the permitted actions. `kind: "gain"`: guard/heal are margins in cost units for the best
+ * action's estimated gain over the passive action, ĝ(a) = tauGain · ln(p(a) / p(passive)).
+ */
 export interface ModelGate {
+  kind?: GateKind;
+  /** Per-aggressiveness gates; when present they replace the top-level values (see InitOptions.aggressiveness). */
+  profiles?: GateProfiles;
+  /** gain kind: τ, the scale from log-probability ratios to cost units (default 1). */
+  tauGain?: number;
   report?: number;
   guard?: GateTier;
   heal?: GateTier;
 }
 
+export type GateKind = "mass" | "gain";
+
+/** How eagerly GenClass acts: a named level or a number in [0, 1] (0 cautious, 0.5 balanced, 1 eager). */
+export type Aggressiveness = "cautious" | "balanced" | "eager" | number;
+
+/** meta.json `gate.profiles`: one gate per named level (each mass or gain kind, report included). */
+export interface GateProfiles {
+  cautious?: ModelGate;
+  balanced?: ModelGate;
+  eager?: ModelGate;
+}
+
 /** Where an effective threshold comes from: the app's policy.thresholds, the model's meta gate, or the defaults. */
 export type GateSource = "policy" | "model" | "default";
 
-/** The thresholds the §8 gate uses (for one trigger kind, or the defaults when none is given). */
+/**
+ * The thresholds the §8 gate uses (for one trigger kind, or the defaults when none is given). `kind` "mass": guard/heal
+ * are probability thresholds; "gain": margins in cost units (and `tauGain`). `report` is always a probability.
+ */
 export interface EffectiveGates {
+  kind: GateKind;
+  /** The aggressiveness level in force (0 cautious … 1 eager) and its name when it is one of the three. */
+  aggressiveness: number;
+  level?: "cautious" | "balanced" | "eager";
+  /** "profiles": the model's per-level gates; "scaled": its single gate (or the defaults) shifted by the level. */
+  levelSource: "profiles" | "scaled";
+  /** gain kind only. */
+  tauGain?: number;
   trigger?: TriggerKind;
   report: number;
   guard: number;
@@ -146,6 +189,11 @@ export interface EvaluateRequest {
   priority?: number;
   /** What is being decided (tests/sim). Never part of the model input. */
   subject?: SubjectRef;
+  /**
+   * Built-in actions of this trigger that are not offered here, with the reason (= `Situation.notOffered`; tests/sim).
+   * Never part of the model input; the model host ignores it.
+   */
+  notOffered?: Record<string, string>;
   /** Drop the request if it cannot be answered within this many ms (queued requests are not computed). */
   timeoutMs?: number;
 }
@@ -302,8 +350,10 @@ export type ObserverName = "fetch" | "xhr" | "user" | "errors" | "nav" | "storag
 
 export interface PolicyOptions {
   /**
-   * Overrides of the gate thresholds. Unset tiers use the model's own thresholds (meta.json `gate`, per trigger kind
-   * then its default), else report 0.6, guard 0.9, heal 0.8.
+   * Overrides of the gate thresholds, in the active gate kind: with the default "mass" gate guard/heal are
+   * probabilities (defaults 0.9 / 0.8); when the model ships a "gain" gate they are margins in cost units (defaults
+   * 2 / 2). `report` is always a probability (default 0.6). Unset values use the model's own gate (meta.json `gate`,
+   * per trigger kind then its default), else the defaults.
    */
   thresholds?: { report?: number; guard?: number; heal?: number };
   /** Action names. When set, only these non-passive actions may run. */
@@ -330,7 +380,10 @@ export interface PolicyOptions {
    */
   holdWrites?: boolean;
   /** Default 60 non-passive actions per minute; beyond it the passive action runs and a warning is emitted. */
+  /** @deprecated use actionLimits.perMinute */
   maxActionsPerMinute?: number;
+  /** Default { perMinute: 60, perSubject: 10, perSession: 200 }. */
+  actionLimits?: ActionLimits;
   /**
    * Default true: a non-passive action also requires the model's top diagnosis to be something other than
    * `expected`. The sim passes false to force actions on benign situations when measuring counterfactuals.
@@ -361,6 +414,160 @@ export interface ModelOptions {
   preload?: "eager" | "idle" | "lazy";
   ortWasmPaths?: string;
   cacheName?: string;
+  /**
+   * Whether to load the model on this device. Default `{ saveData: "lazy" }` (Save-Data connections load lazily).
+   * false / "skip" → no download (status.state "skipped"); "lazy" → preload "lazy". Unknown values count as allowed.
+   */
+  loadIf?: { minDeviceMemoryGB?: number; saveData?: "skip" | "lazy" | "ignore" } | ((env: DeviceEnv) => boolean | "lazy");
+  /** Run inference on the main thread when the worker cannot start (default true). */
+  inlineFallback?: boolean;
+  /** WASM threads (default "auto" = min(4, max(1, cores - 1))). */
+  threads?: number | "auto";
+  /** Per-evaluation timeout in ms (default 10,000). */
+  timeoutMs?: number;
+  /** Model evaluations per sliding minute (default 30; Infinity disables). Over it, decisions fail open. */
+  maxDecisionsPerMinute?: number;
+  /** Tear the model down after this long without an evaluation (default false); it reloads from cache on demand. */
+  unloadAfterIdleMs?: number | false;
+}
+
+export interface DeviceEnv {
+  deviceMemoryGB?: number;
+  saveData?: boolean;
+  effectiveType?: string;
+  cores?: number;
+  webgpu: boolean;
+}
+
+export type ModeOrOff = Mode | "off";
+
+/** URL prefix or glob ("https://api.x/v1/orders*" or "/v1/orders*", which also matches the path), RegExp, or predicate. */
+export type RequestMatcher = string | RegExp | ((r: { url: string; method: string; channel: "fetch" | "xhr" | "ws" | "sse" }) => boolean);
+
+export interface RouteRule {
+  /** Exact path or glob ("/admin/*"), RegExp, or predicate over the route. */
+  match: string | RegExp | ((route: string) => boolean);
+  /** Demote only. */
+  mode?: ModeOrOff;
+  /** Demote only. */
+  aggressiveness?: Aggressiveness;
+}
+
+export interface RequestScope {
+  /** Pass-through: not observed at all (no op, no hold). */
+  ignore?: RequestMatcher[];
+  /** Observed and reported, but never held, delayed, retried, replayed, hedged, coalesced, served from cache or discarded. */
+  protect?: RequestMatcher[];
+  /** Cross-origin requests are always passive; "ignore" also stops observing them. Default "observe". */
+  crossOrigin?: "observe" | "ignore";
+  /** Names for endpoints in reports and sinks ([A-Za-z0-9 _-], ≤ 5 words, ≤ 40 chars). */
+  labels?: Array<{ match: RequestMatcher; label: string }>;
+  /** Show labels to the model (default false). */
+  labelsToModel?: boolean;
+  /** Your trace id for a request, stamped on reports and sink records; never shown to the model. */
+  correlate?: (r: { url: string; method: string; headers: Record<string, string> }) => string | undefined;
+}
+
+export interface EnabledSource {
+  get(): boolean;
+  subscribe(cb: (on: boolean) => void): () => void;
+}
+
+export interface BreakerOptions {
+  /** Undos within windowMs that trip it (default 2). */
+  undos?: number;
+  /** Errors on an acted-on subject within attributionMs after the action (default 3). */
+  errorsAfterAction?: number;
+  attributionMs?: number;
+  windowMs?: number;
+  downgradeTo?: "observe" | "guard";
+  persist?: "session" | false;
+}
+
+export interface ActionLimits {
+  /** Max non-passive actions across the session within any 60 s (default 60). */
+  perMinute?: number;
+  /** Max non-passive actions on the same subject (store field / endpoint signature) within any 60 s (default 10). */
+  perSubject?: number;
+  /** Absolute cap on non-passive actions per session (default 200). */
+  perSession?: number;
+}
+
+export interface ActionRequest {
+  action: string;
+  tier: "guard" | "heal";
+  trigger: TriggerKind;
+  subject: string;
+  diagnosis: string;
+  p: number;
+  decisionId: string;
+  route?: string;
+  label?: string;
+}
+
+export type SinkKind = "detection" | "intervention" | "undo" | "breaker" | "summary" | "error";
+
+export interface SinkRecord {
+  schema: 1;
+  kind: SinkKind;
+  id: string;
+  ts: number;
+  sessionId: string;
+  tags: Record<string, string | number | boolean>;
+  correlationId?: string;
+  mode: ModeOrOff;
+  sampled: boolean;
+  diagnosis?: string;
+  p?: number;
+  action?: string;
+  tier?: Tier;
+  trigger?: TriggerKind;
+  label?: string;
+  changed?: string[];
+  undone?: boolean;
+  shadow?: { action: string; tier: Tier; wouldPass: boolean; reason?: string };
+  reason?: string;
+  summary?: SessionSummary;
+  evidence?: { message?: string; trigger?: TriggerKind; subject?: string; timeline?: string[] };
+}
+
+export type SinkFn = (r: SinkRecord) => void | Promise<void>;
+export interface SinkObject {
+  send: SinkFn;
+  kinds?: SinkKind[];
+  /** Session-deterministic; never drops intervention / undo / breaker. */
+  sampleRate?: number;
+  /** Add redacted evidence (message, trigger, subject, timeline). Default false. */
+  evidence?: boolean;
+  flush?(): Promise<void>;
+}
+export type Sink = SinkFn | SinkObject;
+
+export interface SessionSummary {
+  startedAt: number;
+  durationMs: number;
+  detections: Record<string, number>;
+  interventions: Record<string, number>;
+  undos: number;
+  lateReverts: number;
+  denied: Record<string, number>;
+  shadow: Record<string, number>;
+  model: { state: ModelStatus["state"]; p50Ms?: number; p95Ms?: number; decisions: number; dropped: number; hiddenSkipped: number };
+  heldMs: { total: number; max: number };
+  errors: number;
+}
+
+/** Where an op was created: its effective mode and aggressiveness, protection, and report-only names. */
+export interface OpScope {
+  mode: ModeOrOff;
+  aggressiveness: number;
+  protected: boolean;
+  crossOrigin: boolean;
+  label?: string;
+  /** requests.labelsToModel: the label may appear in situation text. */
+  labelToModel?: boolean;
+  route?: string;
+  correlationId?: string;
 }
 
 export interface InitOptions {
@@ -373,9 +580,27 @@ export interface InitOptions {
   model?: ModelOptions | false;
   /** Bring your own decision provider instead of the local model. */
   decider?: DecisionProvider | null;
-  /** Default "console". */
-  report?: "console" | "silent" | ((r: Report) => void);
-  /** Default: all true (where the global supports them). */
+  /** Default "console". "interventions": the console prints only actions, undos, breaker trips and errors. */
+  report?: "console" | "interventions" | "silent" | ((r: Report) => void);
+  /** Default true. A predicate / Promise / subscribable flag; while false nothing is decided or downloaded. */
+  enabled?: boolean | (() => boolean | Promise<boolean>) | EnabledSource;
+  /** Fraction of sessions allowed to act (default 1); the rest observe. */
+  sample?: number;
+  /** Per-route mode and aggressiveness (demote only); the first matching rule wins. */
+  routes?: RouteRule[];
+  requests?: RequestScope;
+  /** Automatic downgrade after undos or errors that follow actions (default on). */
+  breaker?: BreakerOptions | false;
+  /** Record what this higher mode would have done, without doing it (default false). */
+  shadow?: "guard" | "heal" | false;
+  /** Synchronous last veto before an action runs: return false (or throw) to veto. */
+  onBeforeAction?: (a: ActionRequest) => boolean | void;
+  /** "report": call the hook and record its verdict but act anyway (default "enforce"). */
+  vetoMode?: "enforce" | "report";
+  /** Structured, redacted records for your telemetry. */
+  sinks?: Sink[];
+  /** Session id and tags stamped on records (never shown to the model). */
+  session?: { id?: string; tags?: Record<string, string | number | boolean> };
   /**
    * Observers to install (default: all, `timers` only with a document). `untrustedEvents` (default false): record
    * synthetic DOM events (isTrusted false) as user actions too, for in-page test harnesses.
@@ -388,18 +613,27 @@ export interface InitOptions {
    * Default: values whose leaf field names a secret (password, token, secret, cvv, card number, ssn, iban, api key,
    * ...), never a whole store by its name (`auth.loading` stays visible, `auth.token` is redacted).
    */
-  redact?: (path: string, value: unknown) => unknown;
+  redact?: (path: string, value: unknown, kind?: "state" | "url" | "header" | "input") => unknown;
   plugins?: Plugin[];
   /** Events kept, default 500. */
   historySize?: number;
   /** Console logging of every decision. */
   debug?: boolean;
-  /** Transition profiles: persist to localStorage (default false). */
-  learn?: { persist?: boolean };
+  /**
+   * Learned state (transition profiles): persist: true / "local" (localStorage) or "session" (sessionStorage); default
+   * false. `key` default "genclass:learn"; `version` (default session.tags.release at init) discards stale state.
+   */
+  learn?: { persist?: boolean | "local" | "session"; key?: string; version?: string };
   /** Override the diagnosis vocabulary and action descriptions the model sees. */
   vocabulary?: Vocabulary;
   /** Quiet time after the last mutation before a settled point (default 60 ms). */
   settleMs?: number;
+  /**
+   * How eagerly GenClass fixes client-side errors (default "balanced"). A number in [0, 1] interpolates (0 cautious,
+   * 0.5 balanced, 1 eager). Selects the model's gate profile; explicit policy.thresholds still win. The URL parameter
+   * `?genclass-aggr=cautious|balanced|eager|<number>` overrides it; `runtime.setAggressiveness()` changes it later.
+   */
+  aggressiveness?: Aggressiveness;
   /**
    * Size of the situation text the model reads, in characters. Default "auto": by device from the model status
    * (webgpu 2,400; wasm 1,000 at 1 thread to 2,000 at 4 threads, linear; unknown device 2,400).
@@ -535,9 +769,19 @@ export interface Decision {
   candidate?: string;
   /** Summed probability of the permitted actions (the gate compares it with the candidate's tier threshold). */
   mass?: number;
-  /** The threshold `mass` was compared with (the candidate's tier, for this trigger kind), and where it came from. */
+  /** The gate kind in force ("mass" or "gain", from the model's meta.json). */
+  gateKind?: GateKind;
+  /** mass kind: the threshold `mass` was compared with (the candidate's tier, for this trigger kind). */
   threshold?: number;
+  /** gain kind: ĝ of the candidate, tauGain · ln(p(candidate) / p(passive)), and the margin it was compared with. */
+  gain?: number;
+  margin?: number;
+  /** Where the threshold or margin came from. */
   thresholdSource?: GateSource;
+  /** The effective mode for this decision's subject. */
+  effectiveMode?: ModeOrOff;
+  /** shadow option: what the shadow mode would have done with the same answer. */
+  shadow?: { action: string; tier: Tier; wouldPass: boolean; reason?: string };
   /** The action that actually ran. */
   ran: string;
   /** Every answer the model gave (including plugin standing questions). */
@@ -570,10 +814,15 @@ export interface ActionRecord {
 }
 
 export interface Report {
-  kind: "detect" | "intervene" | "status";
+  kind: "detect" | "intervene" | "status" | "undo" | "breaker" | "error";
   message: string;
   decision?: Decision;
   action?: ActionRecord;
+  /** Effective mode at the decision. */
+  mode?: ModeOrOff;
+  correlationId?: string;
+  label?: string;
+  session?: { id: string; tags: Record<string, string | number | boolean> };
 }
 
 export interface Explanation {
@@ -664,6 +913,10 @@ export interface RuntimeEvents {
   event: RtEvent;
   status: ModelStatus;
   report: Report;
+  shadow: { decisionId: string; action: string; tier: Tier; wouldPass: boolean; reason?: string };
+  breaker: { tripped: boolean; reason: "undos" | "errors" | "reset"; decisionIds: string[]; counts: { undos: number; errors: number } };
+  limit: { kind: "perMinute" | "perSubject" | "perSession"; subject: string };
+  modelBudget: { decisionsLastMinute: number; dropped: number };
 }
 
 export interface Runtime {
@@ -705,7 +958,19 @@ export interface Runtime {
   situationBudget(): number;
   /** The gate thresholds in force for a trigger kind (policy overrides, else the model's meta gate, else defaults). */
   gates(trigger?: TriggerKind): EffectiveGates;
+  /** The aggressiveness level in force (0 cautious … 1 eager). */
+  readonly aggressiveness: number;
+  /** Change how eagerly GenClass acts (a named level or a number in [0, 1]). */
+  setAggressiveness(a: Aggressiveness): void;
   setMode(mode: Mode): void;
+  /** Turn GenClass off for this page: releases holds, uninstalls observers; `undo: true` rolls back recent actions. */
+  disable(o?: { undo?: boolean }): void;
+  /** Counts for this session. */
+  summary(): SessionSummary;
+  /** Replace the session id and merge tags (later records only). */
+  setSession(p: { id?: string; tags?: Record<string, string | number | boolean> }): void;
+  readonly breaker: { reset(): void; readonly tripped: boolean };
+  readonly learn: { clear(): void };
   pause(): void;
   resume(): void;
   destroy(): void;

@@ -41,7 +41,8 @@ function noun(d: Decision): string {
   const n = d.trigger === "delivery" && !d.subject.startsWith("response") ? "message" : NOUN[d.trigger];
   if (d.diagnosis === "expected") return an(n);
   if (d.trigger === "inconsistency" && d.diagnosis === "inconsistent") return "inconsistent state";
-  return an(`${d.diagnosis} ${n}`);
+  // Don't repeat a word the noun already carries ("slow request", not "slow slow request").
+  return an(n.split(" ").includes(d.diagnosis) ? n : `${d.diagnosis} ${n}`);
 }
 
 function topFact(d: Decision): string {

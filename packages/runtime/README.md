@@ -187,11 +187,32 @@ These hold for the runtime; whether the model's decisions are good is a separate
 
 ## Modes
 
-| mode | what it does | non-passive actions | gate (default model) |
-|---|---|---|---|
-| `observe` (**default**) | Reports what it sees and what it would have done. Never holds a request, never runs an action. | none | n/a |
-| `guard` (opt-in) | Also prevents failures with guard-tier actions: `discard`, `defer`, `coalesce`, `delay`. These withhold, deduplicate or slow something down. | guard tier | summed probability of the permitted actions ≥ the trigger's guard threshold (delivery 0.80, request 0.80, mutation 0.95), and the top diagnosis is not `expected` |
-| `heal` (**experimental**) | Also recovers: `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync`, plus your own actions. | guard + heal tier | heal actions ≥ the trigger's heal threshold (0.85 on every trigger except failure, 0.95), guard actions as in guard mode, diagnosis not `expected` |
+| mode | what it does | non-passive actions |
+|---|---|---|
+| `observe` (**default**) | Finds and reports what it sees and what it would have done. Never holds a request or a response, never runs an action. | none |
+| `guard` (opt-in) | Also prevents failures with minimal, reversible guard-tier actions: `discard`, `defer`, `coalesce`, `delay` (drop a stale response, reuse a duplicate's result, back off). Only when the model's gate says acting beats doing nothing (with model 0.2.0 at `balanced`: about 90% sure). | guard tier |
+| `heal` (**experimental**) | Also recovers: `retry`, `serve_cached`, `block`, `hedge`, `rollback`, `resync`, plus your own actions. | guard + heal tier |
+
+## How eager should it be?
+
+Once you opt into `guard` or `heal`, GenClass only acts when the model is confident enough. You choose how confident:
+
+```ts
+GenClass.init({ aggressiveness: "cautious" }); // "cautious" | "balanced" (default) | "eager", or a number 0–1
+GenClass.runtime.setAggressiveness("eager");   // change it later (the devtools have a selector too)
+```
+
+`cautious` acts less often (fewer interventions, almost never a wrong one); `eager` fixes more problems at a
+somewhat higher risk of acting when it did not need to. A number in between interpolates (0 = cautious,
+0.5 = balanced, 1 = eager). Try a level without redeploying with `?genclass-aggr=eager` in the URL. The model ships
+tuned thresholds for each level; explicit `policy.thresholds` still override them. `runtime.gates()` shows what is
+in force.
+
+## Connect your state (optional)
+
+Network, user actions, errors and timing are observed with zero code. To let GenClass also protect your state
+(roll back an inconsistent cart, revert a stale write), create it through GenClass or wrap the store you already
+have. Each option is one line:
 
 ```ts
 GenClass.init({ mode: "guard" });
@@ -395,6 +416,78 @@ rt.use({
 Plugins can add observers (`setup`), facts, actions, standing questions and diagnosis labels. The model reads each
 action's description. The goal is that clearly described actions work without retraining; this has not been
 measured.
+
+## Configuration
+
+GenClass runs with safe defaults (`mode: "observe"`, a `"balanced"` gate that applies once you opt into guard or heal, circuit breaker on). The options below narrow where it acts, cap how much it does, and send findings to your tools. None of them tell the model what a bug looks like. They only scope and limit it.
+
+- **Activation**: `enabled` (a boolean, a predicate, or a subscribable feature flag; while it is false the model is never downloaded), `rt.disable({ undo: true })` (remote kill that also rolls back recent actions), `sample` (the fraction of sessions allowed to act; the rest only observe).
+- **Scope**: `routes` (per-route mode and aggressiveness, which can only be lowered), `requests.ignore` (analytics traffic), `requests.protect` (endpoints that are never held, retried, cached or discarded), `requests.labels` (endpoint names for reports), `requests.correlate` (attach your trace id to records).
+- **Safety**: `breaker` (automatic downgrade after undos, or after errors that follow an action), `shadow` (records what a higher mode would have done), `onBeforeAction` + `vetoMode` (a synchronous veto, or a report-only trial of one), `policy.actionLimits` (per-minute, per-subject and per-session caps), `policy.holdBudgetMs` (a hard ceiling on added latency).
+- **Telemetry**: `sinks` (structured, redacted records), `session` (id and tags, never shown to the model), `report: "interventions"` (a quiet production console), `rt.summary()`, `rt.on("shadow" | "breaker" | "limit" | "modelBudget", cb)`.
+- **Loading and cost**: `model.loadIf`, `model.threads`, `model.timeoutMs`, `model.maxDecisionsPerMinute`, `model.unloadAfterIdleMs`.
+
+Action limits default to 60 per minute overall, 10 per minute on the same subject (store field or endpoint), and 200 per session.
+
+URL overrides (`?genclass-mode`, `?genclass-aggr`, `?genclass-sample`) can only lower settings, unless `debug: true` is set.
+
+```ts
+import { GenClass } from "@genclass/runtime";
+
+const rt = GenClass.init({
+  mode: "guard",
+  aggressiveness: "cautious",
+  enabled: {                                         // live feature flag; flipping off disables mid-session
+    get: () => flags.isEnabled("genclass") && consent.analytics,
+    subscribe: (cb) => flags.onChange("genclass", cb),
+  },
+  sample: 0.1,                                       // 10% of sessions act, 90% observe
+  routes: [
+    { match: "/checkout/*", mode: "observe" },
+    { match: /^\/admin/,    mode: "off" },
+  ],
+  requests: {
+    ignore:  ["https://www.google-analytics.com/", /sentry\.io/, "*/rum/*"],
+    protect: ["/api/auth/", "/api/payments/", (r) => r.method !== "GET" && r.url.includes("/billing")],
+    crossOrigin: "observe",
+    labels: [{ match: "/api/orders", label: "place order" }],   // reports only by default
+    correlate: (r) => r.headers["x-request-id"],
+  },
+  breaker: { undos: 2, errorsAfterAction: 3, attributionMs: 5000, downgradeTo: "observe" },
+  shadow: "heal",
+  onBeforeAction: (a) => !(cart.isSubmitting && a.tier === "heal"),
+  vetoMode: "enforce",
+  policy: { actionLimits: { perMinute: 30, perSubject: 3, perSession: 100 }, holdBudgetMs: "auto" },
+  report: import.meta.env.PROD ? "interventions" : "console",
+  sinks: [
+    { send: (r) => navigator.sendBeacon("/genclass", JSON.stringify(r)),
+      kinds: ["intervention", "undo", "breaker", "summary"] },
+    { send: (r) => Sentry.addBreadcrumb({ category: "genclass", data: r }), sampleRate: 0.2 },
+  ],
+  session: { tags: { release: __RELEASE__, tenant: tenantTier } },
+  learn: { persist: "local", key: "genclass:shop" },  // version = session.tags.release at init
+  model: {
+    preload: "idle",
+    loadIf: { minDeviceMemoryGB: 2, saveData: "lazy" },
+    threads: 2,
+    timeoutMs: 10_000,
+    maxDecisionsPerMinute: 30,
+    unloadAfterIdleMs: 300_000,
+  },
+});
+
+rt.on("breaker", (e) => log.warn("genclass downgraded", e));
+onLogin((u) => rt.setSession({ tags: { plan: u.plan } }));
+onLogout(() => rt.learn.clear());
+onIncident(() => rt.disable({ undo: true }));
+```
+
+**Recommended `requests.protect` starter** (it is not built in; adapt it to your endpoints):
+`[/\/(auth|login|logout|oauth|token|session)\b/, /\/(payment|checkout|billing)\b/]`
+
+**Rollout recipe:** start with `mode: "observe", shadow: "guard"`, and compare the shadow records with your undo and complaint rates. Then switch to `mode: "guard", sample: 0.05`. Watch `rt.summary().undos` and `breaker` events, and widen `sample` as they stay quiet. For QA, `?genclass-sample=1` together with `debug: true` forces a session into the acting group.
+
+## Status
 
 ## Model quality
 

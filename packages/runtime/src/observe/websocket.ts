@@ -22,9 +22,11 @@ export function installWebSocket(h: MsgHost): (() => void) | null {
       if (disabled) return; // a reference kept by another library after destroy(): plain WebSocket
       const u = parseUrl(String(url), h.baseHref());
       const path = normalizePath(u.where);
+      const sc = h.scopeOf?.({ url: u.href, method: "GET", channel: "ws" });
+      if (sc === "ignore") return; // requests.ignore: a plain, unobserved channel
       let conn: OpRec | null = null;
       try {
-        conn = h.startOp(`WS ${path}`, { detail: "connect" });
+        conn = h.startOp(`WS ${path}`, { detail: "connect", ...(sc ? { scope: sc } : {}) });
       } catch {
         conn = null;
       }
@@ -59,7 +61,7 @@ export function installWebSocket(h: MsgHost): (() => void) | null {
         endConn("error", { code });
         if (code !== 1000) goDown(code);
       });
-      const gate = new MessageGate(this, h, "websocket", path, raw);
+      const gate = new MessageGate(this, h, "websocket", path, raw, sc);
       gate.ensure("message");
       gate.ensure("close");
       gate.ensure("error");

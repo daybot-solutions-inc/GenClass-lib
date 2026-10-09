@@ -43,6 +43,13 @@ which available action is best. There is no list of known bugs in the code.
 > What's next: [OPEN_TASKS.md](OPEN_TASKS.md). Picking up the work: [HANDOFF.md](HANDOFF.md). AI coding agents:
 > start at [AGENTS.md](AGENTS.md).
 
+> **Status: beta.** [`@genclass/runtime@0.1.0-beta.1`](https://www.npmjs.com/package/@genclass/runtime) with the model
+> [`@genclass/runtime-model@0.2.0`](https://www.npmjs.com/package/@genclass/runtime-model) (10 MB, loaded at idle and
+> cached). Choose how eager it is with `aggressiveness: "cautious" | "balanced" | "eager"`. Installed from the
+> registry into a fresh app, guard mode fixed an out-of-order typeahead in 6 of 6 trials, and clean typing made 0
+> model calls. Measured numbers per profile: [RESULTS.md](docs/runtime/RESULTS.md). Options: [OPTIONS-SPEC.md](docs/runtime/OPTIONS-SPEC.md).
+> Remaining work: [OPEN_TASKS.md](OPEN_TASKS.md). Agents continuing the work: [HANDOFF.md](HANDOFF.md).
+
 ## How it works
 
 1. **Observe.** Fetch, XHR, WebSocket, EventSource, DOM events, errors, navigation, storage, long tasks and timers

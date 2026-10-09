@@ -2,7 +2,7 @@
 // implements a Controller for its subject: `passive()` lets it proceed unchanged, `run(action)` performs a
 // built-in action and says exactly what changed.
 
-import type { Clock } from "../types.js";
+import type { Clock, OpScope } from "../types.js";
 import type { Context } from "../trace/context.js";
 import type { OpRec, StartOpts } from "../trace/ops.js";
 import type { Redactor } from "../util.js";
@@ -38,6 +38,8 @@ export interface TriggerOpts {
   /** The subject waits for the decision (held write/request/failure). */
   hold: boolean;
   priority: number;
+  /** A deferred subject: when it was first held (holdBudgetMs is a ceiling on its total added latency). */
+  heldSince?: number;
 }
 
 export interface EndOpts {
@@ -61,6 +63,8 @@ export interface NetHost {
   endOp(op: OpRec, status: "ok" | "error" | "aborted" | "blocked", o?: EndOpts): void;
   /** True when triggers may be raised for this op (not paused, not a GenClass-issued request). */
   gated(op: OpRec): boolean;
+  /** A request's scope (protect, labels, correlation), or "ignore": pass-through, no op (OPTIONS-SPEC §4.4). */
+  scopeOf?(r: { url: string; method: string; channel: "fetch" | "xhr" | "ws" | "sse"; headers?: Record<string, string> }): OpScope | "ignore";
   trigger(spec: SubjectSpec, ctl: Controller, opts: TriggerOpts): void;
   /** Schedule the stall check for an in-flight request; returns a cancel function. */
   watchStall(op: OpRec, req: ReqMeta, ctl: () => Controller): () => void;

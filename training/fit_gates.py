@@ -14,7 +14,8 @@ The runtime gate (CONTRACT §8, policy.ts `gate()`): A = permitted non-passive a
 guard + heal), candidate = argmax calibrated p over A, run iff Σ_A p ≥ threshold[tier(candidate)][trigger] and the top
 diagnosis ≠ expected. Probabilities use the shipped calibration (per-kind temperature, as `calibrateLogits`).
 
-Sources: `sim` = SIM gold rows; `real` = REAL's unambiguous-case eval set (meta.eval_case/eval_expect; `:notest` keeps
+Sources: `sim` = SIM gold rows; `realp` = REAL gold rows whose passive-best rows count as REAL FIR evidence (the
+certification dev set); `real` = REAL's unambiguous-case eval set (meta.eval_case/eval_expect; `:notest` keeps
 rows whose original split is not test, `:test` only test-split rows = held-out apps/framework); `realc` = random REAL
 gold rows (harm only).
 Constraints (per tier, on the fit data; each must hold for the one-sided 95% Wilson UPPER bound, because the test
@@ -42,7 +43,11 @@ import numpy as np
 PREM = {"passive": 0.0, "guard": 0.25, "heal": 0.5}
 PERMIT = {"guard": ("guard",), "heal": ("guard", "heal")}
 LIMITS = {"guard": {"fir": 0.001, "harm": 0.002}, "heal": {"fir": 0.005, "harm": 0.01}}
-GRID = [round(0.30 + 0.05 * i, 2) for i in range(14)] + [0.97, 0.99, 1.0]
+GRID_MASS = [round(0.30 + 0.05 * i, 2) for i in range(14)] + [0.97, 0.99, 1.0]
+GRID_GAIN = [-1.0, -0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 99.0]  # 99 = never
+GRID = GRID_MASS
+KIND = "mass"  # "gain": fire argmax over A iff ĝ = TAU_GAIN·ln(p(cand)/p(passive)) ≥ margin[tier][trigger]
+TAU_GAIN = 1.0
 BENIGN = {"clean-benign", "benign-salient"}
 
 
@@ -101,12 +106,30 @@ def retry_unoffered_v22(state, m: dict) -> bool:
     return True
 
 
-def load(spec: str, tau: float, v22: bool = True) -> list[dict]:
+def tau_of(cal: dict, rec: dict) -> float:
+    """The runtime's choice temperature for one question: calibration.by_header[header], else the per-kind value."""
+    bh = cal.get("by_header") or {}
+    h = rec.get("header")
+    return float(bh[h]) if h in bh else float(cal.get("choice", 1.0))
+
+
+def load(spec: str, cal: dict, v22: bool = True) -> list[dict]:
     """→ one item per decision row: per-mode gate inputs and outcome indicators."""
     kind, rest = spec.split("=", 1)
+    passive_fir = kind == "realp"  # REAL gold rows (e.g. the certification dev set): FIR rows = passive-best rows
+    if passive_fir:
+        kind = "real"
     parts = rest.split(":")
     rows_p, rec_p = parts[0], parts[1]
     filt = parts[2] if len(parts) > 2 else ""
+    trig_in = trig_out = None  # optional 4th field: "only=t1,t2" or "not=t1,t2" (per-trigger source choice)
+    want_gate = parts[4].split("=", 1)[1] if len(parts) > 4 and parts[4].startswith("gate=") else None  # 5th: "gate=shipping"
+    if len(parts) > 3 and parts[3]:
+        k, _, v = parts[3].partition("=")
+        if k == "only":
+            trig_in = set(v.split(","))
+        elif k == "not":
+            trig_out = set(v.split(","))
     rows = {}
     with open(rows_p) as f:
         for line in f:
@@ -130,6 +153,11 @@ def load(spec: str, tau: float, v22: bool = True) -> list[dict]:
             continue
         if filt == "notest" and split == "test":
             continue
+        trg = m.get("trigger")
+        if (trig_in is not None and trg not in trig_in) or (trig_out is not None and trg in trig_out):
+            continue
+        if want_gate is not None and m.get("gate") != want_gate:  # on-policy rows from the shipping-gate policy only
+            continue
         tiers = m.get("tiers") or {}
         passive = m.get("passive") or next((a for a, t in tiers.items() if t == "passive"), None)
         ra = q["action"]
@@ -141,12 +169,12 @@ def load(spec: str, tau: float, v22: bool = True) -> list[dict]:
         if drop_retry and "retry" in names:
             j = names.index("retry")
             names, logits, target = names[:j] + names[j + 1:], logits[:j] + logits[j + 1:], target[:j] + target[j + 1:]
-        p = softmax(logits, tau)
+        p = softmax(logits, tau_of(cal, ra))
         idx = {a: i for i, a in enumerate(names)}
         top_d = None
         if "diagnosis" in q:
             rd = q["diagnosis"]
-            top_d = list(rd["labels"])[int(softmax(rd["logits"], tau).argmax())]
+            top_d = list(rd["labels"])[int(softmax(rd["logits"], tau_of(cal, rd)).argmax())]
         costs = mean_costs(m)
         gold = names[int(np.asarray(target).argmax())]
         pb = m.get("passive_best")
@@ -155,13 +183,15 @@ def load(spec: str, tau: float, v22: bool = True) -> list[dict]:
             pb = all(costs[passive] <= costs[a] + PREM.get(tiers.get(a, "heal"), 0.5) for a in names if a in costs)
         case = m.get("eval_case")
         expect = set(m.get("eval_expect") or [])
-        item = {"kind": kind, "trigger": m.get("trigger") or "?", "diag_ok": top_d != "expected", "modes": {}}
+        item = {"kind": kind, "trigger": m.get("trigger") or "?", "diag_ok": top_d != "expected", "modes": {},
+                "cluster": (f"traj:{m.get('seed')}" if passive_fir and m.get("seed") is not None else f"row:{rid}")}
         for mode in ("guard", "heal"):
             A = [a for a in names if a != passive and tiers.get(a, "heal") in PERMIT[mode]]
             if not A:
                 continue
             mass = float(sum(p[idx[a]] for a in A))
             cand = max(A, key=lambda a: p[idx[a]])
+            ghat = TAU_GAIN * float(np.log(max(p[idx[cand]], 1e-6) / max(p[idx[passive]], 1e-6)))  # runtime: p clamped ≥ 1e-6
             ctier = tiers.get(cand, "heal")
             harm = gain = None
             oracle = 0.0
@@ -172,8 +202,8 @@ def load(spec: str, tau: float, v22: bool = True) -> list[dict]:
                 oracle = max([0.0] + gs)
             cb = clear_best(m, [passive] + A, passive) if kind == "sim" else None
             item["modes"][mode] = {
-                "mass": mass, "ctier": ctier, "harm": harm, "gain": gain, "oracle": oracle,
-                "fir_row": (pb if kind == "sim" else (case in BENIGN) if kind == "real" else None),
+                "mass": mass, "ghat": ghat, "ctier": ctier, "harm": harm, "gain": gain, "oracle": oracle,
+                "fir_row": (pb if (kind == "sim" or passive_fir) else (case in BENIGN) if kind == "real" else None),
                 "fir_bad": True,  # a fire on a FIR row is always a false intervention
                 "clear": cb is not None, "clear_hit": cb == cand if cb else False,
                 "act_case": kind == "real" and case is not None and case not in BENIGN,
@@ -192,7 +222,7 @@ class Table:
         g = lambda f, dt=float: np.array([f(it, x) for it, x in its], dtype=dt)
         self.kind = np.array([it["kind"] for it, _ in its])
         self.trig = np.array([it["trigger"] for it, _ in its])
-        self.mass = g(lambda it, x: x["mass"])
+        self.mass = g(lambda it, x: x["mass"] if KIND == "mass" else x["ghat"])
         self.ctier = np.array([x["ctier"] for _, x in its])
         self.diag = g(lambda it, x: it["diag_ok"], bool)
         self.fir_row = g(lambda it, x: bool(x["fir_row"]), bool)
@@ -204,10 +234,13 @@ class Table:
         self.clear_hit = g(lambda it, x: x["clear_hit"], bool)
         self.act_case = g(lambda it, x: x["act_case"], bool)
         self.act_hit = g(lambda it, x: x["act_hit"], bool)
+        self.cluster = np.array([it["cluster"] for it, _ in its])
 
     def fired(self, th: dict, mode: str) -> np.ndarray:
         """th: {tier: {"default": t, "byTrigger": {...}}}"""
         t = np.array([th[ct]["byTrigger"].get(tr, th[ct]["default"]) for ct, tr in zip(self.ctier, self.trig)])
+        if KIND == "gain":  # runtime (CORE batch 10): fire iff tauGain·ln(p(a)/p(passive)) > margin
+            return self.diag & (self.mass > t)
         return self.diag & (self.mass >= t - 1e-12)
 
 
@@ -221,8 +254,16 @@ def metrics(T: Table, fired: np.ndarray, sel: np.ndarray, boot: int = 0, seed: i
         def rate(num, den):
             d = den.sum()
             return float((num & den).sum() / d) if d else None
+        cl = T.cluster[ix]
+
         def cnt(num, den):
-            return [int((num & den).sum()), int(den.sum())]
+            """Cluster-robust counts: a cluster (trajectory for the REAL cert set, the row otherwise) is one unit,
+            an event if any of its rows has one."""
+            if not den.any():
+                return [0, 0]
+            c_den = np.unique(cl[den])
+            c_ev = np.unique(cl[num & den])
+            return [int(len(c_ev)), int(len(c_den))]
         orc = T.oracle[ix][sim].sum()
         return {
             "_counts": {"fir_sim": cnt(f, sim & T.fir_row[ix]), "fir_real": cnt(f, real & T.fir_row[ix]),
@@ -256,6 +297,9 @@ def metrics(T: Table, fired: np.ndarray, sel: np.ndarray, boot: int = 0, seed: i
     return base
 
 
+NOT_CERTIFIABLE = {"error"}
+FALLBACK = "pe"  # "pe": default if its point estimates hold, else never; "default": tier default (error keeps "pe")
+DEV_MARGIN = 0.8  # dev fits must meet 0.8 × each limit, so they hold on the shifted test sets (coordinator, 08:00)
 Z_UB = 1.645  # one-sided 95% Wilson upper bound: dev rows are in-distribution, test/real apps are not
 
 
@@ -275,7 +319,10 @@ def ok(mt: dict, tier: str, use_real: bool) -> bool:
     checks = [(c["fir_sim"], L["fir"]), (c["harm_sim"], L["harm"])]
     if use_real:
         checks += [(c["fir_real"], L["fir"]), (c["harm_real"], L["harm"])]
+    lim_scale = DEV_MARGIN
+
     def holds(k: int, n: int, lim: float) -> bool:
+        lim = lim * lim_scale
         if n == 0:
             return True
         if wilson_upper(0, n) > lim:  # too few rows to certify the limit even with zero events: point estimate
@@ -285,7 +332,7 @@ def ok(mt: dict, tier: str, use_real: bool) -> bool:
 
 
 def lowest_safe(T: Table, mode: str, tier: str, th: dict, sel: np.ndarray, trig: str | None, use_real: bool) -> float:
-    best = 1.0
+    best = GRID[-1]
     for t in reversed(GRID):  # walk down while every value so far is safe
         th2 = json.loads(json.dumps(th))
         if trig is None:
@@ -299,26 +346,86 @@ def lowest_safe(T: Table, mode: str, tier: str, th: dict, sel: np.ndarray, trig:
     return best
 
 
+def certifiable(T: Table, sel: np.ndarray, tier: str) -> dict:
+    """Which constraint sets have enough dev rows to certify their limit (0 events → Wilson UB ≤ margin × limit)."""
+    L = LIMITS[tier]
+    sim, real = (T.kind == "sim") & sel, ((T.kind == "real") | (T.kind == "realc")) & sel
+    u = lambda m: int(len(np.unique(T.cluster[m])))  # cluster-robust: trajectories of the cert set count once
+    n = {"fir_sim": u(sim & T.fir_row), "harm_sim": u(sim & T.has_cost),
+         "fir_real": u((T.kind == "real") & sel & T.fir_row), "harm_real": u(real & T.has_cost)}
+    lim = {"fir_sim": L["fir"], "fir_real": L["fir"], "harm_sim": L["harm"], "harm_real": L["harm"]}
+    return {k: (v > 0 and wilson_upper(0, v) <= DEV_MARGIN * lim[k] + 1e-12, v) for k, v in n.items()}
+
+
+def raise_guard_for_heal(T: Table, th: dict, notes: dict) -> None:
+    """The runtime uses one guard threshold set in both modes; in heal mode guard candidates see more permitted mass,
+    so the guard thresholds alone can break the heal-mode limits. Raise them (all together, one grid step at a time)
+    until the heal-mode pooled constraints hold with the heal tier at "never"; the heal tier is fitted afterwards."""
+    allrows = np.ones(T.n, bool)
+    up = lambda v: next((x for x in GRID if x > v + 1e-9), GRID[-1])
+    steps = 0
+    while not ok(metrics(T, T.fired(th, "heal"), allrows), "heal", True) and steps < len(GRID):
+        g = th["guard"]
+        g["default"] = up(g["default"])
+        g["byTrigger"] = {k: up(v) for k, v in g["byTrigger"].items()}
+        steps += 1
+    if steps:
+        notes["guard:raised-for-heal-mode"] = f"guard thresholds raised {steps} grid step(s) so the heal-mode limits hold"
+
+
 def fit(items: list[dict], min_passive: int, min_real: int) -> tuple[dict, dict]:
-    th = {"guard": {"default": 1.0, "byTrigger": {}}, "heal": {"default": 1.0, "byTrigger": {}}}
+    """Rule (coordinator, 10:15): a trigger gets its own threshold only when its dev evidence can certify every limit
+    (SIM and REAL sets that have rows for it); otherwise it uses the tier default — never a lower per-trigger value.
+    The default is fitted on all triggers pooled: SIM sets must certify (else the tier never fires: 1.0 / 99); a pooled
+    REAL set too small to certify is held to its point estimate (reported in notes)."""
+    th = {"guard": {"default": GRID[-1], "byTrigger": {}}, "heal": {"default": GRID[-1], "byTrigger": {}}}
     notes: dict = {}
     for tier in ("guard", "heal"):
         mode = tier
         T = Table(items, mode)
         allrows = np.ones(T.n, bool)
+        if tier == "heal":  # heal tier still at "never" here
+            raise_guard_for_heal(T, th, notes)
+        cert = certifiable(T, allrows, tier)
+        if not (cert["fir_sim"][0] and cert["harm_sim"][0]):
+            notes[f"{tier}:default"] = f"SIM dev evidence cannot certify the limits ({cert}) → never"
+            continue
         th[tier]["default"] = lowest_safe(T, mode, tier, th, allrows, None, True)
+        unc = [k for k, (c, n) in cert.items() if n > 0 and not c]
+        notes[f"{tier}:default"] = (f"pooled; point estimate only for {unc} (n {[cert[k][1] for k in unc]})" if unc else "pooled, certified")
         per = {}
         for trig in sorted(set(T.trig)):
             sel = T.trig == trig
-            n_pb = int(((T.kind == "sim") & T.fir_row & sel).sum())
-            n_rb = int(((T.kind == "real") & T.fir_row & sel).sum())
             if not ((T.ctier == tier) & sel).any():
                 continue  # no candidate of this tier for this trigger: the threshold would be vacuous
-            if n_pb < min_passive:
-                notes[f"{tier}:{trig}"] = f"default (only {n_pb} SIM passive-best fit rows)"
-                continue
-            per[trig] = lowest_safe(T, mode, tier, th, sel, trig, n_rb >= min_real)
-            notes[f"{tier}:{trig}"] = f"fitted on {n_pb} SIM passive-best / {n_rb} REAL benign rows"
+            c = certifiable(T, sel, tier)
+            nn = dict((k, v[1]) for k, v in c.items())
+            bad = [k for k, (ok_, n) in c.items() if n > 0 and not ok_]
+            sim_ok = c["fir_sim"][0] and c["harm_sim"][0]
+            if trig in NOT_CERTIFIABLE:  # coordinator: REAL evidence from one app — never a per-trigger value below the default
+                bad, sim_ok = bad + ["single-app REAL evidence"], False
+            if not bad:
+                per[trig] = lowest_safe(T, mode, tier, th, sel, trig, True)
+                notes[f"{tier}:{trig}"] = f"fitted (certified: n {nn})"
+            elif sim_ok:  # REAL rows for this trigger too few to certify: SIM-certified value, never below the default
+                v = lowest_safe(T, mode, tier, th, sel, trig, False)
+                if v > th[tier]["default"]:
+                    per[trig] = v
+                notes[f"{tier}:{trig}"] = f"max(default, SIM-certified {v}) — REAL cannot certify {bad} (n {nn})"
+            elif trig not in NOT_CERTIFIABLE and FALLBACK == "default":  # coordinator 15:50: tier default, never "never"
+                notes[f"{tier}:{trig}"] = f"default (cannot certify {bad}, n {nn})"
+            else:  # too little evidence: the default if its point estimates hold on this trigger, else never
+                th2 = json.loads(json.dumps(th))
+                th2[tier]["byTrigger"] = {}
+                mt = metrics(T, T.fired(th2, mode), sel)
+                cnt = mt["_counts"]
+                L = LIMITS[tier]
+                pe_ok = all(n == 0 or k / n <= lim for (k, n), lim in ((cnt["fir_sim"], L["fir"]), (cnt["harm_sim"], L["harm"]),
+                                                                       (cnt["fir_real"], L["fir"]), (cnt["harm_real"], L["harm"])))
+                if not pe_ok:
+                    per[trig] = GRID[-1]
+                notes[f"{tier}:{trig}"] = (f"default (cannot certify {bad}; point estimates at the default hold, n {nn})" if pe_ok
+                                           else f"never (cannot certify {bad} and the default's point estimates fail, n {nn})")
         th[tier]["byTrigger"] = per
         if not ok(metrics(T, T.fired(th, mode), allrows), tier, True):
             th[tier]["byTrigger"] = {k: max(v, th[tier]["default"]) for k, v in per.items()}
@@ -334,8 +441,13 @@ def report(items: list[dict], th: dict, boot: int) -> dict:
         r = {"ALL": metrics(T, f, np.ones(T.n, bool), boot)}
         for trig in sorted(set(T.trig)):
             r[trig] = metrics(T, f, T.trig == trig, boot)
-        fixed = {"guard": {"default": 0.9, "byTrigger": {}}, "heal": {"default": 0.8, "byTrigger": {}}}
-        r["ALL@fixed-0.9/0.8"] = metrics(T, T.fired(fixed, mode), np.ones(T.n, bool), boot)
+        if KIND == "mass":
+            fixed = {"guard": {"default": 0.9, "byTrigger": {}}, "heal": {"default": 0.8, "byTrigger": {}}}
+            r["ALL@fixed-0.9/0.8"] = metrics(T, T.fired(fixed, mode), np.ones(T.n, bool), boot)
+        else:
+            for mg in (0.5, 1.0, 2.0):
+                fixed = {"guard": {"default": mg, "byTrigger": {}}, "heal": {"default": mg, "byTrigger": {}}}
+                r[f"ALL@fixed-gain>{mg}"] = metrics(T, T.fired(fixed, mode), np.ones(T.n, bool), boot)
         out[mode] = r
     return out
 
@@ -343,7 +455,10 @@ def report(items: list[dict], th: dict, boot: int) -> dict:
 def write_meta(export: Path, th: dict, fit_info: dict) -> None:
     meta_p = export / "meta.json"
     meta = json.loads(meta_p.read_text())
-    meta["gate"] = th
+    report = (meta.get("gate") or {}).get("report")
+    meta["gate"] = ({"kind": "gain", "tauGain": TAU_GAIN} if KIND == "gain" else {}) | th
+    if report is not None:
+        meta["gate"]["report"] = report
     meta["gate_fit"] = fit_info
     meta_p.write_text(json.dumps(meta, indent=2) + "\n")
     card_p = export / "model.json"
@@ -371,12 +486,24 @@ def main() -> None:
     ap.add_argument("--min-real", type=int, default=300)
     ap.add_argument("--boot", type=int, default=300)
     ap.add_argument("--write-meta", type=Path, default=None)
+    ap.add_argument("--kind", choices=["mass", "gain"], default="mass")
+    ap.add_argument("--tau-gain", type=float, default=1.0)
+    ap.add_argument("--limits", default=None, help='JSON {"guard": {"fir": .., "harm": ..}, "heal": {...}}')
+    ap.add_argument("--margin", type=float, default=None, help="dev margin (default 0.8; 1.0 = certify at the limit)")
+    ap.add_argument("--fallback", choices=["pe", "default"], default="pe")
     a = ap.parse_args()
-    tau = float(json.loads(a.cal.read_text()).get("choice", 1.0))
-    fit_items = [x for s in a.fit for x in load(s, tau)]
-    test_items = [x for s in a.test for x in load(s, tau)]
+    global KIND, TAU_GAIN, GRID, LIMITS, DEV_MARGIN, FALLBACK
+    if a.limits:
+        LIMITS = json.loads(a.limits)
+    if a.margin is not None:
+        DEV_MARGIN = a.margin
+    FALLBACK = a.fallback
+    KIND, TAU_GAIN, GRID = a.kind, a.tau_gain, (GRID_GAIN if a.kind == "gain" else GRID_MASS)
+    cal = json.loads(a.cal.read_text())
+    fit_items = [x for s in a.fit for x in load(s, cal)]
+    test_items = [x for s in a.test for x in load(s, cal)]
     th, notes = fit(fit_items, a.min_passive, a.min_real)
-    res = {"gate": th, "notes": notes, "limits": LIMITS, "grid": GRID, "fit_sets": a.fit, "test_sets": a.test,
+    res = {"kind": KIND, "tau_gain": TAU_GAIN, "gate": th, "notes": notes, "limits": LIMITS, "grid": GRID, "fit_sets": a.fit, "test_sets": a.test,
            "fit": report(fit_items, th, 0), "test": report(test_items, th, a.boot)}
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(res, indent=1))

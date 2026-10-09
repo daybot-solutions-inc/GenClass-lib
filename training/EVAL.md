@@ -233,3 +233,199 @@ Full per-trigger tables: `out/gates/r17-v2a.json` on c09.
 
 Targets: guard FIR ≤ 0.1% met; heal FIR ≤ 0.5% met pooled (failure trigger 0.55% on held-out test); diagnosis ≥ 95%
 not met (84 / 81); clear stale/duplicate recall ≥ 80% far from met; ECE ≤ 0.02 met after calibration on SIM (REAL 0.059).
+
+## situation-v2: `r17-v2b` (current shipping candidate, 2.0.0-rc2; 2026-10-08 07:10 UTC)
+
+Recipe: `r17-v2a` + 1B tokens (`mix_v2b`: sim2 0.70, REAL gold `real2` 0.18 — v2c1–4 minus every REAL eval-set row —,
+cur5 0.10, cur1/gen 0.02), lr 1e-4, 4 nodes. Export q8 9.58 MB / fp16 13.57 MB, ORT-web 223/223, WASM 1 thread ≈ 176 /
+320 / 583 ms at 500 / 780 / 1,170 tokens; `train:~/gcl/train-out/v2b/r17/` and `packages/runtime-model/files/r17/`.
+
+| set | action acc | diagnosis acc | guard FIR @0.9 | heal FIR @0.8 | heal precision | heal recall | ECE action |
+|---|---|---|---|---|---|---|---|
+| sim2e | 77.8 | 84.2 | 0.01% | 0.50% | 74.1 | 7.1 | 0.023 |
+| sim2f (held-out features) | 77.0 | 80.6 | 0.00% | 0.70% | 72.9 | 7.0 | 0.022 |
+| real2e | **80.0** (v2a 78.7) | **83.6** (77.8) | 0.00% | 0.31% | 72.9 | 6.2 | **0.021** (0.059) |
+
+REAL eval set (fixed gates): argmax duplicate-submit 49.6% (v2a 24.8%), stale-overwrite 13.6%, genuine-break 2.7%
+(v2a 7.8%); heal@0.8 recall duplicate 8.2% (held-out-app rows 14%); clean-benign / benign-salient fired 0.00%.
+
+Data-derived action gates (in `meta.json`): guard default 0.80 (delivery 0.75, mutation 0.95, request 0.75); heal
+default 0.85 (failure 0.90, inconsistency 0.80, request 1.0, transition 0.55). Test verification (v2.2 retry
+applicability): guard FIR SIM 0.02% [0.00, 0.06], REAL 0.00%, recall clear 1.8%, gain captured 2.9%; heal FIR SIM 0.23%
+[0.14, 0.29], REAL 0.00%, harm 0.07% / 0.08%, recall clear 6.0%, REAL action-case recall 9.5%, gain captured 5.7%
+(fixed 0.8: FIR 0.67%, over the limit).
+
+### Observe-mode detections (`fit_report.py`; coordinator request of 07:50)
+
+Detection = top calibrated diagnosis ≠ expected with probability ≥ `gate.report`. Fitted on dev (SIM `sim2g` 104k,
+REAL eval-set rows outside REAL's test split): lowest r with false detections ≤ 1% on REAL clean-benign +
+benign-salient and ≤ 2% on SIM rows whose **gold diagnosis is `expected`** (95% Wilson upper bounds). SIM
+passive-best rows were not usable as "false": ≈ 45% of them carry a real anomaly (failing / slow / transient /
+overload networks where waiting is still best) and the detection is correct there (precision 0.91 at r = 0.7) — no
+threshold ≤ 0.99 brings "any detection on passive-best rows" under 2% (deviation accepted by the coordinator). The dev
+fit gave 0.70; it failed the SIM limit on held-out test (table below), so the coordinator selected **`gate.report =
+0.85`** for v2b — **this one choice is test-informed**. Shipped v2b `meta.json` sha256 `59d4b608…238126` (2,091 B),
+`model.json` sha256 `64f12f2a…af459c`. From now on every dev fit (action gates and `gate.report`) must meet 0.8 × each
+limit (Wilson upper bound), so that it holds on the shifted test sets without test-informed changes.
+
+Verification on test, r = 0.70 (r = 0.85 in brackets):
+
+| set | detected | precision | false on REAL clean+benign-salient | false on gold-`expected` rows |
+|---|---|---|---|---|
+| sim2e | 50.9% | 0.91 | – | **2.59%** [1.11%] |
+| sim2f (held-out features) | 49.9% | 0.89 | – | **3.60%** [1.66%] |
+| real2e | 39.6% | 0.88 | – | 4.34% [3.16%] |
+| REAL eval set, test split | 14.0% | 0.96 | **0.62%** [0.36%] | 0.54% |
+
+The dev-fitted 0.70 meets the REAL limit on held-out apps but **not** the 2% SIM limit on held-out test (domains /
+features shift again); 0.85 meets both SIM test sets (stale-overwrite detection drops 43% → 28%). real2e's
+gold-`expected` rows are detected 2–4% at every r (REAL diagnosis labels for random rows; not a constraint set).
+
+Per-class detection at r = 0.70 (precision / recall): sim2e — failing 0.95 / 0.78, slow 0.94 / 0.91, transient 0.88 /
+0.81, duplicate 0.80 / 0.49, stale 0.87 / 0.57, inconsistent 0.97 / 0.53, conflict 0.89 / 0.54, overload 0.93 / 0.38,
+unusual 0.96 / 0.49; sim2f — duplicate 0.68 / 0.43, stale 0.82 / 0.44, inconsistent 0.98 / 0.28, overload 0.88 / 0.25;
+real2e — failing 0.96 / 0.64, slow 0.93 / 0.95, transient 0.87 / 0.84, duplicate 0.92 / 0.53, stale 0.67 / 0.51,
+inconsistent 0.93 / 0.28, unusual 0.91 / 0.06. REAL eval set (held-out apps), detected with the right diagnosis:
+**duplicate-submit 76%**, **stale-overwrite 43%**, genuine-break 27%; clean-benign 0.5% / benign-salient 0.7% any
+detection. Full curves (r = 0.50–0.99): `out/gates/r17-v2b-report.json` (c03).
+
+## Teacher `t150-v2a` (ettin-150m, 1B tokens of v2 gold + REAL gold) — not used
+
+Evaluated across its 11 nodes (`teacher_eval.sh`, bf16): sim2e action 76.5 / diagnosis 81.8, sim2f 75.5 / 79.6, real2e
+78.1 / 82.0 — below `r17-v2b` (77.8 / 84.2, 77.0 / 80.6, 80.0 / 83.6) on every set; expected gain (heal) gate@0.5 27.9%
+vs 31.7%, gate@0.8 3.2% vs 8.8%; REAL eval argmax duplicate 38% vs 50%, stale 4.7% vs 13.6%. Teacher labelling would
+cost ≈ 1M rows/h on 20 nodes (bf16). Decision (with the coordinator's rule "only distil if it clearly beats v2b"): no
+labelling / distillation; nodes deallocated; the run is resumable (`runs/t150-v2a` on c12).
+
+## T1 on v2: `r17-v2t` (expected-advantage soft labels, τ = 1) vs `r17-v2a` (same recipe, SIM labels)
+
+Labels: action = softmax(gain/τ) with gain = mean-future cost(passive) − cost(a) − premium (clipped ±30), 4.87M of
+7.56M sim2 rows relabelled; everything else identical to r17-v2a (from r17-final1, 2B tokens, same mixture).
+
+Expected gain on sim2e (heal mode, oracle 1.11 / row; label-FIR = fired on rows whose SIM label is passive-best):
+
+| policy | fired | recall clear | harmful (gain < −1) | gain captured | label-FIR |
+|---|---|---|---|---|---|
+| v2a gate@0.8 (summed mass) | 2.5% | 12.3% | 0.13% | 9.3% | 0.49% |
+| v2a gate@0.9 | 0.7% | 4.5% | 0.06% | 2.7% | 0.10% |
+| v2t gate@0.8 (summed mass) | 4.0% | 19.9% | 0.32% | 18.3% | 1.18% |
+| v2t gate@0.9 | 0.8% | 6.5% | 0.05% | 5.9% | 0.06% |
+| **v2t per-action gain gate ĝ > 1** | 2.5% | 15.9% | 0.14% | **14.4%** | 0.57% |
+| v2t ĝ > 0.5 | 7.9% | 32.6% | 0.65% | 26.1% | 3.2% |
+
+(ĝ(a) = τ·(z_a − z_passive) on raw logits; fire the argmax ĝ over permitted actions.) At matched FIR/harm, T1 with a
+per-action gain gate captures ≈ 1.5× the gain of the SIM-label model (14.4% vs 9.3%), and ≈ 2× at gate 0.9. With the
+runtime's **summed-mass** gate T1 does not ship: the data-derived heal thresholds come out at 1.0 (never) because
+gain-shaped labels put summed mass on near-tie actions of passive-best rows (heal-mode FIR 0.97% at fixed 0.8).
+REAL eval set (no REAL training in either): T1 is far more willing on the clear cases — argmax duplicate 55% (v2a 25%),
+stale-overwrite 43% (11%), genuine-break 16% (8%); heal@0.8 recall duplicate 17% (35% on held-out apps), stale 4.8%,
+clean/benign fired 0.00% — but at gate 0.5 benign-salient fires 3.0% (v2a 0.35%). Action accuracy against SIM's
+labels drops (74.1 vs 77.9) as expected, and the shared `choice` temperature is distorted (ECE 0.21 vs SIM labels;
+`gate.report` fit = 1.0) — a T1 export would need per-question temperatures. **What shipping T1 needs** (no new ONNX
+outputs): the runtime gate on ĝ(a) = τ_gain · ln(p(a)/p(passive)) per permitted action with τ_gain and per-tier/trigger
+margins in `meta.json` (`gate.kind: "gain"`), plus per-question calibration. The separate gain-regression head
+(`r17-t1h`) was stopped early on v1 (loss 0.98 → 0.85 vs trivial 0.97–1.01) and not pursued.
+
+### `r17-v2b` gates refit on the shipped model's own distribution (2026-10-08 10:30 UTC) — published as `@genclass/runtime-model@0.1.0`
+
+SIM's on-policy round b (r17-v2b with its meta gates, situation-v2.3) showed the heal transition gate 0.55 too loose
+on-policy (41% of transition acts false), delivery acts 18% false at 0.75, request 19% (coalesce on intended repeats).
+Refit with dev = sim2g + **on-policy round b dev (33.7k) + round a dev (37.8k)** + REAL eval rows outside REAL's test
+split + REAL dev; 95% Wilson bound at 0.8 × each limit; a trigger gets its own threshold only where its dev evidence
+certifies every limit (SIM and REAL), else max(tier default, SIM-certified value), never below the default.
+
+Shipped gates: guard default 0.80 (mutation 0.95); heal default 0.85 (failure **0.95**, inconsistency 0.85); report 0.85.
+**Test-informed (coordinator):** the dev rule gave heal failure 0.90, whose held-out test FIR was 0.74% [0.51, 0.98]
+(> 0.5%); 0.95 was selected after that check (failure FIR 0.21% [0.11, 0.34], failure gain captured 8.4% → 2.5%).
+`gate.report` 0.85 is now the dev fit itself (no test-informed change).
+
+Verification on held-out test (on-policy round b test 20k + sim2e + sim2f; REAL test-split eval rows), at the dev-rule
+values (failure 0.90; with 0.95 pooled heal FIR 0.07%, gain captured 3.8%):
+
+| mode | fired | FIR SIM | FIR REAL | harm SIM / REAL | recall clear | REAL action recall | gain captured |
+|---|---|---|---|---|---|---|---|
+| guard | 0.04% | 0.01% [0.00, 0.02] | 0.00% | 0.00% / 0.00% | 0.6% | 0.0% | 0.8% |
+| heal | 1.11% | 0.17% [0.12, 0.22] | 0.00% | 0.04% / 0.07% | 5.9% | 5.7% (request 14%) | 5.7% |
+| heal, fixed 0.9/0.8 | 2.82% | 0.67% | 0.00% | 0.08% / 0.13% | 12.5% | 0.2% | 9.4% |
+
+Transition: 0 fires on test (was 41% false on-policy at 0.55). Observe mode at 0.85: false detections on REAL
+clean+benign-salient 0.36%, SIM gold-expected 1.1% (sim2e) / 1.7% (sim2f) — but **3.1% on on-policy round-b test**
+(over the 2% limit on the shipped model's own distribution); detection with the right diagnosis on held-out REAL
+apps: duplicate-submit 76%, stale-overwrite 28%. Shipped hashes: meta.json `c3358947…0eb50` (2,602 B), model.json
+`9e2a42bd…afff20`. The previous meta.json is kept as `meta.json.pre-onpol` on the train VM.
+
+## Head-to-head for `@genclass/runtime-model@0.2.0`: `r17-v2d` (SIM labels, mass gate) vs `r17-v2dT` (T1 labels, gain gate), baseline `r17-v2c` (2026-10-08 11:45 UTC)
+
+All numbers below come from the **shipped q8 ONNX files** (onnxruntime CPU on the exported file, packed like the
+runtime; `collect_onnx.py`), with temperatures (per kind + per header) fitted on q8 sim2e dev and gates + `gate.report`
+fitted on q8 dev records (sim2g + on-policy a/b dev + REAL eval rows outside REAL's test split + REAL dev; 95% Wilson at
+0.8 × the limits; certification rule) and verified on q8 test records (on-policy b test 20k + sim2e + sim2f + sim3e
+(v2.3 slice) + on-policy a test; REAL eval sets' test splits — v2-eval for every trigger but inconsistency, v23-eval for
+inconsistency). v2d and v2dT: from v2c, identical data and schedule (1.5B tokens; sim2r, v2.3 gold, on-policy a,
+REAL v2c + v2d/v23e top-ups minus both eval sets); v2dT's action labels = softmax(gain/τ = 1) on every SIM/REAL bucket.
+q8 export: MatMulNBits 8-bit **block 16** (parity fix; 10.16 MB, fp16-free).
+
+| | v2c (baseline) | v2d (mass) | v2dT (gain) |
+|---|---|---|---|
+| q8 vs PyTorch argmax / gate@0.8 / max \|Δp\| | 223/223 / 99.5% / 0.056 | 223/223 / 100% / 0.034 | 223/223 / 100% / 0.048 |
+| fp16 argmax / max \|Δp\| | 223/223 / 0.011 | 223/223 / 0.020 | 223/223 / 0.023 |
+| action / diagnosis acc: sim2e | 77.8 / 85.2 | 77.8 / 85.2 | 73.9 / 85.4 (labels differ) |
+| sim3e (v2.3) | 75.7 / 84.0 | 75.5 / 84.4 | 70.7 / 84.2 |
+| real2e / real3e | 79.9 / 84.0 · 77.5 / 84.3 | 80.2 / 84.9 · 77.6 / 85.9 | 77.8 / 85.5 · 71.9 / 86.4 |
+| gates (dev-fitted) | guard 0.80 (mutation 0.85); heal 0.80 (failure 0.90, inconsistency 0.80, stall 0.85) | guard 0.80 (delivery 0.85, mutation 0.90); heal 0.85 (failure 0.95, inconsistency 0.80) | gain: guard 6.0 (mutation never); heal 4.0 (failure 6.0, inconsistency 2.5) |
+| **guard** test: FIR SIM / REAL | 0.016% / 0.00% | 0.006% / 0.00% | 0.003% / 0.00% |
+| guard recall clear / gain captured | 1.8% / 1.3% | 1.4% / 0.95% | 1.8% / **2.3%** |
+| **heal** test: FIR SIM [CI] / REAL | 0.21% [0.17, 0.24] / 0.00% | 0.07% [0.05, 0.09] / 0.00% | 0.105% [0.07, 0.13] / 0.00% |
+| heal harm SIM / REAL | 0.05% / 0.06% | 0.02% / 0.02% | 0.02% / 0.03% |
+| heal recall clear / REAL action recall / gain captured | 6.0% / 9.8% / **5.2%** | 3.2% / 5.5% / 4.4% | 4.8% / 0.7% / 4.4% |
+| `gate.report` (dev) | 0.97 | 0.99 | 0.99 |
+| detection: false on gold-expected (onpol-b / sim2e / sim3e) | 0.21 / 0.15 / 0.13% | 0.03 / 0.05 / 0.00% | 0.00 / 0.00 / 0.00% |
+| detection right, REAL held-out apps: duplicate / stale / genuine-break | 64% / 1.7% / 22% | 41% / 0% / 14% | 41% / 1.7% / 14% |
+
+**Equal safety** (comparison only, not used for shipping: one global threshold / margin swept on the same q8 test
+records, best gain captured with SIM FIR ≤ the target; heal mode / guard mode):
+
+| FIR ≤ | v2c heal gain (recall clear) | v2d | v2dT | v2c guard gain | v2d | v2dT |
+|---|---|---|---|---|---|---|
+| 0.05% | 1.6 (2.2) | 1.6 (2.0) | **2.1** (2.8) | 2.0 | 1.4 | **2.6** |
+| 0.1% | 2.8 (3.8) | 2.5 (3.5) | **3.4** (4.3) | **3.9** | 2.4 | **3.9** |
+| 0.2% | 4.6 (6.3) | 5.3 (6.7) | **6.2** (7.2) | **6.4** | 5.1 | 5.9 |
+| 0.5% | 8.3 (10.6) | 10.0 (11.8) | **12.3** (13.3) | 10.1 | 9.6 | **10.9** |
+
+REAL action-case recall at FIR ≤ 0.5%: heal v2dT 6.7% vs v2d 3.7% vs v2c 5.4%; guard 14.1% vs 3.1% vs 3.4%.
+Reading: at equal FIR **v2dT (gain gate) captures the most expected gain** — +20–35% over v2d/v2c in heal mode, ties
+v2c in guard — and the most REAL action recall; with the shipped dev-fitted gates its margins come out conservative
+(heal FIR 0.105%), so its shipped heal gain (4.4%) equals v2d's and is below v2c's (5.2% at twice the FIR), and its
+REAL action recall at the shipped margins is low (0.7%: REAL action cases sit below margin 4). v2d is the most
+conservative; v2c ranks first at its shipped point only because its dev fit allowed a looser heal gate.
+Deliveries (train VM, ORT-web 223/223): `~/gcl/train-out/v2dT/r17/` (2.0.0-rc4t), `v2d/r17/` (2.0.0-rc4),
+`v2c-q8/r17/` (2.0.0-rc3b).
+
+## `@genclass/runtime-model@0.2.0` = `r17-v2dT` (gain gate, aggressiveness profiles; 2026-10-08 16:30 UTC)
+
+Refit of all three candidates on q8 outputs with REAL's certification dev set (`v23-cert`, 427,576 rows, dev-split apps,
+clustered by trajectory `meta.seed`) added to dev, on-policy rows only from the shipping-gate policy, cluster-robust
+95% Wilson bounds at the limit (no extra margin), per-trigger values only where certified (else tier default; `error`
+default/never), guard thresholds raised jointly when needed so heal-mode limits also hold (one guard set serves both
+modes). Profiles (coordinator 15:50): cautious = guard FIR/harm ≤ 0.1/0.2%, heal ≤ 0.5/1%, report false ≤ 1% REAL / 2%
+SIM; **balanced** (top-level `gate`) = guard ≤ 0.3/0.3%, heal ≤ 1/1%, report ≤ 2/3%; eager = guard ≤ 1/1%, heal ≤ 3/3%,
+report ≤ 5/6%. Held-out test (q8): shipping-gate on-policy a/b test + sim2e + sim2f + sim3e; REAL eval test splits.
+
+| model / profile | guard FIR / harm | guard recall clear / REAL act / gain | heal FIR / harm (SIM / REAL) | heal recall clear / REAL act / gain | report | detection right: dup / stale (v2, v2.3) / broken |
+|---|---|---|---|---|---|---|
+| **v2dT cautious** | 0.005 / 0.007% | 2.4 / 1.4 / 3.1% | 0.26 / 0.06 / 0.00% | 3.7 / 3.8 / 3.2% | 0.95 | 72% / 14, 28% / 0% |
+| **v2dT balanced** | 0.13 / 0.03% | **7.8 / 7.5 / 6.7%** | 0.59 / 0.11 / 0.02% | 7.1 / 10.4 / 5.7% | 0.90 | 75% / 21, 30% / 6% |
+| **v2dT eager** | 0.54 / 0.11% | 14.2 / 21.0 / 12.5% | 1.84 / 0.29 / 0.16% | 17.1 / 24.2 / 14.2% | 0.70 | 77% / 40, 45% / 13% |
+| v2d cautious | 0.03 / 0.00% | 2.9 / 0.4 / 2.6% | 0.15 / 0.03 / 0.06% | 3.3 / 14.9 / 4.1% | 0.95 | 72% / 12, 23% / 6% |
+| v2d balanced | 0.07 / 0.02% | 4.5 / 1.4 / 4.2% | 0.41 / 0.08 / 0.13% | 7.9 / **21.8 / 8.1%** | 0.90 | 74% / 21, 28% / 6% |
+| v2d eager | 0.59 / 0.11% | 13.5 / 6.4 / 12.0% | 1.48 / 0.34 / 0.28% | 16.0 / 33.2 / 14.5% | 0.70 | 77% / 41, 45% / 13% |
+| v2c balanced | 0.06 / 0.01% | 3.1 / 0.4 / 2.1% | 0.36 / 0.08 / 0.04% | 5.4 / 13.2 / 5.1% | 0.90 | 74% / 22, 25% / 8% |
+
+All profiles meet their limits on held-out test (REAL FIR 0.00% throughout). Choice: v2d and v2dT tie on total shipped
+gain at balanced (12.3 vs 12.4 points guard+heal); v2dT wins guard mode clearly (+61% gain, 5× REAL action recall) and
+the cautious guard profile, v2d wins heal mode (+42% gain, 2× REAL action recall); detection quality is equal (v2dT
+slightly ahead on stale). **v2dT ships as 0.2.0** (guard is the first active mode after observe); a heal-heavy
+deployment would be better served by v2d — candidate for a later per-mode model choice. Staged:
+`packages/runtime-model/files/r17-0.2.0/` and `train:~/gcl/train-out/v2dT-0.2.0/r17/` (meta.json sha256 73b63b4d…cab07,
+model.json 3f792892…169daf; q8 10.16 MB, fp16 13.57 MB; ORT-web WASM 1 thread 182 / 330 / 599 ms; parity 223/223).
+`meta.gate` = balanced (`kind: "gain"`, `tauGain` 1) + `gate.profiles` {cautious, balanced, eager}.
