@@ -12,6 +12,11 @@ packed on `mvp-v2-b6` and waits to be published (Done, Next).
 
 ## Done
 
+- **`@genclass/runtime@0.1.0-beta.3` prepared, not published** (2026-10-09, branch `mvp-v2-b6`): default-on
+  anonymous telemetry (privacy-relevant; `packages/runtime/TELEMETRY.md`) with opt-outs (`telemetry: false`,
+  `?genclass=no-telemetry`, localStorage, GPC) and the `genclass-telemetry` Cloudflare collector
+  (`telemetry-worker/`, deployed at `https://genclass-telemetry.mehar-144.workers.dev`, R2 bucket
+  `genclass-telemetry`).
 - **`@genclass/runtime@0.1.0-beta.2` prepared, not published** (2026-10-08, branch `mvp-v2-b6`): merges
   `origin/runtime` at 696b1b4 (tag `v0.1.0-beta.1`: model 0.2.0 `r17-v2dT` with gain gate and aggressiveness
   profiles, batch 11 `aggressiveness`, batch 12 options, perSubject 10/min) and restores what `0.1.0-beta.1` lacked:
@@ -203,6 +208,14 @@ package → demos rerun → runtime release.
 
 ## Needs the user
 
+- **Telemetry owner decisions (before or right after publishing `0.1.0-beta.3`):**
+  - **Retention policy** for the R2 bucket `genclass-telemetry` (then add an R2 lifecycle rule; command in
+    `telemetry-worker/README.md`). Until then data is kept until deleted.
+  - **Privacy policy page** for the collection (who is the controller, purpose, retention, contact, rights), linked
+    from `packages/runtime/TELEMETRY.md` and the READMEs.
+  - **Data processing terms** for apps that ship GenClass (their users' data reaches our collector), or guidance
+    to set `telemetry: false` where they cannot disclose a third-party recipient.
+  - Whether the demos and `test/smoke/smoke.sh` runs should opt out (they currently would send telemetry).
 - **2FA publishes:** `@genclass/runtime@0.1.0` and the next model (`0.1.0-alpha.1`, `0.1.0-beta.0` and
   `@genclass/runtime-model@0.1.0` are done). Agents
   prepare the tarball and the exact command per [RELEASE.md](RELEASE.md).

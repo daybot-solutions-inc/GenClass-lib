@@ -39,6 +39,16 @@ observe mode on the same scenario (`debug.js --interference`):
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
 
+## 0.1.0-beta.3: default-on anonymous telemetry (privacy-relevant)
+
+`InitOptions.telemetry` (`src/telemetry/*`; disclosure `TELEMETRY.md`; agent doc `docs/agents/telemetry.md`). On by
+default with `GenClass.init()` in a browser, off in `createRuntime()` and outside a browser unless set. Opt-outs:
+`telemetry: false`, `?genclass=no-telemetry|off`, `localStorage["genclass.telemetry"] = "off"`, Global Privacy
+Control. Read-only: rt.on listeners, `RuntimeImpl.tap` (model errors, fail-opens), `decisionInfo(id)`; no change to
+situation building or any model-visible text (a test compares the model input with and without telemetry).
+`test/telemetry.test.ts`: 13 tests. Full suite after the change: 50 files passed, 1 skipped; 474 passed, 14 skipped;
+review-perf 4 passed.
+
 ## Batch 11 (done): aggressiveness
 
 `InitOptions.aggressiveness` ("cautious" | "balanced" | "eager" | number 0–1, default "balanced"), URL override

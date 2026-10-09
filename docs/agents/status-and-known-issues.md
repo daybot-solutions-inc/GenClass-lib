@@ -20,6 +20,10 @@ Path convention in this doc: `src/…`, `test/…` and `bin/…` are relative to
 paths (`runtime.ts`, `types.ts`, `util.ts`, `state/hub.ts`, `situation/content.ts`, `decide/policy.ts`,
 `model/host.ts`, …) are relative to `packages/runtime/src/`. Every other path is from the repo root.
 
+- **Telemetry (2026-10-09, `0.1.0-beta.3` prepared on `mvp-v2-b6`, not published):** default-on anonymous
+  diagnostics from `GenClass.init()` in browsers to the `genclass-telemetry` Cloudflare Worker / R2 bucket, with
+  opt-outs and GPC; privacy-relevant (CHANGELOG). Retention, privacy policy page and data processing terms are owner
+  decisions (OPEN_TASKS "Needs the user"). Details: [telemetry.md](telemetry.md).
 - **Branches.** `mvp-v2-merge` (this doc, head f107013, **not pushed**) = `mvp-v2` (c16a3b0) + dabbce2, the merge of
   Mehar's `origin/runtime` at eff18cb + 10e5c3b (lockfile sync) + 054da38 and f107013 (runtime fixes, below).
   `mvp-v2` = `origin/runtime` 74f17c0 plus 7dab2b3 (agent docs), f3636b2 (default `observe`), b435acb (CI, root
@@ -603,6 +607,8 @@ tests at all.
    (`OPEN_TASKS.md` Next 14); and whether to publish the unscoped `genclass-runtime` alias (`INSTALL-NEEDS.md`).
 7. Polar Parts rollout (`MeharPro/Polar-Parts`; user OK'd once the trained model is good): observe on a branch first,
    then guard. Note that `init --mode guard` currently installs observe (install finding 1).
+8. Telemetry (2026-10-09): retention period for the R2 data, a published privacy policy page, data processing terms
+   for apps that ship GenClass ([telemetry.md](telemetry.md)).
 5. Shipping models: R17 default on every device (RESULTS §2 decision for v1); R32 for WebGPU only if clearly better.
 
 ### Known risks

@@ -51,6 +51,11 @@ which available action is best. There is no list of known bugs in the code.
 >   observe-delivery, redaction and install fixes), `0.1.0-beta.0` (model 0.1.0), `0.1.0-alpha.1` and
 >   `0.1.0-alpha.0` (no model). Use `0.1.0-beta.2`.
 >
+> - **Privacy notice (since `0.1.0-beta.3`): anonymous diagnostics are on by default** in browsers. GenClass sends
+>   its decisions, including the redacted situation text the model read, to the GenClass maintainers to improve the
+>   model. Opt out with `GenClass.init({ telemetry: false })` or `?genclass=no-telemetry`; Global Privacy Control is
+>   honoured. See [Privacy and telemetry](#privacy-and-telemetry).
+>
 > What's next: [OPEN_TASKS.md](OPEN_TASKS.md). Picking up the work: [HANDOFF.md](HANDOFF.md). AI coding agents:
 > start at [AGENTS.md](AGENTS.md).
 
@@ -86,6 +91,23 @@ which available action is best. There is no list of known bugs in the code.
    - Every detection and intervention is logged in plain English, with the exact situation text the model read.
    - Reversible actions can be undone.
    - `?genclass=off` installs nothing.
+
+## Privacy and telemetry
+
+- **Decisions are local.** Situations are built and decided in the browser by the local model; nothing is sent
+  anywhere to make a decision.
+- **Anonymous diagnostics are on by default** with `GenClass.init()` in a browser (since `0.1.0-beta.3`; off in
+  Node/SSR and in `createRuntime()` unless enabled). They go to the GenClass maintainers' collector
+  ([`telemetry-worker/`](telemetry-worker), a Cloudflare Worker writing to a private R2 bucket) and are used to
+  improve the model. Sent: a random per-page session id, versions, mode, device class, the app's hostname and
+  id-normalised path, and for each decision the trigger, **the redacted situation text the model read**, its
+  calibrated answers, the diagnosis, gate and outcome, plus action outcomes, detections, model errors and counts.
+  Never sent: typed password/payment/secret values, cookies, headers, bodies, storage, query strings; the collector
+  stores no IP address or user agent. One console notice per page says it is on.
+- **Opt out:** `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`,
+  `localStorage.setItem("genclass.telemetry", "off")`; browsers sending Global Privacy Control are never collected.
+- Apps that ship GenClass may need to disclose this to their users (GDPR/CCPA). Full schema, storage and guidance:
+  [packages/runtime/TELEMETRY.md](packages/runtime/TELEMETRY.md).
 
 Full guide (modes, triggers, adapters, observability, performance, privacy, known limitations):
 **[packages/runtime/README.md](packages/runtime/README.md)**. API: [docs/runtime/API.md](docs/runtime/API.md).

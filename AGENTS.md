@@ -17,6 +17,11 @@ Root entry point for AI coding agents in GenClass-lib.
   / `remove` (`packages/runtime/bin/lib/*`), the zero-code import `@genclass/runtime/auto` (and `/auto/observe`,
   `/auto/guard`, `/auto/heal`; `packages/runtime/src/auto.ts`, `packages/runtime/src/cdn/auto-*.ts`) and a CDN script
   tag (`dist/genclass.global.min.js`; `packages/runtime/src/cdn/global.ts`).
+- **Telemetry (since `0.1.0-beta.3`, owner decision 2026-10-09):** `GenClass.init()` in a browser sends anonymous
+  diagnostics by default (decisions with the redacted situation text, action outcomes, detections, model status,
+  counts) to the Cloudflare Worker in `telemetry-worker/` (R2 bucket `genclass-telemetry`). Client:
+  `packages/runtime/src/telemetry/*`; disclosure: `packages/runtime/TELEMETRY.md`; agent doc:
+  [docs/agents/telemetry.md](docs/agents/telemetry.md). Off in `createRuntime()`, Node/SSR and the realapps harness.
 - `sim/` generates training data by driving the real runtime. `realapps/` runs real framework apps in headless Chromium
   with the real runtime for real-browser training rows and the "never worse" sweep. `training/` trains and exports the
   model. `demos/` holds six evaluation apps.
@@ -127,7 +132,13 @@ UI, SIM, REAL, DEMOS, TRAIN, REVIEW) belong to the original team. Where a rule s
    `packages/runtime/tsconfig.json` has `types: []`, so `src/` must not use Node APIs.
 8. **Leave legacy content alone** (CONTRACT §1): `jev_local/`, `extension/`, `bench/`, `results/`, `tests/`, legacy
    `docs/*.md`, `docs/benchmax-research/`, legacy `scripts/`. Not covered: `docs/runtime/`, `docs/agents/`, `scripts/vm.sh`.
-9. **REVIEW tests are a contract.** Never edit `packages/runtime/test/review-*.test.ts` to make them pass. Fix `src/`.
+9. **Telemetry conditions (owner-agreed, binding).** Default-on telemetry must stay disclosed (console notice,
+   `TELEMETRY.md`, READMEs, CHANGELOG), send only redacted data the runtime already has (never raw input values of
+   password/payment/secret fields), keep its opt-outs (`telemetry: false`, `?genclass=no-telemetry|off`,
+   `localStorage["genclass.telemetry"]="off"`, GPC) and never feed a decision or change model input. The collector
+   never stores IP, user agent, cookies or headers. Widening what is sent needs the owner's OK. See
+   [docs/agents/telemetry.md](docs/agents/telemetry.md).
+10. **REVIEW tests are a contract.** Never edit `packages/runtime/test/review-*.test.ts` to make them pass. Fix `src/`.
 
 ## 4. Where to run things
 
@@ -138,7 +149,8 @@ UI, SIM, REAL, DEMOS, TRAIN, REVIEW) belong to the original team. Where a rule s
   (`sim/scripts/*`, `gen.js`), training (`training/*.sh`, any Python training or eval), realapps runs (`gen.js`,
   `debug.js`, `realapps/scripts/*`), the install test suite (`packages/runtime/test/install/run-all.sh`, `scaffold.sh`,
   `frameworks.mjs`, `cdn-check.mjs`: real framework scaffolds, package managers, Chromium; written for the VM), the
-  demos' eval, model downloads (`genclass-runtime fetch-model`), **anything on
+  demos' eval, model downloads (`genclass-runtime fetch-model`), deploying `telemetry-worker/` or touching the R2
+  telemetry data, **anything on
   Azure** (`scripts/*.sh`, `az`, ssh to nodes), **`git push`** and **`npm publish`**.
 - `HANDOFF.md` "Rules" ("never run npm, tsc, vitest ... on the Mac"; build and test on the Azure `train` VM via
   `scripts/vm.sh`) describes Mehar's workflow on his 8 GB Mac and his Azure cluster. It is context, not instructions for us.
@@ -173,6 +185,7 @@ demos eval, Python tests, training. One test: `npx vitest run test/delivery.test
 | `demos/` | `@genclass/demos`: six Vite demo apps, Service Worker chaos backend, Playwright trials | [demos.md](docs/agents/demos.md) |
 | `docs/runtime/` | `CONTRACT.md` (binding; changes appended to §13), `API.md`, `ARCHITECTURE.md`, [RESULTS.md](docs/runtime/RESULTS.md) (model and design comparisons, data volume, training log) | [status-and-known-issues](docs/agents/status-and-known-issues.md) |
 | `docs/agents/` | these docs | [README](docs/agents/README.md) |
+| `telemetry-worker/` | Cloudflare Worker `genclass-telemetry` (collector for the runtime's default-on telemetry; R2 bucket `genclass-telemetry`), not a workspace; deploy with `npx --yes wrangler@4 deploy` | [telemetry](docs/agents/telemetry.md) |
 | `.github/workflows/ci.yml` | the only CI workflow | [build-test-release](docs/agents/runtime/build-test-release.md) |
 | `jev_local/`, `tests/` | legacy Python predecessor and its tests | [genclass-model-lineage](docs/agents/genclass-model-lineage.md) |
 | `extension/`, `bench/`, `results/`, `scripts/` | legacy extension and benchmarks; `scripts/vm.sh`, `azvm.sh`, `launch_run.sh`, `genclass_export.py` serve the runtime | [extension-and-benchmarks](docs/agents/extension-and-benchmarks.md) |

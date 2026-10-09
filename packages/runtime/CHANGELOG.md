@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.1.0-beta.3 (2026-10-09)
+
+> **Privacy-relevant change: anonymous telemetry is now on by default.** Review
+> [TELEMETRY.md](TELEMETRY.md) before upgrading; apps that ship GenClass may need to disclose it to their users.
+
+- **Default-on anonymous diagnostics (`telemetry` option).** `GenClass.init()` in a browser (and `/auto`, the
+  script tag, `init` setups) now sends GenClass's own diagnostics to the GenClass maintainers' collector
+  (`DEFAULT_TELEMETRY_ENDPOINT`, a Cloudflare Worker storing to a private R2 bucket) to improve the model: a session
+  event (runtime/model versions, mode, aggressiveness, device class, model load, the page's hostname and
+  id-normalised path), every decision (trigger, **the redacted situation text the model read**, calibrated answers,
+  diagnosis, gate threshold and source, what ran, latency, held or background), action outcomes (applied, failed,
+  undone, late revert, veto), detections, model status and errors, fail-open counts and periodic summaries. Never
+  typed password/payment/secret values, cookies, headers, bodies, storage, query strings or app error messages; the
+  collector stores no IP address or user agent. A random per-page session id (not persisted, no cookies). One
+  console notice per page.
+- **Opt-outs:** `telemetry: false` (also `telemetry=off` in `<meta name="genclass">` / `data-telemetry="off"`),
+  `?genclass=no-telemetry` or `?genclass=off`, `localStorage["genclass.telemetry"] = "off"`, and Global Privacy
+  Control (`navigator.globalPrivacyControl === true`) is always honoured. Off in Node/SSR and in `createRuntime()`
+  unless enabled. `telemetry: { endpoint, sample, flushMs, maxBatch, include: { situation } }` for your own
+  collector, sampling or leaving the situation text out; `runtime.telemetry` says whether it is on and why not.
+- Telemetry is read-only: it never changes what the model sees (no situation or model-visible text change), never
+  delays a decision, uses the fetch/sendBeacon captured at load (GenClass never observes its own requests), keeps a
+  bounded queue and drops failed batches without retrying or throwing.
+- New exports: `DEFAULT_TELEMETRY_ENDPOINT`, `TELEMETRY_SCHEMA`, `TELEMETRY_NOTICE`, `RUNTIME_VERSION`; types
+  `TelemetryOptions`, `TelemetryTransport`, `TelemetryStatus`. `TELEMETRY.md` ships in the package.
+
 ## 0.1.0-beta.2 (2026-10-08)
 
 Merges the 0.1.0-beta.1 work (model 0.2.0, aggressiveness, batch 12 options) with the fixes that shipped in

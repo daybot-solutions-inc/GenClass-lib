@@ -39,6 +39,13 @@ Kill switch, for "is my app broken or did GenClass change something?":
 Outside a browser (no `window`/`document`, e.g. SSR), `GenClass.init()` returns an inert runtime: no observers,
 no model. Use [`createRuntime`](#headless-use-tests-ssr-simulation) for headless work.
 
+**Telemetry (since 0.1.0-beta.3; privacy-relevant).** In a browser `GenClass.init()` sends anonymous diagnostics
+(decisions with the redacted situation text, action outcomes, detections, model status and counts) to
+`DEFAULT_TELEMETRY_ENDPOINT` and prints one console notice per page. Off with `telemetry: false`,
+`?genclass=no-telemetry` (or `?genclass=off`), `localStorage["genclass.telemetry"] = "off"`, or Global Privacy
+Control; off by default outside a browser and in `createRuntime()`. Schema and details:
+[packages/runtime/TELEMETRY.md](../../packages/runtime/TELEMETRY.md).
+
 ## Options
 
 ```ts
@@ -65,6 +72,14 @@ interface InitOptions {
   vocabulary?: { diagnoses?: Record<string, string>; actions?: Record<string, string> };
   settleMs?: number;                                    // quiet time that makes a settled point, default 60
   situation?: { budget?: number | "auto" };             // size of what the model reads, in characters (default "auto")
+  telemetry?: boolean | {                               // anonymous diagnostics (TELEMETRY.md); default: on in GenClass.init in a browser, else off
+    endpoint?: string;                                  // [DEFAULT_TELEMETRY_ENDPOINT]
+    sample?: number;                                    // [1] fraction of page loads that send
+    flushMs?: number;                                   // [10000] batch interval; also sent on pagehide / hidden tab (sendBeacon)
+    maxBatch?: number;                                  // [100] events per request (requests also ≤ 60 KB)
+    include?: { situation?: boolean };                  // [true] include the redacted situation text
+    transport?: { send(url: string, body: string, o: { beacon: boolean }): void | Promise<unknown> }; // tests / custom pipelines
+  };
 
   // batch 12 (docs/runtime/OPTIONS-SPEC.md); defaults in brackets
   enabled?: boolean | (() => boolean | Promise<boolean>) | { get(): boolean | Promise<boolean>; subscribe?(cb: () => void): () => void };
@@ -277,6 +292,7 @@ rt.decisions(n?): Decision[]       // last 200 decisions
 rt.interventions(n?): ActionRecord[]
 rt.inflight(): Op[]
 rt.setMode(mode); rt.pause(); rt.resume(); rt.destroy()
+rt.telemetry?: { enabled; reason?; endpoint?; sessionId?; flush(): Promise<void> } // reason when off: option, headless, url, localStorage, gpc, sampled-out, kill-switch, disabled, ...
 ```
 
 `pause()` stops consulting the model (everything proceeds unchanged, tracing continues); `destroy()` uninstalls
@@ -458,6 +474,7 @@ const rt = createRuntime({
   clock,      // { now(), setTimeout(fn, ms), clearTimeout(h), afterTask(fn) }; default: the real clock
   global,     // the object whose fetch / XMLHttpRequest / WebSocket / addEventListener / ... are instrumented; default globalThis
   decider,    // any DecisionProvider; default none (createRuntime never loads the model unless model: {...} is given)
+              // telemetry is off in createRuntime unless telemetry: true / {...} is given
   app: () => ({ title: "Shop", route: "/cart" }),   // default: global.document.title and global.location.pathname
   hooks: { opCreated(op) {}, mutationProposed(m) {} },
 });
@@ -524,4 +541,6 @@ store, `auth.token` is redacted and `auth.loading` or `auth.user.name` are not. 
 credential-like strings (JWTs, API keys). Query parameters and body keys follow the same rule; password inputs and
 inputs with `autocomplete` cc-* / one-time-code are never recorded. Element text such as a kanban "card" is not a
 secret. Response bodies are read only from a clone the runtime already keeps (≤ 256 KB) and only to compare them with
-the store. Everything stays in the browser; the model runs locally.
+the store. Decisions are made in the browser by the local model; the only data GenClass sends is its anonymous
+telemetry (on by default with `GenClass.init()` in a browser; [TELEMETRY.md](../../packages/runtime/TELEMETRY.md)),
+which includes the redacted situation text.

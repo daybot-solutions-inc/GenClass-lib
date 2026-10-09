@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@genclass/runtime/latest?label=npm)](https://www.npmjs.com/package/@genclass/runtime)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-![runs](https://img.shields.io/badge/runs-100%25%20in%20the%20browser-brightgreen)
+![model](https://img.shields.io/badge/model-runs%20in%20the%20browser-brightgreen)
 
 ### Your app's race conditions, stale responses and double submits, caught while they happen.
 
@@ -21,6 +21,13 @@ import { GenClass } from "@genclass/runtime";
 
 GenClass.init(); // observe mode: reports only, never takes an action (see Known limitations)
 ```
+
+> **Privacy notice: anonymous diagnostics are on by default since `0.1.0-beta.3`.** `GenClass.init()` in a browser
+> sends GenClass's decisions, including the redacted situation text the model read, to the GenClass maintainers to
+> improve the model. Never typed passwords or payment fields, cookies, headers, bodies or IP addresses. Opt out with
+> `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`, or `localStorage["genclass.telemetry"] = "off"`;
+> browsers sending Global Privacy Control are never collected. Details: [Privacy and telemetry](#privacy-and-telemetry)
+> and [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
 
 > **Status: beta (`0.1.0-beta.2`), with model `@genclass/runtime-model@0.2.0`.**
 >
@@ -50,7 +57,7 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 [Install](#install) · [Why it's an easy yes](#why-its-an-easy-yes-measured) · [Modes](#modes) ·
 [What it looks for](#what-it-looks-for) · [State it can protect](#state-it-can-protect) ·
 [Ask it questions](#ask-it-questions) · [Observability](#observability) · [Extend it](#extend-it) ·
-[Model quality](#model-quality) · [Performance](#performance) · [Privacy](#privacy) ·
+[Model quality](#model-quality) · [Performance](#performance) · [Privacy and telemetry](#privacy-and-telemetry) ·
 [Known limitations](#known-limitations) · [API reference](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md)
 
 ## What it looks like
@@ -173,9 +180,11 @@ These hold for the runtime; whether the model's decisions are good is a separate
 - **Normal traffic costs little.** Facts are computed for every write and request; the model is consulted only for
   salient situations. Clean in-order typeahead makes no model calls and holds nothing. A keystroke write to a store
   holding a 5,000-item array takes about 0.22 ms.
-- **No app data leaves the browser.** The model runs locally in a Web Worker on WebGPU or WASM and is cached after
-  the first load. No telemetry, no server, no API key. Typed values of password and payment fields are never
-  recorded (other redaction has gaps; see [Privacy](#privacy)).
+- **The model runs in the browser.** It runs locally in a Web Worker on WebGPU or WASM and is cached after the
+  first load: no inference server, no API key, and decisions never wait on the network. Anonymous diagnostics about
+  its decisions (redacted situation text included) are sent to the GenClass maintainers by default; one option turns
+  that off (see [Privacy and telemetry](#privacy-and-telemetry)). Typed values of password and payment fields are
+  never recorded (other redaction has gaps).
 - **You can see what it did.** Every detection and action gets one plain-English console line with the evidence
   behind it, and `rt.explain(id)` shows exactly what the model read. Discards and rollbacks can be undone; responses
   it changed carry an `x-genclass` header.
@@ -425,7 +434,7 @@ GenClass runs with safe defaults (`mode: "observe"`, a `"balanced"` gate that ap
 - **Activation**: `enabled` (a boolean, a predicate, or a subscribable feature flag; while it is false the model is never downloaded), `rt.disable({ undo: true })` (remote kill that also rolls back recent actions), `sample` (the fraction of sessions allowed to act; the rest only observe).
 - **Scope**: `routes` (per-route mode and aggressiveness, which can only be lowered), `requests.ignore` (analytics traffic), `requests.protect` (endpoints that are never held, retried, cached or discarded), `requests.labels` (endpoint names for reports), `requests.correlate` (attach your trace id to records).
 - **Safety**: `breaker` (automatic downgrade after undos, or after errors that follow an action), `shadow` (records what a higher mode would have done), `onBeforeAction` + `vetoMode` (a synchronous veto, or a report-only trial of one), `policy.actionLimits` (per-minute, per-subject and per-session caps), `policy.holdBudgetMs` (a hard ceiling on added latency).
-- **Telemetry**: `sinks` (structured, redacted records), `session` (id and tags, never shown to the model), `report: "interventions"` (a quiet production console), `rt.summary()`, `rt.on("shadow" | "breaker" | "limit" | "modelBudget", cb)`.
+- **Your own telemetry**: `sinks` (structured, redacted records), `session` (id and tags, never shown to the model), `report: "interventions"` (a quiet production console), `rt.summary()`, `rt.on("shadow" | "breaker" | "limit" | "modelBudget", cb)`.
 - **Loading and cost**: `model.loadIf`, `model.threads`, `model.timeoutMs`, `model.maxDecisionsPerMinute`, `model.unloadAfterIdleMs`.
 
 Action limits default to 60 per minute overall, 10 per minute on the same subject (store field or endpoint), and 200 per session.
@@ -590,11 +599,35 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
   `model: { baseUrl: "/genclass-model/" }` points the runtime at it. `model: false` loads no model (nothing is
   detected or prevented then).
 
-## Privacy
+## Privacy and telemetry
 
-- **No app data leaves the browser.** No telemetry, and the model runs locally. The default configuration downloads
-  the model files (and ONNX Runtime's WASM when the model loads) from cdn.jsdelivr.net. `model.baseUrl` and
-  `model.ortWasmPaths` self-host them; `model: false` loads nothing.
+- **The model runs locally.** Situations are built and decided in the browser; no app data is sent anywhere to make
+  a decision. The default configuration downloads the model files (and ONNX Runtime's WASM when the model loads)
+  from cdn.jsdelivr.net. `model.baseUrl` and `model.ortWasmPaths` self-host them; `model: false` loads nothing.
+- **Anonymous diagnostics (telemetry) are on by default** with `GenClass.init()` in a browser (since
+  `0.1.0-beta.3`; off in Node/SSR and with `createRuntime()` unless enabled). They go to the GenClass maintainers'
+  collector (a Cloudflare Worker storing to a private R2 bucket) to measure and improve the model. The console says
+  so once per page. Full list and schema: [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
+  - **Sent:** a random per-page session id (not stored, no cookies), runtime and model versions, mode,
+    aggressiveness, device class (WebGPU, cores, WASM threads, model load time), the page's hostname and its path
+    with ids replaced (no query or fragment); for every decision the trigger, **the redacted situation text the model
+    read**, its calibrated answers, the diagnosis, the gate threshold and its source, what ran, latency and whether
+    the subject waited; action outcomes (applied, failed, undone, late revert, veto), detections, model errors,
+    fail-open counts and periodic counts.
+  - **Never sent:** typed values of password, payment or secret fields, cookies, headers, request or response
+    bodies, storage contents, query strings, your app's error messages. The collector adds the receive time and a
+    two-letter country, and stores no IP address or user agent.
+  - **Situation text can still contain app data** the redactor does not recognise as secret (a product name, a
+    search term). `telemetry: { include: { situation: false } }` keeps the text out; `redact` hides more.
+  - **Opt out** (any one): `GenClass.init({ telemetry: false })` (also `telemetry=off` in the meta tag or
+    `data-telemetry="off"` on the script tag), `?genclass=no-telemetry` (or `?genclass=off`) in the URL,
+    `localStorage.setItem("genclass.telemetry", "off")`. Browsers that send **Global Privacy Control**
+    (`navigator.globalPrivacyControl`) are never collected, as California's CCPA/CPRA requires for opt-out signals.
+  - **If you ship GenClass**, the data comes from your users' browsers: you may need to mention it in your privacy
+    policy and, where you need consent for analytics (GDPR/ePrivacy), start with `telemetry: false` until consent.
+    Retention, the maintainers' privacy policy and data processing terms are not published yet.
+  - `telemetry: { endpoint, sample, flushMs, maxBatch, include }` sends to your own collector, samples page loads,
+    or tunes batching. `runtime.telemetry` tells whether it is on and why not.
 - **Inputs:** typed values of password fields, `cc-*` / `one-time-code` / password autocomplete fields, and fields
   whose name or label names a secret are never recorded.
 - **Redaction:** the default redactor (`redact` option) works by the leaf field's meaning, not by substring.
