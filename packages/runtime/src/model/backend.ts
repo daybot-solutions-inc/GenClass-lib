@@ -136,6 +136,8 @@ export class ModelBackend {
   private engine: Engine | null = null;
   private loading: Promise<void> | null = null;
   private disposed = false;
+  /** Why the ORT wasm prefetch failed in the current load, if it did. */
+  private wasmError: string | null = null;
   private st: ModelHostStatus = { state: "off" };
   private lastProgressAt = -Infinity;
 
@@ -233,6 +235,10 @@ export class ModelBackend {
       base.ort = ortVersion;
       base.threads = this.configureOrt(ort, opts);
       const wasmBase = normalizeBaseUrl(opts.ortWasmPaths || ortCdnBase(ortVersion || ORT_FALLBACK_VERSION), globalLocation());
+      // WASM threads: ORT starts its pthread workers from its JS glue, by URL; take it from the wasm's directory (an
+      // app's bundler may have rewritten ORT's own import.meta.url, and a self-hosted ortWasmPaths must win).
+      if (base.threads > 1) (ort.env.wasm as { wasmPaths?: unknown }).wasmPaths = { mjs: new URL(ORT_GLUE_FILES[build], wasmBase).href };
+      this.wasmError = null;
       const wasmP = this.prefetchWasm(ort, fenv, wasmBase, ortVersion, build);
 
       for (const plan of plans) {

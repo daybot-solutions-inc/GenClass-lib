@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, rmSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { defineConfig, type Options } from "tsup";
 
@@ -21,6 +22,34 @@ const cdnOrt = {
     build.onResolve({ filter: /^onnxruntime-web\/(webgpu|wasm)$/ }, (args) =>
       args.importer.includes(`${sep}src${sep}cdn${sep}`) ? undefined : { path: resolve(`src/cdn/ort-${args.path.endsWith("/wasm") ? "wasm" : "webgpu"}.ts`) },
     );
+  },
+};
+
+// Consumers' bundlers (webpack, Turbopack, Rollup/Vite, Parcel) emit every `new URL("<file>", import.meta.url)` they
+// find as a static asset. onnxruntime-web's bundles hold four: its two .wasm builds (14 and 27 MB) and its own .mjs
+// (for a proxy worker). The runtime never lets ORT fetch those (it hands ORT the wasm bytes itself, from
+// `ortWasmPaths` or jsDelivr: src/model/backend.ts -> prefetchWasm), so they were 41 MB of dead weight in every app
+// build (and the 27 MB file is over the 25 MiB per-file limit of some static hosts). Reading import.meta.url through a
+// variable hides the pattern from every bundler; the value at runtime is the same.
+export const ORT_URL_VAR = "__genclassOrtUrl";
+const ortNoAssets = {
+  name: "genclass-ort-no-assets",
+  setup(build: { onLoad(o: { filter: RegExp }, cb: (a: { path: string }) => Promise<{ contents: string; loader: "js" }>): void }) {
+    build.onLoad({ filter: /[\\/]onnxruntime-web[\\/]dist[\\/][^\\/]+\.m?js$/ }, async (args) => {
+      const src = await readFile(args.path, "utf8");
+      return { contents: `const ${ORT_URL_VAR} = import.meta.url;\n${src.split("import.meta.url").join(ORT_URL_VAR)}`, loader: "js" };
+    });
+  },
+};
+
+// The ESM build's model worker and inline fallback load onnxruntime-web through the prepared copies in dist/cdn/
+// (ort-webgpu.js, ort-wasm.js: the bundles above, built once by the CDN config below), never from the app's
+// node_modules: so an app's bundler only ever sees those, as two lazy chunks, and no wasm. Every chunk that imports
+// them sits in dist/ (tsup puts split chunks at the root of outDir).
+const ortFromCdnDir = {
+  name: "genclass-ort-from-cdn-dir",
+  setup(build: { onResolve(o: { filter: RegExp }, cb: (a: { path: string }) => { path: string; external: boolean }): void }) {
+    build.onResolve({ filter: /^onnxruntime-web\/(webgpu|wasm)$/ }, (args) => ({ path: `./cdn/ort-${args.path.endsWith("/wasm") ? "wasm" : "webgpu"}.js`, external: true }));
   },
 };
 
@@ -74,7 +103,10 @@ export default defineConfig([
     // the CDN builds below write into dist/ too, in parallel
     clean: ["!cdn/**", "!genclass.global*"],
     treeshake: true,
-    external: ["onnxruntime-web", "onnxruntime-web/webgpu", "react", "redux", "zustand"],
+    external: ["react", "redux", "zustand"],
+    // onnxruntime-web is a dependency, which tsup would leave external as is: ortFromCdnDir rewrites it instead
+    noExternal: [/^onnxruntime-web/],
+    esbuildPlugins: [ortFromCdnDir as never],
   },
   globalBuild(false),
   globalBuild(true),
@@ -92,6 +124,6 @@ export default defineConfig([
     dts: false,
     treeshake: true,
     noExternal: [/^onnxruntime-web/],
-    esbuildPlugins: [cdnOrt as never],
+    esbuildPlugins: [cdnOrt as never, ortNoAssets as never],
   },
 ]);

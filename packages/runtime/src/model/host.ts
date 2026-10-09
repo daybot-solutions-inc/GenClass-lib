@@ -11,7 +11,7 @@
 
 import { browserClock } from "../clock.js";
 import type { Answer, Clock, DecisionProvider, EvaluateRequest, ModelOptions } from "../types.js";
-import { ModelBackend, type BackendLoadOptions, type LatencyStats, type ModelHostStatus, type OrtBuild } from "./backend.js";
+import type { BackendLoadOptions, LatencyStats, ModelBackend, ModelHostStatus, OrtBuild } from "./backend.js";
 import type { OrtLike } from "./engine.js";
 import {
   ModelBusyError,
@@ -118,7 +118,11 @@ interface Transport {
 
 class InlineTransport implements Transport {
   readonly inWorker = false;
-  private readonly backend: ModelBackend;
+  /**
+   * The backend (tokenizer, packer, engine, loader) is imported on first use: the inline path is the rare fallback
+   * (no Worker), so this code stays out of the app's first-load bundle (it ships in the worker chunk anyway).
+   */
+  private readonly backend: Promise<ModelBackend>;
   private closed = false;
 
   constructor(
@@ -131,15 +135,19 @@ class InlineTransport implements Transport {
     } catch {
       cachesRef = null;
     }
-    this.backend = new ModelBackend({
-      ort: env.ort,
-      fetch: env.fetch,
-      caches: cachesRef,
-      clock: env.clock,
-      emit: (status) => this.deliver({ type: "status", status }),
-      inWorker: false,
-      ...(env.probeGpu ? { probeGpu: env.probeGpu } : {}),
-    });
+    this.backend = import("./backend.js").then(
+      (m) =>
+        new m.ModelBackend({
+          ort: env.ort,
+          fetch: env.fetch,
+          caches: cachesRef,
+          clock: env.clock,
+          emit: (status) => this.deliver({ type: "status", status }),
+          inWorker: false,
+          ...(env.probeGpu ? { probeGpu: env.probeGpu } : {}),
+        }),
+    );
+    this.backend.catch((e: unknown) => this.deliver({ type: "status", status: { state: "error", error: `could not load the model code: ${errorMessage(e)}`, worker: false } }));
   }
 
   private deliver(m: FromWorker): void {
@@ -148,36 +156,41 @@ class InlineTransport implements Transport {
 
   send(m: ToWorker): void {
     // Asynchronous like postMessage, so callers never re-enter the host synchronously.
-    void Promise.resolve().then(() => {
-      if (this.closed) return;
-      switch (m.type) {
-        case "load":
-          this.backend.load(m.options).catch(() => undefined);
-          break;
-        case "evaluate":
-          this.backend.evaluate(m.state, m.questions).then(
-            (r) => this.deliver({ type: "result", id: m.id, ok: true, value: { answers: r.answers, model: r.model, usage: r.usage, timings: r.timings } }),
-            (e) => this.deliver({ type: "result", id: m.id, ok: false, error: serializeError(e) }),
-          );
-          break;
-        case "measure":
-          try {
-            this.deliver({ type: "result", id: m.id, ok: true, value: this.backend.measure(m.state, m.questions) });
-          } catch (e) {
-            this.deliver({ type: "result", id: m.id, ok: false, error: serializeError(e) });
-          }
-          break;
-        case "dispose":
-          this.close();
-          break;
-      }
-    });
+    this.backend.then(
+      (backend) => {
+        if (this.closed) return;
+        switch (m.type) {
+          case "load":
+            backend.load(m.options).catch(() => undefined);
+            break;
+          case "evaluate":
+            backend.evaluate(m.state, m.questions).then(
+              (r) => this.deliver({ type: "result", id: m.id, ok: true, value: { answers: r.answers, model: r.model, usage: r.usage, timings: r.timings } }),
+              (e) => this.deliver({ type: "result", id: m.id, ok: false, error: serializeError(e) }),
+            );
+            break;
+          case "measure":
+            try {
+              this.deliver({ type: "result", id: m.id, ok: true, value: backend.measure(m.state, m.questions) });
+            } catch (e) {
+              this.deliver({ type: "result", id: m.id, ok: false, error: serializeError(e) });
+            }
+            break;
+          case "dispose":
+            this.close();
+            break;
+        }
+      },
+      (e: unknown) => {
+        if ((m.type === "evaluate" || m.type === "measure") && !this.closed) this.deliver({ type: "result", id: m.id, ok: false, error: serializeError(e) });
+      },
+    );
   }
 
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    void this.backend.dispose();
+    this.backend.then((b) => b.dispose(), () => undefined);
   }
 }
 
