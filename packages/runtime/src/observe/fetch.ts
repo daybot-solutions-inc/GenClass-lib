@@ -64,6 +64,8 @@ interface BodyInfo {
   bytes: number;
   replayable: boolean;
   summary: string;
+  /** Top-level keys of a JSON object body, lower-cased (idempotency key fields for `retry`). */
+  jsonKeys?: string[];
 }
 
 function isRequestLike(x: unknown): x is Request {
@@ -117,11 +119,29 @@ function summarizeText(s: string, redact: NetHost["redact"]): string {
   return `${s.length} bytes`;
 }
 
+/** Top-level keys of a small JSON object text, lower-cased (at most 64), else undefined. Never throws. */
+export function jsonObjectKeys(s: string): string[] | undefined {
+  const t = s.trim();
+  if (t.length > SUMMARY_PARSE_MAX || !t.startsWith("{")) return undefined;
+  try {
+    const v = JSON.parse(t) as unknown;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+    return Object.keys(v as Record<string, unknown>)
+      .slice(0, 64)
+      .map((k) => k.toLowerCase());
+  } catch {
+    return undefined;
+  }
+}
+
 export function bodyInfo(body: unknown, host: Pick<NetHost, "redact" | "uniqueId">): BodyInfo {
   if (body === undefined || body === null) return { key: "", bytes: 0, replayable: true, summary: "" };
   if (typeof body === "string") {
     const key = body.length <= 256 ? "s:" + body : body.length <= STRING_BODY_MAX ? `S:${fnv1a(body)}:${body.length}` : host.uniqueId();
-    return { key, bytes: body.length, replayable: true, summary: summarizeText(body, host.redact) };
+    const info: BodyInfo = { key, bytes: body.length, replayable: true, summary: summarizeText(body, host.redact) };
+    const keys = jsonObjectKeys(body);
+    if (keys) info.jsonKeys = keys;
+    return info;
   }
   if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
     const s = body.toString();
@@ -222,6 +242,7 @@ export function parseRequest(
     bodyBytes: b.bytes,
     transport: "fetch",
   };
+  if (b.jsonKeys?.length) meta.bodyKeys = b.jsonKeys;
   const out: ParsedRequest = { meta, detail };
   if (b.key === undefined && b.pending) out.pendingIdentity = b.pending.then((k) => fnv1a(prefix + k));
   return out;

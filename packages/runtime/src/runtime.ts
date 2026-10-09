@@ -2416,6 +2416,7 @@ export class RuntimeImpl implements Runtime {
         return typeof n?.onLine === "boolean" ? n.onLine : undefined;
       },
       idempotencyHeaders: () => this.policy.idempotencyHeaders,
+      idempotencyBodyFields: () => this.policy.idempotencyBodyFields,
     };
   }
 

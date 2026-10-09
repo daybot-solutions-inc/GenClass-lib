@@ -23,6 +23,8 @@ export interface ReqMeta {
   transport: "fetch" | "xhr";
   /** Request header names, lower-cased (idempotency keys for `retry`). */
   headers?: string[];
+  /** Top-level keys of a JSON object body, lower-cased (`policy.idempotencyBodyFields` for `retry`). */
+  bodyKeys?: string[];
 }
 
 export interface FailureInfo {
@@ -159,6 +161,8 @@ export interface SitEnv {
   online(): boolean | undefined;
   /** policy.idempotencyHeaders, lower-cased. */
   idempotencyHeaders(): Set<string>;
+  /** policy.idempotencyBodyFields, lower-cased (default none). */
+  idempotencyBodyFields?(): Set<string>;
 }
 
 export interface ChainWriteInfo {

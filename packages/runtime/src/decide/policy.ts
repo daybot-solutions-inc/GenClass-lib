@@ -30,6 +30,8 @@ export interface PolicyConfig {
   requireDiagnosis: boolean;
   /** Lower-cased header names that make a non-idempotent request safe to repeat. */
   idempotencyHeaders: Set<string>;
+  /** Lower-cased top-level JSON body fields that make a non-idempotent request safe to repeat (opt-in, default none). */
+  idempotencyBodyFields: Set<string>;
 }
 
 export const DEFAULT_IDEMPOTENCY_HEADERS = ["Idempotency-Key", "X-Idempotency-Key"];
@@ -53,6 +55,7 @@ export function policyConfig(p: PolicyOptions | undefined): PolicyConfig {
     },
     requireDiagnosis: p?.requireDiagnosis ?? true,
     idempotencyHeaders: new Set((Array.isArray(p?.idempotencyHeaders) ? p!.idempotencyHeaders : DEFAULT_IDEMPOTENCY_HEADERS).filter((h) => typeof h === "string" && h.trim()).map((h) => h.trim().toLowerCase())),
+    idempotencyBodyFields: new Set((Array.isArray(p?.idempotencyBodyFields) ? p!.idempotencyBodyFields : []).filter((h) => typeof h === "string" && h.trim()).map((h) => h.trim().toLowerCase())),
   };
   if (p?.allow) c.allow = new Set(p.allow);
   return c;

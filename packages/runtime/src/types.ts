@@ -386,6 +386,14 @@ export interface PolicyOptions {
    */
   idempotencyHeaders?: string[];
   /**
+   * Opt-in (default none): top-level JSON body fields that carry an idempotency key the server deduplicates on (for
+   * example ["request_id"] when a repeated POST with the same request_id is answered from the first one). A
+   * non-idempotent request whose JSON object body has one of them may be repeated, so `retry` may be offered.
+   * Only name fields the server really deduplicates on: a retry of a request that already committed is otherwise a
+   * duplicate.
+   */
+  idempotencyBodyFields?: string[];
+  /**
    * Default false: store writes are never held (decisions about responses and messages are taken at the network
    * boundary; salient writes not covered by such a decision are decided in the background and may be reverted
    * under the late-revert rules). true (opt-in): salient writes wait for the model, without ever reordering a

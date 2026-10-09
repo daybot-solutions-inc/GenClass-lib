@@ -293,6 +293,9 @@ export function repeatUnsafe(env: SitEnv, req: ReqMeta): string | null {
   if (req.idempotent) return null;
   const keys = env.idempotencyHeaders();
   if (req.headers?.some((h) => keys.has(h))) return null;
+  // opt-in (policy.idempotencyBodyFields): a key field in the JSON body that the server deduplicates on
+  const fields = env.idempotencyBodyFields?.();
+  if (fields?.size && req.bodyKeys?.some((k) => fields.has(k))) return null;
   return `${req.method} is not idempotent and the request has no idempotency key header (${[...keys].join(", ") || "none configured"})`;
 }
 
