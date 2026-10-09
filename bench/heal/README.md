@@ -85,9 +85,12 @@ cd apps/web && npx next start -H 127.0.0.1 -p 3000 &
 node bench/heal/troy/troy-bench.mjs --reps 3 --workers 2 --out bench/heal/results/troy/<tag>.json [--aggr eager]
 ```
 
-To measure a changed runtime in Troy without touching its tracked files, swap the built `dist/` into Troy's
-installed package (`apps/web/node_modules/@genclass/runtime/dist`, a pnpm hard-link copy: remove it first, then
-copy, so the pnpm store is not modified), rebuild, and restore with `pnpm install --offline` afterwards.
+To measure this checkout's runtime in Troy without touching its tracked files: `troy/swap-runtime.sh use` moves
+the installed package's `dist/` aside (`dist.orig`), copies `packages/runtime/dist` in and rebuilds Troy;
+`troy/swap-runtime.sh restore` puts the original back and rebuilds. Restart `next start` after either. The harness
+also takes `--config '<json>'` (extra `GenClass.init` options, e.g. `{"policy":{"idempotencyBodyFields":["request_id"]}}`)
+and `--browse <ms>` (reading time after each page load, default 2500: decisions before the model is loaded fail open).
+`troy/summarize-troy.mjs <results.json>` prints the table.
 
 ## Results
 

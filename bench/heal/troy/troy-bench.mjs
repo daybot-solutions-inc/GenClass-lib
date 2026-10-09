@@ -63,7 +63,9 @@ async function openDish(page, re) {
   return add;
 }
 async function chipCount(page) {
-  const t = await page.locator('[data-order-chip="menu"]').first().textContent({ timeout: 50 }).catch(() => null);
+  const chip = page.locator('[data-order-chip="menu"]').first();
+  if (!(await chip.count().catch(() => 0))) return 0;
+  const t = await chip.textContent({ timeout: 1000 }).catch(() => null);
   const m = t && t.match(/(\d+)/);
   return m ? Number(m[1]) : 0;
 }
@@ -313,7 +315,7 @@ async function removeAndWatch(page, ctx, { before = 1200, wait = 6000, retry = f
   const rm = page.locator("li[data-line]:not([data-removed]) button").first();
   const t0 = now();
   await rm.click({ timeout: 3000 }).catch(() => {});
-  let stale = 0, sawOne = false, staleMs = 0;
+  let stale = 0, sawOne = false, staleMs = 0, retried = false;
   let removedAt = null;
   const tEnd = now() + wait;
   while (now() < tEnd) {
@@ -325,7 +327,10 @@ async function removeAndWatch(page, ctx, { before = 1200, wait = 6000, retry = f
       stale++;
       staleMs += 50;
     }
-    if (retry && !sawOne && now() - t0 > 2200 && now() - t0 < 2300) await rm.click({ timeout: 1000 }).catch(() => {});
+    if (retry && !retried && !sawOne && now() - t0 > 2200) {
+      retried = true; // once, even when a loaded machine skips past a narrow time window
+      await rm.click({ timeout: 1000 }).catch(() => {});
+    }
     await sleep(50);
   }
   const o = await serverOrder(ctx);

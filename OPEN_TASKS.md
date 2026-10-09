@@ -126,6 +126,12 @@ Mehar operates the Azure cluster; nobody else touches Azure. The jobs below run 
 The usual order (HANDOFF.md): v2 data collected → teacher → labels → distillation → DAgger → EVAL → model
 package → demos rerun → runtime release.
 
+- **Review `heal/overnight`** (local, 2026-10-09; `NIGHT-REPORT.md`): the healing benchmark `bench/heal/` (demos with an
+  observe mode + Troy fault scenarios) and four runtime fixes (Redux/Zustand partial discard, late-revert window
+  800 ms, fan-out delivery triage, opt-in `policy.idempotencyBodyFields`). Finding: at model 0.2.0's gates guard/heal
+  act 2–3 times in 60 chaos demo trials and fix nothing measurable; FIR on clean runs 0. Then: realapps never-worse
+  sweep on a VM; N=30 demos rerun on an idle machine; training rows from the benchmark situations (report §6).
+
 - **Publish `@genclass/runtime@0.1.0-beta.3`** (`--tag latest`) and the `genclass-runtime@0.1.0-beta.3` alias from
   the packed tarballs (RELEASE.md, top note; `0.1.0-beta.2` may already be published), then deprecate `0.1.0-beta.1`
   ("defaults to guard and lacks the observe/redaction/install fixes; use 0.1.0-beta.2 or later") after checking

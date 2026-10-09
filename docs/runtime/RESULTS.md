@@ -211,7 +211,28 @@ GenClass with an always-passive model, compared against observe mode:
 Chaos runs under v2: 3/198 changed. A request held about 25 ms drew a different simulated network outcome (open
 item).
 
-## 5. Demos (v0.1 model, untrained for this; baseline only)
+## 5. Demos
+
+### Model 0.2.0, runtime 0.1.0-beta.4 and heal/overnight (2026-10-09, local, `bench/heal/`, `NIGHT-REPORT.md`)
+
+10 chaos + 5 clean seeds per demo and mode, Playwright, telemetry off, model served locally (WASM, 4 threads).
+Chaos bug rate over the six demos (60 trials per cell); FI = false interventions on 30 clean trials.
+
+| configuration | off | observe | guard | heal | actions guard / heal (chaos) | FI guard / heal |
+|---|---|---|---|---|---|---|
+| beta.4, balanced (default) | 72% | 70% | 72% | 73% | 2 / 3 | 0 / 0 |
+| beta.4, cautious | – | – | 72% | 77% | 0 / 0 | 0 / 0 |
+| beta.4, eager | – | 72% | 73% | 75% | 6 / 12 | 2 / 0 |
+| beta.4, margin 1 for every trigger | – | – | 70% | 77% | 20 / 39 | 3 / 3 |
+| A/B, beta.4 arm (simultaneous) | 72% | 72% | 70% | 70% | 3 / 1 | 0 / 0 |
+| A/B, heal/overnight arm (47f292c) | 73% | 70% | 73% | 72% | 1 / 1 | 0 / 0 |
+
+Nothing is healed at the shipped gates: candidate gains are rarely above the margins (median ≈ 0; 3–8% of
+discard/retry candidates reach 4). Differences under ~5 points are noise (cautious, with no action at all, differs
+from balanced by 4 points in heal). Troy (real app, 9 fault scenarios): the only bug, a duplicate order after a
+lost-commit 502 and a re-tap, occurs in every mode; 0 actions, 0 false interventions.
+
+### v0.1 model, untrained for this (2026-10-08, baseline only)
 
 | Demo | Bug rate Off | Guard | Heal | False interventions on clean runs |
 |---|---|---|---|---|
