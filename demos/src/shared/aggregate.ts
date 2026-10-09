@@ -152,6 +152,7 @@ export function summarizeDemo(demo: DemoId, results: TrialResult[]): DemoSummary
     trials: rs.length,
     modes: {
       off: summarizeMode(rs, "off"),
+      observe: summarizeMode(rs, "observe"),
       guard: summarizeMode(rs, "guard"),
       heal: summarizeMode(rs, "heal"),
     },

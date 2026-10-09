@@ -69,6 +69,9 @@ export interface GcStats {
   detections: number;
   /** "<trigger>:<diagnosis>" per detection (a finding the runtime reported). On clean trials these are false findings. */
   findings?: string[];
+  threads?: number;
+  /** The situation size in characters in force at the end of the trial. */
+  situationBudget?: number;
   /** Model decisions per trigger. */
   triggers?: Record<string, number>;
   /** Per decision: "<trigger>:<diagnosis>:<candidate>:<gain>/<margin>:<ran|no>" (gate analysis). */

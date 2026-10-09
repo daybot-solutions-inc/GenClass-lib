@@ -324,7 +324,7 @@ every observer and restores the globals it wrapped.
 | `delay` | guard | wait min(250 ms · 2^failure streak, 8 s), then send |
 | `block` | heal | do not send; answer 503 (`x-genclass: blocked`) |
 | `serve_cached` | heal | answer with the last good response for this GET (`x-genclass: cached`; ≤ 256 KB, ≤ 64 entries, memory only) |
-| `retry` | heal | re-send after min(200 ms · 2^(attempt-1), 5 s) when the body can be replayed and repeating is safe by HTTP semantics: GET, HEAD, OPTIONS, PUT, DELETE, or another method (POST, PATCH, ...) only when the request carries an idempotency key header (`policy.idempotencyHeaders`; request ids and tracing headers are not keys) |
+| `retry` | heal | re-send after min(200 ms · 2^(attempt-1), 5 s) when the body can be replayed and repeating is safe by HTTP semantics: GET, HEAD, OPTIONS, PUT, DELETE, or another method (POST, PATCH, ...) only when the request carries an idempotency key header (`policy.idempotencyHeaders`; request ids and tracing headers are not keys) or, opt-in, a JSON body field named in `policy.idempotencyBodyFields` |
 | `hedge` | heal | send a second identical GET and use whichever answers first |
 | `rollback` | heal | inconsistency: restore the involved stores to their last consistent snapshot; error/transition: restore only the fields the operation's own chain wrote to their earlier values (undo: restore the replaced values) |
 | `resync` | heal | call the store's `resync` handler |
@@ -360,6 +360,7 @@ interface PolicyOptions {
   holdBudgetMs?: number | "auto";   // default "auto": clamp(1.5 × median recent model latency, 150, 800) ms
   holdUserWrites?: boolean;         // default false
   idempotencyHeaders?: string[];    // default ["Idempotency-Key", "X-Idempotency-Key"]: a POST/PATCH carrying one may be retried
+  idempotencyBodyFields?: string[]; // opt-in, default []: top-level JSON body fields (e.g. "request_id") the server dedupes on
   holdWrites?: boolean;             // default false: state writes apply at once (decided at the network boundary)
   maxActionsPerMinute?: number;     // default 60
   requireDiagnosis?: boolean;       // default true

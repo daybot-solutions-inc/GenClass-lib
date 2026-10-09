@@ -26,9 +26,12 @@ export interface GcSession {
 
 export function startGenClass(
   mode: GcMode,
-  opts: { baseUrl?: string; plugins?: Plugin[]; debug?: boolean; holdBudgetMs?: number; trace?: boolean; aggressiveness?: number | string; ortWasmPaths?: string },
+  opts: { baseUrl?: string; plugins?: Plugin[]; debug?: boolean; holdBudgetMs?: number; trace?: boolean; aggressiveness?: number | string; ortWasmPaths?: string; situationBudget?: number; thresholds?: { guard: number; heal: number } },
 ): GcSession {
-  const policy = opts.holdBudgetMs ? { holdBudgetMs: opts.holdBudgetMs } : undefined;
+  const policy =
+    opts.holdBudgetMs || opts.thresholds
+      ? { ...(opts.holdBudgetMs ? { holdBudgetMs: opts.holdBudgetMs } : {}), ...(opts.thresholds ? { thresholds: opts.thresholds } : {}) }
+      : undefined;
   // Investigation only: the runtime's creation hooks (CreateOptions.hooks), forwarded by GenClass.init.
   const trace = opts.trace ? newTrace() : null;
   const extra = (trace ? { hooks: traceHooks(trace) } : {}) as Partial<InitOptions>;
@@ -39,6 +42,7 @@ export function startGenClass(
           mode,
           telemetry: false,
           ...(opts.aggressiveness !== undefined ? { aggressiveness: opts.aggressiveness as InitOptions["aggressiveness"] } : {}),
+          ...(opts.situationBudget !== undefined ? { situation: { budget: opts.situationBudget } } : {}),
           model: { ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}), ...(opts.ortWasmPaths ? { ortWasmPaths: opts.ortWasmPaths } : {}), preload: "eager" },
           plugins: opts.plugins,
           debug: opts.debug,
@@ -48,6 +52,8 @@ export function startGenClass(
   if (trace) {
     attachTrace(gc, trace);
     window.__gcTrace = trace;
+    // investigation runs only: the runtime itself (explain(), decisions()), never in measured runs
+    (window as unknown as { __gc?: Runtime }).__gc = gc;
   }
   const s: GcSession = {
     gc,
@@ -103,6 +109,8 @@ export function collectStats(s: GcSession): GcStats {
     model: st.model,
     device: st.device,
     variant: st.variant,
+    threads: (st as { threads?: number }).threads,
+    situationBudget: s.gc.situationBudget(),
     loadMs: st.loadMs ?? (s.readyAt !== null ? Math.round(s.readyAt - s.initAt) : undefined),
     decisions: s.decisions.length,
     detections: s.detections.length,

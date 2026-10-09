@@ -50,6 +50,10 @@ const SITE = `http://127.0.0.1:${PORT}${BASE}`;
 const BUDGET = opt("budget", "");
 /** Aggressiveness profile for every GenClass page (?aggr=): cautious|balanced|eager|<0..1>; default = runtime default. */
 const AGGR = opt("aggr", "");
+/** Situation size in characters for every GenClass page (?sit=); default = the runtime's "auto". */
+const SIT = opt("sit", "");
+/** Gate margins for every GenClass page (?gate=<guard>,<heal>, policy.thresholds); default = the model's gates. */
+const GATE = opt("gate", "");
 /** Self-host ONNX Runtime from the model directory's ort/ (written by `genclass-runtime fetch-model --ort wasm`). */
 const ORT_LOCAL = MODEL_DIR !== "" && existsSync(`${MODEL_DIR}/ort/ort.json`);
 /** Free-form label for a run (e.g. the model under test): results-<tag>.json / .md, not shipped with the site. */
@@ -59,7 +63,7 @@ const TRACE = flag("trace");
 const KINDS = opt("kinds", "chaos,clean").split(",").filter(Boolean) as TrialKind[];
 /** Origins of blocked external requests (should stay empty: the model and ORT are served locally). */
 const EXTERNAL = new Set<string>();
-const SUFFIX = [TAG ? `-${TAG}` : "", BUDGET ? `-budget${BUDGET}` : "", AGGR ? `-aggr-${AGGR}` : ""].join("");
+const SUFFIX = [TAG ? `-${TAG}` : "", BUDGET ? `-budget${BUDGET}` : "", AGGR ? `-aggr-${AGGR}` : "", SIT ? `-sit${SIT}` : "", GATE ? `-gate${GATE.replace(",", "_")}` : ""].join("");
 
 interface Job {
   demo: DemoId;
@@ -187,6 +191,8 @@ function trialUrl(j: Job): string {
   u.searchParams.set("model", MODEL);
   if (BUDGET) u.searchParams.set("budget", BUDGET);
   if (AGGR) u.searchParams.set("aggr", AGGR);
+  if (SIT) u.searchParams.set("sit", SIT);
+  if (GATE) u.searchParams.set("gate", GATE);
   if (ORT_LOCAL) u.searchParams.set("ort", "genclass-model/ort/");
   if (TRACE) u.searchParams.set("trace", "1");
   return u.href;
@@ -531,6 +537,8 @@ async function shootTrialsUI(ctx: BrowserContext, demo: DemoId, file: string): P
   u.searchParams.set("model", MODEL);
   if (BUDGET) u.searchParams.set("budget", BUDGET);
   if (AGGR) u.searchParams.set("aggr", AGGR);
+  if (SIT) u.searchParams.set("sit", SIT);
+  if (GATE) u.searchParams.set("gate", GATE);
   if (ORT_LOCAL) u.searchParams.set("ort", "genclass-model/ort/");
   await page.goto(u.href, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".app-body > *", { timeout: 60000 });

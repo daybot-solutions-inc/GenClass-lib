@@ -11,7 +11,7 @@ import type { DemoDefinition } from "../shared/demo-def.ts";
 import { startGenClass, statusText, RUNTIME_KIND } from "../shared/genclass.ts";
 import { TrialHarness } from "../shared/harness.ts";
 import { ServerLink, ensureServiceWorker, wait } from "../shared/server.ts";
-import { aggrParam, ortWasmPaths, getMode, holdBudget, loadChaos, modelBaseUrl, sessionId, setMode, siteRoot, traceOn, trialParams, urlParams, type TrialParams } from "../shared/settings.ts";
+import { aggrParam, gateParam, ortWasmPaths, situationBudget, getMode, holdBudget, loadChaos, modelBaseUrl, sessionId, setMode, siteRoot, traceOn, trialParams, urlParams, type TrialParams } from "../shared/settings.ts";
 import { MODES, type GcMode } from "../shared/types.ts";
 import { mountActivity } from "./activity.ts";
 import { mountChaosPanel } from "./chaos-panel.ts";
@@ -161,7 +161,7 @@ async function bootInteractive(def: DemoDefinition): Promise<void> {
   };
   addEventListener("pagehide", () => link.stop());
 
-  const gcs = startGenClass(mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget(), aggressiveness: aggrParam(), ortWasmPaths: ortWasmPaths(root) });
+  const gcs = startGenClass(mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget(), aggressiveness: aggrParam(), ortWasmPaths: ortWasmPaths(root), situationBudget: situationBudget(), thresholds: gateParam() });
   const gc = gcs.gc;
 
   const { frame, body } = appFrame(def, mode);
@@ -232,7 +232,7 @@ async function bootTrial(def: DemoDefinition, trial: TrialParams): Promise<void>
   link.startHeartbeat();
   addEventListener("pagehide", () => void link.bye());
 
-  const gcs = startGenClass(trial.mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget(), trace: traceOn(), aggressiveness: aggrParam(), ortWasmPaths: ortWasmPaths(root) });
+  const gcs = startGenClass(trial.mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget(), trace: traceOn(), aggressiveness: aggrParam(), ortWasmPaths: ortWasmPaths(root), situationBudget: situationBudget(), thresholds: gateParam() });
   if (trial.mode !== "off") await Promise.race([gcs.gc.ready.catch(() => undefined), wait(120000)]);
 
   const { frame, body } = appFrame(def, trial.mode);

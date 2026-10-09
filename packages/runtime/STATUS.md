@@ -39,6 +39,20 @@ observe mode on the same scenario (`debug.js --interference`):
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
 
+## heal/overnight (2026-10-09): healing benchmark fixes
+
+Local benchmark `bench/heal/` (six demos + the Troy dev copy under injected faults; `NIGHT-REPORT.md`). No
+situation text change (the purity and exact-text tests are unchanged).
+
+- `state/hub.ts` -> `StoreHub.applyFilter`: a delivery `discard` applies a library write (Redux dispatch, Zustand
+  `set()`) without the stale fields instead of whole (`test/discard-adapters.test.ts`).
+- `runtime.ts` -> `runDelivery`, `fanOutSibling`: newer-data conflicts from fan-out siblings (same direct cause, same
+  kind, started within `FANOUT_WINDOW_MS` = 100 ms) do not make a delivery salient (`test/fanout-triage.test.ts`).
+  Triage only: what reaches the model changes, never the text of a situation.
+- `policy.idempotencyBodyFields` (opt-in): `situation/build.ts` -> `repeatUnsafe` also accepts a named top-level
+  JSON body field (`observe/fetch.ts` -> `jsonObjectKeys`, `ReqMeta.bodyKeys`); default none
+  (`test/idempotency-body.test.ts`).
+
 ## 0.1.0-beta.3: default-on anonymous telemetry (privacy-relevant)
 
 `InitOptions.telemetry` (`src/telemetry/*`; disclosure `TELEMETRY.md`; agent doc `docs/agents/telemetry.md`). On by

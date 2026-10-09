@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased (branch `heal/overnight`, 2026-10-09)
+
+Found with the local healing benchmark (`bench/heal/`, report: `NIGHT-REPORT.md`). No situation text or other
+model-visible text changes; no telemetry change.
+
+- **Fix: delivery `discard` on Redux and Zustand stores.** A response whose chain writes stale fields *and* other
+  fields in one dispatch / `set()` was applied whole (the discard was a silent no-op while its record named the
+  fields as dropped). The write now applies without the stale fields, as it already did for atoms and guarded stores.
+- **Fewer model calls on fan-out polling (delivery triage).** Requests started together by the same operation (one
+  timer tick or user action fetching several items) no longer count as "newer data" for each other, so a correct
+  dashboard that writes a shared `updatedAt` from each response is not asked about (or, in guard/heal, held) on every
+  poll. Overlapping rounds stay salient.
+- **`policy.idempotencyBodyFields`** (opt-in, default none): top-level JSON body fields that carry an idempotency
+  key the server deduplicates on (e.g. `["request_id"]`), so `retry` may be offered for such a POST.
+
 ## 0.1.0-beta.4 (2026-10-09)
 
 Fixes from the first real-app trial (Troy, a Next.js 16 site with a strict Content-Security-Policy, observe mode,

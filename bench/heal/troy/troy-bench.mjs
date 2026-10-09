@@ -398,7 +398,7 @@ async function trial(browser, scenario, mode, rep) {
           detectionKinds: s.detections,
           interventions: g.interventions().map((a) => ({ action: a.action, tier: a.tier, trigger: a.trigger, ok: a.ok, changed: a.changed })),
           notExecuted: ds.filter((d) => !d.executed && d.reason).map((d) => `${d.trigger}:${d.action}:${String(d.reason).replace(/\d+(\.\d+)?/g, "#")}`),
-          diagnoses: ds.map((d) => `${d.trigger}:${d.diagnosis}:${d.action}${d.executed ? "!" : ""}`),
+          diagnoses: ds.map((d) => `${d.trigger}:${d.diagnosis}:${d.action}${d.executed ? "!" : ""}:${d.candidate ?? "-"}:${d.gain !== undefined ? Math.round(d.gain * 100) / 100 : "-"}/${d.margin ?? "-"}`),
         };
       })
       .catch((e) => ({ evalError: String(e).slice(0, 200) }));

@@ -88,8 +88,9 @@ Read next: **[HANDOFF.md](HANDOFF.md)** (the team's live handoff, kept current b
   `packages/runtime/test/install/INSTALL-README-SNIPPET.md` and the `init` usage text still say guard is the default;
   both READMEs say observe. Test counts in STATUS/HANDOFF are older. Drift tables:
   [status-and-known-issues](docs/agents/status-and-known-issues.md).
-- `demos/src/server/data/cities.ts` is not in git (root `.gitignore` rule `data/`), so a fresh clone cannot build or
-  typecheck the demos, and root `npm run typecheck` fails.
+- `demos/src/server/data/cities.ts` was not in git (root `.gitignore` rule `data/`); on `heal/overnight` it is
+  recreated (synthetic populations) and un-ignored (`!demos/src/server/data/`), and the demos have an `observe` mode,
+  `telemetry: false` everywhere and the benchmark knobs of `bench/heal/README.md`.
 
 ## 3. Ground rules (binding; `docs/runtime/CONTRACT.md` §0, §0.5, §13)
 

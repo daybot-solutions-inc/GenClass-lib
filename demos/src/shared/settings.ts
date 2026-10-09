@@ -72,6 +72,20 @@ export function holdBudget(): number | undefined {
   return Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
+/** Benchmark knob: ?gate=<guard>,<heal> sets policy.thresholds (margins for the gain gate). Default: the model's. */
+export function gateParam(): { guard: number; heal: number } | undefined {
+  const v = params.get("gate");
+  if (!v) return undefined;
+  const [g, h] = v.split(",").map(Number);
+  return Number.isFinite(g) && Number.isFinite(h) ? { guard: g, heal: h } : undefined;
+}
+
+/** Benchmark knob: ?sit=<chars> sets InitOptions.situation.budget (default: the runtime's "auto"). */
+export function situationBudget(): number | undefined {
+  const v = Number(params.get("sit"));
+  return Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
 /** Benchmark knob: ?aggr=cautious|balanced|eager|<0..1> sets InitOptions.aggressiveness (default: the runtime's). */
 export function aggrParam(): number | string | undefined {
   const v = params.get("aggr");
