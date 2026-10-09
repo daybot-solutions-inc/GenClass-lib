@@ -1,0 +1,16 @@
+# GenClass telemetry collector (Cloudflare Worker + R2).
+# Deploy: npx --yes wrangler@4 deploy   (from this directory)
+name = "genclass-telemetry"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+account_id = "144bd5f5270b51dbe7faf46227a154f0"
+workers_dev = true
+# Never log request contents: no observability/logpush of request bodies or headers.
+logpush = false
+
+[observability]
+enabled = false
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "genclass-telemetry"
