@@ -8,7 +8,7 @@ import { esc, fmtMs, h, pct, toast } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { nativeClearInterval, nativeClearTimeout, nativeSetInterval, nativeSetTimeout } from "../shared/native.ts";
 
-const MODE_LABEL: Record<GcMode, string> = { off: "Off", guard: "Guard", heal: "Heal" };
+const MODE_LABEL: Record<GcMode, string> = { off: "Off", observe: "Observe", guard: "Guard", heal: "Heal" };
 
 interface Job {
   seed: number;

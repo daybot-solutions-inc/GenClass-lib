@@ -14,7 +14,7 @@ import type { DemoId, GcMode, Step, TrialKind, TrialResult } from "../src/shared
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const ALL_DEMOS: DemoId[] = ["search", "editor", "checkout", "status", "board", "decisions"];
-const ALL_MODES: GcMode[] = ["off", "guard", "heal"];
+const ALL_MODES: GcMode[] = ["off", "observe", "guard", "heal"];
 
 // ------------------------------------------------------------------------------------------------ options
 const argv = process.argv.slice(2);
@@ -36,7 +36,11 @@ const TRIAL_TIMEOUT = Number(opt("trial-timeout", "180000"));
 const SHOTS = !flag("no-shots");
 const SHOTS_ONLY = flag("shots-only");
 const OUT = opt("out", ROOT);
-const DIST = `${ROOT}dist/`;
+/** The built site (default demos/dist/; --dist serves a snapshot, e.g. one built against another runtime). */
+const DIST = (() => {
+  const d = opt("dist", `${ROOT}dist/`);
+  return d.endsWith("/") ? d : `${d}/`;
+})();
 // The model directory can live outside the synced tree (scripts/vm.sh deletes untracked files on sync).
 const MODEL_DIR = opt("model-dir", process.env.GENCLASS_MODEL_DIR ?? "");
 const localModel = existsSync(`${DIST}genclass-model/model.json`) || (MODEL_DIR !== "" && existsSync(`${MODEL_DIR}/model.json`));
@@ -44,12 +48,18 @@ const MODEL = opt("model", localModel ? "genclass-model/" : "cdn");
 const SITE = `http://127.0.0.1:${PORT}${BASE}`;
 /** Experiment: policy.holdBudgetMs for every GenClass page (results go to results-budget<ms>.*). */
 const BUDGET = opt("budget", "");
+/** Aggressiveness profile for every GenClass page (?aggr=): cautious|balanced|eager|<0..1>; default = runtime default. */
+const AGGR = opt("aggr", "");
+/** Self-host ONNX Runtime from the model directory's ort/ (written by `genclass-runtime fetch-model --ort wasm`). */
+const ORT_LOCAL = MODEL_DIR !== "" && existsSync(`${MODEL_DIR}/ort/ort.json`);
 /** Free-form label for a run (e.g. the model under test): results-<tag>.json / .md, not shipped with the site. */
 const TAG = opt("tag", "").replace(/[^a-zA-Z0-9._-]+/g, "-");
 /** Investigation: record every proposed/applied write and decision per trial (written to e2e/.out/traces*.json). */
 const TRACE = flag("trace");
 const KINDS = opt("kinds", "chaos,clean").split(",").filter(Boolean) as TrialKind[];
-const SUFFIX = [TAG ? `-${TAG}` : "", BUDGET ? `-budget${BUDGET}` : ""].join("");
+/** Origins of blocked external requests (should stay empty: the model and ORT are served locally). */
+const EXTERNAL = new Set<string>();
+const SUFFIX = [TAG ? `-${TAG}` : "", BUDGET ? `-budget${BUDGET}` : "", AGGR ? `-aggr-${AGGR}` : ""].join("");
 
 interface Job {
   demo: DemoId;
@@ -176,6 +186,8 @@ function trialUrl(j: Job): string {
   u.searchParams.set("run", Math.random().toString(36).slice(2, 9));
   u.searchParams.set("model", MODEL);
   if (BUDGET) u.searchParams.set("budget", BUDGET);
+  if (AGGR) u.searchParams.set("aggr", AGGR);
+  if (ORT_LOCAL) u.searchParams.set("ort", "genclass-model/ort/");
   if (TRACE) u.searchParams.set("trace", "1");
   return u.href;
 }
@@ -258,6 +270,11 @@ async function runTrials(browser: Browser): Promise<TrialResult[]> {
   await Promise.all(
     Array.from({ length: WORKERS }, async (_, w) => {
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      // Local only: block anything that is not the local static server (no CDN, no telemetry collector).
+      await ctx.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => {
+        EXTERNAL.add(new URL(route.request().url()).origin);
+        return route.abort();
+      });
       if (!(await warmUp(ctx))) log(`w${w}: warm-up did not reach cross-origin isolation`);
       while (queue.length) {
         const j = queue.shift()!;
@@ -318,6 +335,9 @@ const CARD = await servedCard();
 
 /** Fingerprint of the runtime build the site was built against (the runtime changes while we measure). */
 async function runtimeBuild(): Promise<{ version: string; dist: string } | null> {
+  // a snapshot records the runtime it was built against (bench/heal/snapshot-demos.sh)
+  const snap = await readFile(`${DIST}runtime-build.json`, "utf8").catch(() => null);
+  if (snap) return JSON.parse(snap) as { version: string; dist: string };
   try {
     const pkgDir = `${ROOT}../packages/runtime/`;
     const pkg = JSON.parse(await readFile(`${pkgDir}package.json`, "utf8")) as { version: string };
@@ -359,17 +379,20 @@ function modelNote(results: TrialResult[]): { name: string; note: string; status
 }
 
 function mdTable(summaries: DemoSummary[]): string {
-  const rows = summaries.map((s) => {
-    const m = s.modes;
-    const br = (x?: ModeSummary) => (x ? `${pct(x.chaos.rate)} (${x.chaos.k}/${x.chaos.n})` : "–");
-    const fi = (x?: ModeSummary) => (x ? `${x.falseInterventions} in ${x.cleanTrialsWithIntervention}/${x.cleanTrials}` : "–");
-    const lat = (x?: ModeSummary) => (x ? ms(x.latencyMs) : "–");
-    const fx = (x?: ModeSummary) => (x && x.mode !== "off" ? `${x.fixed}/${x.introduced}` : "–");
-    return `| ${TITLES[s.demo]} | ${br(m.off)} | ${br(m.guard)} | ${br(m.heal)} | ${fi(m.guard)} | ${fi(m.heal)} | ${fx(m.guard)} | ${fx(m.heal)} | ${lat(m.off)} / ${lat(m.guard)} / ${lat(m.heal)} | ${ms(m.guard?.decisionP50 ?? null)} / ${ms(m.heal?.decisionP50 ?? null)} |`;
-  });
+  const rows: string[] = [];
+  for (const s of summaries) {
+    for (const mode of ALL_MODES) {
+      const x = s.modes[mode];
+      if (!x) continue;
+      const acts = Object.entries(x.actions).map(([k, v]) => `${k} ${v}`).join(", ") || "–";
+      rows.push(
+        `| ${TITLES[s.demo]} | ${mode} | ${pct(x.chaos.rate)} (${x.chaos.k}/${x.chaos.n}) | ${x.mode !== "off" ? `${x.fixed}/${x.introduced}` : "–"} | ${x.clean.k}/${x.clean.n} | ${x.falseInterventions} in ${x.cleanTrialsWithIntervention}/${x.cleanTrials} | ${x.falseFindings} in ${x.cleanTrialsWithFinding}/${x.cleanTrials} | ${x.findingsPerChaosTrial.toFixed(2)} | ${x.interventionsPerChaosTrial.toFixed(2)} | ${acts} | ${ms(x.latencyMs)} | ${ms(x.decisionP50)} |`,
+      );
+    }
+  }
   return [
-    "| Demo | Bug rate Off | Guard | Heal | False interventions (clean) Guard | Heal | Fixed/introduced vs Off: Guard | Heal | User latency p50 (clean) Off / Guard / Heal | Model decision p50 Guard / Heal |",
-    "|---|---|---|---|---|---|---|---|---|---|",
+    "| Demo | Mode | Chaos bug rate | Fixed/introduced vs Off | Clean bugs | False interventions (clean) | False findings (clean) | Findings / chaos trial | Actions / chaos trial | Actions run | User latency p50 (clean) | Decision p50 |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
   ].join("\n");
 }
@@ -414,6 +437,7 @@ function mdDemo(s: DemoSummary, results: TrialResult[]): string {
 }
 
 async function writeReports(all: TrialResult[]) {
+  await mkdir(OUT, { recursive: true });
   if (TRACE) {
     const traces = all.map((r) => ({ demo: r.demo, mode: r.mode, kind: r.kind, seed: r.seed, label: r.label, bug: r.bug, reasons: r.reasons, metrics: r.metrics, details: r.details, error: r.error, trace: r.trace }));
     await mkdir(`${ROOT}e2e/.out`, { recursive: true });
@@ -506,6 +530,8 @@ async function shootTrialsUI(ctx: BrowserContext, demo: DemoId, file: string): P
   u.searchParams.set("mode", "guard");
   u.searchParams.set("model", MODEL);
   if (BUDGET) u.searchParams.set("budget", BUDGET);
+  if (AGGR) u.searchParams.set("aggr", AGGR);
+  if (ORT_LOCAL) u.searchParams.set("ort", "genclass-model/ort/");
   await page.goto(u.href, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".app-body > *", { timeout: 60000 });
   await page.locator("#trials select").selectOption("3");
@@ -581,6 +607,7 @@ try {
   if (!SHOTS_ONLY) {
     const results = await runTrials(browser);
     await writeReports(results);
+    log(EXTERNAL.size ? `blocked external origins: ${[...EXTERNAL].join(", ")}` : "no external requests");
   }
   if (SHOTS || SHOTS_ONLY) await screenshots(browser);
 } finally {

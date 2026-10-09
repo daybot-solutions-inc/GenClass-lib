@@ -24,9 +24,9 @@ export function siteRoot(): URL {
 
 export function getMode(): GcMode {
   const p = params.get("mode");
-  if (p === "off" || p === "guard" || p === "heal") return p;
+  if (p === "off" || p === "observe" || p === "guard" || p === "heal") return p;
   const s = store("gc-demo-mode");
-  if (s === "off" || s === "guard" || s === "heal") return s;
+  if (s === "off" || s === "observe" || s === "guard" || s === "heal") return s;
   return "guard";
 }
 
@@ -44,6 +44,13 @@ export function setMode(mode: GcMode): void {
 export function modelBaseUrl(root: URL): string | undefined {
   const raw = params.get("model") ?? (import.meta.env.VITE_GENCLASS_MODEL_URL as string | undefined) ?? "genclass-model/";
   if (raw === "cdn" || raw === "") return undefined;
+  return new URL(raw.endsWith("/") ? raw : raw + "/", root).href;
+}
+
+/** Self-hosted ONNX Runtime wasm directory (`?ort=<dir>`, relative to the site root), so no CDN is needed. */
+export function ortWasmPaths(root: URL): string | undefined {
+  const raw = params.get("ort");
+  if (!raw) return undefined;
   return new URL(raw.endsWith("/") ? raw : raw + "/", root).href;
 }
 
@@ -65,6 +72,14 @@ export function holdBudget(): number | undefined {
   return Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
+/** Benchmark knob: ?aggr=cautious|balanced|eager|<0..1> sets InitOptions.aggressiveness (default: the runtime's). */
+export function aggrParam(): number | string | undefined {
+  const v = params.get("aggr");
+  if (!v) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : v;
+}
+
 export function trialParams(): TrialParams | null {
   if (params.get("embed") !== "trial") return null;
   const kind = params.get("kind") === "clean" ? "clean" : "chaos";
@@ -72,7 +87,7 @@ export function trialParams(): TrialParams | null {
   return {
     seed: Number(params.get("seed") ?? 1) >>> 0,
     kind,
-    mode: m === "off" || m === "heal" ? m : "guard",
+    mode: m === "off" || m === "heal" || m === "observe" ? m : "guard",
     run: params.get("run") ?? Math.random().toString(36).slice(2, 8),
   };
 }

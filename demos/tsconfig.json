@@ -7,7 +7,14 @@
     "declaration": false,
     "sourceMap": false,
     "allowImportingTsExtensions": true,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "paths": {
+      "@genclass/runtime": ["../packages/runtime/dist/index.d.ts"],
+      "@genclass/runtime/react": ["../packages/runtime/dist/adapters/react.d.ts"],
+      "@genclass/runtime/redux": ["../packages/runtime/dist/adapters/redux.d.ts"],
+      "@genclass/runtime/zustand": ["../packages/runtime/dist/adapters/zustand.d.ts"],
+      "@genclass/runtime/devtools": ["../packages/runtime/dist/devtools/index.d.ts"]
+    }
   },
   "include": ["src"],
   "exclude": ["src/server/sw.ts", "src/dev/runtime-shim"]

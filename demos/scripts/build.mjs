@@ -7,8 +7,11 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const BUILD_ID = process.env.BUILD_ID || Date.now().toString(36);
 process.env.BUILD_ID = BUILD_ID;
+// DEMOS_OUT_DIR (relative to demos/ or absolute): build somewhere else than dist/ (bench/heal snapshots).
+const OUT = process.env.DEMOS_OUT_DIR || "dist";
+const outAbs = OUT.startsWith("/") ? OUT : `${root}${OUT}`;
 
-await build({ root, configFile: `${root}vite.config.ts`, logLevel: "warn" });
+await build({ root, configFile: `${root}vite.config.ts`, logLevel: "warn", build: { outDir: outAbs } });
 
 await build({
   root,
@@ -16,7 +19,7 @@ await build({
   logLevel: "warn",
   define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
   build: {
-    outDir: "dist",
+    outDir: outAbs,
     emptyOutDir: false,
     copyPublicDir: false,
     minify: true,
@@ -32,9 +35,9 @@ await build({
 });
 
 // Ship the latest measured results with the site so the landing page can show them.
-mkdirSync(`${root}dist`, { recursive: true });
-if (existsSync(`${root}results-summary.json`)) copyFileSync(`${root}results-summary.json`, `${root}dist/results-summary.json`);
-writeFileSync(`${root}dist/build.json`, JSON.stringify({ buildId: BUILD_ID, at: new Date().toISOString() }));
+mkdirSync(outAbs, { recursive: true });
+if (existsSync(`${root}results-summary.json`)) copyFileSync(`${root}results-summary.json`, `${outAbs}/results-summary.json`);
+writeFileSync(`${outAbs}/build.json`, JSON.stringify({ buildId: BUILD_ID, at: new Date().toISOString() }));
 // GitHub Pages: do not run Jekyll over the output.
-writeFileSync(`${root}dist/.nojekyll`, "");
-console.log(`demos built: dist/ (build ${BUILD_ID})`);
+writeFileSync(`${outAbs}/.nojekyll`, "");
+console.log(`demos built: ${OUT}/ (build ${BUILD_ID})`);

@@ -21,3 +21,6 @@ packages/runtime-model/files/
 .cache-model/
 .publish/
 *.tgz
+
+# demos: the search demo city index is source code, not data (see docs/agents/demos.md)
+!demos/src/server/data/

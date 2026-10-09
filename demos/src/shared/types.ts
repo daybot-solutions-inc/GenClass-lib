@@ -3,9 +3,12 @@ import type { DemoId } from "./protocol.ts";
 
 export type { DemoId };
 
-/** Demo mode: off = runtime installed in observe mode with no model (the baseline). */
-export type GcMode = "off" | "guard" | "heal";
-export const MODES: GcMode[] = ["off", "guard", "heal"];
+/**
+ * Demo mode: off = runtime installed in observe mode with no model (the baseline); observe = the runtime's default
+ * (observe mode with the model: reports, never changes anything); guard / heal = those runtime modes with the model.
+ */
+export type GcMode = "off" | "observe" | "guard" | "heal";
+export const MODES: GcMode[] = ["off", "observe", "guard", "heal"];
 
 /** chaos = randomized environment chaos and stressed user behaviour; clean = no chaos, calm user, app is correct. */
 export type TrialKind = "chaos" | "clean";
@@ -64,6 +67,12 @@ export interface GcStats {
   loadMs?: number;
   decisions: number;
   detections: number;
+  /** "<trigger>:<diagnosis>" per detection (a finding the runtime reported). On clean trials these are false findings. */
+  findings?: string[];
+  /** Model decisions per trigger. */
+  triggers?: Record<string, number>;
+  /** Per decision: "<trigger>:<diagnosis>:<candidate>:<gain>/<margin>:<ran|no>" (gate analysis). */
+  gates?: string[];
   /** Decisions whose non-passive action was not executed, by reason. */
   notExecuted: Record<string, number>;
   interventions: InterventionSummary[];

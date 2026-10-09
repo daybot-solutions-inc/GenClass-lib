@@ -11,7 +11,7 @@ import type { DemoDefinition } from "../shared/demo-def.ts";
 import { startGenClass, statusText, RUNTIME_KIND } from "../shared/genclass.ts";
 import { TrialHarness } from "../shared/harness.ts";
 import { ServerLink, ensureServiceWorker, wait } from "../shared/server.ts";
-import { getMode, holdBudget, loadChaos, modelBaseUrl, sessionId, setMode, siteRoot, traceOn, trialParams, urlParams, type TrialParams } from "../shared/settings.ts";
+import { aggrParam, ortWasmPaths, getMode, holdBudget, loadChaos, modelBaseUrl, sessionId, setMode, siteRoot, traceOn, trialParams, urlParams, type TrialParams } from "../shared/settings.ts";
 import { MODES, type GcMode } from "../shared/types.ts";
 import { mountActivity } from "./activity.ts";
 import { mountChaosPanel } from "./chaos-panel.ts";
@@ -22,10 +22,11 @@ import { mountNetLane } from "./netlane.ts";
 import { mountTrials } from "./trials-panel.ts";
 import { nativeClearInterval, nativeSetInterval, nativeSetTimeout } from "../shared/native.ts";
 
-const MODE_LABEL: Record<GcMode, string> = { off: "Off", guard: "Guard", heal: "Heal" };
+const MODE_LABEL: Record<GcMode, string> = { off: "Off", observe: "Observe", guard: "Guard", heal: "Heal" };
 const MODE_HINT: Record<GcMode, string> = {
   off: "Baseline: the runtime is installed in observe mode with no model and never changes anything.",
-  guard: "Default: only minimal, reversible actions (drop, defer, dedupe, back off) at very high confidence.",
+  observe: "The runtime's default: the model reports what it sees and never changes anything.",
+  guard: "Opt-in: only minimal, reversible actions (drop, defer, dedupe, back off) at very high confidence.",
   heal: "Also recovers: retries, cached responses, rollbacks and resyncs, at high confidence.",
 };
 
@@ -42,7 +43,7 @@ function appFrame(def: DemoDefinition, mode: GcMode): { frame: HTMLElement; body
         class: "gc-chip",
         "data-mode": mode,
         title: MODE_HINT[mode],
-        html: `${icon(mode === "off" ? "eye" : mode === "heal" ? "heal" : "shield", 'width="13" height="13"')}GenClass ${MODE_LABEL[mode]}`,
+        html: `${icon(mode === "off" || mode === "observe" ? "eye" : mode === "heal" ? "heal" : "shield", 'width="13" height="13"')}GenClass ${MODE_LABEL[mode]}`,
       }),
     ),
     body,
@@ -160,7 +161,7 @@ async function bootInteractive(def: DemoDefinition): Promise<void> {
   };
   addEventListener("pagehide", () => link.stop());
 
-  const gcs = startGenClass(mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget() });
+  const gcs = startGenClass(mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget(), aggressiveness: aggrParam(), ortWasmPaths: ortWasmPaths(root) });
   const gc = gcs.gc;
 
   const { frame, body } = appFrame(def, mode);
@@ -231,7 +232,7 @@ async function bootTrial(def: DemoDefinition, trial: TrialParams): Promise<void>
   link.startHeartbeat();
   addEventListener("pagehide", () => void link.bye());
 
-  const gcs = startGenClass(trial.mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget(), trace: traceOn() });
+  const gcs = startGenClass(trial.mode, { baseUrl: modelBaseUrl(root), plugins: def.plugins?.(), holdBudgetMs: holdBudget(), trace: traceOn(), aggressiveness: aggrParam(), ortWasmPaths: ortWasmPaths(root) });
   if (trial.mode !== "off") await Promise.race([gcs.gc.ready.catch(() => undefined), wait(120000)]);
 
   const { frame, body } = appFrame(def, trial.mode);

@@ -22,7 +22,15 @@ const shimAlias = useShim
       { find: /^@genclass\/runtime\/zustand$/, replacement: here("./src/dev/runtime-shim/zustand.ts") },
       { find: /^@genclass\/runtime\/devtools$/, replacement: here("./src/dev/runtime-shim/devtools.ts") },
     ]
-  : [];
+  : [
+      // Always build against THIS checkout's runtime (node_modules may be a symlink into another worktree, whose
+      // @genclass/runtime link points at that worktree's packages/runtime).
+      { find: /^@genclass\/runtime$/, replacement: here("../packages/runtime/dist/index.js") },
+      { find: /^@genclass\/runtime\/react$/, replacement: here("../packages/runtime/dist/adapters/react.js") },
+      { find: /^@genclass\/runtime\/redux$/, replacement: here("../packages/runtime/dist/adapters/redux.js") },
+      { find: /^@genclass\/runtime\/zustand$/, replacement: here("../packages/runtime/dist/adapters/zustand.js") },
+      { find: /^@genclass\/runtime\/devtools$/, replacement: here("../packages/runtime/dist/devtools/index.js") },
+    ];
 
 /** Dev only: serve the mock server at /sw.js as a module service worker (production builds a classic IIFE). */
 function devServiceWorker(): Plugin {

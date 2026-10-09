@@ -15,6 +15,11 @@ export interface ModeSummary {
   clean: Rate;
   /** Non-passive actions that ran on clean runs (every one is a false positive). */
   falseInterventions: number;
+  /** Detections (reported findings) on clean trials, where the app is correct: every one is a false finding. */
+  falseFindings: number;
+  cleanTrialsWithFinding: number;
+  /** Detections per chaos trial (findings where something may be wrong). */
+  findingsPerChaosTrial: number;
   cleanTrialsWithIntervention: number;
   cleanTrials: number;
   interventionsPerChaosTrial: number;
@@ -110,6 +115,9 @@ export function summarizeMode(all: TrialResult[], mode: GcMode): ModeSummary | u
     chaos: wilson(chaos.filter((r) => ok(r) && r.bug).length, chaos.filter(ok).length),
     clean: wilson(clean.filter((r) => ok(r) && r.bug).length, clean.filter(ok).length),
     falseInterventions: clean.reduce((a, r) => a + r.gc.interventions.length, 0),
+    falseFindings: clean.reduce((a, r) => a + r.gc.detections, 0),
+    cleanTrialsWithFinding: clean.filter((r) => r.gc.detections > 0).length,
+    findingsPerChaosTrial: chaos.length ? chaos.reduce((a, r) => a + r.gc.detections, 0) / chaos.length : 0,
     cleanTrialsWithIntervention: clean.filter((r) => r.gc.interventions.length > 0).length,
     cleanTrials: clean.length,
     interventionsPerChaosTrial: chaos.length ? chaos.reduce((a, r) => a + r.gc.interventions.length, 0) / chaos.length : 0,

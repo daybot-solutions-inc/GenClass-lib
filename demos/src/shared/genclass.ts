@@ -1,7 +1,9 @@
 // The one place the demos create the runtime. App code is identical in every mode:
 //   off   -> GenClass.init({ mode: "observe", model: false })   (installed, never changes anything; the baseline)
-//   guard -> GenClass.init({ mode: "guard", model: { baseUrl } }) (the default)
+//   observe -> GenClass.init({ mode: "observe", model: { baseUrl } }) (the runtime's default: reports only)
+//   guard -> GenClass.init({ mode: "guard", model: { baseUrl } })
 //   heal  -> GenClass.init({ mode: "heal",  model: { baseUrl } })
+// Telemetry is always off here (telemetry: false): demo and benchmark traffic must never reach the collector.
 import { GenClass } from "@genclass/runtime";
 import type { ActionRecord, Decision, InitOptions, Plugin, Report, Runtime } from "@genclass/runtime";
 import { attachTrace, newTrace, traceHooks, type Trace } from "./trace.ts";
@@ -24,7 +26,7 @@ export interface GcSession {
 
 export function startGenClass(
   mode: GcMode,
-  opts: { baseUrl?: string; plugins?: Plugin[]; debug?: boolean; holdBudgetMs?: number; trace?: boolean },
+  opts: { baseUrl?: string; plugins?: Plugin[]; debug?: boolean; holdBudgetMs?: number; trace?: boolean; aggressiveness?: number | string; ortWasmPaths?: string },
 ): GcSession {
   const policy = opts.holdBudgetMs ? { holdBudgetMs: opts.holdBudgetMs } : undefined;
   // Investigation only: the runtime's creation hooks (CreateOptions.hooks), forwarded by GenClass.init.
@@ -32,10 +34,12 @@ export function startGenClass(
   const extra = (trace ? { hooks: traceHooks(trace) } : {}) as Partial<InitOptions>;
   const gc =
     mode === "off"
-      ? GenClass.init({ mode: "observe", model: false, plugins: opts.plugins, policy, ...extra })
+      ? GenClass.init({ mode: "observe", model: false, plugins: opts.plugins, policy, telemetry: false, ...extra })
       : GenClass.init({
           mode,
-          model: { ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}), preload: "eager" },
+          telemetry: false,
+          ...(opts.aggressiveness !== undefined ? { aggressiveness: opts.aggressiveness as InitOptions["aggressiveness"] } : {}),
+          model: { ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}), ...(opts.ortWasmPaths ? { ortWasmPaths: opts.ortWasmPaths } : {}), preload: "eager" },
           plugins: opts.plugins,
           debug: opts.debug,
           policy,
@@ -81,8 +85,10 @@ export function statusText(gc: Runtime): string {
 export function collectStats(s: GcSession): GcStats {
   const notExecuted: Record<string, number> = {};
   const diagnoses: Record<string, number> = {};
+  const triggers: Record<string, number> = {};
   for (const d of s.decisions) {
     diagnoses[d.diagnosis] = (diagnoses[d.diagnosis] ?? 0) + 1;
+    triggers[d.trigger] = (triggers[d.trigger] ?? 0) + 1;
     if (!d.executed && d.reason) {
       // "probability 0.42 is below the guard threshold 0.9" -> "probability # is below the guard threshold #"
       const key = d.reason.replace(/\d+(\.\d+)?/g, "#");
@@ -100,6 +106,12 @@ export function collectStats(s: GcSession): GcStats {
     loadMs: st.loadMs ?? (s.readyAt !== null ? Math.round(s.readyAt - s.initAt) : undefined),
     decisions: s.decisions.length,
     detections: s.detections.length,
+    findings: s.detections.map((d) => `${d.trigger}:${d.diagnosis}`),
+    triggers,
+    gates: s.decisions.map(
+      (d) =>
+        `${d.trigger}:${d.diagnosis}:${d.candidate ?? "-"}:${d.gain !== undefined ? Math.round(d.gain * 100) / 100 : "-"}/${d.margin ?? d.threshold ?? "-"}:${d.executed ? "ran" : "no"}`,
+    ),
     notExecuted,
     interventions: s.actions.map((a) => ({ action: a.action, tier: a.tier, trigger: a.trigger, changed: a.changed, at: a.at })),
     decisionLatencyMs: s.decisions.map((d) => Math.round(d.latencyMs * 10) / 10),
