@@ -2,7 +2,7 @@
 
 > **Scope:** `packages/runtime/src/index.ts`, `packages/runtime/src/runtime.ts` (wiring, construction, init/destroy, modes, kill switch, option resolution, events, plugins, introspection, settled points, the delivery gate and background write observation as seen from the facade), `packages/runtime/src/types.ts`, `packages/runtime/src/errors.ts`, `packages/runtime/src/clock.ts`, `packages/runtime/src/util.ts`, `packages/runtime/package.json`; the consumer-facing side of the zero-code entries (`packages/runtime/src/auto.ts`, `packages/runtime/src/cdn/*`, `packages/runtime/bin/genclass-runtime.mjs` `init`/`remove`); their internals (framework detection, edit planning, the CDN worker and onnxruntime bundling) belong to INSTALL and are only summarised here.
 > **Read this when:** you add or change an init option, a `Runtime` method, an event, a plugin hook or a subpath export; you touch `GenClass.init` / `createRuntime` / the kill switch / `destroy()`; you touch `@genclass/runtime/auto*`, the script-tag global (`window.GenClass`) or `genclass-runtime init|remove`; you need the exact default of any option (the default mode is `observe`); you add timing or scheduling code; you wire a new subsystem into `RuntimeImpl`.
-> **Source of truth:** the code. Verified against branch `mvp-v2-merge` (mvp-v2 + origin/runtime eff18cb + observe/redaction fixes 054da38, f107013), 2026-10-08. origin/runtime has since moved past eff18cb (ca08174..5bc40c9: realapps wave 4, runtime batch 6 with model-provided gate thresholds, tag `situation-v2.1`); none of that is merged here or described in this doc. If this doc and the code disagree, the code wins.
+> **Source of truth:** the code. Automatic state discovery (`autoState`, `stores()`, `@genclass/runtime/discover`) verified against branch `feat/one-line` (from 89237ab), 2026-10-10. The rest verified against branch `mvp-v2-merge` (mvp-v2 + origin/runtime eff18cb + observe/redaction fixes 054da38, f107013), 2026-10-08. origin/runtime has since moved past eff18cb (ca08174..5bc40c9: realapps wave 4, runtime batch 6 with model-provided gate thresholds, tag `situation-v2.1`); none of that is merged here or described in this doc. If this doc and the code disagree, the code wins.
 
 ## TL;DR
 
@@ -142,6 +142,22 @@ Pair keys (`fromPairs`; unknown keys and invalid values are ignored): `mode` (`o
 - `init` detects the package manager and framework (`detect.mjs`), installs `@genclass/runtime` (unless `--no-install`; `--from <spec>` picks the spec), and adds, as the first statement of the entry file, `import "<AUTO(mode)>"` (with devtools: `import genclass from "<AUTO(mode)>"` plus a dev-only `if (<dev condition>) import("@genclass/runtime/devtools").then((d) => d.mountDevtools(genclass))` at the end). Plain HTML gets a script tag (`plan.mjs` -> `scriptTag`: jsDelivr URL pinned to the CLI's own version unless `--cdn`; an `integrity` sha384 of the package's local `dist/genclass.global(.min).js` when that file exists, unless `--no-sri`; `data-mode` when a mode other than `guard` is given; `data-devtools="local"` unless `--no-devtools`). It shows the diff and asks unless `--yes`; `--dry-run` writes nothing; running it twice changes nothing.
 - Every added line or created file carries the marker `genclass:init` (`edit.mjs` -> `MARK`), except the inline forms used when the insertion point shares its line with other code (a one-line `<head>` or `<body>`), marked `genclass:inline` (`MARK_INLINE`); `remove` deletes exactly the marked lines/blocks/inline forms and uninstalls the package unless `--keep-package` or `--no-install` (or something else still uses it).
 - Mode mapping (`plan.mjs` -> `AUTO`): `observe` -> `/auto/observe`, `heal` -> `/auto/heal`, `guard` **or no `--mode`** -> plain `/auto`. On this branch plain `/auto` runs in `observe`, so `init --mode guard` currently produces an observe-mode install, and the CLI's help/summary still call `guard` the default. See Drift.
+
+**Automatic state discovery (branch `feat/one-line`, ships in `0.1.0-beta.4`).** `InitOptions.autoState?: boolean |
+AutoStateOptions` (`{ react?, redux?, zustand?, pinia? }`, each default on; `pinia` is ignored). The zero-code entries
+default it on (`cdn/auto-start.ts` -> `AUTO_DEFAULTS = { autoState: true }`, merged lowest; `cdn/global.ts` merges
+`{ autoState: true }` under the page config); `GenClass.init` / `createRuntime` default off. Page config key
+`autostate` / `state` (meta, `data-autostate`): only an off word has an effect (`autoState: false`). Both entries call
+`discover/index.ts` -> `registerDiscovery()` (a named call: a bare side-effect import was dropped by tree shaking)
+before `GenClass.init`. The main entry does not contain the discovery code (`test/bundle.test.ts`: `/auto` < 98 KB
+gzip and carries `__REACT_DEVTOOLS_GLOBAL_HOOK__`, the main entry < 92 KB without it); `GenClass.init({ autoState: true })`
+needs `import "@genclass/runtime/discover"` (subpath `./discover` -> `dist/discover.js`, from `src/discover/entry.ts`,
+listed in `sideEffects`), which also installs the hooks at its evaluation and lets a later runtime attach; without it
+the runtime warns once. The kill switch path of `GenClass.init` never passes `autoState`, so `?genclass=off` installs
+no discovery. Mechanics: [state-and-adapters.md](state-and-adapters.md) section 14. New public `Runtime.stores():
+StoreInfo[]` (`{ name, kind: "atom"|"guard"|"adapter"|"observed", source?, writable, fields, version }`); internal
+`RuntimeImpl.discoveryStats()` (React walk stats, Redux/connected store names); `decisionInfo().autoState` (telemetry
+omits the situation text when true).
 
 ### Modes and tiers
 

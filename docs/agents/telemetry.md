@@ -32,7 +32,7 @@
 | `packages/runtime/src/telemetry/client.ts` | `TelemetryClient`: listeners -> events, queue (`MAX_QUEUE` 1000), batching (`maxBatch`, `MAX_REQUEST_BYTES` 60,000), flush timer on the runtime `Clock`, pagehide / hidden-tab beacon, summaries (`SUMMARY_MS` 60 s), `telemetryOff` |
 | `packages/runtime/src/telemetry/index.ts` | `startTelemetry` (called by `createRuntime`), the once-per-page console notice |
 | `packages/runtime/src/version.ts` | `RUNTIME_VERSION` (must equal package.json; a test checks it; bump with every release) |
-| `packages/runtime/src/runtime.ts` | `RuntimeTap` / `RuntimeImpl.tap` (model errors, fail-opens: `not-ready`, `no-answer`, `error`), `decisionInfo(id)` (situation text, held, budget, compact, gates), `addTeardown(fn)` (final flush on destroy), `ExplainRec.held/budget/compact` |
+| `packages/runtime/src/runtime.ts` | `RuntimeTap` / `RuntimeImpl.tap` (model errors, fail-opens: `not-ready`, `no-answer`, `error`), `decisionInfo(id)` (situation text, held, budget, compact, gates, `autoState`: discovered state recorded, so `client.ts` omits the situation text; branch `feat/one-line`), `addTeardown(fn)` (final flush on destroy), `ExplainRec.held/budget/compact` |
 | `packages/runtime/src/index.ts` | `createRuntime` -> `startTelemetry(rt, options.telemetry, false, info)`; `GenClass.init` browser branch sets `telemetry: options.telemetry ?? true`; the `?genclass=off` kill switch -> `telemetryOff("kill-switch")` |
 | `packages/runtime/src/types.ts` | `InitOptions.telemetry`, `TelemetryOptions`, `TelemetryTransport`, `TelemetryStatus`, `Runtime.telemetry?` |
 | `packages/runtime/src/cdn/config.ts` | `telemetry=off` page-config key (meta tag, `data-telemetry`) |

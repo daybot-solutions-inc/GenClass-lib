@@ -232,6 +232,29 @@ discard/retry candidates reach 4). Differences under ~5 points are noise (cautio
 from balanced by 4 points in heal). Troy (real app, 9 fault scenarios): the only bug, a duplicate order after a
 lost-commit 502 and a re-tap, occurs in every mode; 0 actions, 0 false interventions.
 
+### Automatic state discovery (2026-10-10, local, `bench/heal/`, branch `feat/one-line`, model 0.2.0, balanced)
+
+**Demos, stores registered by hand vs found by discovery** (`GENCLASS_DISCOVER=1` build: `useGenClassState` is plain
+`useState`, the Redux enhancer is the Redux DevTools one, the Zustand middleware is `devtools()`; 5 chaos + 3 clean
+seeds per demo and mode; small samples):
+
+| demo | stores, manual | stores, discovered | decisions observe / guard, manual | discovered | detections observe / guard, manual | discovered | chaos bugs (off / observe / guard) manual | discovered |
+|---|---|---|---|---|---|---|---|---|
+| checkout (React) | `cart`, `orders` atoms | one observed React store (both states) | 23 / 20 | 24 / 21 | 9 / 10 | 7 / 8 | 4 / 4 / 4 of 5 | 4 / 4 / 4 of 5 |
+| board (Zustand + React) | `board` adapter | observed React `useSyncExternalStore` (Zustand `devtools` is off in a Vite production build) | 76 / 73 | 72 / 73 | 14 / 14 | 6 / 6 | 4 / 3 / 4 | 4 / 3 / 4 |
+| editor (Redux) | `notes` adapter | `notes` adapter (discovered, controllable) | 50 / 53 | 47 / 50 | 21 / 20 | 23 / 18 | 5 / 5 / 5 | 5 / 5 / 5 |
+
+Delivery decisions with discovery: checkout 2 / 2, board 32 / 33, editor 19 / 13 (manual 2 / 1, 31 / 26, 17 / 17). No
+actions ran in either build (as in the night report at these gates); no clean-run bugs.
+
+**Troy (only the one line, React state):** stores found `orderPage`, `addToOrder` (named after rendered elements:
+production names are minified) and `er` (minified `MenuBrowser`). The nine existing scenarios: decisions unchanged
+(12 per mode over 27 trials: failure 9, request 3; detections 9), since each Troy page load sees at most one response
+per request kind that changes state. New scenario `order-poll-reorder-2` (another device removes a line, the guest
+removes the other while the next ticket poll is answered 3 s late): **3 / 3 delivery decisions with discovery, 0 / 3
+with `autoState: false`**, all `expected` (correct: the app drops stale polls; no bug in any mode). Overhead: see the
+package README "Costs" (+7 KB first-load JS, walk p95 under 2 ms at 4× throttling, +0.5 MB heap, no new long tasks).
+
 ### v0.1 model, untrained for this (2026-10-08, baseline only)
 
 | Demo | Bug rate Off | Guard | Heal | False interventions on clean runs |

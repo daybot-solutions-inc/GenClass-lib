@@ -39,6 +39,16 @@ observe mode on the same scenario (`debug.js --interference`):
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
 
+## feat/one-line (2026-10-10): automatic state discovery
+
+The one line (`@genclass/runtime/auto*`, the script tag) now finds app state: `InitOptions.autoState` (default on
+there, off in `GenClass.init`/`createRuntime`), `src/discover/*` (React DevTools hook + dispatcher tap + commit walk;
+Redux DevTools compose/enhancer/connect shims), hub store kind `observed` (`StoreHub.observe`), no write actions on
+observed stores (`builtinUnavailable`, `deliveryDroppable`), `runtime.stores()`, `@genclass/runtime/discover`,
+telemetry omits situation text once discovered state was recorded. No situation text format change (purity and
+exact-text tests unchanged). Tests: 64 files, 562 passed + 14 skipped; review-perf 4/4. Troy and demo numbers:
+docs/runtime/RESULTS.md §5 and `bench/heal/README.md`.
+
 ## heal/overnight (2026-10-09): healing benchmark fixes
 
 Local benchmark `bench/heal/` (six demos + the Troy dev copy under injected faults; `NIGHT-REPORT.md`). No

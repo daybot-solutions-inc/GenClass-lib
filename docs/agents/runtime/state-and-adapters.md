@@ -2,11 +2,11 @@
 
 > **Scope:** `packages/runtime/src/state/hub.ts`, `packages/runtime/src/state/fields.ts`, `packages/runtime/src/state/invariants.ts`, `packages/runtime/src/adapters/{react,redux,zustand}.ts`, and the store-related parts of `packages/runtime/src/runtime.ts` (`atom`, `guard`, `adapter`, `handle` (read-your-writes), `expect`, `gateMutation`, `observeWrite`, `covered`, `mutationController`, `dropFilter`/`writtenOver`/`onDropped` (delivery `discard` at the store), `markWrites`/`onChannel` (stale marks), `waitRelated`, `onApplied`, settled points, rollback, chain revert, resync, pause/resume/destroy gating).
 > **Read this when:** you change how state is registered, flattened, diffed, held, applied, filtered, patched, reverted, marked or snapshotted; add or tune an invariant template; touch the React hooks, the Redux enhancer or the Zustand middleware; integrate another state library through `runtime.adapter`; debug "why was this write applied / dropped / reverted / held (with `holdWrites`)"; or debug a missing or spurious `inconsistency` trigger.
-> **Source of truth:** the code. Verified against branch `mvp-v2` at b435acb (origin/runtime 74f17c0 = situation-v2, plus default mode observe and CI), 2026-10-08. If this doc and the code disagree, the code wins.
+> **Source of truth:** the code. Verified against branch `mvp-v2` at b435acb (origin/runtime 74f17c0 = situation-v2, plus default mode observe and CI), 2026-10-08; the store kind `observed` and section 14 (automatic state discovery) against branch `feat/one-line` (from 89237ab), 2026-10-10. If this doc and the code disagree, the code wins.
 
 ## TL;DR
 
-- Every store lives in one `StoreHub` (`packages/runtime/src/state/hub.ts` -> `StoreHub`), keyed by a **store name** that is global per runtime. There are three kinds: `atom` (GenClass owns the value), `guard` (the app owns the value behind `get`/`set`/`subscribe`), and `adapter` (a state library owns it and the adapter commits writes). The React hooks use atoms. The Redux enhancer and the Zustand middleware use `runtime.adapter`.
+- Every store lives in one `StoreHub` (`packages/runtime/src/state/hub.ts` -> `StoreHub`), keyed by a **store name** that is global per runtime. There are three kinds: `atom` (GenClass owns the value), `guard` (the app owns the value behind `get`/`set`/`subscribe`), and `adapter` (a state library owns it and the adapter commits writes). The React hooks use atoms. The Redux enhancer and the Zustand middleware use `runtime.adapter`. Branch `feat/one-line` adds a fourth, `observed` (state found by automatic discovery whose writes GenClass only records: never held, dropped or reverted; section 14).
 - A store value is **flattened** into dotted fields: `store.key.sub`, at most 4 key levels below the store name. A plain object is expanded only when it has 1 to 32 keys and expanding it keeps the store within 200 fields (a per-object check, so the cap is soft: see "Paths and leaves"). Arrays, plain objects with more than 32 keys, and non-plain objects are one field each. Each field has a version, its last writer op, a 16-entry history that keeps values, a 512-entry write log, and (situation-v2) an optional **stale mark**.
 - Every `set`/`dispatch` becomes a **proposal** (`MutationRec`), except Redux no-op dispatches, Zustand `set` calls made while the store is being created, and any write after `destroy()`. It is previewed and diffed against the stored leaves.
 - **Store writes are not held by default** (`policy.holdWrites`, default `false`, new in runtime batch 4). A write with changes that is not a bypass write is handed to `HubHooks.observeWrite` (`RuntimeImpl.observeWrite`: a `mutation` trigger with `hold: false`, i.e. a **background decision**, skipped when a delivery decision already **covers** the write) and is then applied **at once, in the caller's stack**. `set(x); get()` returns x. Default mode is now `observe` too (our commit f3636b2), where no action ever runs.
@@ -50,7 +50,8 @@ The state modules are **not** exported from the package index. Tests reach them 
 |---|---|---|---|---|---|---|
 | `atom` | `rt.atom(name, initial, opts)`; React `useGenClassState` | `StoreRec.value` | `s.value` | `record()` sets `s.value` | impossible | always |
 | `guard` | `rt.guard(name, io, opts)` | the app's store | `io.get()` | `io.set(next)` | `io.subscribe` callback -> `StoreHub.external` (recorded, never held) | always |
-| `adapter` | `rt.adapter(name, io, opts)`; Redux enhancer; Zustand middleware | the library's store | `io.get()` | the proposal's `commit(next)`; GenClass's own writes go through `io.set` | same as guard | only when `AdapterIO.set` exists |
+| `adapter` | `rt.adapter(name, io, opts)`; Redux enhancer; Zustand middleware; a Redux store found by state discovery | the library's store | `io.get()` | the proposal's `commit(next)`; GenClass's own writes go through `io.set` | same as guard | only when `AdapterIO.set` exists |
+| `observed` (feat/one-line) | state discovery only (`RuntimeImpl.observedStore`, internal): discovered React state, Redux DevTools `connect` clients (Zustand `devtools`), Redux stores created before an early-installed runtime attached | `StoreRec.value` (a copy of what the app already holds) | `s.value` | never: the app already made the write; `StoreHub.observe` records it | n/a | never (`writable: false`) |
 
 Public types (`packages/runtime/src/types.ts`):
 
@@ -505,6 +506,61 @@ The `delivery` trigger itself (predicted write sets, conflicts, holding a respon
    - a `fetch`/`xhr` that failed ambiguously (`situation/evidence.ts` -> `commitAmbiguity`): `after … failed (…), although the server may have applied it`.
 2. `RuntimeImpl.onChannel("up", channel, path)`: when a WebSocket or EventSource channel comes back after being down, every field its message signatures wrote (from `lastChainMap`) whose last write is not newer than the outage start is marked `by WebSocket | server-sent messages on <path>; the channel then was down for Xs (…), so updates sent meanwhile may be missing`.
 3. The next recorded write to the field clears the mark. `markFacts` states it in later situations (see the Field state section). Tests: `content.test.ts` "F9: provenance of values known to be stale".
+
+### 14. Automatic state discovery (`InitOptions.autoState`; `packages/runtime/src/discover/*`, branch `feat/one-line`)
+
+The one line (`@genclass/runtime/auto*`, the script tag) sets `autoState: true` (`cdn/auto-start.ts` -> `AUTO_DEFAULTS`,
+`cdn/global.ts`); `GenClass.init` / `createRuntime` default it off. `RuntimeImpl.installDiscovery` runs in the
+constructor right after the observers (browser only) and needs the installers registered in
+`discover/registry.ts` -> `discoveryRegistry` by `discover/index.ts` -> `registerDiscovery` (called by the zero-code
+entries; a named call, because a bare side-effect import was tree-shaken). `@genclass/runtime/discover`
+(`discover/entry.ts`) registers and installs **early** at its evaluation with a `SwitchHost` that records nothing until a
+runtime attaches (`discoveryRegistry.early`); without either, `autoState` warns once and does nothing.
+
+- **React** (`discover/react.ts`): `window.__REACT_DEVTOOLS_GLOBAL_HOOK__` is created when absent (a minimal hook:
+  `renderers`, `supportsFiber`, `inject`, `onCommitFiberRoot`, `onCommitFiberUnmount`, no-op `checkDCE` etc.) or
+  chained (an existing hook's `inject`/`onCommitFiberRoot`/`onCommitFiberUnmount` are wrapped; theirs run first;
+  `isDisabled` hooks are left alone). A renderer that injects into it gets a **dispatcher tap**: its
+  `currentDispatcherRef` property (`H` in React 19, `current` before) becomes an accessor whose getter returns an
+  object inheriting from React's dispatcher (`Object.create`, so React DevTools' inspection Proxy keeps its traps) with
+  own `useState`/`useReducer` that replace the returned setter by a wrapper cached per setter (stable identity: React
+  hands the same `queue.dispatch` to every render). The wrapper stores `host.capture()` (the ambient op, not
+  materialised, `user` = user-sync now) in a `WeakMap` keyed by the real setter, then calls it. Class components get a
+  per-instance `updater` wrapper. Renderers found already injected are observed without a tap (commit-time attribution).
+  `onCommitFiberRoot` walks `root.current` against its alternate with an explicit stack, descending only where
+  `fiber.child !== alternate.child` and skipping children without an alternate (mounted now), compares hook lists in
+  step (state hooks: `queue.dispatch` + `lastRenderedReducer`; `useSyncExternalStore`: `queue.getSnapshot`; the
+  `useTransition` flag skipped), and stops at `COMMIT_BUDGET_MS` (1 ms, checked every 32 fibers) or 20,000 fibers.
+  Changes are grouped per captured writer (fallback: the op ambient at commit) and recorded in capture order through
+  `ObservedStore.write` -> `StoreHub.observe`. Stores: one per component instance on its first recordable change
+  (initial value = the previous values), `Name`, `Name_2`, `Name_3` (`MAX_INSTANCES`), 48 component stores, 16 state
+  fields per component; minified names (`isMinified`) are replaced by `labelOf` the first rendered elements. Skipped:
+  `INTERNAL` names, error-boundary classes, anonymous/`default` names, non-data values (`isData`); strings equal to a
+  sensitive input's value (`observe/dom-user.ts` -> `isSensitiveField`) are stored as `[redacted]` from then on. Five
+  walk errors turn React discovery off. `stats()`: commits, over-budget commits, fibers visited, the last 1,024 walk
+  durations.
+- **Redux / Zustand** (`discover/redux.ts`): `window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__` and
+  `__REDUX_DEVTOOLS_EXTENSION__` shims (the real extension's are called first and restored on uninstall). Stores
+  created through them get `adapters/redux.ts` -> `genclassEnhancer` innermost under a free name (`devtools name` or
+  `redux`, tagged `source: "redux"`): a full adapter. `connect(options)` returns a connection that forwards to the real
+  one and records `init`/`send` states (functions stripped) in an observed store (`options.name` or `store`, source
+  `devtools`), attributed to the op ambient at `send` (synchronous after the change).
+- **Hub** (`StoreHub.observe`): builds a `MutationRec` (cause = writer, `userSync` = captured flag), runs
+  `hooks.proposed` (delivery finalisation, `mutationProposed`) and, unless it bypasses (user-sync, GenClass, paused),
+  `hooks.observeWrite` (background `mutation` decision, skipped when a delivery decision covers it), then `record`s
+  under `ctx.run(writer)`. Never `filter`/`gate`/queue.
+- **No write actions on observed stores:** `situation/build.ts` -> `builtinUnavailable`: `mutation` `discard`/`defer`
+  not offered for an observed store; delivery `discard` not offered when every conflicting or matched field is in an
+  observed store (`deliveryDroppable`, `SitEnv.observedOnly`); `RuntimeImpl.deliveryHoldable` and the `writesAct`
+  check in `trigger` use the same predicate (no hold just for an impossible discard; such deliveries are decided in the
+  background even in guard/heal). `rollback`/chain revert already require `writable`. Not-offered reasons are not
+  model-visible; the action list (and so the questions) can shrink, which is normal data.
+- **Telemetry:** `RuntimeImpl.decisionInfo().autoState` is true once any store with a `source` has a write;
+  `telemetry/client.ts` then omits the decision's `situation` text.
+- Introspection: `rt.stores()` (public: name, kind, source, writable, fields, version); `RuntimeImpl.discoveryStats()`
+  (internal). Tests: `discover-react.test.ts`, `discover-react-prod.test.ts` (production React build),
+  `discover-redux.test.ts` (RTK 2 `configureStore` devtools path replicated; zustand `devtools`), `discover-early.test.ts`,
+  `discover-auto.test.ts`, `discover-unregistered.test.ts`, `bundle.test.ts` (discovery in `/auto`, not in the main entry).
 
 ## Configuration and constants
 

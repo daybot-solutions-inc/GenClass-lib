@@ -80,6 +80,9 @@ interface InitOptions {
     include?: { situation?: boolean };                  // [true] include the redacted situation text
     transport?: { send(url: string, body: string, o: { beacon: boolean }): void | Promise<unknown> }; // tests / custom pipelines
   };
+  autoState?: boolean | { react?: boolean; redux?: boolean; zustand?: boolean; pinia?: boolean };
+                                                        // automatic state discovery: default on in @genclass/runtime/auto* and the script tag,
+                                                        // off in GenClass.init / createRuntime (there it needs import "@genclass/runtime/discover" first)
 
   // batch 12 (docs/runtime/OPTIONS-SPEC.md); defaults in brackets
   enabled?: boolean | (() => boolean | Promise<boolean>) | { get(): boolean | Promise<boolean>; subscribe?(cb: () => void): () => void };
@@ -144,6 +147,18 @@ Self-hosting the model: `npx @genclass/runtime fetch-model public/genclass-model
 
 GenClass protects state it can see. Register stores with `atom` (owned by GenClass), `guard` (owned by you) or an
 adapter (Redux, Zustand, React hooks).
+
+**Automatic state discovery** (`autoState`, on with the one line: `import "@genclass/runtime/auto"` or the script tag)
+finds React component state (`useState`, `useReducer`, `useSyncExternalStore`, class state; through the React
+DevTools hook), Redux / Redux Toolkit stores (through the Redux DevTools compose and enhancer globals) and Zustand
+`devtools` stores (through the Redux DevTools `connect` API). Each write is recorded with the operation that made it.
+Discovered Redux stores get the Redux adapter (controllable, kind `adapter`). Discovered React and Zustand state is
+**observed only** (kind `observed`): it feeds facts, triage, detections and delivery decisions (`deliver` / `defer`),
+but GenClass never holds, drops, reverts or rolls back its writes, so `discard` and `rollback` are not offered for it.
+React stores are named after the component (`SearchPage.state0`, `SearchPage.external0`, class state keys; in
+production builds after the element the component renders). Opt out with `autoState: false` or
+`<meta name="genclass" content="autostate=off">`; `?genclass=off` installs nothing. With `GenClass.init`, import
+`@genclass/runtime/discover` before React / Redux / Zustand and pass `autoState: true`.
 
 ```ts
 rt.atom<T>(name: string, initial: T, opts?: StoreOptions<T>): Atom<T>
@@ -296,6 +311,7 @@ rt.history(n?): RtEvent[]          // recent events, oldest first
 rt.decisions(n?): Decision[]       // last 200 decisions
 rt.interventions(n?): ActionRecord[]
 rt.inflight(): Op[]
+rt.stores(): StoreInfo[]           // registered and discovered stores: { name, kind: "atom"|"guard"|"adapter"|"observed", source?, writable, fields, version }
 rt.setMode(mode); rt.pause(); rt.resume(); rt.destroy()
 rt.telemetry?: { enabled; reason?; endpoint?; sessionId?; flush(): Promise<void> } // reason when off: option, headless, url, localStorage, gpc, sampled-out, kill-switch, disabled, ...
 ```
@@ -507,7 +523,8 @@ provider error makes the runtime fail open.
 
 Subpath exports: `@genclass/runtime/react` (`useGenClassState(name, initial, opts?)`, `useAtom(atom)`,
 `useGenClass()`), `@genclass/runtime/redux` (`genclassEnhancer(runtime, { name })`), `@genclass/runtime/zustand`
-(`genclass(runtime, name)(stateCreator)`), `@genclass/runtime/devtools` (`mountDevtools(runtime, opts?)`). They are
+(`genclass(runtime, name)(stateCreator)`), `@genclass/runtime/devtools` (`mountDevtools(runtime, opts?)`),
+`@genclass/runtime/discover` (automatic state discovery for `GenClass.init({ autoState: true })`; import it first). They are
 documented with their source. To integrate another state library use:
 
 ```ts

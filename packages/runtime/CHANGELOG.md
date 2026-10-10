@@ -1,8 +1,45 @@
 # Changelog
 
-## Unreleased (branch `heal/overnight`, 2026-10-09)
+## 0.1.0-beta.4 (unpublished, 2026-10-10)
 
-Found with the local healing benchmark (`bench/heal/`, report: `NIGHT-REPORT.md`). No situation text or other
+### One line covers the whole app (automatic state discovery)
+
+`<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime"></script>` or `import "@genclass/runtime/auto"` now
+also finds the app's state, so delivery decisions (a response that would overwrite newer data) work in apps that
+register no store. In the Troy trial (Next.js 16, React state) GenClass had made no state-based decision at all,
+because it saw only the network. No situation text or other model-visible text format changes (discovered fields
+are ordinary data); telemetry sends less, not more (below).
+
+- **`InitOptions.autoState`** (`boolean | { react?, redux?, zustand?, pinia? }`): on by default in
+  `@genclass/runtime/auto*` and the script tag, off in `GenClass.init()` / `createRuntime()` so explicit setups do
+  not change. Installed synchronously when the entry is evaluated, before the framework. Off with
+  `autostate=off` (meta tag, `data-autostate`), `window.GENCLASS_CONFIG.autoState = false`, or the kill switch.
+- **React ≥ 16.8** (development and production builds) through the React DevTools global hook, installed when absent
+  or chained onto an existing one (the extension and React Refresh keep working). Renderers that inject before they
+  render get stable wrapped setters that record the op that called `setState` (fetch callback, timer, user handler),
+  so a commit that happens later in React's scheduler keeps its cause. Commits are walked over re-rendered fibers only,
+  with a 1 ms budget. One observed store per component instance (`Comp.state0`, `Comp.external0`, class state keys;
+  production builds: named after the rendered element), 3 instances per component and 48 stores at most; framework
+  internals, error boundaries and non-data values are skipped; values equal to a password/card/one-time-code input
+  are redacted.
+- **Redux / Redux Toolkit** through `window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__` / `__REDUX_DEVTOOLS_EXTENSION__`
+  shims (forwarding to the real extension): stores created with them get GenClass's Redux enhancer, a full adapter.
+  **Zustand** `devtools` stores (and other Redux DevTools `connect` clients) become observed stores.
+- **Observed-only stores** (new hub store kind `observed`): writes are recorded with their writer, versions and
+  history and decided in the background (detection), never held, dropped, reverted or rolled back. A mutation of an
+  observed store offers no write action, and a delivery `discard` is not offered when every field it would write is
+  observed only (`defer` still is). Not-offered reasons are not model-visible.
+- **`@genclass/runtime/discover`**: the discovery code for `GenClass.init({ autoState: true })` setups (the main
+  entry stays without it). Importing it first installs the hooks at once; a runtime started later attaches.
+- **`runtime.stores()`** lists registered and discovered stores; the devtools overlay's Now view shows them.
+- **Telemetry:** once discovered state has been recorded, decisions are sent without their situation text (the app
+  never registered that state).
+- **Cost:** `/auto` first load about 96 KB gzip (was 89 KB; the main entry is unchanged at 89 KB); the script-tag
+  file about 110 KB gzip. Commit-walk and Troy measurements: README "Costs".
+
+### Fixes from the local healing benchmark (`bench/heal/`, `NIGHT-REPORT.md`)
+
+No situation text or other
 model-visible text changes; no telemetry change.
 
 - **Fix: delivery `discard` on Redux and Zustand stores.** A response whose chain writes stale fields *and* other
@@ -15,9 +52,9 @@ model-visible text changes; no telemetry change.
 - **`policy.idempotencyBodyFields`** (opt-in, default none): top-level JSON body fields that carry an idempotency
   key the server deduplicates on (e.g. `["request_id"]`), so `retry` may be offered for such a POST.
 
-## 0.1.0-beta.4 (2026-10-09)
+### Fixes from the first real-app trial
 
-Fixes from the first real-app trial (Troy, a Next.js 16 site with a strict Content-Security-Policy, observe mode,
+Found in the Troy trial ( a Next.js 16 site with a strict Content-Security-Policy, observe mode,
 `0.1.0-beta.3`). No change to what the model sees (no situation or model-visible text change) and none to the
 telemetry payload.
 

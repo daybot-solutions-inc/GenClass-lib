@@ -36,7 +36,9 @@ Only data the runtime already computes for its own decisions, after redaction:
   by `[redacted]`; see the README's [Privacy](README.md#privacy-and-telemetry) section for the rules and their known
   gaps). Situation text describes operations (e.g. `GET /api/items/:id`), store fields and short value summaries,
   timing and the facts GenClass computed. It can contain app data that the redactor does not recognise as secret
-  (for example a product name or a search term). `include: { situation: false }` leaves it out.
+  (for example a product name or a search term). `include: { situation: false }` leaves it out. It is also left
+  out of every decision once automatically discovered state (`autoState`: React, Redux or Zustand state the app
+  never registered) has been recorded on the page (since `0.1.0-beta.4`).
 - **Never:** typed values of password, payment (`cc-*`), one-time-code or secret-named inputs (the runtime never
   records them in the first place), cookies, request or response headers, request or response bodies, storage
   contents, the page's query string or fragment, the full URL, error messages or stack traces of your app, the
