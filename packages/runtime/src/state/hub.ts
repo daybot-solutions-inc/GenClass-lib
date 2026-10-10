@@ -118,6 +118,8 @@ export interface MutationRec {
   verdict?: Verdict;
   /** Set when the write was applied or dropped. */
   outcome?: "applied" | "discarded" | "deferred" | "failed";
+  /** When the write was first held (policy.holdWrites): its deferred re-decisions share one hold budget. */
+  heldSince?: number;
   /** When applied: the time, the global sequence number and the changes actually made (for a late revert). */
   appliedAt?: number;
   appliedSeq?: number;

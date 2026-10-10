@@ -29,6 +29,7 @@ const MODES = ["observe", "guard", "heal"];
 
 const REPO = "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main";
 export const TELEMETRY_URL = `${REPO}/packages/runtime/TELEMETRY.md`;
+export const INTERCEPTION_URL = "https://genclass.dev/docs/interception";
 export const PRIVACY_URL = `${REPO}/PRIVACY.md`;
 
 export const USAGE = `Usage:
@@ -240,6 +241,49 @@ function recommendations(project, state) {
     });
   }
   return recs;
+}
+
+/** Payment SDKs: a project that depends on one has a money flow GenClass should only observe. */
+const PAYMENT_DEPS = [
+  "stripe",
+  "@stripe/stripe-js",
+  "@stripe/react-stripe-js",
+  "@paypal/paypal-js",
+  "@paypal/react-paypal-js",
+  "braintree-web",
+  "@braintree/browser-drop-in",
+  "@adyen/adyen-web",
+  "@square/web-sdk",
+  "@paddle/paddle-js",
+  "@lemonsqueezy/lemonsqueezy.js",
+  "@recurly/recurly-js",
+  "@mollie/api-client",
+  "@shopify/storefront-api-client",
+];
+/** Source paths named like a money flow (a checkout page, a payments module). */
+const MONEY_PATH = /(^|[\\/])(checkout|payments?|billing|subscriptions?)([\\/._-]|$)/i;
+
+/** Evidence of a payment flow: the payment SDKs the project depends on and up to 3 source paths named like one. */
+export function moneyFlows(project, files) {
+  const deps = PAYMENT_DEPS.filter((d) => project.has?.(d));
+  const paths = files.map((f) => posix(relative(project.dir, f))).filter((r) => MONEY_PATH.test(r)).slice(0, 3);
+  return deps.length || paths.length ? { deps, paths } : null;
+}
+
+/**
+ * Suggest requests.protect for payment and sign-in endpoints (an opt-in preset; nothing is applied): protected
+ * requests, their responses and what those responses write are observe-only in every mode (INTERCEPTION.md).
+ */
+function printMoneyAdvice(money, cfgFile) {
+  if (!money) return;
+  const found = [...money.deps, ...money.paths].slice(0, 3).join(", ");
+  out(`  ${c.bold("Payments")} ${c.gray(`(found ${found}; not applied)`)}`);
+  out(`    GenClass recommends keeping checkout and sign-in requests observe-only in every mode: it then never holds,`);
+  out(`    retries, caches, coalesces or drops them, nor what their responses write. Add to GenClass's options`);
+  out(`    (${cfgFile ? `${cfgFile}, ` : ""}window.GENCLASS_CONFIG or GenClass.init({ ... })):`);
+  out(`        ${c.cyan(`requests: { protect: ["preset:payments", "preset:auth"] }`)}`);
+  out(`    Details: ${INTERCEPTION_URL}#money-and-identity-flows`);
+  out();
 }
 
 function printRecommendations(recs) {
@@ -525,8 +569,10 @@ async function init(o) {
   out();
 
   const recs = recommendations(project, detectState(project, files));
+  const money = moneyFlows(project, files);
   if (o.dryRun) {
     printRecommendations(recs);
+    printMoneyAdvice(money, cfgAt);
     out(`  ${c.gray("Dry run: nothing was written.")}`);
     out();
     return 0;
@@ -565,6 +611,7 @@ async function init(o) {
 
   out();
   printRecommendations(recs);
+  printMoneyAdvice(money, cfgAt);
   out(`  Undo: ${c.cyan(`${CMD} remove`)}`);
   out();
   return 0;

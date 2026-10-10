@@ -52,7 +52,12 @@ import type {
   SinkRecord,
   SinkKind,
   EnabledSource,
+  AuditEntry,
+  AuditKind,
+  AuditModel,
 } from "./types.js";
+import { AuditLog, type AuditDraft } from "./decide/audit.js";
+import { expandPresets } from "./presets.js";
 import { Breaker, breakerConfig } from "./decide/breaker.js";
 import { SinkDispatcher, SummaryTracker } from "./decide/summary.js";
 import { compileMatchers, compileValued, hash32, routeMatches, sanitizeLabel, type CompiledMatcher, type MatchInput } from "./util/match.js";
@@ -268,6 +273,7 @@ export class RuntimeImpl implements Runtime {
   private hookWarnedAt = -Infinity;
   private limitWarned = new Map<string, number>();
   private sinks!: SinkDispatcher;
+  private auditLog!: AuditLog;
   private sum!: SummaryTracker;
   private sessionId = "";
   private sessionTags: Record<string, string | number | boolean> = {};
@@ -405,13 +411,15 @@ export class RuntimeImpl implements Runtime {
     this.sessionId = typeof o.session?.id === "string" && o.session.id ? o.session.id.slice(0, 128) : this.newSessionId();
     this.sessionTags = this.cleanTags(o.session?.tags ?? {});
     this.sinks = new SinkDispatcher(o.sinks, this.clock, this.global, (m) => this.warn(m));
+    this.auditLog = new AuditLog(o.audit, this.clock, (m) => this.warn(m));
     // sample: the session's bucket is decided once and frozen (sessionStorage)
     this.sampled = this.sampleBucket(o.sample, url.get("genclass-sample"));
     // routes, requests
     this.routes = Array.isArray(o.routes) ? o.routes : [];
     this.requestsOpt = o.requests ?? {};
     this.mIgnore = compileMatchers(this.requestsOpt.ignore as never, "nomatch");
-    this.mProtect = compileMatchers(this.requestsOpt.protect as never, "match");
+    // "preset:payments" / "preset:auth" strings stand for those presets' matchers (src/presets.ts)
+    this.mProtect = compileMatchers(expandPresets(this.requestsOpt.protect, (m) => this.warn(m)) as never, "match");
     const labels: { match: never; value: string }[] = [];
     let labelWarned = false;
     for (const l of this.requestsOpt.labels ?? []) {
@@ -698,12 +706,15 @@ export class RuntimeImpl implements Runtime {
   private followEnabled(en: Exclude<NonNullable<CreateOptions["enabled"]>, boolean>): void {
     const set = (on: boolean) => {
       if (this.destroyed || this.enabledState === "disabled") return;
+      const from = this.enabledState;
       if (on) {
         this.enabledState = "on";
+        if (from !== "on") this.auditControl("enabled", from, "on");
         this.fire("status", this.status);
         return;
       }
       this.enabledState = "off";
+      if (from !== "off") this.auditControl("enabled", from, "off");
       this.releaseHolds();
       this.fire("status", this.status);
     };
@@ -739,8 +750,46 @@ export class RuntimeImpl implements Runtime {
     }
   }
 
+  // ------------------------------------------------------------------------------------------- audit trail
+
+  /** The model in force now, for audit entries (never throws). */
+  private auditModel(): AuditModel {
+    const st = this.decider?.status;
+    if (!st) return { name: "none", state: "off" };
+    const m: AuditModel = { name: st.model ?? st.variant ?? "custom", state: st.state };
+    if (st.version) m.version = st.version;
+    if (st.variant) m.variant = st.variant;
+    if (st.device) m.device = st.device;
+    if (st.sha256) m.sha256 = st.sha256;
+    return m;
+  }
+
+  /** The common part of an audit entry. */
+  private auditBase(kind: AuditKind, mode: ModeOrOff, aggr: number, op?: OpRec | null): AuditDraft {
+    const profile = aggr === 0 ? "cautious" : aggr === 0.5 ? "balanced" : aggr === 1 ? "eager" : undefined;
+    const d: AuditDraft = { at: this.clock.now(), kind, sessionId: this.sessionId, mode, requestedMode: this._mode, aggressiveness: aggr, model: this.auditModel() };
+    if (profile) d.profile = profile;
+    if (op?.scope?.label) d.label = op.scope.label;
+    if (op?.scope?.correlationId) d.correlationId = op.scope.correlationId;
+    return d;
+  }
+
+  /** Record an audit entry built by `make` (the audit trail never breaks the runtime). */
+  private pushAudit(make: () => AuditDraft): void {
+    try {
+      this.auditLog.push(make());
+    } catch (e) {
+      this.log("audit entry failed", e);
+    }
+  }
+
+  private auditControl(what: NonNullable<AuditEntry["control"]>["what"], from?: string | number, to?: string | number): void {
+    this.pushAudit(() => ({ ...this.auditBase("control", this.sessionMode(), this._aggr), control: { what, ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}) } }));
+  }
+
   private onBreakerTrip(reason: "undos" | "errors", ids: string[], counts: { undos: number; errors: number }): void {
     this.releaseHolds();
+    this.pushAudit(() => ({ ...this.auditBase("breaker", this.sessionMode(), this._aggr), breaker: { tripped: true, reason, decisionIds: [...ids], counts: { ...counts } } }));
     this.fire("breaker", { tripped: true, reason, decisionIds: ids, counts });
     const msg = `[GenClass] Circuit breaker tripped (${reason}: ${counts.undos} undos, ${counts.errors} errors after actions); mode capped at ${this.breakerImpl?.cfg.downgradeTo}. rt.breaker.reset() clears it.`;
     this.warn(msg.replace(/^\[GenClass\] /, ""));
@@ -838,6 +887,7 @@ export class RuntimeImpl implements Runtime {
         const was = !!b.tripped;
         b.reset();
         if (was) {
+          this.pushAudit(() => ({ ...this.auditBase("breaker", this.sessionMode(), this._aggr), breaker: { tripped: false, reason: "reset", decisionIds: [], counts: { undos: 0, errors: 0 } } }));
           this.fire("breaker", { tripped: false, reason: "reset", decisionIds: [], counts: { undos: 0, errors: 0 } });
           this.fire("status", this.status);
         }
@@ -881,6 +931,7 @@ export class RuntimeImpl implements Runtime {
       }
     }
     this.releaseHolds();
+    this.auditControl("disable", this.enabledState, o.undo ? "disabled (undo)" : "disabled");
     this.enabledState = "disabled";
     this.destroy();
   }
@@ -1076,6 +1127,7 @@ export class RuntimeImpl implements Runtime {
       startOp: (kind, name, o) => this.startOp(kind, name, o),
       endOp: (op, status, o) => this.endOp(op, status, o),
       gated: (op) => !this.paused && !this.destroyed && !op.genclass && this.enabledState === "on" && op.scope?.mode !== "off",
+      mayHold: (op) => this.requestHoldable(op),
       scopeOf: (r) => this.scopeOf(r),
       trigger: (spec, ctl, opts) => this.trigger(spec, ctl, opts),
       watchStall: (op, req, ctl) => this.watchStall(op, req, ctl),
@@ -1136,6 +1188,9 @@ export class RuntimeImpl implements Runtime {
     const cause = o.cause !== undefined ? o.cause : this.ctx.op();
     const op = this.ops.start(kind, name, { ...o, cause, startSeq: this.hub.seq, t });
     op.scope = o.scope ?? this.defaultScope();
+    // requests.protect covers a protected request's causal chain: what its response callbacks do (writes, timers,
+    // follow-up requests) is observed only, like the request itself (snapshotted here, as every scope)
+    if (cause && cause.scope?.protected && !op.scope.protected) op.scope = { ...op.scope, protected: true };
     // instant user / ws-message / GenClass ops have their own events (user, custom, action)
     if (!op.instant || kind === "timer" || kind === "task") {
       const data: Record<string, unknown> = { kind };
@@ -1545,6 +1600,37 @@ export class RuntimeImpl implements Runtime {
     if (reason) decision.reason = reason;
     this.decisionsBuf.push(decision);
     if (this.decisionsBuf.length > DECISIONS_KEPT) this.decisionsBuf.shift();
+    const auditAggr = gates.aggressiveness;
+    this.pushAudit(() => {
+      const ag: NonNullable<AuditEntry["gate"]> = { kind: gates.kind, thresholds: { report: gates.report, guard: gates.guard, heal: gates.heal }, source: { ...gates.source } };
+      if (g.candidate) ag.candidate = g.candidate;
+      if (gates.kind === "gain") {
+        if (g.gain !== undefined) ag.gain = g.gain;
+        if (g.threshold !== undefined) ag.margin = g.threshold;
+      } else {
+        ag.mass = g.mass;
+        if (g.threshold !== undefined) ag.threshold = g.threshold;
+      }
+      return {
+        ...this.auditBase("decision", effMode, auditAggr, subjectOp),
+        decisionId: decision.id,
+        trigger,
+        subject: redactUrlText(decision.subject),
+        diagnosis,
+        diagnosisConfidence,
+        proposed: top,
+        probabilities: { ...probabilities },
+        ran: decision.ran,
+        executed: decision.executed,
+        tier,
+        ...(reason ? { reason } : {}),
+        gate: ag,
+        held: st.waits,
+        ...(st.budget !== undefined ? { holdBudgetMs: st.budget } : {}),
+        latencyMs,
+        ...(shadow ? { shadow: { ...shadow } } : {}),
+      };
+    });
     const rec: ExplainRec = {
       decision,
       situationText: stateText(built.situation.state),
@@ -1615,10 +1701,27 @@ export class RuntimeImpl implements Runtime {
           this.runAsGenClass("undo", () => undo());
           this.events.push(this.clock.now(), "action", "undo", { data: { text: `undid ${action} (${record.id})`, id: record.id } });
           this.emitReport({ kind: "undo", message: `[GenClass] Undid ${action} (${record.id}).`, decision, action: record }, subjectOp);
+          const byRuntime = this.internalUndo;
+          this.pushAudit(() => ({ ...this.auditBase("undo", this.effectiveMode(subjectOp), auditAggr, subjectOp), decisionId: decision.id, actionId: record.id, trigger, subject: redactUrlText(record.subject), ran: action, tier, byRuntime }));
           // an undo by the app or the user is a signal for the breaker (not rt.disable({ undo: true }))
           if (!this.internalUndo) this.breakerImpl?.undo(decision.id);
         };
       }
+      this.pushAudit(() => ({
+        ...this.auditBase("action", effMode, auditAggr, subjectOp),
+        decisionId: decision.id,
+        actionId: record.id,
+        trigger,
+        subject: redactUrlText(record.subject),
+        ran: action,
+        tier,
+        ok: record.ok,
+        ...(record.error ? { error: redactUrlText(record.error) } : {}),
+        changed: redactUrlText(record.changed),
+        undoable: !!record.undo,
+        ...(record.late ? { late: true } : {}),
+        ...(record.dropped ? { dropped: [...record.dropped] } : {}),
+      }));
       this.actionsBuf.push(record);
       if (this.actionsBuf.length > DECISIONS_KEPT) this.actionsBuf.shift();
       rec.action = record;
@@ -1776,7 +1879,9 @@ export class RuntimeImpl implements Runtime {
       if (sync) syncVerdict = v;
       resolveV(v);
     };
-    this.trigger({ trigger: "mutation", m }, this.mutationController(m, settle), { hold: true, priority: 2 });
+    // holdBudgetMs is a ceiling on the write's total added latency: a deferred write's re-decisions share its budget
+    m.heldSince ??= this.clock.now();
+    this.trigger({ trigger: "mutation", m }, this.mutationController(m, settle), { hold: true, priority: 2, ...(m.defers > 0 ? { heldSince: m.heldSince } : {}) });
     sync = false;
     if (syncVerdict === "apply") return {};
     if (syncVerdict) return { held: Promise.resolve(syncVerdict) };
@@ -1958,7 +2063,16 @@ export class RuntimeImpl implements Runtime {
         return;
       }
       if (!salient && !always) return rel();
-      if (!released) this.trigger(spec, ctl, { hold: true, priority: 2, ...(defers > 0 ? { heldSince: since } : {}) });
+      if (released) return;
+      // holdBudgetMs is a ceiling on the delivery's total added latency: the wait for its body above counts against it.
+      // Nothing left of it: deliver now and decide in the background (detection), like a delivery that cannot be held
+      if (defers === 0 && this.holdBudgetMs() - (this.clock.now() - since) <= 0) {
+        markOverNewer();
+        rel();
+        this.trigger(spec, ctl, { hold: false, priority: 2 });
+        return;
+      }
+      this.trigger(spec, ctl, { hold: true, priority: 2, heldSince: since });
     };
     if (!o.body) return settle(newer.length > 0);
     let done = false;
@@ -2057,6 +2171,17 @@ export class RuntimeImpl implements Runtime {
     // the hold budget is a ceiling on the delivery's total added latency, deferred re-decisions included
     const budget = this.holdBudgetMs() - (defers > 0 ? this.clock.now() - since : 0);
     return any && budget > 0 && this.expectedLatency() <= budget;
+  }
+
+  /**
+   * Whether a request could wait for its decision at all (fetch reads a Request body for its identity only then):
+   * never in observe mode or while paused, hidden or the model is not ready, nor for a protected, cross-origin or
+   * off/observe-scoped op. Conservative: trigger() may still decide not to hold it.
+   */
+  private requestHoldable(op: OpRec): boolean {
+    if (!this.consultable() || this.hidden() || this.decider?.status.state !== "ready") return false;
+    const mode = this.effectiveMode(op);
+    return mode !== "off" && mode !== "observe" && !this.blockOf(op);
   }
 
   /** Whether a write's own decision could still change it (discard while held, late revert once applied). */
@@ -2184,12 +2309,16 @@ export class RuntimeImpl implements Runtime {
     return drop;
   }
 
-  /** Since x started, a user action or a newer operation (outside x's chain) wrote this field. */
+  /**
+   * Since x started, a user action or a newer operation (outside x's chain) wrote this field. GenClass's own writes
+   * (a late revert, a rollback, an undo) are not newer data: counting them made one revert drop every later write of
+   * x's chain to the field for the whole mark.
+   */
   private writtenOver(x: OpRec, path: string): boolean {
     for (const e of this.hub.logSince(path, x.startSeq)) {
       if (e.writer === null) continue;
       const w = this.ops.get(e.writer);
-      if (!w || this.ops.isAncestorOrSelf(x, w) || this.ops.isAncestorOrSelf(w, x)) continue;
+      if (!w || w.genclass || this.ops.isAncestorOrSelf(x, w) || this.ops.isAncestorOrSelf(w, x)) continue;
       if (e.user || w.kind === "user" || w.start > x.start) return true;
       const root = this.ops.get(e.root);
       if (root && root.kind === "user" && root.start > x.start) return true;
@@ -2230,7 +2359,9 @@ export class RuntimeImpl implements Runtime {
     });
   }
 
+  /** A deferred write waits for its related in-flight ops, at most what is left of its hold budget (10 s at most). */
   private waitRelated(m: MutationRec): Promise<void> {
+    const left = m.heldSince !== undefined ? Math.max(0, this.holdBudgetMs() - (this.clock.now() - m.heldSince)) : LONG_RUNNING_MS;
     const C = m.cause;
     const related = [...this.ops.inFlight].filter((o) => {
       if (C && (this.ops.isAncestorOrSelf(o, C) || this.ops.isAncestorOrSelf(C, o))) return false;
@@ -2252,7 +2383,7 @@ export class RuntimeImpl implements Runtime {
         pending.delete(op);
         if (!pending.size) finish();
       });
-      const timer = this.clock.setTimeout(finish, LONG_RUNNING_MS);
+      const timer = this.clock.setTimeout(finish, Math.min(left, LONG_RUNNING_MS));
     });
   }
 
@@ -2679,7 +2810,9 @@ export class RuntimeImpl implements Runtime {
   }
 
   setAggressiveness(a: Aggressiveness): void {
+    const from = this._aggr;
     this._aggr = aggressivenessLevel(a);
+    this.auditControl("setAggressiveness", from, this._aggr);
     this.emitReport({ kind: "status", message: `[GenClass] Aggressiveness set to ${this._aggr}.` });
     this.fire("status", this.status);
   }
@@ -3075,25 +3208,33 @@ export class RuntimeImpl implements Runtime {
     return this.actionsBuf.slice(-n);
   }
 
+  audit(n?: number): AuditEntry[] {
+    return this.auditLog.list(n);
+  }
+
   inflight(): Op[] {
     return [...this.ops.inFlight];
   }
 
   setMode(mode: Mode): void {
     if (mode !== "observe" && mode !== "guard" && mode !== "heal") return;
+    const from = this._mode;
     this._mode = mode;
     this.computeScope();
+    this.auditControl("setMode", from, mode);
     this.emitReport({ kind: "status", message: `[GenClass] Mode set to ${mode}.` });
     this.fire("status", this.status);
   }
 
   pause(): void {
+    if (!this.paused && !this.destroyed) this.auditControl("pause");
     this.paused = true;
     this.hub.gating = false;
   }
 
   resume(): void {
     if (this.destroyed) return;
+    if (this.paused) this.auditControl("resume");
     this.paused = false;
     this.hub.gating = true;
   }
@@ -3116,6 +3257,7 @@ export class RuntimeImpl implements Runtime {
     this.queue.dispose();
     this.deliveryAnalysis.clear();
     this.reporter.dispose();
+    this.auditLog.drain(); // entries recorded so far reach the audit sink (rt.audit() keeps working after destroy)
     if (this.settleTimer !== null) this.clock.clearTimeout(this.settleTimer);
     if (this.persistTimer !== null) this.clock.clearTimeout(this.persistTimer);
     for (const u of this.uninstall.reverse()) {

@@ -59,10 +59,11 @@ describe.skipIf(!built)("dist as an app bundles it", () => {
     }
   }, 60_000);
 
-  // /auto carries automatic state discovery (autoState, beta.4: about 6.5 KB); the main entry does not (README: about
-  // 96 KB for /auto, 89 KB for GenClass.init)
-  const LIMIT_KB: Record<string, number> = { "auto.js": 98, "index.js": 92 };
-  it("first-load cost of /auto and the main entry, minified + gzip: under 98 KB / 92 KB (README: about 96 / 89 KB)", async () => {
+  // /auto carries automatic state discovery (autoState, beta.4: about 6.5 KB); the main entry does not. The audit trail,
+  // protect presets and the hold-budget fixes (Unreleased) added about 1.6 KB to both (README: about 98 KB for /auto,
+  // 91 KB for GenClass.init)
+  const LIMIT_KB: Record<string, number> = { "auto.js": 99, "index.js": 92 };
+  it("first-load cost of /auto and the main entry, minified + gzip: under 99 KB / 92 KB (README: about 98 / 91 KB)", async () => {
     const { build } = await import("esbuild");
     const uses: Record<string, string> = { "auto.js": "", "index.js": "GenClass.init({});" };
     for (const entry of ["auto.js", "index.js"]) {

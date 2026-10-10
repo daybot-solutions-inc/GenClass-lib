@@ -83,6 +83,11 @@ export interface ModelStatus {
   version?: string;
   /** Size of the loaded variant file. */
   bytes?: number;
+  /**
+   * The loaded variant's sha256 as listed in the model card (model.json), which the download (or the Cache Storage
+   * entry) was verified against; absent when the card lists none. Recorded in every audit entry (rt.audit()).
+   */
+  sha256?: string;
   /** The variant came from Cache Storage (no download). */
   fromCache?: boolean;
   /** WASM threads (1 unless the page is crossOriginIsolated). */
@@ -479,8 +484,13 @@ export interface RouteRule {
 export interface RequestScope {
   /** Pass-through: not observed at all (no op, no hold). */
   ignore?: RequestMatcher[];
-  /** Observed and reported, but never held, delayed, retried, replayed, hedged, coalesced, served from cache or discarded. */
-  protect?: RequestMatcher[];
+  /**
+   * Observed and reported, but never held, delayed, retried, replayed, hedged, coalesced, served from cache or
+   * discarded; neither are the state writes its response callbacks make (the request's causal chain). Recommended for
+   * payment, checkout and sign-in endpoints. A string "preset:payments" or "preset:auth" stands for that preset's
+   * matchers (`protectPreset()`, `PROTECT_PRESETS`), for JSON configs.
+   */
+  protect?: Array<RequestMatcher | `preset:${string}`>;
   /** Cross-origin requests are always passive; "ignore" also stops observing them. Default "observe". */
   crossOrigin?: "observe" | "ignore";
   /** Names for endpoints in reports and sinks ([A-Za-z0-9 _-], ≤ 5 words, ≤ 40 chars). */
@@ -580,6 +590,105 @@ export interface SessionSummary {
   errors: number;
 }
 
+/** What an audit entry records (rt.audit()). */
+export type AuditKind = "decision" | "action" | "undo" | "breaker" | "control";
+
+/** The model an audit entry was decided with (from rt.status at the time). */
+export interface AuditModel {
+  /** Model card name, else the provider's variant or "custom"; "none" without a provider. */
+  name: string;
+  state: ModelStatus["state"];
+  version?: string;
+  variant?: string;
+  device?: "webgpu" | "wasm";
+  /** The sha256 the loaded variant was verified against (model.json), when the card lists one. */
+  sha256?: string;
+}
+
+/** The gate values a decision was compared with (OPTIONS-SPEC §0.4; decide/policy.ts -> gate). */
+export interface AuditGate {
+  kind: GateKind;
+  /** The report threshold and the tier thresholds (mass) or margins (gain) in force for this trigger. */
+  thresholds: { report: number; guard: number; heal: number };
+  /** Where each came from: the app's policy, the model's meta gate, or the defaults. */
+  source: { report: GateSource; guard: GateSource; heal: GateSource };
+  /** The most probable action the mode and policy permitted. */
+  candidate?: string;
+  /** Summed probability of the permitted actions (mass kind). */
+  mass?: number;
+  /** The threshold the candidate's tier needed (mass kind). */
+  threshold?: number;
+  /** gain kind: ĝ of the candidate and the margin it needed. */
+  gain?: number;
+  margin?: number;
+}
+
+/**
+ * One entry of the audit trail (rt.audit(), InitOptions.audit.sink). JSON-serialisable (no functions), built from
+ * values the runtime already has; it never feeds a decision, never changes what the model reads and is never sent
+ * anywhere by GenClass. URL query and fragment values in `subject`, `changed` and `error` are replaced with "…".
+ */
+export interface AuditEntry {
+  schema: 1;
+  /** 1, 2, 3, … per runtime, without gaps (the in-memory buffer drops the oldest entries first). */
+  seq: number;
+  /** Runtime clock time (ms). */
+  at: number;
+  kind: AuditKind;
+  sessionId: string;
+  /** The effective mode for the subject (decision, action, undo) or for the session (breaker, control). */
+  mode: ModeOrOff;
+  /** The mode the app asked for (rt.mode). */
+  requestedMode: Mode;
+  /** The aggressiveness level in force (0 cautious … 1 eager) and its name when it is a named profile. */
+  aggressiveness: number;
+  profile?: "cautious" | "balanced" | "eager";
+  model: AuditModel;
+  decisionId?: string;
+  actionId?: string;
+  trigger?: TriggerKind;
+  subject?: string;
+  label?: string;
+  correlationId?: string;
+  /** decision: the model's diagnosis and its probability, the action it ranked first and its probabilities. */
+  diagnosis?: string;
+  diagnosisConfidence?: number;
+  proposed?: string;
+  probabilities?: Record<string, number>;
+  /** decision: the action that ran (the passive one unless the gate let `candidate` through); action/undo: the action. */
+  ran?: string;
+  executed?: boolean;
+  tier?: Tier;
+  /** Why the passive action ran instead (protected, cross-origin, scope, vetoed, limit:*, threshold, mode, ...). */
+  reason?: string;
+  gate?: AuditGate;
+  /** decision: whether the subject waited for it, the hold budget then, the model's latency. */
+  held?: boolean;
+  holdBudgetMs?: number;
+  latencyMs?: number;
+  shadow?: { action: string; tier: Tier; wouldPass: boolean; reason?: string };
+  /** action: whether it worked, what it changed, whether it can be undone, late revert, the paths it dropped. */
+  ok?: boolean;
+  error?: string;
+  changed?: string;
+  undoable?: boolean;
+  late?: boolean;
+  dropped?: string[];
+  /** undo: true when rt.disable({ undo: true }) rolled it back (not counted by the breaker). */
+  byRuntime?: boolean;
+  breaker?: { tripped: boolean; reason: "undos" | "errors" | "reset"; decisionIds: string[]; counts: { undos: number; errors: number } };
+  /** control: what changed (setMode, setAggressiveness, pause, resume, enabled, disable) and from/to. */
+  control?: { what: "setMode" | "setAggressiveness" | "pause" | "resume" | "enabled" | "disable"; from?: string | number; to?: string | number };
+}
+
+/** InitOptions.audit: the in-memory audit trail and an optional sink for the app's own logging. */
+export interface AuditOptions {
+  /** Entries kept in memory for rt.audit() (default 1,000, at most 10,000; 0 keeps none, the sink still gets all). */
+  size?: number;
+  /** Receives every entry, in order, on a microtask after it is recorded (never on a hold path); errors are swallowed. */
+  sink?: (e: AuditEntry) => void;
+}
+
 /** Where an op was created: its effective mode and aggressiveness, protection, and report-only names. */
 export interface OpScope {
   mode: ModeOrOff;
@@ -624,6 +733,12 @@ export interface InitOptions {
   sinks?: Sink[];
   /** Session id and tags stamped on records (never shown to the model). */
   session?: { id?: string; tags?: Record<string, string | number | boolean> };
+  /**
+   * The audit trail (rt.audit()): every decision, action, undo, breaker event and control change, with the mode,
+   * profile, gate values and model hash in force. Always on in memory (1,000 entries); `sink` ships entries to your
+   * own logging. Never shown to the model and never sent anywhere by GenClass. packages/runtime/INTERCEPTION.md.
+   */
+  audit?: AuditOptions;
   /**
    * Observers to install (default: all, `timers` only with a document). `untrustedEvents` (default false): record
    * synthetic DOM events (isTrusted false) as user actions too, for in-page test harnesses.
@@ -1053,6 +1168,13 @@ export interface Runtime {
   history(n?: number): RtEvent[];
   decisions(n?: number): Decision[];
   interventions(n?: number): ActionRecord[];
+  /**
+   * The audit trail, oldest first (the last `n` entries; all kept by default, up to InitOptions.audit.size, 1,000):
+   * every decision, action, undo, breaker trip/reset and control change (setMode, setAggressiveness, pause, resume,
+   * enabled, disable) as JSON-serialisable AuditEntry copies, each with the mode, profile, gate values and the
+   * model's name, version and sha256 in force. Keeps working after destroy(); `JSON.stringify(rt.audit())` exports it.
+   */
+  audit(n?: number): AuditEntry[];
   /** In-flight ops (introspection). */
   inflight(): Op[];
   /** Registered and automatically discovered stores (introspection). */

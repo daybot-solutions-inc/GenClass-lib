@@ -792,3 +792,28 @@ describe("init finds a Content-Security-Policy and prints the self-host steps", 
     expect(readFileSync(join(dir, "genclass.config.js"), "utf8")).toContain(`device: "wasm"`);
   });
 });
+
+describe("init suggests requests.protect for payment flows (INTERCEPTION.md, money and identity flows)", () => {
+  const vite = (deps: Record<string, string>, extra: Record<string, string> = {}) =>
+    project({
+      "package.json": pkg({ react: "^19.0.0", vite: "^7.0.0", ...deps }),
+      "index.html": VITE_HTML.replace("main.tsx", "main.jsx"),
+      "src/main.jsx": `import { createRoot } from "react-dom/client";\ncreateRoot(document.getElementById("root")).render(null);\n`,
+      ...extra,
+    });
+
+  it("a payment SDK dependency or a checkout page: prints the preset, applies nothing", () => {
+    const sdk = cli(vite({ "@stripe/stripe-js": "^4" }), "init", "--dry-run", "--no-install");
+    expect(sdk.code).toBe(0);
+    expect(sdk.out).toContain("Payments (found @stripe/stripe-js; not applied)");
+    expect(sdk.out).toContain(`requests: { protect: ["preset:payments", "preset:auth"] }`);
+    const page = cli(vite({}, { "src/pages/Checkout.jsx": "export default function Checkout() { return null; }\n" }), "init", "--dry-run", "--no-install");
+    expect(page.out).toContain("Payments (found src/pages/Checkout.jsx; not applied)");
+    const after = roundTrip(vite({ stripe: "^17" }));
+    expect(JSON.stringify(after)).not.toContain("preset:payments");
+  });
+
+  it("no payment code: no payment advice", () => {
+    expect(cli(vite({}), "init", "--dry-run", "--no-install").out).not.toContain("Payments (found");
+  });
+});
