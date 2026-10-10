@@ -7,20 +7,70 @@
 **A runtime for web apps. It watches the app from the inside and uses a small local model to flag, and optionally
 prevent, stale responses, races, duplicate requests, inconsistent state and failure storms.**
 
-One line, first in `<head>` or first in your entry file:
+There are two ways to use it.
 
-```html
-<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime"></script>
+### Easy: one line, the whole app
+
+```bash
+npx @genclass/runtime init   # finds your framework, adds the line, creates your app's token and dashboard link
 ```
 
+or by hand, first in `<head>`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime" data-token="gc_your_app_token"></script>
+```
+
+or first in your entry file (after `npm install @genclass/runtime`; the token goes in a
+`<meta name="genclass" content="token=gc_...">` tag or `window.GENCLASS_CONFIG = { token: "gc_..." }`, and `init`
+writes it for you):
+
 ```ts
-import "@genclass/runtime/auto"; // after npm install @genclass/runtime
+import "@genclass/runtime/auto";
 ```
 
 That covers the whole app: network, user actions, errors, timing, and the app's state (React component state,
 Redux / Redux Toolkit and Zustand `devtools` stores are discovered automatically; discovered React and Zustand state
-is observed only). Observe mode by default: it reports only. `npx @genclass/runtime init` writes the line for you;
-`GenClass.init()` is the explicit setup ([package README](packages/runtime/README.md#automatic-state-discovery)).
+is observed only). Observe mode by default: it reports only.
+
+### Function-specific: only the functions you choose
+
+```ts
+import { GenClass, protect } from "@genclass/runtime";
+
+GenClass.init({ token: "gc_your_app_token", scope: "functions" });
+
+// a checkout submit: what GenClass finds here (a double submit, overlapping calls, a failure) is reported
+// under "checkout submit"
+export const submitOrder = protect("checkout submit", async (cart) => {
+  const res = await fetch("/api/orders", { method: "POST", body: JSON.stringify(cart) });
+  if (!res.ok) throw new Error(`order failed: ${res.status}`);
+  return res.json();
+});
+
+// a search box: an out-of-order response, for example, is reported under "search"
+export const search = protect("search", (q) => fetch(`/api/search?q=${encodeURIComponent(q)}`).then((r) => r.json()));
+```
+
+`protect(name, fn)` returns a function with the same signature (same `this`, arguments, return value and errors;
+a sync function stays sync). With `scope: "functions"` GenClass still records the rest of the app as context, but it
+only makes decisions about what the protected functions cause. Without a runtime, a protected function just calls
+`fn`. Details: [package README](packages/runtime/README.md#function-specific-protect).
+
+### Your dashboard
+
+Each web app gets a **token** (`gc_` plus 22 letters and digits) and a private **dashboard link**
+(`https://genclass.dev/dashboard/...`). `npx @genclass/runtime init` creates both, writes the token into your app,
+prints the link and saves it in `.genclass.local` (added to `.gitignore`). Or click "Get a token" at
+[genclass.dev/start](https://genclass.dev/start).
+
+- The token is public: it ships in your page and only lets your app's diagnostics be grouped together.
+- **The dashboard link is the key.** Anyone with it sees your app's stats, and it is the only way to open them.
+  Keep it private.
+- It shows decisions, detections by diagnosis, actions taken, top routes and protected functions, model load,
+  backend and latency, runtime and model versions, and recent detections.
+- It gets data only while telemetry is on. Visitors who opt out or send Global Privacy Control are not counted.
+  Data is kept for 90 days.
 
 GenClass Runtime records what the app does: user actions, async operations and their causal chains, network
 traffic (fetch, XHR, WebSocket, EventSource), store writes with per-field versions, errors and timing. It computes
@@ -113,6 +163,8 @@ which available action is best. There is no list of known bugs in the code.
   stores no IP address or user agent. One console notice per page says it is on.
 - **Opt out:** `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`,
   `localStorage.setItem("genclass.telemetry", "off")`; browsers sending Global Privacy Control are never collected.
+- **With a token**, the same diagnostics are also grouped under your app's private dashboard, which whoever holds
+  its link can open. Without telemetry, a token does nothing.
 - Apps that ship GenClass may need to disclose this to their users (GDPR/CCPA). Full schema, storage and guidance:
   [packages/runtime/TELEMETRY.md](packages/runtime/TELEMETRY.md).
 
@@ -165,7 +217,7 @@ NODE_OPTIONS=--expose-gc npx vitest run test/review-perf.test.ts --retry=2   # t
 The same steps run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml), Node 22) on pushes to `main`,
 `runtime`, `mvp` and `mvp-v2`, on pull requests, and on manual dispatch.
 
-Last full local run (2026-10-09, branch `mvp-v2-b6`, version `0.1.0-beta.4`): 514 tests passed and 14 skipped, plus
+Last full local run (2026-10-10, branch `feat/projects`, version `0.1.0-beta.4`): 584 tests passed and 14 skipped, plus
 the 4 perf tests run alone. The skips are model-parity tests, which need `GENCLASS_MODEL_DIR`. The perf tests time a
 5,000-item store and can fail under parallel load.
 

@@ -1,6 +1,6 @@
 # GenClass Runtime: privacy policy
 
-_Last updated: 2026-10-09._
+_Last updated: 2026-10-10._
 
 This policy covers the diagnostics that `@genclass/runtime` (from `0.1.0-beta.3`) sends to its maintainers. It does not
 cover the website or app that uses GenClass; that site has its own privacy policy.
@@ -23,19 +23,29 @@ When a website runs GenClass with telemetry on (the default), the browser sends 
 - **Technical details:** GenClass and model versions, settings, device type (WebGPU or WASM), load times and error
   counts, and the website's hostname.
 - **Your approximate country**, from our server provider.
+- **The website's GenClass token**, if the site set one. It tells us which website the data came from, so that
+  website's owner can see it on their dashboard.
 
 We do **not** store IP addresses, browser user-agent strings or cookies, and we do not set cookies. Each page
 load gets a random session ID that is not saved anywhere.
 
 ## Why we collect it
 
-To measure how well the model works and to train better versions of it. We do not sell the data, use it for
-advertising, or try to identify individual people.
+To measure how well the model works and to train better versions of it, and to show website owners how GenClass
+works on their own site. We do not sell the data, use it for advertising, or try to identify individual people.
+
+## Dashboards for website owners
+
+A website owner can get a private dashboard link for their site's token. Whoever holds that link can see aggregated
+diagnostics for that site (counts of decisions, detections and actions, routes, model speed, versions) and a list
+of recent detections (time, route or function name, diagnosis, action). Dashboards do not show the situation text.
+Data from browsers that opted out or send Global Privacy Control never reaches a dashboard.
 
 ## Where it goes and how long we keep it
 
 Data is sent to our collector on Cloudflare and stored in Cloudflare R2. It is deleted automatically after
-**90 days**. Only GenClass maintainers can access it. Cloudflare processes it on our behalf.
+**90 days**; dashboard data is deleted after 90 days too. Only GenClass maintainers can access the stored data, and
+the owner of a website's dashboard link can see that website's dashboard. Cloudflare processes it on our behalf.
 
 ## How to turn it off
 

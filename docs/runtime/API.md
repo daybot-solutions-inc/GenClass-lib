@@ -23,6 +23,12 @@ Contents: [init and modes](#init-and-modes) · [options](#options) · [state](#s
 GenClass.init(options?: InitOptions): Runtime   // idempotent: a second call returns the same runtime
 GenClass.runtime: Runtime | null
 GenClass.destroy(): void                        // uninstall observers, restore globals, terminate the model worker
+GenClass.protect: typeof protect                // the same as the named export below
+
+// named exports
+protect<F extends (...args: never[]) => unknown>(name: string, fn: F): F   // see "Protected functions"
+TOKEN_PATTERN: RegExp                           // /^gc_[A-Za-z0-9]{22}$/
+isValidToken(v: unknown): v is string
 ```
 
 | mode | what it does |
@@ -45,6 +51,11 @@ no model. Use [`createRuntime`](#headless-use-tests-ssr-simulation) for headless
 `?genclass=no-telemetry` (or `?genclass=off`), `localStorage["genclass.telemetry"] = "off"`, or Global Privacy
 Control; off by default outside a browser and in `createRuntime()`. Schema and details:
 [packages/runtime/TELEMETRY.md](../../packages/runtime/TELEMETRY.md).
+
+**App token and dashboard.** `token: "gc_..."` (from `npx @genclass/runtime init` or https://genclass.dev/start) is
+sent with each telemetry batch so the app's diagnostics show up on its private dashboard
+(`https://genclass.dev/dashboard/<secret>`). Public; malformed values log one warning and are ignored; it does nothing
+while telemetry is off. `rt.telemetry.token` reports it.
 
 ## Options
 
@@ -83,6 +94,8 @@ interface InitOptions {
   autoState?: boolean | { react?: boolean; redux?: boolean; zustand?: boolean; pinia?: boolean };
                                                         // automatic state discovery: default on in @genclass/runtime/auto* and the script tag,
                                                         // off in GenClass.init / createRuntime (there it needs import "@genclass/runtime/discover" first)
+  token?: string;                                       // app token, gc_ + 22 letters/digits: groups telemetry under your private dashboard
+  scope?: "app" | "functions";                          // ["app"]; "functions": decisions only for activity inside protect()ed functions
 
   // batch 12 (docs/runtime/OPTIONS-SPEC.md); defaults in brackets
   enabled?: boolean | (() => boolean | Promise<boolean>) | { get(): boolean | Promise<boolean>; subscribe?(cb: () => void): () => void };
@@ -252,6 +265,24 @@ Causality is tracked through `await` on a best-effort basis: the operation that 
 user handler or `rt.op` body runs, after a fetch/XHR settles and when its body (`json()`, `text()`, ...) is read,
 and inside timers scheduled during an operation; it is cleared at the end of the task. Writes record the ambient
 operation as their cause; operations started while another is ambient get it as their parent.
+
+### Protected functions
+
+```ts
+import { GenClass, protect } from "@genclass/runtime";
+GenClass.init({ token: "gc_...", scope: "functions" });
+
+const submitOrder = protect("checkout submit", async (cart: Cart) => { /* fetch, writes, ... */ });
+```
+
+`protect(name, fn)` returns a function with `fn`'s signature. Each call runs as a `"task"` operation named `name`
+(like `rt.op`), so what it starts is linked to it, and decisions about that carry `Decision.fn = name` (the
+outermost protected function when they nest; also `fn` on telemetry `decision` events). `this`, arguments, return
+value and thrown errors pass through; a sync function stays sync; an async function's promise is replaced by one
+that settles the same way; other thenables are returned untouched. It looks up `GenClass.runtime` on every call and
+calls `fn` directly when there is none. It never throws on its own. With `scope: "functions"` everything is still
+recorded, but decisions are raised only for subjects inside a protected call. There is no per-function `mode`
+option yet.
 
 ## Asking the model
 

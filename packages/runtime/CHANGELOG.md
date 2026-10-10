@@ -2,6 +2,40 @@
 
 ## 0.1.0-beta.4 (unpublished, 2026-10-10)
 
+### App tokens and dashboards; function-specific protection with `protect()`
+
+Each web app can now have a token that sends its diagnostics to a private dashboard on genclass.dev, and GenClass can
+be pointed at a few functions instead of the whole app. No situation text or other model-visible text changes
+(`scope: "functions"` changes which subjects are decided, never what the model reads about one).
+
+- **`InitOptions.token`** (also `data-token`, `<meta name="genclass" content="token=...">`,
+  `window.GENCLASS_CONFIG.token`): `gc_` + 22 letters or digits (`TOKEN_PATTERN`, `isValidToken` exported). Sent as
+  the telemetry batch envelope's top-level `token`; `runtime.telemetry.token` reports it. A malformed token logs one
+  console warning and is ignored; never throws. It does nothing while telemetry is off (with `debug: true` the
+  console says so once); opt-outs and Global Privacy Control still win.
+- **`protect(name, fn)`** (named export, `GenClass.protect`, and `window.GenClass.protect` on the script tag): returns
+  a function with the same signature whose calls run as an operation named `name` (like `runtime.op`), so the
+  requests, state writes, timers and errors it causes are linked to it. `this`, arguments, return value and thrown
+  errors pass through; sync stays sync; an async function's promise is replaced by one that settles the same way;
+  other thenables are returned untouched. Safe to wrap at import time: without a runtime it calls `fn` directly.
+- **`InitOptions.scope`**: `"app"` (default, unchanged) or `"functions"`: decisions only for activity inside
+  protected functions (gated where triggers are raised and at the delivery gate); everything is still recorded as
+  context. Also `data-scope` / `scope=` in the meta tag.
+- **`Decision.fn`** and **`fn` on telemetry `decision` events**: the outermost protected function in the subject's
+  cause chain.
+- **`init` creates a project**: by default `npx @genclass/runtime init` calls `POST https://genclass.dev/api/projects`
+  (name from `package.json`), writes the token into what it adds (`genclass.config.*`, `data-token`, or the Astro
+  meta line), prints the private dashboard link ("keep this link private; it is the only way to open your
+  dashboard"), and saves both in `.genclass.local` (added to `.gitignore` when there is one; `remove` keeps it).
+  `--token <gc_...>` uses an existing token without network, `--no-token` skips it, `--no-telemetry` implies no
+  token, `--dry-run` never calls the network. A network failure or HTTP error warns, continues without a token and
+  points to https://genclass.dev/start. Running `init` again reuses the token.
+- **Not done:** a per-function mode (`protect(name, fn, { mode })`): route scopes are snapshotted per request, not
+  inherited through a call's cause chain, so it was left out (OPEN_TASKS.md).
+- **Cost:** about +0.9 KB gzip on `/auto` (97.4 KB), the main entry (90.3 KB) and the script-tag file (111.4 KB).
+- **Privacy:** TELEMETRY.md ("App tokens and dashboards") and PRIVACY.md ("Dashboards for website owners") describe
+  the token, the `fn` field and who can see dashboard data (90-day retention).
+
 ### One line covers the whole app (automatic state discovery)
 
 `<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime"></script>` or `import "@genclass/runtime/auto"` now

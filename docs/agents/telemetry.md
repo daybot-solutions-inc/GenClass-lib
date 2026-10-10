@@ -20,6 +20,11 @@
   `TELEMETRY.md` + CHANGELOG update.
 - Telemetry is **read-only** on the runtime and never feeds a decision: it does not touch `src/situation/*` or any
   model-visible text (rule 2), and a test asserts the model input is byte-identical with and without it.
+- **App tokens (branch `feat/projects`):** an optional top-level `token` on the batch envelope (`InitOptions.token`,
+  validated `^gc_[A-Za-z0-9]{22}$`, only when set and valid) and `fn` on `decision` events (the `protect()`ed
+  function). They group an app's batches for its private dashboard on genclass.dev; nothing else about what is sent
+  changed. Server side: `telemetry-worker/` (owned by a separate workstream); agent doc
+  [dashboard-projects.md](dashboard-projects.md).
 - Collector: Cloudflare Worker `genclass-telemetry` at `https://genclass-telemetry.mehar-144.workers.dev`
   (account `144bd5f5270b51dbe7faf46227a154f0`, logged in as mehar@daybot.ca), R2 bucket `genclass-telemetry`.
 
@@ -30,7 +35,8 @@
 | `packages/runtime/src/telemetry/config.ts` | `DEFAULT_TELEMETRY_ENDPOINT`, `TELEMETRY_SCHEMA` (`genclass-telemetry/1`), `TELEMETRY_NOTICE`, `resolveTelemetry` (defaults, opt-outs, sampling, session id) |
 | `packages/runtime/src/telemetry/transport.ts` | `nativeTransport`: `fetch` and `navigator.sendBeacon` captured at module load; text/plain, keepalive, `credentials: "omit"`, `referrerPolicy: "no-referrer"` |
 | `packages/runtime/src/telemetry/client.ts` | `TelemetryClient`: listeners -> events, queue (`MAX_QUEUE` 1000), batching (`maxBatch`, `MAX_REQUEST_BYTES` 60,000), flush timer on the runtime `Clock`, pagehide / hidden-tab beacon, summaries (`SUMMARY_MS` 60 s), `telemetryOff` |
-| `packages/runtime/src/telemetry/index.ts` | `startTelemetry` (called by `createRuntime`), the once-per-page console notice |
+| `packages/runtime/src/telemetry/index.ts` | `startTelemetry` (called by `createRuntime`; `token` argument -> `TelemetryConfig.token`), the once-per-page console notice |
+| `packages/runtime/src/token.ts` | `TOKEN_PATTERN`, `isValidToken`, `resolveToken` (one warning for a malformed token) |
 | `packages/runtime/src/version.ts` | `RUNTIME_VERSION` (must equal package.json; a test checks it; bump with every release) |
 | `packages/runtime/src/runtime.ts` | `RuntimeTap` / `RuntimeImpl.tap` (model errors, fail-opens: `not-ready`, `no-answer`, `error`), `decisionInfo(id)` (situation text, held, budget, compact, gates, `autoState`: discovered state recorded; `client.ts` sends the situation text as usual and marks the event `autoState: true`), `addTeardown(fn)` (final flush on destroy), `ExplainRec.held/budget/compact` |
 | `packages/runtime/src/index.ts` | `createRuntime` -> `startTelemetry(rt, options.telemetry, false, info)`; `GenClass.init` browser branch sets `telemetry: options.telemetry ?? true`; the `?genclass=off` kill switch -> `telemetryOff("kill-switch")` |
@@ -38,7 +44,7 @@
 | `packages/runtime/src/cdn/config.ts` | `telemetry=off` page-config key (meta tag, `data-telemetry`) |
 | `packages/runtime/test/telemetry.test.ts` | 13 tests: defaults, every opt-out incl. GPC, batching / bounded queue, pagehide + hidden beacon, event shapes, situation text == `stateText(req.state)` of the model input, secrets absent, transport errors, model input unchanged, native fetch not observed |
 | `packages/runtime/TELEMETRY.md` | public disclosure and schema (ships in the npm package) |
-| `telemetry-worker/{wrangler.toml,src/index.ts,test/index.test.ts,README.md}` | collector (6 tests: `../node_modules/.bin/vitest run --root .` in `telemetry-worker/`) |
+| `telemetry-worker/{wrangler.toml,src/index.ts,src/collector.ts,src/dashboard.ts,src/pages.ts,migrations/,test/,README.md}` | collector, projects API and dashboards (`index.ts` exports only the handler; 21 tests: `../node_modules/.bin/vitest run --root .` in `telemetry-worker/`) |
 
 ## Behaviour
 
@@ -46,6 +52,8 @@
   browser (`headless`) -> `?genclass=no-telemetry|off` (any `genclass` URL value) -> `localStorage["genclass.telemetry"] === "off"`
   -> `navigator.globalPrivacyControl === true` (`gpc`) -> no `crypto.getRandomValues` (`no-crypto`; never
   `Math.random`) -> `sample` draw (`sampled-out`) -> no transport. `enabled: false` in `createRuntime` -> `disabled`.
+- **Envelope:** `{ schema, token?, sid, sent, runtime, model, events }` (`client.ts` -> `header()`); `token` only
+  when `TelemetryConfig.token` is set.
 - **Session id:** 12 random bytes as 24 hex chars, per page load, never stored. Times are ms since the client started
   (`rt.clock`); the collector adds `receivedAt`.
 - **Events** (`t`): `session`, `model`, `status`, `decision`, `detect`, `action` (`applied` / `failed` / `undone`,
@@ -71,6 +79,19 @@
   read with `npx --yes wrangler@4 r2 object get "genclass-telemetry/<key>" --remote --file out.gz`.
 - **Retention: 90 days**, by the R2 lifecycle rule `expire-90d` on prefix `events/` (set 2026-10-09; owner may change it).
 
+## Per-app tokens and dashboards (server side)
+
+- Same worker (`genclass-telemetry`), also routed on `genclass.dev/{start*,dashboard*,api/*}` in front of the site
+  (`genclass-site`, not ours; unknown paths go to it via the `SITE` service binding). Code: `telemetry-worker/src/`
+  `index.ts` (entry: default export only), `collector.ts` (ingest + routing), `dashboard.ts` (D1: projects,
+  aggregation, stats, retention), `pages.ts` (`/start`, `/dashboard/<secret>`); tests `test/dashboard.test.ts`
+  (D1 = `node:sqlite` running `migrations/*.sql`). Details: `telemetry-worker/README.md`.
+- Token `gc_` + 22 base62 (public, top-level `token` on a batch); dashboard secret 32 base62 (private; D1 keeps only
+  its SHA-256). Known token -> counters in D1 `genclass-dashboard` (+ raw batch to R2 as always, with `token` in each
+  line); unknown / malformed / missing -> R2 only, record shape unchanged. Decision events may carry `fn`.
+- The dashboard never stores situation text. Retention: daily counters and recent rows 90 days (cron `17 3 * * *`),
+  hourly 48 h.
+
 ## How to change it safely
 
 - Adding a field or event: only data the runtime already has, redacted; update `client.ts`, `TELEMETRY.md` (the
@@ -90,4 +111,4 @@
   would send telemetry when run; they were left unchanged (honest-evaluation separation for demos). Add
   `?genclass=no-telemetry` or `telemetry: false` there if those runs should not reach the collector.
 - `sendBeacon` sends the page's `Referer` per the document's policy (cannot be turned off); the collector ignores it.
-- The `init` CLI does not mention telemetry in its output yet.
+- The `init` CLI prints a telemetry notice and, since `feat/projects`, the token and the dashboard link.

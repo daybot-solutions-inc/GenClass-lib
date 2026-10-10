@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // genclass-runtime CLI (Node >= 20, no dependencies). Also runs as `npx @genclass/runtime <command>`.
 //
-//   genclass-runtime init [--mode observe|guard|heal] [--yes] [--dry-run] [--no-install] [--no-devtools]
+//   genclass-runtime init [--mode observe|guard|heal] [--token <gc_...> | --no-token] [--yes] [--dry-run] [--no-install] [--no-devtools]
 //   genclass-runtime remove [--yes] [--dry-run] [--keep-package]
-//       Set GenClass up in a project (framework detection, install, one marked import in the entry file) and take it
-//       out again. Implemented in bin/lib/ (owner: INSTALL).
+//       Set GenClass up in a project (framework detection, install, one marked import in the entry file, an app token
+//       and private dashboard link from genclass.dev) and take it out again. Implemented in bin/lib/ (owner: INSTALL).
 //   genclass-runtime fetch-model <dir> [--from <baseUrl>] [--variant q8|fp16|all] [--ort wasm|webgpu|all|none] [--ort-from <url>] [--force] [--quiet]
 //       Download a GenClass model directory (model.json + model files) so an app can self-host it, plus the
 //       onnxruntime-web files the runtime loads (into <dir>/ort/, the version the runtime bundles):
@@ -50,12 +50,13 @@ const ORT_FILES = {
 const ROLES = ["tokenizer", "calibration", "meta"];
 
 const USAGE = `Usage:
-  genclass-runtime init [--mode observe|guard|heal] [--yes] [--dry-run] [--no-install] [--no-devtools]
+  genclass-runtime init [--mode observe|guard|heal] [--token <gc_...> | --no-token] [--yes] [--dry-run] [--no-install] [--no-devtools]
   genclass-runtime remove [--yes] [--dry-run] [--keep-package]
   genclass-runtime fetch-model <dir> [--from <baseUrl>] [--variant q8|fp16|all] [--ort wasm|webgpu|all|none] [--ort-from <url>] [--force] [--quiet]
   genclass-runtime info <dir>
 
-init sets GenClass up in the current project (shows the diff and asks first); remove undoes it
+init sets GenClass up in the current project (shows the diff and asks first) and creates this app's token and
+private dashboard link at genclass.dev (--no-token: no network); remove undoes it
 (\`genclass-runtime init --help\` for details).
 fetch-model downloads a GenClass model directory for self-hosting (default --variant all). The default --from is
 @genclass/runtime-model@0.2.0 on npm via jsDelivr, the runtime's own default model:

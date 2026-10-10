@@ -2,7 +2,7 @@
 
 > **Scope:** `packages/runtime/src/index.ts`, `packages/runtime/src/runtime.ts` (wiring, construction, init/destroy, modes, kill switch, option resolution, events, plugins, introspection, settled points, the delivery gate and background write observation as seen from the facade), `packages/runtime/src/types.ts`, `packages/runtime/src/errors.ts`, `packages/runtime/src/clock.ts`, `packages/runtime/src/util.ts`, `packages/runtime/package.json`; the consumer-facing side of the zero-code entries (`packages/runtime/src/auto.ts`, `packages/runtime/src/cdn/*`, `packages/runtime/bin/genclass-runtime.mjs` `init`/`remove`); their internals (framework detection, edit planning, the CDN worker and onnxruntime bundling) belong to INSTALL and are only summarised here.
 > **Read this when:** you add or change an init option, a `Runtime` method, an event, a plugin hook or a subpath export; you touch `GenClass.init` / `createRuntime` / the kill switch / `destroy()`; you touch `@genclass/runtime/auto*`, the script-tag global (`window.GenClass`) or `genclass-runtime init|remove`; you need the exact default of any option (the default mode is `observe`); you add timing or scheduling code; you wire a new subsystem into `RuntimeImpl`.
-> **Source of truth:** the code. Automatic state discovery (`autoState`, `stores()`, `@genclass/runtime/discover`) verified against branch `feat/one-line` (from 89237ab), 2026-10-10. The rest verified against branch `mvp-v2-merge` (mvp-v2 + origin/runtime eff18cb + observe/redaction fixes 054da38, f107013), 2026-10-08. origin/runtime has since moved past eff18cb (ca08174..5bc40c9: realapps wave 4, runtime batch 6 with model-provided gate thresholds, tag `situation-v2.1`); none of that is merged here or described in this doc. If this doc and the code disagree, the code wins.
+> **Source of truth:** the code. App tokens, `protect()` and `scope` verified against branch `feat/projects` (from 126026f), 2026-10-10. Automatic state discovery (`autoState`, `stores()`, `@genclass/runtime/discover`) verified against branch `feat/one-line` (from 89237ab), 2026-10-10. The rest verified against branch `mvp-v2-merge` (mvp-v2 + origin/runtime eff18cb + observe/redaction fixes 054da38, f107013), 2026-10-08. origin/runtime has since moved past eff18cb (ca08174..5bc40c9: realapps wave 4, runtime batch 6 with model-provided gate thresholds, tag `situation-v2.1`); none of that is merged here or described in this doc. If this doc and the code disagree, the code wins.
 
 ## TL;DR
 
@@ -105,6 +105,8 @@ ESM only (`"type": "module"`, only `import` conditions; the script-tag build is 
 | `BUILTIN_ACTIONS`, `TRIGGER_ACTIONS` (now with `delivery: ["deliver", "discard", "defer"]`), `PASSIVE` (`delivery: "deliver"`), `DEFAULT_DIAGNOSES` | question vocabulary | `src/situation/questions.ts` |
 | `describeElement` | DOM element -> `'button "Place order"'` | `src/observe/dom-user.ts` |
 | `RuntimeImpl` | class (advanced; exposes internals) | `src/runtime.ts` |
+| `protect(name, fn)` (also `GenClass.protect`) | function wrapper (feat/projects) | `src/protect.ts` |
+| `TOKEN_PATTERN` (`/^gc_[A-Za-z0-9]{22}$/`), `isValidToken(v)` | app token format | `src/token.ts` |
 
 Not exported from the root: `util.ts` helpers, `normalizeError`, `policyConfig`/`holdBudget`/`gate`, `COMPACT_QUESTIONS_BUDGET` (1400), `TRIGGER_DESCRIPTIONS` and `ACTION_INSTRUCTIONS` (`situation/questions.ts`). The root export list itself did not change in batch 4/5 (the only `index.ts` change is `eventsource` in `ALL_OFF`), nor with the zero-code entries (`index.ts` and `types.ts` are unchanged since b435acb).
 
@@ -124,7 +126,7 @@ Owner: INSTALL (f3a9dd1, merged from origin/runtime). Not in npm `0.1.0-alpha.1`
 
 Note the order: for `/auto/<mode>` the mode in the import path is the **lowest** precedence, so a `<meta>` or `GENCLASS_CONFIG` mode overrides it; for the script tag the meta tag is below the data attributes. The URL / localStorage kill switch (`?genclass=off|observe|guard|heal`) still beats everything inside `GenClass.init`.
 
-Pair keys (`fromPairs`; unknown keys and invalid values are ignored): `mode` (`observe|guard|heal`), `model` (`off`/`false`/`0`/`no`/`none` -> `model: false`; bare/`true` -> defaults; anything else -> `model.baseUrl`), `modelurl` / `baseurl`, `device` (`auto|webgpu|wasm`), `preload` (`eager|idle|lazy`), `ort` / `ortwasmpaths` (-> `model.ortWasmPaths`), `worker` (false only for an "off" word), `report` (`console|silent`), `debug`, `triage` (`salient|always`), `devtools`. `devtools` (`DevtoolsSetting`): bare/`true` -> always; `local`/`dev`/`localhost` -> only when `isLocalHost(location)` (loopback, `*.localhost`, `*.local`, `*.test`, `file:`); a corner (`bottom-right`, `bottom-left`, `top-right`, `top-left`) -> `{ position }`; an "off" word -> not mounted. `devtools` is split off (`splitConfig`) and never reaches `GenClass.init`.
+Pair keys (`fromPairs`; unknown keys and invalid values are ignored): `token` (any non-empty value; validated later by `createRuntime`), `scope` (`app|functions`), `mode` (`observe|guard|heal`), `model` (`off`/`false`/`0`/`no`/`none` -> `model: false`; bare/`true` -> defaults; anything else -> `model.baseUrl`), `modelurl` / `baseurl`, `device` (`auto|webgpu|wasm`), `preload` (`eager|idle|lazy`), `ort` / `ortwasmpaths` (-> `model.ortWasmPaths`), `worker` (false only for an "off" word), `report` (`console|silent`), `debug`, `triage` (`salient|always`), `devtools`. `devtools` (`DevtoolsSetting`): bare/`true` -> always; `local`/`dev`/`localhost` -> only when `isLocalHost(location)` (loopback, `*.localhost`, `*.local`, `*.test`, `file:`); a corner (`bottom-right`, `bottom-left`, `top-right`, `top-left`) -> `{ position }`; an "off" word -> not mounted. `devtools` is split off (`splitConfig`) and never reaches `GenClass.init`.
 
 **`@genclass/runtime/auto`, `/auto/<mode>`** (`src/auto.ts`, `src/cdn/auto-*.ts` -> `startAuto(defaults)`):
 1. Not a browser (`window` or `document` not an object): return `GenClass.init(defaults)` (the non-browser branch: no observers, no model; meta and window config are not read).
@@ -132,7 +134,7 @@ Pair keys (`fromPairs`; unknown keys and invalid values are ignored): `mode` (`o
 3. Default export: that `Runtime` (`import rt from "@genclass/runtime/auto"`); named export `GenClass`. Runs at module evaluation, so it must be the first import of the entry for stores created at import time to see `GenClass.runtime`. The bare `/auto` has no mode default: it runs in `observe`.
 
 **Script tag** (`src/cdn/global.ts`, built to `dist/genclass.global.js` / `.min.js`; `install()` runs at evaluation when `window` and `document` exist):
-- Installs `window.GenClass: GenClassGlobal` = `{ version, base, init(options?), runtime (getter), destroy(), devtools(options?), createRuntime, GenClassUnavailableError }`. This is **not** the module `GenClass` object: `init` merges the page configuration under `options`, adds the CDN model wiring and mounts devtools; `destroy` also unmounts the overlay; `devtools()` mounts it (initialising first if needed). A second copy of the tag keeps the first global (`__genclassGlobal` flag).
+- Installs `window.GenClass: GenClassGlobal` = `{ version, base, init(options?), runtime (getter), destroy(), devtools(options?), createRuntime, protect, GenClassUnavailableError }`. This is **not** the module `GenClass` object: `init` merges the page configuration under `options`, adds the CDN model wiring and mounts devtools; `destroy` also unmounts the overlay; `devtools()` mounts it (initialising first if needed). A second copy of the tag keeps the first global (`__genclassGlobal` flag).
 - Auto-init: `api.init()` at once unless `data-manual` is present (and not `"false"`); a throw is caught and warned.
 - `base` (where everything else loads from): `data-base` (resolved, trailing `/` added), else `assetBase(script.src)`: on jsDelivr/unpkg the URL is re-pinned to `@<this file's version>/dist/` (so `@latest` never mixes releases), else the script's directory; fallback `https://cdn.jsdelivr.net/npm/@genclass/runtime@<version>/dist/`. The script element is `document.currentScript`, else the last `script[src]` whose URL looks like this file.
 - Model wiring (`withCdnModel`, skipped when `decider` is set or `model === false`): host options `workerFactory` (a module Worker from a same-origin Blob URL that imports `<base>cdn/worker.js`, since browsers refuse cross-origin worker URLs) and `ortLoader` (`<base>cdn/ort-webgpu.js` / `ort-wasm.js`), with the caller's `model` fields spread over them. These are `ModelHostOptions` fields (`model/host.ts`), passed through `ModelOptions` by a cast; they are not in the public `ModelOptions` type. Model weights still come from `DEFAULT_MODEL_BASE_URL` unless `model`/`data-model` says otherwise.
@@ -141,6 +143,7 @@ Pair keys (`fromPairs`; unknown keys and invalid values are ignored): `mode` (`o
 **CLI `init` / `remove`** (`bin/lib/init.mjs` -> `run`; consumer view only):
 - `init` detects the package manager and framework (`detect.mjs`), installs `@genclass/runtime` (unless `--no-install`; `--from <spec>` picks the spec), and adds, as the first statement of the entry file, `import "<AUTO(mode)>"` (with devtools: `import genclass from "<AUTO(mode)>"` plus a dev-only `if (<dev condition>) import("@genclass/runtime/devtools").then((d) => d.mountDevtools(genclass))` at the end). Plain HTML gets a script tag (`plan.mjs` -> `scriptTag`: jsDelivr URL pinned to the CLI's own version unless `--cdn`; an `integrity` sha384 of the package's local `dist/genclass.global(.min).js` when that file exists, unless `--no-sri`; `data-mode` when a mode other than `guard` is given; `data-devtools="local"` unless `--no-devtools`). It shows the diff and asks unless `--yes`; `--dry-run` writes nothing; running it twice changes nothing.
 - Every added line or created file carries the marker `genclass:init` (`edit.mjs` -> `MARK`), except the inline forms used when the insertion point shares its line with other code (a one-line `<head>` or `<body>`), marked `genclass:inline` (`MARK_INLINE`); `remove` deletes exactly the marked lines/blocks/inline forms and uninstalls the package unless `--keep-package` or `--no-install` (or something else still uses it).
+- Token (feat/projects; `bin/lib/token.mjs`, `init.mjs` -> `chooseToken`, `tokenRow`, `dashboardNotice`): by default `init` POSTs `https://genclass.dev/api/projects` (`{ name }` from package.json) and writes the token into its config (`genclass.config.*` -> `GENCLASS_CONFIG.token`, `data-token`, Astro meta `token=`), prints the dashboard link and, after the changes are applied, saves `.genclass.local` (and appends it to an existing `.gitignore`). No network with `--token`, `--no-token`, `--no-telemetry`, `--dry-run`, a token already in the marked files, or one in `.genclass.local`. Failure -> warning, no token. Details: [../dashboard-projects.md](../dashboard-projects.md).
 - Mode mapping (`plan.mjs` -> `AUTO`): `observe` -> `/auto/observe`, `heal` -> `/auto/heal`, `guard` **or no `--mode`** -> plain `/auto`. On this branch plain `/auto` runs in `observe`, so `init --mode guard` currently produces an observe-mode install, and the CLI's help/summary still call `guard` the default. See Drift.
 
 **Automatic state discovery (branch `feat/one-line`, ships in `0.1.0-beta.4`).** `InitOptions.autoState?: boolean |
@@ -158,6 +161,33 @@ no discovery. Mechanics: [state-and-adapters.md](state-and-adapters.md) section 
 StoreInfo[]` (`{ name, kind: "atom"|"guard"|"adapter"|"observed", source?, writable, fields, version }`); internal
 `RuntimeImpl.discoveryStats()` (React walk stats, Redux/connected store names); `decisionInfo().autoState` (telemetry
 marks the decision event `autoState: true`; the situation text is sent as usual).
+
+**App tokens, `protect()` and `scope` (branch `feat/projects`, ships in `0.1.0-beta.4`).** Server side and the CLI
+flow: [../dashboard-projects.md](../dashboard-projects.md).
+- `InitOptions.token?: string`: `index.ts` -> `createRuntime` runs `token.ts` -> `resolveToken` (trim; malformed ->
+  one `console.warn` on the runtime global's console, ignored; never throws) and passes it to
+  `telemetry/index.ts` -> `startTelemetry(..., token)`, which sets `TelemetryConfig.token`; `client.ts` -> `header()`
+  writes it as the envelope's first field after `schema`; `TelemetryStatus.token` exposes it. With a token but
+  telemetry off and `debug: true`, `createRuntime` logs one `console.info`. The token never reaches `RuntimeImpl`,
+  situations or the model.
+- `protect(name, fn)` (`src/protect.ts`): resolves the runtime on every call through `setProtectResolver` (set by
+  `index.ts` to `GenClass.runtime` when it is a `RuntimeImpl`; tests point it at their own runtime). No runtime ->
+  `fn.apply(this, args)`. Else `RuntimeImpl.runProtected(name, fn, this, args)`: `startOp("task", name)` with
+  `OpRec.fn = name`, `ctx.run(op, ...)`; a sync throw ends the op `"error"` and rethrows; a native `Promise` result
+  is replaced by `r.then(...)` that ends the op and `ctx.stick`s it (like `op()`), so unhandled-rejection behaviour
+  is unchanged; any other value or thenable ends the op at once and is returned untouched (never `.then()`-ed). Names
+  are trimmed and cut to 80 chars; `name`/`length` of `fn` are copied. Unlike `op()` it never turns a sync function
+  async.
+- `RuntimeImpl.protectedFnOf(op)`: walks `op.cause` through `ops.get` (≤ 256 steps) and returns the outermost
+  `fn`. `trigger()` computes it for `subjectOpOf(spec)` (or the ambient op without materializing a lazy timer op) and
+  passes it to `onDecision`, which sets `Decision.fn`; `client.ts` sends it as `fn` on `decision` events.
+- `InitOptions.scope?: "app" | "functions"` -> `RuntimeImpl.scope`. `"functions"`: `trigger()` returns the passive
+  action before triage when `fn` is undefined (except `ask`), and `runDelivery` releases a delivery at once when its
+  op has no protected function in its chain. Recording, learning and situation building are unchanged (test:
+  `test/projects.test.ts`, identical situation state for the same subject under both scopes).
+- Not implemented: a per-function mode. Route scopes (`OpRec.scope`) are snapshotted per request from the URL/route
+  and not inherited through the cause chain, so `protect(name, fn, { mode })` would need that inheritance first
+  (`OPEN_TASKS.md`).
 
 ### Modes and tiers
 
@@ -194,6 +224,8 @@ Defaults below are what `RuntimeImpl`'s constructor applies, unless the row says
 | `vocabulary` | `Vocabulary` (`{ diagnoses?: Record<string,string>; actions?: Partial<Record<string,string>> }`) | `undefined` | `diagnoses` replaces `DEFAULT_DIAGNOSES`; `expected` is always kept (added from the defaults if missing, always first) and plugin labels are added only when the label is not already present (`situation/questions.ts` -> `diagnosisVocabulary`). `actions[name]` overrides the description of a built-in **or custom** action (`situation/questions.ts` -> `actionDescription`: vocabulary, then `ActionDef.description`, then the trigger-specific built-in wording in `TRIGGER_DESCRIPTIONS` (situation-v2: `delivery`'s `deliver`/`discard`/`defer`), then `BUILTIN_ACTIONS[name].description`). The override applies to every trigger an action appears on. Changes model input wording. |
 | `settleMs` | `number` | `60` | Quiet time before a settled point. |
 | `situation` | `{ budget?: number \| "auto" }` | `"auto"` | Situation size in characters. A number is used as is (no device sizing, no budget scale). See `situationBudget()`. |
+| `token` | `string` | none | App token for the dashboard (`gc_` + 22 base62). Telemetry only: sent on the batch envelope; malformed -> one warning, ignored. See above. |
+| `scope` | `"app" \| "functions"` | `"app"` | `"functions"`: decisions only for activity inside `protect()`ed functions (`RuntimeImpl.trigger`, `runDelivery`). |
 
 ### `CreateOptions` (`types.ts` -> `CreateOptions extends InitOptions`)
 
@@ -686,6 +718,7 @@ All in `packages/runtime/test/` (vitest, `environment: "node"`, `testTimeout: 20
 
 | test file | what it asserts (scope of this doc) |
 |---|---|
+| `projects.test.ts` (feat/projects, 16 tests) | Token format; token from meta / data attributes / `GENCLASS_CONFIG` / options; envelope `token` (and none without one); malformed token -> one warning; token with telemetry off (debug info line); GPC still wins; `protect()` without a runtime, `this`/args/sync/async/throws/rejections/thenables, `name`/`length`, destroyed runtime; `Decision.fn` and telemetry `fn` (outermost function), attribution after an `await`; `scope: "functions"` decides only protected activity, default scope unchanged, identical situation state for the same subject. CLI token tests are in `test/install/cli.test.ts` (6 tests, fetch mocked by `test/install/mock-fetch.mjs`). |
 | `default-mode.test.ts` (f3636b2, 054da38) | `createRuntime` and `GenClass.init` without a mode start in `observe`; `mode: "guard"` and `?genclass=guard` opt in; in observe, a sure model (p 0.99) records `delivery`/`mutation`/`request` decisions and detections but nothing is held, `executed` is false and `interventions()` is empty; a model that never answers delays nothing (atom write, adapter propose, fetch, failed fetch) while it is still asked in the background. |
 | `delivery.test.ts`, `content.test.ts`, `no-reorder.test.ts` (batch 4/5) | The delivery gate (salience, `discard` drop marks and undo, `defer`), body analysis (F1/F2/F3, read-your-writes), and that held writes never reorder a store's writes. Owned by [decide-policy-actions.md](decide-policy-actions.md) / [learn-situation-triage.md](learn-situation-triage.md). |
 | `observe-delivery.test.ts` (054da38) | Observe: a conflicting fetch response with a slow body resolves at network time and is decided once in the background on the state it was delivered into; an app write before the body is read decides it at that write; F1 is not lost; standing questions on `delivery` are answered; XHR listeners run inside the original dispatch with the body analyzed first; WebSocket/EventSource messages delivered synchronously and in order, still decided. Guard unchanged: stale response held and discarded; a too-slow model releases at once and the write is late-reverted on its own. |

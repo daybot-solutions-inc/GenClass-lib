@@ -229,6 +229,8 @@ export class RuntimeImpl implements Runtime {
   private rateWarnedAt = -Infinity;
   private readonly appFn: (() => { title?: string; route?: string }) | undefined;
   private readonly debug: boolean;
+  /** InitOptions.scope: "functions" raises decisions only for activity inside protect()ed functions. */
+  readonly scope: "app" | "functions";
   private readonly persist: boolean;
   private _mode: Mode;
   private paused = false;
@@ -354,6 +356,7 @@ export class RuntimeImpl implements Runtime {
     this.hub.holdWrites = this.policy.holdWrites;
     this.rate = new RateLimiter(() => this.policy.actionLimits);
     this.debug = !!o.debug;
+    this.scope = o.scope === "functions" ? "functions" : "app";
     // URL overrides only demote, unless debug (OPTIONS-SPEC §3)
     const url = this.urlParams();
     this._mode = o.mode ?? "observe";
@@ -1270,6 +1273,9 @@ export class RuntimeImpl implements Runtime {
     };
     if (!this.consultable()) return passive();
     const subjectOp = subjectOpOf(spec);
+    // the protect()ed function the subject ran inside; scope "functions": nothing else is decided (explicit asks are)
+    const fn = this.protectedFnOf(subjectOp ?? this.ambientNoMaterialize());
+    if (this.scope === "functions" && fn === undefined && spec.trigger !== "ask") return passive();
     const effMode = this.effectiveMode(subjectOp);
     // a route scope "off": ops there are recorded, never decided
     if (effMode === "off") return passive();
@@ -1370,7 +1376,7 @@ export class RuntimeImpl implements Runtime {
             return passive();
           }
           this.sum.decision(res.latencyMs);
-          this.onDecision(built, res.answers, this.clock.now() - t0, ctl, passive, { waits, covers: background !== null, expired, passiveRan: () => passiveRan, hold: opts.hold, budget, block, subjectOp });
+          this.onDecision(built, res.answers, this.clock.now() - t0, ctl, passive, { waits, covers: background !== null, expired, passiveRan: () => passiveRan, hold: opts.hold, budget, block, subjectOp, ...(fn !== undefined ? { fn } : {}) });
         } finally {
           // decided (onDecision marked the delivery decided) or dropped (its later writes are decided on their own)
           if (background) this.deliveryPending.delete(background);
@@ -1399,6 +1405,7 @@ export class RuntimeImpl implements Runtime {
       budget?: number;
       block?: "protected" | "cross-origin" | "scope" | null;
       subjectOp?: OpRec | null;
+      fn?: string;
     },
   ): void {
     const trigger = built.spec.trigger;
@@ -1543,6 +1550,7 @@ export class RuntimeImpl implements Runtime {
       decision.thresholdSource = gates.source[g.thresholdTier];
     }
     if (reason) decision.reason = reason;
+    if (st.fn !== undefined) decision.fn = st.fn;
     this.decisionsBuf.push(decision);
     if (this.decisionsBuf.length > DECISIONS_KEPT) this.decisionsBuf.shift();
     const rec: ExplainRec = {
@@ -1866,6 +1874,8 @@ export class RuntimeImpl implements Runtime {
     const op = o.op;
     // protected / ignored-scope / off-scope subjects pass at once: no body read, no hold, zero added latency
     if (!this.consultable() || this.paused || this.destroyed || op.genclass || op.scope?.protected || op.scope?.mode === "off") return rel();
+    // scope "functions": deliveries outside protect()ed functions are only observed
+    if (this.scope === "functions" && this.protectedFnOf(op) === undefined) return rel();
     const since = heldSince ?? this.clock.now();
     const now = this.clock.now();
     const predicted = predictedWrites(this.env, op);
@@ -2870,6 +2880,88 @@ export class RuntimeImpl implements Runtime {
         throw e;
       },
     );
+  }
+
+  /**
+   * One call of a protect()ed function (src/protect.ts): runs fn inside a "task" op named `name`, like op(), but
+   * keeps sync results sync and returns fn's own value (the same promise object for async functions). Never throws
+   * on its own: anything that goes wrong in the bookkeeping falls back to calling fn directly.
+   */
+  runProtected<R>(name: string, fn: (...a: unknown[]) => R, self: unknown, args: unknown[]): R {
+    let o: OpRec | null = null;
+    try {
+      if (!this.destroyed) {
+        o = this.startOp("task", name);
+        o.fn = name;
+      }
+    } catch {
+      o = null;
+    }
+    if (!o) return fn.apply(self, args);
+    const op = o;
+    const end = (status: "ok" | "error", e?: unknown) => {
+      try {
+        this.endOp(op, status, status === "error" ? { errorText: (e as Error)?.message ?? String(e) } : {});
+      } catch {
+        /* bookkeeping never breaks the app */
+      }
+    };
+    let r: R;
+    try {
+      r = this.ctx.run(op, () => fn.apply(self, args));
+    } catch (e) {
+      end("error", e);
+      throw e;
+    }
+    // A native promise (any async function): return the promise its settlement chains to, as op() does, so an
+    // unhandled rejection still surfaces as one and a handled one never does. Other thenables (query builders that
+    // run on .then(), custom deferreds) are returned untouched and never touched: the op ends now.
+    if (!(r instanceof Promise)) {
+      end("ok");
+      return r;
+    }
+    try {
+      return (r as Promise<unknown>).then(
+        (v) => {
+          end("ok");
+          this.stickSafe(op);
+          return v;
+        },
+        (e: unknown) => {
+          end("error", e);
+          this.stickSafe(op);
+          throw e;
+        },
+      ) as R;
+    } catch {
+      end("ok");
+      return r;
+    }
+  }
+
+  private stickSafe(op: OpRec): void {
+    try {
+      this.ctx.stick(op);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** The ambient op without materializing a lazy timer op (no op ids consumed). */
+  private ambientNoMaterialize(): OpRec | null {
+    const c = this.ctx.peek();
+    return c instanceof LazyOp ? c.nearest : c;
+  }
+
+  /** The outermost protect()ed function in op's cause chain, or undefined. */
+  protectedFnOf(op: OpRec | null | undefined): string | undefined {
+    let found: string | undefined;
+    let x: OpRec | undefined = op ?? undefined;
+    for (let n = 0; x && n < 256; n++) {
+      if (x.fn !== undefined) found = x.fn;
+      x = x.cause !== undefined ? this.ops.get(x.cause) : undefined;
+    }
+    return found;
   }
 
   emit(name: string, data?: Record<string, unknown>): void {

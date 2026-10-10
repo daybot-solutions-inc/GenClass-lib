@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { detectCsp, detectProject, detectState, htmlFiles, isDir, isFile, readText, walkSkipped, walkSources } from "./detect.mjs";
 import { MARK, hasMarker, isEmptyConfig, planRemoval, removeMarked, switchMetaConfig, switchMode, switchTagConfig, updateConfigText } from "./edit.mjs";
 import { AUTO, configFileChange, configFileFor, planInit, scriptTag } from "./plan.mjs";
+import { LOCAL_FILE, START_URL, TOKEN_RE, createProject, readLocal, saveLocal, tokenInFiles } from "./token.mjs";
 import { banner, c, confirm, err, out, printChange, row, sym } from "./ui.mjs";
 
 const PKG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -32,7 +33,8 @@ export const TELEMETRY_URL = `${REPO}/packages/runtime/TELEMETRY.md`;
 export const PRIVACY_URL = `${REPO}/PRIVACY.md`;
 
 export const USAGE = `Usage:
-  genclass-runtime init   [--mode observe|guard|heal] [--no-telemetry | --telemetry] [--model-url <url>]
+  genclass-runtime init   [--mode observe|guard|heal] [--token <gc_...> | --no-token]
+                          [--no-telemetry | --telemetry] [--model-url <url>]
                           [--yes] [--dry-run] [--no-install] [--no-devtools] [--cwd <dir>]
   genclass-runtime remove [--yes] [--dry-run] [--keep-package] [--cwd <dir>]
 
@@ -43,9 +45,14 @@ remove   takes out exactly what init added (the lines and blocks marked "${MARK}
          one of them was edited) and uninstalls the package if nothing else imports it.
 
   --mode <m>       observe (default: reports, never changes anything), guard or heal
+  --token <gc_...> use this app token (no network). By default init creates one for this app at
+                   genclass.dev (named after package.json's name), writes it into what it adds, and
+                   saves the token and your private dashboard link in ${LOCAL_FILE}
+  --no-token       no token, no network (no dashboard; you can add one later: ${START_URL})
   --no-telemetry   turn off GenClass's anonymous diagnostics (on by default; see TELEMETRY.md and
                    PRIVACY.md). Written as an option file (genclass.config.ts/js, imported right before
-                   the auto import), or data-telemetry="off" on a plain HTML script tag
+                   the auto import), or data-telemetry="off" on a plain HTML script tag. Implies
+                   --no-token (a dashboard only gets data while telemetry is on)
   --telemetry      keep them on, written explicitly (on an existing setup: undoes --no-telemetry)
   --model-url <u>  use a self-hosted model directory (made with \`fetch-model\`), e.g. /genclass-model/,
                    with ONNX Runtime from <u>ort/ (for a Content-Security-Policy without cdn.jsdelivr.net)
@@ -72,10 +79,11 @@ const BOOL = {
   "no-sri": "noSri",
   "no-telemetry": "noTelemetry",
   telemetry: "telemetry",
+  "no-token": "noToken",
   help: "help",
   h: "help",
 };
-const VALUE = { mode: "mode", from: "from", cdn: "cdn", cwd: "cwd", strategy: "strategy", "model-url": "modelUrl" };
+const VALUE = { mode: "mode", from: "from", cdn: "cdn", cwd: "cwd", strategy: "strategy", "model-url": "modelUrl", token: "token" };
 
 function parse(argv) {
   const o = {};
@@ -98,6 +106,9 @@ function parse(argv) {
   }
   if (o.mode && !MODES.includes(o.mode)) throw new UsageError(`--mode must be observe, guard or heal`);
   if (o.noTelemetry && o.telemetry) throw new UsageError(`--telemetry and --no-telemetry contradict each other`);
+  if (o.token !== undefined && o.noToken) throw new UsageError(`--token and --no-token contradict each other`);
+  if (o.token !== undefined && o.noTelemetry) throw new UsageError(`--no-telemetry means no token (a dashboard only gets data while telemetry is on): drop --token`);
+  if (o.token !== undefined && !TOKEN_RE.test(o.token)) throw new UsageError(`--token must be "gc_" followed by 22 letters or digits (get one: ${START_URL})`);
   if (o.strategy && !["instrumentation", "layout", "pages"].includes(o.strategy)) throw new UsageError(`--strategy must be instrumentation, layout or pages`);
   return o;
 }
@@ -254,9 +265,10 @@ function printRecommendations(recs) {
 
 // ----------------------------------------------------------------------------------------- options
 
-/** The options init writes: { telemetry?, model? } (empty: none). */
-export function configOf(o) {
+/** The options init writes: { token?, telemetry?, model? } (empty: none). */
+export function configOf(o, token) {
   const c = {};
+  if (token) c.token = token;
   if (o.noTelemetry) c.telemetry = false;
   else if (o.telemetry) c.telemetry = true;
   if (o.modelUrl) {
@@ -371,35 +383,35 @@ async function switchModes(o, project, changes, install, spec, cwd, what) {
   if (o.dryRun) {
     out(`  ${c.gray("Dry run: nothing was written.")}`);
     out();
-    return 0;
+    return { code: 0, applied: false };
   }
   if (!o.yes) {
     const ok = await confirm(what.mode ? `Switch to ${o.mode} mode${what.options ? ` (${what.options})` : ""}?` : `Apply ${what.options}?`);
     if (ok === null) {
       out(`  Not a terminal, so nothing was written. Re-run with ${c.bold("--yes")} to apply.`);
       out();
-      return 1;
+      return { code: 1, applied: false };
     }
     if (!ok) {
       out(`  Nothing changed.`);
       out();
-      return 0;
+      return { code: 0, applied: false };
     }
     out();
   }
   if (install && !spawn(...installArgs(project.pm, spec), cwd)) {
     err(`  ${c.red(sym.cross)} Installing ${PKG} failed, so no files were changed.`);
-    return 1;
+    return { code: 1, applied: false };
   }
   for (const ch of changes) writeChange(ch);
   const done = [what.mode ? `now starts in ${o.mode} mode` : null, what.options ? `options: ${what.options}` : null].filter(Boolean).join("; ");
   out(`  ${c.green(sym.ok)} ${c.bold(`GenClass Runtime ${done}.`)} ${c.gray(`(${changes.map((ch) => ch.rel).join(", ")})`)}`);
   out();
-  return 0;
+  return { code: 0, applied: true };
 }
 
 /** "telemetry off, model /genclass-model/" */
-const describeConfig = (cfg) => [cfg.telemetry === false ? "telemetry off" : cfg.telemetry ? "telemetry on" : null, cfg.model ? `model ${cfg.model.baseUrl}` : null].filter(Boolean).join(", ");
+const describeConfig = (cfg) => [cfg.token ? `token ${cfg.token}` : null, cfg.telemetry === false ? "telemetry off" : cfg.telemetry ? "telemetry on" : null, cfg.model ? `model ${cfg.model.baseUrl}` : null].filter(Boolean).join(", ");
 
 /** Telemetry as the marked files set it (an existing setup): false when init wrote the opt-out. */
 function currentConfig(files) {
@@ -426,11 +438,73 @@ function withLocalDevice(cfg, project) {
   return cfg;
 }
 
+// ------------------------------------------------------------------------------------- token, dashboard
+
+/**
+ * The app token init writes: { token?, write (put it into what init adds), source, created? (a new project:
+ * { token, dashboardUrl, name, created }), why? (no token), failed? }. Network only to create a new project, and
+ * never with --token, --no-token, --no-telemetry or --dry-run, or when this project already has a token.
+ */
+async function chooseToken(o, project, cwd, marked) {
+  if (o.noTelemetry) return { why: "--no-telemetry" };
+  if (o.noToken) return { why: "--no-token" };
+  const inFiles = tokenInFiles(marked);
+  const local = readLocal(cwd);
+  if (o.token) return { token: o.token, write: o.token !== inFiles, source: "--token", local: local?.token === o.token ? local : null };
+  if (inFiles) return { token: inFiles, write: false, source: "already in your setup", local: local?.token === inFiles ? local : null };
+  if (local) return { token: local.token, write: true, source: LOCAL_FILE, local };
+  if (!o.telemetry && currentConfig(marked).telemetry === false) return { why: "telemetry is off in your setup" };
+  if (o.dryRun) return { why: "dry run", wouldCreate: true };
+  const r = await createProject(project.pkg?.name || project.name);
+  if (!r.ok) return { why: r.reason, failed: true };
+  return { token: r.token, write: true, source: "new", created: r };
+}
+
+function tokenRow(tk) {
+  if (tk.token) {
+    row("Token", `${tk.token} ${c.gray(`(${tk.source === "new" ? "created for this app at genclass.dev" : tk.source})`)}`);
+    out(`             Public (it ships in your page). The diagnostics above also feed this app's private dashboard.`);
+    return;
+  }
+  if (tk.wouldCreate) {
+    row("Token", `${c.gray("a new one would be created at genclass.dev (dry run: no network)")}`);
+    return;
+  }
+  if (tk.failed) {
+    row("Token", `none: could not create one (${tk.why})`, c.yellow(sym.warn));
+    out(`             GenClass works without it; you only miss the dashboard. Get a token at ${c.cyan(START_URL)}`);
+    out(`             and run ${c.cyan(`${CMD} init --token gc_...`)}`);
+    return;
+  }
+  row("Token", c.gray(`none (${tk.why})`));
+}
+
+/** After init: the dashboard link (saved to .genclass.local when init wrote its changes). */
+function dashboardNotice(tk, cwd, applied) {
+  const link = tk.created?.dashboardUrl ?? tk.local?.dashboardUrl;
+  if (!tk.token || !link) return;
+  let saved = null;
+  if (tk.created && applied) {
+    try {
+      saved = saveLocal(cwd, { token: tk.token, dashboardUrl: link, name: tk.created.name, created: tk.created.created });
+    } catch (e) {
+      err(`  ${c.yellow(sym.warn)} Could not write ${LOCAL_FILE} (${e?.message ?? e}): copy the link below now.`);
+    }
+  }
+  out(`  ${c.bold("Your dashboard")}  ${c.bold(c.cyan(link))}`);
+  out(`  ${c.yellow("Keep this link private; it is the only way to open your dashboard.")}`);
+  if (saved) out(`  ${c.gray(`Saved in ${LOCAL_FILE}${saved.gitignore === "added" ? " (added to .gitignore)" : saved.gitignore === "listed" ? " (already in .gitignore)" : " (no .gitignore here: keep it out of version control)"}.`)}`);
+  else if (tk.created) out(`  ${c.gray(`Nothing was written. To use this app's token later: ${CMD} init --token ${tk.token}`)}`);
+  else if (tk.local) out(`  ${c.gray(`(from ${LOCAL_FILE})`)}`);
+  out(`  ${c.gray("It shows data once your app runs with telemetry on (visitors who opt out or send Global Privacy Control are not counted).")}`);
+  out();
+}
+
 async function init(o) {
   const cwd = projectDir(o);
   banner("init");
   const project = detectProject(cwd);
-  const cfg = withLocalDevice(configOf(o), project);
+  let cfg = withLocalDevice(configOf(o), project);
   if (project.refused) {
     out(`  ${c.yellow(sym.warn)} Not adding GenClass to ${c.bold(cwd)}: ${project.refused}.`);
     out(`  If this is a browser app, add the import as the first line of its browser entry file yourself:`);
@@ -450,6 +524,10 @@ async function init(o) {
 
   const files = walkSources(cwd);
   const marked = files.filter((f) => hasMarker(readText(f) ?? ""));
+  // a hand-written setup (no init markers): init leaves the code alone, so no token is created for it
+  const handWritten = !marked.length && manualRefs(files).length > 0;
+  const tk = handWritten ? { why: "GenClass is set up by hand here: pass token to GenClass.init()" } : await chooseToken(o, project, cwd, marked);
+  if (tk.write) cfg = { token: tk.token, ...cfg };
   const needsPackage = !!project.pkg && project.framework !== "html" && !project.has(PKG);
   const install = needsPackage && !o.noInstall;
   const spec = installSpec(o);
@@ -480,12 +558,18 @@ async function init(o) {
     const optionsChanged = switches.some((ch) => !o.mode || ch.kind === "create" || switchMode(ch.before, o.mode) !== ch.after);
     out();
     telemetryNotice(isEmptyConfig(cfg) ? currentConfig(marked) : { ...currentConfig(marked), ...cfg }, null);
+    tokenRow(tk);
     cspAdvice(project, files, cfg);
     out();
-    if (switches.length) return switchModes(o, project, switches, install, spec, cwd, { mode: !!o.mode && switches.some((ch) => switchMode(ch.before, o.mode) !== ch.before), options: optionsChanged && !isEmptyConfig(cfg) ? describeConfig(cfg) : null });
+    if (switches.length) {
+      const r = await switchModes(o, project, switches, install, spec, cwd, { mode: !!o.mode && switches.some((ch) => switchMode(ch.before, o.mode) !== ch.before), options: optionsChanged && !isEmptyConfig(cfg) ? describeConfig(cfg) : null });
+      dashboardNotice(tk, cwd, r.applied);
+      return r.code;
+    }
     if (!install) {
       out(`  ${c.green("Nothing to do.")}${marked.length ? ` To take it out: ${c.cyan(`${CMD} remove`)}` : ""}`);
       out();
+      dashboardNotice(tk, cwd, false);
       return 0;
     }
     out();
@@ -514,6 +598,7 @@ async function init(o) {
   row("Mode", `${o.mode ?? "observe"}${o.mode ? "" : c.gray(" (default: reports only, never changes anything; --mode guard lets it act)")}`);
   const cfgAt = plan.changes.find((ch) => /genclass\.config\.[cm]?[jt]s$/.test(ch.file))?.rel ?? (cfg.telemetry === false ? plan.changes[0]?.rel : null);
   telemetryNotice(cfg, cfgAt);
+  tokenRow(tk);
   cspAdvice(project, files, cfg);
   out();
   out(`  ${c.bold("Changes")}`);
@@ -536,11 +621,13 @@ async function init(o) {
     if (ok === null) {
       out(`  Not a terminal, so nothing was written. Re-run with ${c.bold("--yes")} to apply (or ${c.bold("--dry-run")} to preview).`);
       out();
+      dashboardNotice(tk, cwd, false);
       return 1;
     }
     if (!ok) {
       out(`  Nothing changed.`);
       out();
+      dashboardNotice(tk, cwd, false);
       return 0;
     }
     out();
@@ -548,6 +635,7 @@ async function init(o) {
 
   if (install && !spawn(...installArgs(project.pm, spec), cwd)) {
     err(`  ${c.red(sym.cross)} Installing ${PKG} failed, so no files were changed.`);
+    dashboardNotice(tk, cwd, false);
     return 1;
   }
   for (const ch of plan.changes) writeChange(ch);
@@ -555,6 +643,7 @@ async function init(o) {
   out();
   out(`  ${c.green(sym.ok)} ${c.bold("GenClass Runtime is set up.")} ${c.gray(`(${plan.changes.map((ch) => ch.rel).join(", ")})`)}`);
   out();
+  dashboardNotice(tk, cwd, true);
   out(`  ${c.bold("Next")}`);
   const script = project.pkg?.scripts?.dev ? "dev" : project.pkg?.scripts?.start ? "start" : null;
   if (project.framework === "html") out(`    ${sym.dot} Open your page. GenClass starts before your other scripts.`);
@@ -654,6 +743,7 @@ async function remove(o) {
   }
   out();
   out(`  ${c.green(sym.ok)} ${c.bold("GenClass Runtime is removed.")}${changes.length ? ` ${c.gray(`(${changes.map((ch) => ch.rel).join(", ")})`)}` : ""}`);
+  if (isFile(join(cwd, LOCAL_FILE))) out(`  ${c.gray(`${LOCAL_FILE} stays (your token and private dashboard link); delete it when you no longer need the dashboard.`)}`);
   out();
   return 0;
 }

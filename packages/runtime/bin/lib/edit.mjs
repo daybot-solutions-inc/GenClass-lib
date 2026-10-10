@@ -441,14 +441,15 @@ export function bodyTagEnd(text) {
 
 export const CONFIG_COMMENT = "// Read by @genclass/runtime/auto, imported right after this file: any GenClass.init() option works here (see the README).";
 
-const isEmptyConfig = (cfg) => !cfg || (cfg.telemetry === undefined && !cfg.model);
+const isEmptyConfig = (cfg) => !cfg || (cfg.telemetry === undefined && !cfg.model && !cfg.token);
 export { isEmptyConfig };
 
 const modelLiteral = (m) => `model: { baseUrl: ${JSON.stringify(m.baseUrl)}, ortWasmPaths: ${JSON.stringify(m.ortWasmPaths)}${m.device ? `, device: ${JSON.stringify(m.device)}` : ""} }`;
 
-/** The object init writes: `{ telemetry: false, model: { baseUrl: "/genclass-model/", ortWasmPaths: "..." } }`. */
+/** The object init writes: `{ token: "gc_...", telemetry: false, model: { baseUrl: "/genclass-model/", ortWasmPaths: "..." } }`. */
 export function configLiteral(cfg) {
   const parts = [];
+  if (cfg.token) parts.push(`token: ${JSON.stringify(cfg.token)}`);
   if (cfg.telemetry !== undefined) parts.push(`telemetry: ${cfg.telemetry ? "true" : "false"}`);
   if (cfg.model) parts.push(modelLiteral(cfg.model));
   return parts.length ? `{ ${parts.join(", ")} }` : "{}";
@@ -457,10 +458,14 @@ export function configLiteral(cfg) {
 /** The statement in genclass.config.(ts|js). */
 export const configStatement = (cfg, ts) => `${ts ? "(globalThis as { GENCLASS_CONFIG?: object })" : "globalThis"}.GENCLASS_CONFIG = ${configLiteral(cfg)};`;
 
-/** Sets telemetry / model in an existing GENCLASS_CONFIG statement (other keys a user added stay). */
+/** Sets token / telemetry / model in an existing GENCLASS_CONFIG statement (other keys a user added stay). */
 export function updateConfigText(text, cfg) {
   return text.replace(/(GENCLASS_CONFIG\s*=\s*\{)([^;]*)(\}\s*;?)/, (_m, open, body, close) => {
     let b = body;
+    if (cfg.token) {
+      const v = `token: ${JSON.stringify(cfg.token)}`;
+      b = /\btoken\s*:\s*(?:"[^"]*"|'[^']*')/.test(b) ? b.replace(/\btoken\s*:\s*(?:"[^"]*"|'[^']*')/, v) : `${v}, ${b.trim()}`;
+    }
     if (cfg.telemetry !== undefined) {
       const v = `telemetry: ${cfg.telemetry ? "true" : "false"}`;
       b = /\btelemetry\s*:\s*(?:true|false)/.test(b) ? b.replace(/\btelemetry\s*:\s*(?:true|false)/, v) : `${v}, ${b.trim()}`;
@@ -474,15 +479,16 @@ export function updateConfigText(text, cfg) {
 /** `telemetry=off, model=/genclass-model/, ort=/genclass-model/ort/` (meta content), "" when nothing to say. */
 export function metaContent(cfg) {
   const parts = [];
+  if (cfg.token) parts.push(`token=${cfg.token}`);
   if (cfg.telemetry === false) parts.push("telemetry=off");
   if (cfg.model) parts.push(`model=${cfg.model.baseUrl}`, `ort=${cfg.model.ortWasmPaths}`, ...(cfg.model.device ? [`device=${cfg.model.device}`] : []));
   return parts.join(", ");
 }
 
-const TAG_ATTRS = { telemetry: "data-telemetry", model: "data-model", ort: "data-ort", device: "data-device" };
+const TAG_ATTRS = { token: "data-token", telemetry: "data-telemetry", model: "data-model", ort: "data-ort", device: "data-device" };
 const attrRe = (name) => new RegExp(String.raw`\s+${name}\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)`, "i");
 
-/** A script tag with data-telemetry / data-model / data-ort set for cfg (telemetry true removes the opt-out). */
+/** A script tag with data-token / data-telemetry / data-model / data-ort set for cfg (telemetry true removes the opt-out). */
 export function tagWithConfig(tag, cfg) {
   const set = (t, name, value) => {
     const re = attrRe(name);
@@ -493,6 +499,7 @@ export function tagWithConfig(tag, cfg) {
     return `${t.slice(0, close.index)}${attr}${t.slice(close.index)}`;
   };
   let t = tag;
+  if (cfg.token) t = set(t, TAG_ATTRS.token, cfg.token);
   if (cfg.telemetry !== undefined) t = set(t, TAG_ATTRS.telemetry, cfg.telemetry ? null : "off");
   if (cfg.model) {
     t = set(t, TAG_ATTRS.model, cfg.model.baseUrl);
@@ -527,6 +534,7 @@ export function switchMetaConfig(text, cfg) {
   if (metaAt >= 0) {
     const cur = /content=["']([^"']*)["']/i.exec(lines[metaAt])?.[1] ?? "";
     const pairs = Object.fromEntries(cur.split(/[,;]\s*/).filter(Boolean).map((p) => [p.split("=")[0].trim(), p.slice(p.indexOf("=") + 1).trim()]));
+    if (cfg.token) pairs.token = cfg.token;
     if (cfg.telemetry === false) pairs.telemetry = "off";
     if (cfg.telemetry === true) delete pairs.telemetry;
     if (cfg.model) Object.assign(pairs, { model: cfg.model.baseUrl, ort: cfg.model.ortWasmPaths, ...(cfg.model.device ? { device: cfg.model.device } : {}) });

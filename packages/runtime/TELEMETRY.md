@@ -23,7 +23,7 @@ When it is on, the console shows one notice per page:
 [GenClass] Sends anonymous diagnostics (decisions, redacted situation text) to improve the model. Opt out: GenClass.init({ telemetry: false }) or ?genclass=no-telemetry.
 ```
 
-`runtime.telemetry` reports `{ enabled, reason?, endpoint?, sessionId?, flush() }`; `reason` says why it is off
+`runtime.telemetry` reports `{ enabled, reason?, endpoint?, sessionId?, token?, flush() }`; `reason` says why it is off
 (`option`, `headless`, `url`, `localStorage`, `gpc`, `sampled-out`, `no-crypto`, `no-transport`, `kill-switch`,
 `disabled`).
 
@@ -51,6 +51,7 @@ Only data the runtime already computes for its own decisions, after redaction:
 ```jsonc
 {
   "schema": "genclass-telemetry/1",
+  "token": "gc_…",           // only when the app configured a valid token (InitOptions.token); see "App tokens"
   "sid": "3f9c…",            // 24 hex chars from crypto.getRandomValues, new on every page load, never stored
   "sent": 12034,             // ms since this page's GenClass started (no wall-clock time is sent)
   "runtime": "0.1.0-beta.3", // @genclass/runtime version
@@ -66,7 +67,7 @@ Every event has `t` (type), `seq` (0, 1, 2, … per page) and `at` (ms since sta
 | `session` | once, at init | `runtime`, `host` (the page's hostname, which identifies the app using GenClass), `route` (the page path with id-like segments replaced by `:id`, no query or fragment), `mode`, `effectiveMode`, `aggressiveness`, `sampled`, `model` (`local` / `custom` / `off`), `modelState`, `modelVersion`, `triage`, `shadow`, `holdWrites`, `device` (`webgpu` available, `cores`, `memoryGB` (the browser's coarse deviceMemory), `crossOriginIsolated`, `effectiveType`, `saveData`), `sample`, `situation` (whether situation text is included) |
 | `model` | model state changes | `state`, `version`, `model`, `variant`, `device` (webgpu/wasm), `threads`, `worker`, `workerError`, `gpu` (WebGPU probe summary), `ort`, `loadMs`, `warmupMs`, `fromCache`, `bytes`, `phase`, `reason`, `error` (GenClass model-host error text, ≤ 200 chars), `attempts` |
 | `status` | mode, aggressiveness or breaker changes | `mode`, `effectiveMode`, `aggressiveness`, `breaker` |
-| `decision` | every model decision | `id`, `trigger`, `route`, `model`, `latencyMs`, `held` (the subject waited for the answer; false = decided in the background), `situation` (text, see above), `autoState` (true when discovered state was recorded on the page), `budget`, `compact`, `questions` (question ids), `answers` (per question: calibrated `probabilities` per label, `choice`, `confidence`; or `p` / `score`), `diagnosis`, `diagnosisConfidence`, `action` (chosen), `confidence`, `tier`, `candidate`, `ran`, `executed`, `acted`, `reason` (why the passive action ran), `mass`, `gateKind`, `threshold` / `gain` / `margin`, `thresholdSource`, `gates` (report/guard/heal thresholds, aggressiveness, level and sources), `effectiveMode`, `shadow` |
+| `decision` | every model decision | `id`, `trigger`, `route`, `model`, `latencyMs`, `held` (the subject waited for the answer; false = decided in the background), `situation` (text, see above), `autoState` (true when discovered state was recorded on the page), `budget`, `compact`, `questions` (question ids), `answers` (per question: calibrated `probabilities` per label, `choice`, `confidence`; or `p` / `score`), `diagnosis`, `diagnosisConfidence`, `action` (chosen), `confidence`, `tier`, `candidate`, `ran`, `executed`, `acted`, `reason` (why the passive action ran), `mass`, `gateKind`, `threshold` / `gain` / `margin`, `thresholdSource`, `gates` (report/guard/heal thresholds, aggressiveness, level and sources), `effectiveMode`, `shadow`, `fn` (the name the app gave the `protect()`ed function the decision's subject ran inside, the outermost one; omitted otherwise) |
 | `detect` | a decision reported as a detection | `decision`, `trigger`, `diagnosis`, `p` |
 | `action` | an action ran, failed or was undone | `id`, `decision`, `action`, `tier`, `trigger`, `outcome` (`applied` / `failed` / `undone`), `late` (a late revert), `reversible`, `droppedFields` (count) |
 | `veto` | `onBeforeAction` vetoed an action | `decision`, `action`, `enforced` |
@@ -85,6 +86,24 @@ Numbers are rounded to 4 decimals. The source of truth is `packages/runtime/src/
 - At most 1,000 queued events; beyond that new events are dropped and counted. A failed request is dropped, never
   retried. Telemetry never throws into your app, never changes what the model sees, and never delays a decision.
 
+## App tokens and dashboards
+
+An app can set a **token** (`InitOptions.token`, `data-token`, `<meta name="genclass" content="token=...">` or
+`window.GENCLASS_CONFIG.token`): `gc_` followed by 22 letters or digits, created by `npx @genclass/runtime init` or at
+https://genclass.dev/start.
+
+- The token is public (it is in the page). It is sent as the batch envelope's top-level `token` and nowhere else; it
+  lets the collector group the batches of one app. A malformed token logs one console warning and is not sent.
+- Whoever holds the app's private dashboard link (`https://genclass.dev/dashboard/<secret>`, given once when the
+  token is created) can see aggregated diagnostics for that token (decisions, detections by diagnosis, actions, top
+  routes and protected functions, model load, backend and latency, versions) and its recent detections. Dashboard
+  data is also deleted after 90 days.
+- A token changes nothing about what is collected or when: with telemetry off (any opt-out, or Global Privacy
+  Control) nothing is sent and the dashboard gets nothing from that page. With `debug: true` the console says once
+  that a token is set while telemetry is off.
+- `decision` events carry `fn` when the decision was about something a `protect()`ed function caused (the name the
+  app chose, at most 80 characters).
+
 ## Where it goes
 
 - **Endpoint:** `https://genclass-telemetry.mehar-144.workers.dev/v1/events` (`DEFAULT_TELEMETRY_ENDPOINT`), a
@@ -93,7 +112,8 @@ Numbers are rounded to 4 decimals. The source of truth is `packages/runtime/src/
   partitioned by UTC date, runtime version and model version. The collector adds only the time it received the
   batch and the visitor's coarse **country** (two letters, from Cloudflare). It does not store IP addresses, user
   agents, cookies or any request header, and it drops unknown fields.
-- **Use:** model evaluation and training by the GenClass maintainers. Not sold, not used for advertising.
+- **Use:** model evaluation and training by the GenClass maintainers, and, for batches that carry a token, that
+  app's dashboard. Not sold, not used for advertising.
 - **Retention:** 90 days. An R2 lifecycle rule (`expire-90d`, prefix `events/`) deletes every stored batch 90 days after it
   was written. The maintainers may change this later; changes are recorded in the CHANGELOG.
 - **Your own endpoint:** `telemetry: { endpoint: "https://…" }` sends the same batches to a collector you run

@@ -123,6 +123,21 @@ Mehar operates the Azure cluster; nobody else touches Azure. The jobs below run 
 
 ## Next
 
+- **Review `feat/projects`** (local, 2026-10-10): app tokens (`InitOptions.token`, envelope `token`), `protect()`,
+  `scope: "functions"`, `Decision.fn`, and `init` creating a project at genclass.dev
+  ([docs/agents/dashboard-projects.md](docs/agents/dashboard-projects.md)). Open:
+  - **Per-function mode** (`protect(name, fn, { mode })`) not implemented: `OpRec.scope` (route scope, demote only)
+    is snapshotted per request from its URL and route, not inherited through the cause chain, so a protected call's
+    requests would need to inherit a scope from the task op first (`RuntimeImpl.startOp` -> `defaultScope`,
+    `scopeOf`, and every `op.scope` reader: `effectiveMode`, `blockOf`, `runDelivery`). Promotion above the session
+    mode (e.g. guard only inside checkout while the app observes) would also contradict "URL/route overrides only
+    demote"; decide the semantics first.
+  - The collector on this branch drops unknown top-level fields, so `token` reaches dashboards only with the
+    server-side work in `telemetry-worker/` (separate workstream). Check end to end before publishing.
+  - No introspection of protected functions (`runtime.functions()`); add only if the dashboard or devtools need it.
+  - `init` creates the project before showing the diff (so the diff shows the real token); a declined run prints
+    the link and writes nothing, so it can leave an unused project on the server.
+
 - **Review `feat/one-line`** (local, 2026-10-10): automatic state discovery for the one line (React, Redux/RTK,
   Zustand devtools; observed-only store kind). Then: Vue 3 + Pinia discovery (`__VUE_DEVTOOLS_GLOBAL_HOOK__` /
   pinia `$subscribe`; not started, `autoState.pinia` is accepted and ignored); exact attribution for
