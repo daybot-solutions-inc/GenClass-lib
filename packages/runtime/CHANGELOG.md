@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+### Safety: audit trail, interception inventory, money-flow guardrails
+
+- **`rt.audit(n?)`** and `audit: { size, sink }`: a JSON-serialisable audit trail of every decision (acted on or not),
+  action, undo, breaker trip and reset, and control change (`setMode`, `setAggressiveness`, `pause`, `resume`,
+  `enabled`, `disable`), each with a timestamp, the effective and requested mode, the aggressiveness profile, the gate
+  kind, thresholds and their source, the model's probabilities and the model's name, version, variant, device and
+  sha256. Bounded in memory (1,000 entries by default); the sink gets every entry after the current task. It never
+  changes what the model reads. `status.sha256`: the digest the loaded model variant was verified against.
+- **`requests.protect` presets** for payment, checkout and sign-in endpoints: `protectPreset("payments", "auth")`,
+  `PROTECT_PRESETS`, or `"preset:payments"` / `"preset:auth"` strings in JSON configs. Protection now also covers what
+  a protected response causes (writes, timers and requests started from its callbacks). `npx @genclass/runtime init`
+  suggests the presets when the project uses a payment SDK or has checkout or payment pages. Keeping money and identity
+  flows observe-only is the documented recommendation.
+- **Docs:** [INTERCEPTION.md](INTERCEPTION.md) lists every API GenClass wraps or listens to, what each mode may change,
+  what it never does, every action's preconditions and undo, and how `disable()` and `?genclass=off` restore the page;
+  a unit test keeps it in sync with the code. New: `SECURITY.md` (reporting, supported versions) and
+  `docs/runtime/THREAT-MODEL.md`. The release workflow publishes from a tag with npm provenance (RELEASE.md: how to
+  verify a tarball).
+
+### Fixes (found by the new invariant suite, `test/invariants/`)
+
+- The hold budget is now a hard ceiling in three more places: a held store write that the model deferred
+  (`policy.holdWrites`) could wait up to 10 s per defer (now its re-decisions share one budget); a response's wait for
+  its body and a request's identity body read were not counted against the budget.
+- `observe` mode never delays a `fetch` whose `Request` or `Blob` body GenClass reads to identify it (it was sent
+  after the read, a few microtasks to 100 ms later); protected and cross-origin requests neither.
+- After a late revert, a delivery `discard` no longer drops every later write of the same chain to that field (the
+  revert counted as newer data).
+- First-load size: `/auto` about 98 KB gzip, the main entry about 91 KB (+1.6 KB each).
+
 ## 0.1.0-beta.4 (unpublished, 2026-10-10)
 
 ### One line covers the whole app (automatic state discovery)

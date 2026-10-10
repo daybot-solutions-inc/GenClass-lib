@@ -16,6 +16,14 @@
 
 ## TL;DR
 
+- **SAFETY changes (verified against e84ddc7, 2026-10-10):** protection is inherited along the causal chain
+  (`RuntimeImpl.startOp`: an op created while a protected op is ambient gets `scope.protected`), so `blockOf` blocks
+  writes, timers and requests a protected response causes; `requestHoldable` / `NetHost.mayHold` keep unholdable
+  fetches (observe, protected, cross-origin, model not ready) from waiting for their identity body read; the hold
+  budget now also covers the delivery body wait (`runDelivery` → `settle` passes `heldSince`), the request identity
+  read (`gate(true)`) and a deferred held write's re-decisions (`MutationRec.heldSince`, `waitRelated`); `writtenOver`
+  ignores GenClass's own writes. Worst-case behaviour is pinned by `test/invariants/*.test.ts` (Adversary provider).
+
 - **Default mode is `observe`** (`packages/runtime/src/runtime.ts` -> `RuntimeImpl` constructor, `o.mode ?? "observe"`,
   commit f3636b2): it permits no non-passive action, so nothing is ever held, delayed or changed; decisions still
   run in the background and detections are still reported, for mutations, requests **and deliveries** (commit

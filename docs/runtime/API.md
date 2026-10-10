@@ -92,7 +92,8 @@ interface InitOptions {
                                                         // first match wins; demote only
   requests?: {
     ignore?: RequestMatcher[];                          // not observed at all (native pass-through)
-    protect?: RequestMatcher[];                         // observed, never held/retried/cached/discarded; a throwing predicate = protected
+    protect?: (RequestMatcher | `preset:${string}`)[];  // observed, never held/retried/cached/discarded, nor what its response causes;
+                                                        // a throwing predicate = protected; "preset:payments" / "preset:auth" = protectPreset(...)
     crossOrigin?: "observe" | "ignore";                 // ["observe"]; cross-origin is always passive
     labels?: { match: RequestMatcher; label: string }[];// names for reports/sinks ([A-Za-z0-9 _-], ≤ 5 words, ≤ 40 chars)
     labelsToModel?: boolean;                            // [false] labels appear in situation text only when true
@@ -105,6 +106,7 @@ interface InitOptions {
   vetoMode?: "enforce" | "report";                      // ["enforce"]; "report" records would-veto and runs the action
   sinks?: (SinkFn | { send: SinkFn; kinds?: SinkKind[]; sampleRate?: number; evidence?: boolean; flush?(): Promise<void> })[];
   session?: { id?: string; tags?: Record<string, string | number | boolean> }; // never shown to the model
+  audit?: { size?: number; sink?: (e: AuditEntry) => void }; // [1000 kept in memory] the audit trail (rt.audit()); sink: your own logging
   redact?: (path: string, value: unknown, kind?: "state" | "url" | "header" | "input") => unknown; // runs after built-in redaction; a throw → "[redacted]"
   report?: "console" | "interventions" | "silent" | ((r: Report) => void);    // "interventions": console prints interventions, undos, breaker only
   learn?: { persist?: boolean | "local" | "session"; key?: string; version?: string }; // version defaults to session.tags.release; mismatch discards
@@ -113,7 +115,7 @@ interface InitOptions {
 }
 ```
 
-Runtime additions: `rt.disable({ undo? })` (permanent; `undo: true` rolls back the last minute's actions),
+Runtime additions: `rt.audit(n?)` (the audit trail, below), `rt.disable({ undo? })` (permanent; `undo: true` rolls back the last minute's actions),
 `rt.summary(): SessionSummary`, `rt.setSession({ id?, tags? })`, `rt.breaker.{tripped, reset()}`, `rt.learn.clear()`,
 events `shadow`, `breaker`, `limit`, `modelBudget`. `status` adds `effectiveMode`, `sampled`, `breaker`, `scope`,
 `modelBudget`, and states `"disabled" | "skipped" | "unloaded"`. `status.scope` is what is in force on the current
@@ -122,13 +124,25 @@ and the matching `routes[]` rule) and `aggressiveness` the effective level; with
 (its index) and `ceiling` (the mode that rule caps the route at; rules only lower the mode). Before 0.1.0-beta.4,
 `scope.mode` was that ceiling ("heal" when no rule matched). `rt.gates()` carries `mode` (the same effective mode).
 `status.blocked` (state "error"): `{ url, origin, csp, directive? }` when the browser blocked a model or ORT download.
+`status.sha256` (state "ready"): the sha256 from `model.json` that the loaded variant was verified against.
 
 Gate order (each request/decision): protected → cross-origin → op scope (created under off/observe) →
 mode/allow/deny/requireDiagnosis (at the effective mode) → thresholds → `policy.actionLimits`
 (`limit:perMinute|perSubject|perSession`; defaults 60/min global, 10/min per subject, 200 per session) → `onBeforeAction` (`vetoed`, `would-veto`, or
 `limit:hold` past the budget) → execute. effectiveMode = min(mode, sample cap, breaker cap, route rule); URL overrides
-(`?genclass`, `?genclass-mode`, `?genclass-aggr`, `?genclass-sample`) only demote unless `debug: true`.
-`policy.holdBudgetMs` is a hard ceiling that includes defers and the veto hook. Hidden tabs skip background
+(`?genclass`, `?genclass-mode`, `?genclass-aggr`, `?genclass-sample`) only demote unless `debug: true`, with one
+exception: when the app sets no `mode`, `?genclass=guard` (or `localStorage.genclass = "guard"`) opts that visitor into
+guard; an explicit `mode` makes it demote-only. `policy.holdBudgetMs` is a hard ceiling that includes defers, the
+wait for a response or request body, a held write's deferred re-decisions and the veto hook.
+
+Protected requests (`requests.protect`) are never held, never wait for their body to be read, and neither they nor
+anything their response callbacks cause (writes, timers, follow-up requests: the ops inherit the protection) are
+acted on. Presets for money and identity flows: `import { protectPreset, PROTECT_PRESETS } from "@genclass/runtime"`;
+`protectPreset("payments", "auth")` returns fresh RegExps (`payments`: checkout, payment(s), payment intents, billing,
+invoices, charges, refunds, subscriptions, orders, purchases, transactions, transfers, payouts, wallets, Stripe,
+PayPal, Braintree, Adyen, Klarna, Square; `auth`: login/logout, sign-in/up/out, register, oauth, tokens, sessions, SSO,
+SAML, OIDC, MFA, 2FA, OTP, passwords, verify). Recommended for payment, checkout and sign-in flows in every mode
+(packages/runtime/INTERCEPTION.md, "Money and identity flows"). Hidden tabs skip background
 evaluation and release held items unevaluated.
 
 Performance: GenClass computes cheap facts for every write and request, and asks the model only about salient ones.
@@ -310,6 +324,7 @@ rt.gates(trigger?): EffectiveGates // the gate thresholds in force (see Policy)
 rt.history(n?): RtEvent[]          // recent events, oldest first
 rt.decisions(n?): Decision[]       // last 200 decisions
 rt.interventions(n?): ActionRecord[]
+rt.audit(n?): AuditEntry[]         // the audit trail, oldest first (see Reports, explain and undo)
 rt.inflight(): Op[]
 rt.stores(): StoreInfo[]           // registered and discovered stores: { name, kind: "atom"|"guard"|"adapter"|"observed", source?, writable, fields, version }
 rt.setMode(mode); rt.pause(); rt.resume(); rt.destroy()
@@ -438,6 +453,52 @@ A custom `report` function receives `{ kind: "detect" | "intervene" | "status", 
 
 Your own debug UI: GenClass ignores user events from inside any element marked `data-genclass-ignore` (the devtools
 overlay uses it), so debugging tools never become causes in situations.
+
+### Audit trail
+
+`rt.audit(n?)` returns the last `n` entries (all kept by default) of a structured, JSON-serialisable record of
+everything the runtime decided and did; `JSON.stringify(rt.audit())` exports it, and it keeps working after
+`destroy()`. One entry per decision (acted on or not), action, undo, breaker trip or reset, and control change:
+
+```ts
+interface AuditEntry {
+  schema: 1; seq: number;              // 1, 2, 3, ... without gaps
+  at: number;                          // runtime clock (ms)
+  kind: "decision" | "action" | "undo" | "breaker" | "control";
+  sessionId: string;
+  mode: "off" | "observe" | "guard" | "heal";  // effective mode for the subject (or the session)
+  requestedMode: "observe" | "guard" | "heal";
+  aggressiveness: number; profile?: "cautious" | "balanced" | "eager";
+  model: { name: string; state: string; version?: string; variant?: string; device?: "webgpu" | "wasm"; sha256?: string };
+  decisionId?: string; actionId?: string; trigger?: TriggerKind; subject?: string; label?: string; correlationId?: string;
+  // decision
+  diagnosis?: string; diagnosisConfidence?: number; proposed?: string; probabilities?: Record<string, number>;
+  ran?: string; executed?: boolean; tier?: "passive" | "guard" | "heal"; reason?: string;
+  gate?: { kind: "mass" | "gain"; thresholds: { report: number; guard: number; heal: number };
+           source: { report: GateSource; guard: GateSource; heal: GateSource };
+           candidate?: string; mass?: number; threshold?: number; gain?: number; margin?: number };
+  held?: boolean; holdBudgetMs?: number; latencyMs?: number; shadow?: { action; tier; wouldPass; reason? };
+  // action
+  ok?: boolean; error?: string; changed?: string; undoable?: boolean; late?: boolean; dropped?: string[];
+  // undo: byRuntime (true for rt.disable({ undo: true }), which the breaker does not count)
+  byRuntime?: boolean;
+  breaker?: { tripped: boolean; reason: "undos" | "errors" | "reset"; decisionIds: string[]; counts: { undos: number; errors: number } };
+  control?: { what: "setMode" | "setAggressiveness" | "pause" | "resume" | "enabled" | "disable"; from?: string | number; to?: string | number };
+}
+
+GenClass.init({
+  requests: { ignore: ["/my-log"] },
+  audit: { size: 5000, sink: (e) => navigator.sendBeacon("/my-log", JSON.stringify(e)) },
+});
+```
+
+`audit.size` (default 1,000, at most 10,000; 0 keeps none) bounds memory; `audit.sink` gets a copy of every entry, in
+order, on a microtask after it was recorded (never while a subject is held); a throwing sink is contained (one warning
+a minute). Query and fragment values in `subject`, `changed` and `error` are replaced with "…". The trail is built from
+values the runtime already has: it never feeds a decision, never changes what the model reads, and GenClass never
+sends it anywhere. A sink that ships entries with `fetch` should send to an endpoint listed in `requests.ignore` (or
+use `navigator.sendBeacon`, which GenClass does not wrap): otherwise its requests are observed like any app request
+and may themselves be decided about. `AUDIT_SCHEMA` is exported.
 
 ## Plugins
 

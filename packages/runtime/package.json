@@ -113,6 +113,7 @@
     "bin",
     "README.md",
     "TELEMETRY.md",
+    "INTERCEPTION.md",
     "LICENSE"
   ],
   "scripts": {

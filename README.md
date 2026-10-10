@@ -119,6 +119,17 @@ which available action is best. There is no list of known bugs in the code.
 - Apps that ship GenClass may need to disclose this to their users (GDPR/CCPA). Full schema, storage and guidance:
   [packages/runtime/TELEMETRY.md](packages/runtime/TELEMETRY.md).
 
+## Security
+
+- [SECURITY.md](SECURITY.md): how to report a vulnerability, supported versions.
+- [packages/runtime/INTERCEPTION.md](packages/runtime/INTERCEPTION.md): every browser API GenClass wraps or listens
+  to, what each mode may change, what it never does, every action's preconditions and undo, and how `disable()` and
+  `?genclass=off` restore the page (checked against the code by a unit test).
+- [docs/runtime/THREAT-MODEL.md](docs/runtime/THREAT-MODEL.md): page scripts, the model supply chain, crafted
+  responses, denial of service, telemetry and state discovery, with mitigations and residual risks.
+- `rt.audit()` exports a structured record of every decision and action; payment, checkout and sign-in endpoints
+  should stay observe-only (`requests: { protect: protectPreset("payments", "auth") }`).
+
 Full guide (modes, triggers, adapters, observability, performance, privacy, known limitations):
 **[packages/runtime/README.md](packages/runtime/README.md)**. API: [docs/runtime/API.md](docs/runtime/API.md).
 

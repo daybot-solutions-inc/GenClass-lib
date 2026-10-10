@@ -13,6 +13,12 @@ packed on top of it and waits to be published (Done, Next).
 
 ## Done
 
+- **SAFETY workstream (2026-10-10, external review: security 6.0, docs 6.0, production readiness 4.0):** audit trail
+  (`rt.audit()`, `audit.sink`), `packages/runtime/INTERCEPTION.md` with a unit test that keeps it in sync,
+  `SECURITY.md`, `docs/runtime/THREAT-MODEL.md`, `requests.protect` presets (+ chain protection, `init` suggestion),
+  `test/invariants/*` (worst-case model) and five hold-budget / observe fixes they found, `.github/workflows/release.yml`
+  with npm provenance and RELEASE.md "Verifying a published tarball" (packages/runtime/STATUS.md "SAFETY").
+
 - **`@genclass/runtime@0.1.0-beta.3` prepared, not published** (2026-10-09, branch `mvp-v2-b6`): default-on
   anonymous telemetry (privacy-relevant; `packages/runtime/TELEMETRY.md`) with opt-outs (`telemetry: false`,
   `?genclass=no-telemetry`, localStorage, GPC) and the `genclass-telemetry` Cloudflare collector
@@ -224,6 +230,13 @@ package → demos rerun → runtime release.
   are training; no result yet (first R17 eval ≈ 06:20 UTC).
 
 ## Needs the user
+
+- **SAFETY owner steps (2026-10-10):** (1) put the security contact address into `SECURITY.md` (placeholder
+  `[SECURITY CONTACT EMAIL]`) and confirm the response targets there; enable GitHub private vulnerability reporting;
+  (2) configure npm trusted publishing for `@genclass/runtime` (workflow `release.yml`, environment `npm-publish`) and
+  create the GitHub environment with required reviewers (RELEASE.md "Publishing from CI with provenance"); (3) confirm
+  the `requests.protect` chain-inheritance change for CONTRACT §13 (STATUS "Deviations"); (4) decide whether
+  `?genclass=guard` should keep opting visitors into guard when the app sets no mode (THREAT-MODEL T8).
 
 - **Telemetry owner decisions (before or right after publishing `0.1.0-beta.3`):**
   - **Privacy policy page** for the collection (who is the controller, purpose, retention, contact, rights), linked

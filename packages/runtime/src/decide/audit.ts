@@ -5,8 +5,9 @@
 // already has: it never feeds a decision and never changes what the model reads. URL query and fragment values in
 // free text (subjects, `changed`, errors) are replaced with "…" (as in sink evidence), so entries can be shipped to
 // the app's own logging. Bounded in memory (default 1,000 entries, oldest dropped); the optional sink receives every
-// entry, in order, on a microtask (never on a hold path); sink errors are swallowed (one warning a minute). Nothing
-// here is ever sent anywhere by GenClass.
+// entry, in order, on a microtask (never on a hold path); sink errors are swallowed (one warning a minute). A sink that
+// sends entries with fetch should use an endpoint in requests.ignore (or navigator.sendBeacon, which is not wrapped),
+// so its requests are not observed and decided about in turn. Nothing here is ever sent anywhere by GenClass.
 
 import type { AuditEntry, AuditOptions, Clock } from "../types.js";
 
@@ -71,10 +72,11 @@ export class AuditLog {
     this.scheduled = false;
     const batch = this.pending;
     this.pending = [];
-    if (!this.sink) return;
+    const sink = this.sink;
+    if (!sink) return;
     for (const e of batch) {
       try {
-        this.sink(copy(e));
+        sink(copy(e));
       } catch (err) {
         const now = this.clock.now();
         if (now - this.lastErr >= 60_000) {
