@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GenClass Interception Surface</title>
+<meta name="description" content="Every browser API GenClass wraps or observes, what each mode may change, what it never does, and how it restores the originals.">
+<link rel="canonical" href="https://genclass.dev/docs/interception">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/docs/interception">
+<meta property="og:title" content="GenClass Interception Surface">
+<meta property="og:description" content="Every browser API GenClass wraps or observes, what each mode may change, what it never does, and how it restores the originals.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GenClass Interception Surface">
+<meta name="twitter:description" content="Every browser API GenClass wraps or observes, what each mode may change, what it never does, and how it restores the originals.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Interception surface", "item": "https://genclass.dev/docs/interception"}]}, {"@type": "TechArticle", "headline": "Interception surface", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/INTERCEPTION.md"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs" class="on" aria-current="page">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>Interception surface</span></nav><h1>Interception surface</h1>
+<p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/INTERCEPTION.md"><code>packages/runtime/INTERCEPTION.md</code></a> in the GenClass repository.</p></div></div>
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><a href="/docs/interception">Interception surface</a><a href="/docs/threat-model">Threat model</a><a href="/security">Security</a><b>On this page</b><a href="#contents">Contents</a><a href="#at-a-glance">At a glance</a><a href="#globals-and-prototypes-it-replaces">Globals and prototypes it replaces</a><a href="#event-listeners-it-adds">Event listeners it adds</a><a href="#objects-it-instruments-after-handing-them-to-the-app">Objects it instruments after handing them to the app</a><a href="#automatic-state-discovery-react-redux-zustand">Automatic state discovery (React, Redux, Zustand)</a><a href="#stores-you-register">Stores you register</a><a href="#other-side-effects">Other side effects</a><a href="#what-each-mode-may-change">What each mode may change</a><a href="#what-it-never-does">What it never does</a><a href="#actions-preconditions-and-reversibility">Actions: preconditions and reversibility</a><a href="#money-and-identity-flows">Money and identity flows</a><a href="#turning-it-off-and-restoring-the-page">Turning it off and restoring the page</a><a href="#audit-trail">Audit trail</a><a href="#machine-checked-inventory">Machine-checked inventory</a></nav><article class="prose"><p>Everything <code>@genclass/runtime</code> wraps, replaces or listens to in a page, what each mode may change, what it never
+does, how every action can be undone, and how everything is put back. The source is the code; each row names the file
+and function. <code>test/interception.test.ts</code> checks this page against the code: it installs the runtime on a synthetic
+browser global, compares what changed with the inventory at the end of this page, checks that <code>destroy()</code> restores it,
+and counts the patch sites in <code>src/</code> (a new <code>addEventListener</code>, <code>defineProperty</code> or global assignment fails the test
+until this page is updated).</p>
+<p>Related: <a href="/docs/threat-model">THREAT-MODEL.md</a> (what an attacker could do with this surface),
+<a href="/security">SECURITY.md</a>, <a href="/docs/telemetry">TELEMETRY.md</a> (what leaves the page),
+<a href="/docs/options">OPTIONS-SPEC.md</a> (every option), <a href="/docs/api">API.md</a>.</p>
+<h2 id="contents">Contents</h2>
+<ul>
+<li><a href="#at-a-glance">At a glance</a></li>
+<li><a href="#globals-and-prototypes-it-replaces">Globals and prototypes it replaces</a></li>
+<li><a href="#event-listeners-it-adds">Event listeners it adds</a></li>
+<li><a href="#objects-it-instruments-after-handing-them-to-the-app">Objects it instruments after handing them to the app</a></li>
+<li><a href="#automatic-state-discovery-react-redux-zustand">Automatic state discovery (React, Redux, Zustand)</a></li>
+<li><a href="#stores-you-register">Stores you register</a></li>
+<li><a href="#other-side-effects">Other side effects</a></li>
+<li><a href="#what-each-mode-may-change">What each mode may change</a></li>
+<li><a href="#what-it-never-does">What it never does</a></li>
+<li><a href="#actions-preconditions-and-reversibility">Actions: preconditions and reversibility</a></li>
+<li><a href="#money-and-identity-flows">Money and identity flows</a></li>
+<li><a href="#turning-it-off-and-restoring-the-page">Turning it off and restoring the page</a></li>
+<li><a href="#audit-trail">Audit trail</a></li>
+<li><a href="#machine-checked-inventory">Machine-checked inventory</a></li>
+</ul>
+<h2 id="at-a-glance">At a glance</h2>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Wraps and listens</th>
+<th>Holds (adds latency)</th>
+<th>Changes what the app sees</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>?genclass=off</code>, <code>enabled: false</code></td>
+<td>nothing</td>
+<td>never</td>
+<td>never</td>
+</tr>
+<tr>
+<td><code>observe</code> (default)</td>
+<td>everything below</td>
+<td>never</td>
+<td>never</td>
+</tr>
+<tr>
+<td><code>guard</code> (opt-in)</td>
+<td>everything below</td>
+<td>a salient request, response, failure or (with <code>policy.holdWrites</code>) store write, up to the hold budget (150 to 800 ms)</td>
+<td>only through guard-tier actions: <code>discard</code>, <code>defer</code>, <code>coalesce</code>, <code>delay</code></td>
+</tr>
+<tr>
+<td><code>heal</code> (experimental)</td>
+<td>everything below</td>
+<td>as guard</td>
+<td>guard-tier plus <code>block</code>, <code>serve_cached</code>, <code>retry</code>, <code>hedge</code>, <code>rollback</code>, <code>resync</code>, custom actions</td>
+</tr>
+</tbody>
+</table>
+<p>Every action needs the model's calibrated probability over the permitted actions to reach the tier threshold, a
+diagnosis other than <code>expected</code>, and must pass <code>requests.protect</code>, cross-origin, route scope, <code>policy.allow</code>/<code>deny</code>,
+action limits, the breaker and <code>onBeforeAction</code> (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/decide/policy.ts">src/decide/policy.ts</a> <code>gate</code>,
+<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/runtime.ts">src/runtime.ts</a> <code>RuntimeImpl.onDecision</code>). The model never runs code: it picks a label from the list
+of actions the runtime offered for that subject, and a label that was not offered is ignored.</p>
+<p>Observers are installed by <code>RuntimeImpl.installObservers</code> (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/runtime.ts">src/runtime.ts</a>); <code>observe: { fetch:
+false, ... }</code> leaves any of them out (<code>timers</code> defaults to on only when a <code>document</code> exists). Each installer is wrapped
+in <code>try/catch</code>: an installer that throws (a read-only global) is skipped, never fatal.</p>
+<h2 id="globals-and-prototypes-it-replaces">Globals and prototypes it replaces</h2>
+<p>Each wrapper calls the original with the same <code>this</code> and arguments and returns its result. After <code>destroy()</code> a wrapper
+is restored only if it is still the installed value; if another library wrapped it afterwards, GenClass's wrapper
+stays in that chain as a pure pass-through (a <code>disabled</code> flag), so neither library breaks.</p>
+<table>
+<thead>
+<tr>
+<th>Global</th>
+<th>How</th>
+<th>File, function</th>
+<th>What it reads</th>
+<th>What it may change (guard/heal only)</th>
+<th>After <code>destroy()</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>window.fetch</code></td>
+<td>replaced by a wrapper</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/fetch.ts">src/observe/fetch.ts</a> <code>installFetch</code></td>
+<td>method, URL, header names, a hash of header values (tracing ids excluded), the request body (strings, form data, ≤ 64 KB of a Blob, BufferSource or a cloned <code>Request</code> stream) to compute an identity; a clone of each response (≤ 256 KB, ≤ 1 s; never <code>text/event-stream</code>)</td>
+<td>hold before sending; <code>coalesce</code>, <code>delay</code>, <code>block</code>, <code>serve_cached</code> (request); hold a failure, <code>retry</code>, <code>serve_cached</code> (failure); <code>hedge</code>, <code>serve_cached</code> (stall); hold a response (delivery <code>defer</code>, <code>discard</code>)</td>
+<td>restored</td>
+</tr>
+<tr>
+<td><code>XMLHttpRequest.prototype.open</code>, <code>send</code>, <code>abort</code>, <code>setRequestHeader</code></td>
+<td>replaced on the prototype</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/xhr.ts">src/observe/xhr.ts</a> <code>installXHR</code></td>
+<td>method, URL, header names and values (for the identity hash), the body (strings and BufferSource for the identity; Blobs are not read), the completed response's JSON</td>
+<td>hold before <code>send</code>; <code>delay</code>, <code>block</code>, <code>serve_cached</code> (request); hold the completion events (delivery). XHR failures are detection only (no <code>retry</code>)</td>
+<td>restored</td>
+</tr>
+<tr>
+<td><code>XMLHttpRequest.prototype.addEventListener</code>, <code>removeEventListener</code></td>
+<td>replaced on the prototype (completion listeners <code>readystatechange</code>, <code>progress</code>, <code>load</code>, <code>loadend</code> go through a thin wrapper so a held delivery can queue them)</td>
+<td>same</td>
+<td>nothing</td>
+<td>the order and time at which completion listeners run while a delivery is held</td>
+<td>restored, unless a wrapped listener was added: then both stay as pass-throughs so <code>removeEventListener</code> still finds the wrapper</td>
+</tr>
+<tr>
+<td><code>window.WebSocket</code></td>
+<td>replaced by a subclass of the native constructor</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/websocket.ts">src/observe/websocket.ts</a> <code>installWebSocket</code></td>
+<td>URL, message data (JSON-summarised for the situation), outgoing <code>send</code> summaries</td>
+<td>hold an incoming message (and everything after it on the same socket, in order); never drops or changes one</td>
+<td>restored; sockets created before stay subclass instances that pass everything through</td>
+</tr>
+<tr>
+<td><code>window.EventSource</code></td>
+<td>replaced by a subclass</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/eventsource.ts">src/observe/eventsource.ts</a> <code>installEventSource</code></td>
+<td>URL, event data</td>
+<td>hold an incoming event (order kept)</td>
+<td>restored, as above</td>
+</tr>
+<tr>
+<td><code>window.setTimeout</code>, <code>window.setInterval</code></td>
+<td>replaced by wrappers that wrap the callback (a lazy op carries the causal context)</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/timers.ts">src/observe/timers.ts</a> <code>installTimers</code></td>
+<td>the delay (for the op's label)</td>
+<td>nothing: the delay, <code>this</code>, arguments, return value and the timer id are the native ones</td>
+<td>restored</td>
+</tr>
+<tr>
+<td><code>history.pushState</code>, <code>history.replaceState</code></td>
+<td>replaced on the <code>history</code> object; the original runs first</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/nav.ts">src/observe/nav.ts</a> <code>installNav</code></td>
+<td>the new path, query and hash (redacted before the model)</td>
+<td>nothing</td>
+<td>restored</td>
+</tr>
+<tr>
+<td><code>Storage.prototype.setItem</code>, <code>removeItem</code>, <code>clear</code></td>
+<td>replaced on the prototype; the original runs first</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/storage.ts">src/observe/storage.ts</a> <code>installStorage</code></td>
+<td>the key name only (redacted when it names a secret); never the value</td>
+<td>nothing</td>
+<td>restored</td>
+</tr>
+<tr>
+<td><code>window.__REACT_DEVTOOLS_GLOBAL_HOOK__</code></td>
+<td>installed when absent (a minimal DevTools hook); when React DevTools or React Refresh already installed one, its <code>inject</code>, <code>onCommitFiberRoot</code> and <code>onCommitFiberUnmount</code> are chained (theirs run first)</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/discover/react.ts">src/discover/react.ts</a> <code>installReactDiscovery</code></td>
+<td>see <a href="#automatic-state-discovery-react-redux-zustand">state discovery</a></td>
+<td>nothing (observed only)</td>
+<td>chained functions restored; a hook GenClass installed stays (React keeps a reference to it) and is inert</td>
+</tr>
+<tr>
+<td><code>window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__</code>, <code>window.__REDUX_DEVTOOLS_EXTENSION__</code></td>
+<td>replaced by shims that call the real Redux DevTools extension first when it is installed</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/discover/redux.ts">src/discover/redux.ts</a> <code>installReduxDiscovery</code></td>
+<td>see state discovery</td>
+<td>Redux stores created through them become full adapters (their writes can be held, dropped, rolled back in guard/heal)</td>
+<td>restored (deleted when they did not exist)</td>
+</tr>
+<tr>
+<td><code>window.GenClass</code></td>
+<td>the script-tag API object</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/cdn/global.ts">src/cdn/global.ts</a> <code>install</code></td>
+<td>nothing</td>
+<td>nothing</td>
+<td>stays</td>
+</tr>
+<tr>
+<td><code>PerformanceObserver</code> (an instance, not a patch)</td>
+<td>observes <code>longtask</code> entries</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/perf.ts">src/observe/perf.ts</a> <code>installPerf</code></td>
+<td>long task durations</td>
+<td>nothing</td>
+<td>disconnected</td>
+</tr>
+</tbody>
+</table>
+<p>Not wrapped or observed: <code>requestAnimationFrame</code>, <code>queueMicrotask</code>, <code>MessageChannel</code>, <code>postMessage</code>,
+<code>BroadcastChannel</code>, IndexedDB, Cache Storage reads by the app, <code>navigator.sendBeacon</code>, <code>Worker</code>, Service Workers,
+WebRTC, WebTransport, <code>document.cookie</code>, form navigation (a native <code>&lt;form&gt;</code> submit is recorded as a user action only).</p>
+<h2 id="event-listeners-it-adds">Event listeners it adds</h2>
+<p>All of them are passive observers: none calls <code>preventDefault</code>, <code>stopPropagation</code> or changes the event. Exception: the
+devtools overlay's Alt+Shift+G hotkey (only when you mount the overlay).</p>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Events</th>
+<th>File, function</th>
+<th>Why</th>
+<th>Removed by <code>destroy()</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>window</code> (capture, passive)</td>
+<td><code>click</code>, <code>input</code>, <code>change</code>, <code>submit</code>, <code>keydown</code> (Enter and Escape only), plus <code>focusin</code>, <code>pointerdown</code>, <code>mousedown</code> to find open shadow roots</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/dom-user.ts">src/observe/dom-user.ts</a> <code>installDomUser</code></td>
+<td>user actions: the target's accessible name, the typed value (empty for password, card, one-time-code and secret-named fields: <code>isSensitiveField</code>), the option text</td>
+<td>yes (also the per-shadow-root <code>change</code>/<code>submit</code> listeners)</td>
+</tr>
+<tr>
+<td><code>window</code></td>
+<td><code>error</code>, <code>unhandledrejection</code></td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/errors.ts">src/observe/errors.ts</a> <code>installErrors</code></td>
+<td>errors become <code>error</code> triggers (message, file name and line)</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>window</code></td>
+<td><code>popstate</code>, <code>hashchange</code></td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/nav.ts">src/observe/nav.ts</a> <code>installNav</code></td>
+<td>navigation (route scopes are recomputed)</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>window</code> / <code>document</code></td>
+<td><code>pagehide</code> / <code>visibilitychange</code></td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/runtime.ts">src/runtime.ts</a> constructor</td>
+<td>the session summary for your <code>sinks</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>window</code> / <code>document</code></td>
+<td><code>pagehide</code> / <code>visibilitychange</code></td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/telemetry/client.ts">src/telemetry/client.ts</a> <code>TelemetryClient</code></td>
+<td>the final telemetry flush (only while telemetry is on)</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>window</code></td>
+<td><code>load</code> (once)</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/model/host.ts">src/model/host.ts</a> <code>scheduleIdle</code></td>
+<td>start the model download at idle after the page loaded</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>document</code></td>
+<td><code>securitypolicyviolation</code> (while the model loads)</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/model/host.ts">src/model/host.ts</a> <code>watchCsp</code></td>
+<td>name a CSP-blocked model download in one warning</td>
+<td>yes, when loading ends</td>
+</tr>
+<tr>
+<td><code>document</code></td>
+<td><code>DOMContentLoaded</code> (once)</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/cdn/config.ts">src/cdn/config.ts</a> <code>whenBody</code></td>
+<td>mount the devtools overlay when <code>&lt;body&gt;</code> exists</td>
+<td>fires once</td>
+</tr>
+<tr>
+<td>the model <code>Worker</code></td>
+<td><code>message</code>, <code>error</code>, <code>messageerror</code></td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/model/host.ts">src/model/host.ts</a>, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/cdn/global.ts">src/cdn/global.ts</a> <code>blobModuleWorker</code></td>
+<td>the worker GenClass started</td>
+<td>terminated</td>
+</tr>
+<tr>
+<td>inside the worker</td>
+<td><code>message</code>, <code>securitypolicyviolation</code></td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/model/worker.ts">src/model/worker.ts</a></td>
+<td>the worker's own scope</td>
+<td>terminated</td>
+</tr>
+<tr>
+<td>the devtools overlay (only when mounted)</td>
+<td><code>keydown</code> on <code>document</code> (capture: Alt+Shift+G toggles the overlay and calls <code>preventDefault</code> on that combination only), clicks and keys inside its own shadow root, <code>matchMedia</code> theme changes</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/devtools/index.ts">src/devtools/index.ts</a>, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/devtools/ui.ts">src/devtools/ui.ts</a></td>
+<td>the overlay</td>
+<td>on unmount</td>
+</tr>
+</tbody>
+</table>
+<h2 id="objects-it-instruments-after-handing-them-to-the-app">Objects it instruments after handing them to the app</h2>
+<table>
+<thead>
+<tr>
+<th>Object</th>
+<th>What</th>
+<th>File</th>
+<th>Mode</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>each <code>Response</code> the app receives from <code>fetch</code></td>
+<td>own properties <code>json</code>, <code>text</code>, <code>arrayBuffer</code>, <code>blob</code>, <code>formData</code>, <code>bytes</code> and <code>clone</code> that call the native methods and then restore the request's causal context</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/fetch.ts">src/observe/fetch.ts</a> <code>instrumentResponse</code></td>
+<td>all</td>
+<td>same results, one extra microtask; <code>res.json !== Response.prototype.json</code></td>
+</tr>
+<tr>
+<td>a <code>Response</code> GenClass made (guard/heal actions only)</td>
+<td>a new <code>Response</code> with the header <code>x-genclass: cached</code>, <code>coalesced</code> or <code>blocked</code> (503, empty body)</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/cache.ts">src/observe/cache.ts</a> <code>makeResponse</code>, <code>blockedResponse</code></td>
+<td>guard: <code>coalesce</code>; heal: <code>block</code>, <code>serve_cached</code></td>
+<td>the app can tell it apart by that header</td>
+</tr>
+<tr>
+<td>each <code>XMLHttpRequest</code> the app uses</td>
+<td>own accessor properties <code>onreadystatechange</code>, <code>onprogress</code>, <code>onload</code>, <code>onloadend</code> (the getter returns the wrapper around the app's function)</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/xhr.ts">src/observe/xhr.ts</a> <code>wrapHandlers</code></td>
+<td>all</td>
+<td>same calls, possibly queued while a delivery is held</td>
+</tr>
+<tr>
+<td>an <code>XMLHttpRequest</code> GenClass answered (heal: <code>block</code>, <code>serve_cached</code>)</td>
+<td>own properties <code>readyState</code>, <code>status</code>, <code>statusText</code>, <code>response</code>, <code>responseText</code>, <code>getResponseHeader</code>, <code>getAllResponseHeaders</code>, then <code>readystatechange</code>, <code>load</code>, <code>loadend</code> are dispatched; all removed on the next <code>open()</code></td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/xhr.ts">src/observe/xhr.ts</a> <code>fake</code>, <code>unfake</code></td>
+<td>heal</td>
+<td>the response carries <code>x-genclass</code></td>
+</tr>
+<tr>
+<td>each <code>WebSocket</code> created while installed</td>
+<td>an own <code>send</code> that records a summary, then calls the native <code>send</code> with the same data; GenClass's own listeners for <code>message</code>, <code>close</code>, <code>error</code>, <code>open</code></td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/websocket.ts">src/observe/websocket.ts</a>, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/messages.ts">src/observe/messages.ts</a> <code>MessageGate</code></td>
+<td>all; holding only in guard/heal</td>
+<td>a held message is stopped (<code>stopImmediatePropagation</code>) and later re-dispatched as a copy (<code>isTrusted</code> false, same <code>data</code>, <code>origin</code>, <code>lastEventId</code>, <code>ports</code>), in order</td>
+</tr>
+<tr>
+<td>each <code>EventSource</code></td>
+<td><code>addEventListener</code> (subclass method) makes sure GenClass sees custom event types first</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/eventsource.ts">src/observe/eventsource.ts</a></td>
+<td>all; holding only in guard/heal</td>
+<td>as WebSocket</td>
+</tr>
+</tbody>
+</table>
+<h2 id="automatic-state-discovery-react-redux-zustand">Automatic state discovery (React, Redux, Zustand)</h2>
+<p>Installed with <code>autoState</code> (on by default for <code>@genclass/runtime/auto</code> and the script tag; <code>GenClass.init</code> needs
+<code>import "@genclass/runtime/discover"</code> first), never under <code>?genclass=off</code>. Code: <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/discover">src/discover/</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Hook point</th>
+<th>What GenClass does there</th>
+<th>Store kind</th>
+<th>May GenClass change it?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>React ≥ 16.8 (all renderers, dev and prod builds)</td>
+<td><code>__REACT_DEVTOOLS_GLOBAL_HOOK__</code> (above)</td>
+<td>on each commit, walks only the fibers that re-rendered (≤ 1 ms, ≤ 20,000 fibers per commit) and records <code>useState</code>, <code>useReducer</code>, <code>useSyncExternalStore</code> and class-component state of named components (≤ 3 instances per component, ≤ 48 component stores, ≤ 16 hooks each). Functions, promises, elements, DOM nodes and class instances are skipped; a value equal to what a password, card or one-time-code input holds is redacted from then on</td>
+<td><code>observed</code></td>
+<td><strong>No.</strong> Never held, dropped, reverted, rolled back or resynced (<code>state/hub.ts</code> <code>StoreHub.observe</code> only records; mutation <code>discard</code>/<code>defer</code> are not offered: <code>situation/build.ts</code> <code>builtinUnavailable</code>; rollback needs a writable store)</td>
+</tr>
+<tr>
+<td>React renderers that inject after GenClass</td>
+<td>the renderer's hooks dispatcher (<code>ReactSharedInternals.H</code> in React 19, <code>ReactCurrentDispatcher.current</code> before) becomes an accessor that returns an object inheriting from React's dispatcher with own <code>useState</code>/<code>useReducer</code> whose setters are wrapped; class instances' <code>updater</code> is wrapped</td>
+<td>the wrapper calls the real setter unchanged and first notes which operation (request, timer, user action) called it</td>
+<td>—</td>
+<td>No. After <code>destroy()</code> the wrappers stay (React keeps the setters' identity) and pass through</td>
+</tr>
+<tr>
+<td>Redux and Redux Toolkit stores created with the Redux DevTools compose or enhancer (RTK's default)</td>
+<td><code>__REDUX_DEVTOOLS_EXTENSION_COMPOSE__</code>, <code>__REDUX_DEVTOOLS_EXTENSION__()</code></td>
+<td>adds GenClass's Redux enhancer innermost (as the manual <code>genclassEnhancer</code>, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/adapters/redux.ts">src/adapters/redux.ts</a>); the real extension stays outermost</td>
+<td><code>adapter</code> (full)</td>
+<td><strong>Yes, in guard/heal</strong>: like a registered store (a salient async dispatch may be held with <code>policy.holdWrites</code>, dropped, late-reverted within 800 ms, rolled back). Redux stores created before a runtime attached are observed only</td>
+</tr>
+<tr>
+<td>Zustand <code>devtools()</code> middleware and other Redux DevTools <code>connect()</code> clients</td>
+<td><code>__REDUX_DEVTOOLS_EXTENSION__.connect</code></td>
+<td>records every state they send (functions left out), attributed to the operation that made the change</td>
+<td><code>observed</code></td>
+<td><strong>No</strong></td>
+</tr>
+</tbody>
+</table>
+<p><code>test/invariants/discovery.test.ts</code> checks the "No" rows with a hostile model in heal mode.</p>
+<h2 id="stores-you-register">Stores you register</h2>
+<p><code>rt.atom</code>, <code>rt.guard</code>, <code>rt.adapter</code>, <code>useGenClassState</code> (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/adapters/react.ts">src/adapters/react.ts</a>), the Redux
+enhancer (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/adapters/redux.ts">src/adapters/redux.ts</a>: wraps the store's <code>dispatch</code> and previews each action
+through the reducer once) and the Zustand middleware (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/adapters/zustand.ts">src/adapters/zustand.ts</a>: replaces the
+store's <code>set</code> and <code>api.setState</code>). These are the only stores GenClass can write: guard may drop or defer a held write
+(<code>policy.holdWrites</code>, opt-in) or late-revert one within 800 ms; heal may roll back or resync. GenClass writes whole
+states back to Redux with the visible action <code>@@genclass/REPLACE</code>. Store options: <code>hold: false</code> keeps a store's writes
+from ever being held.</p>
+<h2 id="other-side-effects">Other side effects</h2>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Where</th>
+<th>When</th>
+<th>File</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Network: the model card, tokenizer, calibration, meta and the model variant (about 10 MB) from <code>model.baseUrl</code> (default jsDelivr <code>@genclass/runtime-model</code>), and onnxruntime-web's wasm from <code>model.ortWasmPaths</code></td>
+<td>with the page's fetch as it was when the module loaded (never through the wrapper)</td>
+<td>at idle after load, <code>GenClass.init</code> in a browser with a model (lazy on Save-Data)</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/model/loader.ts">src/model/loader.ts</a>, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/model/backend.ts">src/model/backend.ts</a></td>
+</tr>
+<tr>
+<td>Network: anonymous diagnostics to the GenClass collector (<code>DEFAULT_TELEMETRY_ENDPOINT</code>, a Cloudflare Worker)</td>
+<td>native <code>fetch</code>/<code>sendBeacon</code> captured at module load, <code>text/plain</code>, <code>credentials: "omit"</code>, <code>referrerPolicy: "no-referrer"</code></td>
+<td><code>GenClass.init</code> in a browser unless turned off (<a href="/docs/telemetry">TELEMETRY.md</a>); never in <code>createRuntime()</code></td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/telemetry">src/telemetry/</a></td>
+</tr>
+<tr>
+<td>Cache Storage</td>
+<td><code>genclass-model</code> cache (<code>model.cacheName</code>): model files, each checked against the card's size and sha256</td>
+<td>model load</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/model/loader.ts">src/model/loader.ts</a> <code>fetchFile</code></td>
+</tr>
+<tr>
+<td><code>sessionStorage</code></td>
+<td><code>genclass:bucket</code> (<code>sample</code>), the breaker's trip state</td>
+<td><code>sample</code> &lt; 1; breaker trips</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/runtime.ts">src/runtime.ts</a> <code>sampleBucket</code>, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/decide/breaker.ts">src/decide/breaker.ts</a></td>
+</tr>
+<tr>
+<td><code>localStorage</code> / <code>sessionStorage</code></td>
+<td><code>genclass:learn</code> (learned operation shapes)</td>
+<td>only with <code>learn.persist</code></td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/runtime.ts">src/runtime.ts</a> <code>saveProfilesSoon</code></td>
+</tr>
+<tr>
+<td><code>localStorage</code> (read only)</td>
+<td><code>genclass</code> (kill switch), <code>genclass.telemetry</code> (opt-out)</td>
+<td>init</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/index.ts">src/index.ts</a> <code>killSwitch</code>, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/telemetry/config.ts">src/telemetry/config.ts</a></td>
+</tr>
+<tr>
+<td>A module <code>Worker</code> (<code>genclass-model</code>) running onnxruntime-web; inline on the main thread only if the worker cannot start (<code>model.inlineFallback</code>)</td>
+<td></td>
+<td>model load</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/model/host.ts">src/model/host.ts</a></td>
+</tr>
+<tr>
+<td>Memory</td>
+<td>≤ 64 response bodies of ≤ 256 KB (last good GET per identity), ≤ 4 MB of recent responses for coalescing, a 500-event history, 200 decisions, 1,000 audit entries</td>
+<td>always</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/cache.ts">src/observe/cache.ts</a></td>
+</tr>
+<tr>
+<td>Console</td>
+<td>one line per detection or intervention (<code>report</code>), the telemetry notice, warnings</td>
+<td><code>report: "console"</code> (default)</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/decide/report.ts">src/decide/report.ts</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-each-mode-may-change">What each mode may change</h2>
+<p><strong>observe</strong> (the default) never holds, delays, drops, retries, replays or answers anything, and never writes app state.
+In code: <code>permittedActions</code> is empty in observe (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/decide/policy.ts">src/decide/policy.ts</a> <code>modeAllows</code>), so
+<code>trigger()</code> never waits; <code>deliveryHoldable</code> is false, so a response is released synchronously before any body read
+(<code>runDelivery</code>); <code>requestHoldable</code> is false, so a request whose body GenClass reads for its identity is sent first
+(<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/fetch.ts">src/observe/fetch.ts</a> <code>runRequest</code>); store holds need <code>mode !== "observe"</code> (<code>hub.hooks.mayHold</code>).
+What observe does cost: the wrappers above, a few extra microtask hops, response clones, CPU for situations and the
+model (in its worker), the model download and, from <code>GenClass.init</code>, telemetry. <code>test/invariants/observe.test.ts</code>
+compares everything the app observes, with virtual timestamps, against a run without GenClass while a hostile model
+answers every situation.</p>
+<p><strong>guard</strong> (opt-in) adds holds and the guard-tier actions; <strong>heal</strong> (experimental) adds the heal tier. A hold never
+exceeds the hold budget (<code>policy.holdBudgetMs</code>, "auto" = 1.5 × the model's median latency clamped to 150 to 800 ms),
+including the time spent waiting for a body, deferred re-decisions and <code>onBeforeAction</code>
+(<code>test/invariants/network.test.ts</code>, <code>test/invariants/state.test.ts</code> "the hold budget caps ..."). When the model is
+not ready, slow, erroring or over its rate limit, the subject proceeds unchanged (fail open).</p>
+<p>Every term can only lower the mode: <code>routes</code> rules, <code>sample</code>, the breaker (after 2 undos or 3 errors following actions,
+the session drops to <code>observe</code>), a hidden tab (nothing new is held, background decisions are skipped) and
+<code>?genclass-mode</code>. One
+URL switch can raise it: <code>?genclass=guard</code> (or <code>localStorage.genclass = "guard"</code>) turns guard on when the app did not
+set a mode; <code>heal</code> from the URL needs <code>debug: true</code> (see <a href="/docs/threat-model">THREAT-MODEL.md</a>).</p>
+<h2 id="what-it-never-does">What it never does</h2>
+<table>
+<thead>
+<tr>
+<th>Never</th>
+<th>How it is ensured</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>changes a request's URL, method, headers or body</td>
+<td>the native <code>fetch</code>/<code>send</code> gets the app's own <code>input</code>/<code>init</code>/<code>body</code>; a replay (<code>retry</code>, <code>hedge</code>) sends a clone of the original <code>Request</code> or the same <code>init</code></td>
+<td><code>test/fetch.test.ts</code>, <code>test/invariants/network.test.ts</code></td>
+</tr>
+<tr>
+<td>reads or writes cookies, or changes <code>credentials</code></td>
+<td><code>document.cookie</code> is never accessed; <code>init</code> is passed through</td>
+<td>static: no <code>cookie</code> access in <code>src/</code> outside redaction name lists</td>
+</tr>
+<tr>
+<td>sends a non-idempotent request twice without an idempotency key</td>
+<td><code>retry</code> and <code>hedge</code> are only offered for GET/HEAD/OPTIONS/PUT/DELETE/TRACE or with an <code>Idempotency-Key</code>-style header (<code>policy.idempotencyHeaders</code>) or opt-in body field (<code>policy.idempotencyBodyFields</code>): <code>situation/build.ts</code> <code>repeatUnsafe</code>; <code>hedge</code> is GET only</td>
+<td><code>test/invariants/network.test.ts</code> "never sent twice"</td>
+</tr>
+<tr>
+<td>serves a cached response to anything but an identical GET</td>
+<td><code>serve_cached</code> needs <code>method === "GET"</code> and a cached body for the same identity (method, URL, headers, body)</td>
+<td><code>test/review-fetch.test.ts</code>, <code>test/fetch.test.ts</code></td>
+</tr>
+<tr>
+<td>acts on a protected, cross-origin or off/observe-scoped subject</td>
+<td>gate steps 1 to 3 (<code>blockOf</code> → reason <code>protected</code>, <code>cross-origin</code>, <code>scope</code>), checked before thresholds, <code>allow</code>, <code>eager</code> and shadow; <code>onBeforeAction</code> is not even asked; a protected request is never held and never waits for its body; its response's causal chain is protected too</td>
+<td><code>test/invariants/network.test.ts</code>, <code>test/presets.test.ts</code></td>
+</tr>
+<tr>
+<td>runs an action the runtime did not offer</td>
+<td><code>top</code> must be one of <code>built.actions</code>; the gate only considers permitted, offered actions</td>
+<td><code>test/invariants/network.test.ts</code> "out-of-vocabulary"</td>
+</tr>
+<tr>
+<td>writes discovered React or Zustand state</td>
+<td>observed stores are only recorded (<code>StoreHub.observe</code>)</td>
+<td><code>test/invariants/discovery.test.ts</code></td>
+</tr>
+<tr>
+<td>reorders writes to a store, or messages on a socket</td>
+<td>held writes wait in the store's queue (<code>StoreHub.drain</code> applies in proposal order); held messages queue behind the head (<code>MessageGate</code>)</td>
+<td><code>test/no-reorder.test.ts</code>, <code>test/invariants/network.test.ts</code> "sync loop"</td>
+</tr>
+<tr>
+<td>records password, card or one-time-code input values</td>
+<td><code>isSensitiveField</code> → empty value; the default redactor runs first and a custom <code>redact</code> can only redact more</td>
+<td><code>test/redaction-v2.test.ts</code>, <code>test/review-redaction.test.ts</code></td>
+</tr>
+<tr>
+<td>throws into the app</td>
+<td>installers, hooks, listeners, sinks and plugins run in <code>try/catch</code>; a failed action runs the passive action</td>
+<td>throughout</td>
+</tr>
+<tr>
+<td>keeps acting after <code>disable()</code></td>
+<td>holds are released unchanged, observers uninstalled, the model worker terminated</td>
+<td><code>test/invariants/state.test.ts</code> "disable"</td>
+</tr>
+</tbody>
+</table>
+<h2 id="actions-preconditions-and-reversibility">Actions: preconditions and reversibility</h2>
+<p>Holding (waiting for the decision) is not an action: it only adds latency, within the hold budget, and the subject then
+proceeds or the chosen action runs. Every action is recorded (<code>rt.interventions()</code>, <code>rt.explain(id)</code>, the console,
+<code>sinks</code>, <code>rt.audit()</code>) with one sentence saying exactly what changed. Undo: <code>record.undo()</code>, the devtools overlay, or
+<code>rt.disable({ undo: true })</code> (actions of the last 60 s, newest first). Two undos within 10 minutes trip the breaker.</p>
+<table>
+<thead>
+<tr>
+<th>Trigger</th>
+<th>Action</th>
+<th>Tier</th>
+<th>What it does</th>
+<th>Preconditions (besides the gate)</th>
+<th>Undo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mutation</td>
+<td><code>discard</code></td>
+<td>guard</td>
+<td>drops a held store write; decided after the write applied (hold budget expired), reverts exactly that write</td>
+<td>registered store (not observed-only); held: <code>policy.holdWrites</code>; late revert ≤ 800 ms after it applied and nothing written since depends on it (<code>StoreHub.revertable</code>)</td>
+<td>yes: the write is committed / re-applied</td>
+</tr>
+<tr>
+<td>mutation</td>
+<td><code>defer</code></td>
+<td>guard</td>
+<td>holds the write until related in-flight operations finish, then decides again</td>
+<td>held write, at most 2 defers, within what is left of the hold budget</td>
+<td>— (the write applies or is decided again)</td>
+</tr>
+<tr>
+<td>request</td>
+<td><code>coalesce</code></td>
+<td>guard</td>
+<td>does not send; answers with the response of the identical request in flight or finished ≤ 2 s ago (<code>x-genclass: coalesced</code>)</td>
+<td>fetch; same identity (method, URL, headers, body); a shareable buffered response (≤ 256 KB)</td>
+<td>no: the request was not sent. Any method, POST included (double submits): protect or <code>deny</code> it where repeats are deliberate</td>
+</tr>
+<tr>
+<td>request</td>
+<td><code>delay</code></td>
+<td>guard</td>
+<td>sends after 250 ms × 2^(recent failure streak), at most 8 s</td>
+<td>fetch, XHR</td>
+<td>no (latency only)</td>
+</tr>
+<tr>
+<td>request</td>
+<td><code>block</code></td>
+<td>heal</td>
+<td>does not send; answers 503 with <code>x-genclass: blocked</code></td>
+<td>fetch, XHR</td>
+<td>no</td>
+</tr>
+<tr>
+<td>request</td>
+<td><code>serve_cached</code></td>
+<td>heal</td>
+<td>does not send; answers with the last good response for this identity (<code>x-genclass: cached</code>)</td>
+<td>GET; a cached body (≤ 256 KB, this page's memory)</td>
+<td>no</td>
+</tr>
+<tr>
+<td>delivery</td>
+<td><code>discard</code></td>
+<td>guard</td>
+<td>delivers the response, then for 10 s drops the writes its causal chain makes over newer data</td>
+<td>the response would overwrite newer data; at least one target field in a registered store</td>
+<td>yes: the dropped values are restored</td>
+</tr>
+<tr>
+<td>delivery</td>
+<td><code>defer</code></td>
+<td>guard</td>
+<td>holds the response until related in-flight operations finish, then decides again</td>
+<td>related work in flight; at most 2 defers; within the hold budget</td>
+<td>—</td>
+</tr>
+<tr>
+<td>failure</td>
+<td><code>retry</code></td>
+<td>heal</td>
+<td>sends the request again after 200 ms × 2^(attempt − 1) (≤ 5 s); the app gets that attempt's result</td>
+<td>fetch; replayable body; fewer than 4 attempts; idempotent method or idempotency key</td>
+<td>no</td>
+</tr>
+<tr>
+<td>failure</td>
+<td><code>serve_cached</code></td>
+<td>heal</td>
+<td>answers the failed request with the last good response</td>
+<td>fetch; GET; cached body</td>
+<td>no</td>
+</tr>
+<tr>
+<td>stall</td>
+<td><code>hedge</code></td>
+<td>heal</td>
+<td>sends a second identical request; the first good answer reaches the app</td>
+<td>fetch; GET; replayable</td>
+<td>no</td>
+</tr>
+<tr>
+<td>stall</td>
+<td><code>serve_cached</code></td>
+<td>heal</td>
+<td>answers with the cached response; the original continues in the background</td>
+<td>fetch; GET; cached body</td>
+<td>no</td>
+</tr>
+<tr>
+<td>inconsistency</td>
+<td><code>rollback</code></td>
+<td>heal</td>
+<td>restores the involved writable stores to the last consistent snapshot</td>
+<td>a snapshot exists; an involved store is writable</td>
+<td>yes: the replaced values are restored and the violation is muted</td>
+</tr>
+<tr>
+<td>inconsistency, transition</td>
+<td><code>resync</code></td>
+<td>heal</td>
+<td>calls the store's <code>resync</code> handler (your code)</td>
+<td>a <code>resync</code> handler</td>
+<td>your handler</td>
+</tr>
+<tr>
+<td>transition, error</td>
+<td><code>rollback</code></td>
+<td>heal</td>
+<td>restores only the fields the operation's own chain wrote (and nobody overwrote since)</td>
+<td>such fields exist in writable stores</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>any</td>
+<td>custom (<code>rt.action</code>, plugins)</td>
+<td>heal unless declared <code>guard</code></td>
+<td>your code; <code>ctx.builtin(name)</code> runs a built-in under the same gate</td>
+<td><code>on</code> triggers; <code>applicable()</code></td>
+<td><code>ctx.onUndo(fn)</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="money-and-identity-flows">Money and identity flows</h2>
+<p>Automatic intervention in payment, checkout and sign-in flows is not recommended. Keep them observe-only with
+<code>requests.protect</code>, which is checked before everything else and covers the request, its response and everything its
+response callbacks cause:</p>
+<pre><code class="language-js">import { GenClass, protectPreset } from &quot;@genclass/runtime&quot;;
+GenClass.init({ mode: &quot;guard&quot;, requests: { protect: [...protectPreset(&quot;payments&quot;, &quot;auth&quot;), &quot;/api/cart&quot;] } });
+// JSON configs (window.GENCLASS_CONFIG, the options file `init` writes, a meta tag):
+window.GENCLASS_CONFIG = { requests: { protect: [&quot;preset:payments&quot;, &quot;preset:auth&quot;] } };
+</code></pre>
+<p><code>npx @genclass/runtime init</code> suggests the second form when the project depends on a payment SDK (Stripe, PayPal,
+Braintree, Adyen, Square, Paddle, ...) or has source files named like a checkout or payments page. The presets
+(<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/presets.ts">src/presets.ts</a>) match URL words such as <code>checkout</code>, <code>payment(s)</code>, <code>payment_intents</code>, <code>billing</code>,
+<code>invoice</code>, <code>charge</code>, <code>refund</code>, <code>subscription</code>, <code>order</code>, <code>transaction</code>, <code>transfer</code>, <code>payout</code>, <code>wallet</code> and provider
+names (Stripe, PayPal, Braintree, Adyen, Klarna, Square); <code>auth</code> matches <code>login</code>, <code>logout</code>, <code>sign-in</code>, <code>sign-up</code>,
+<code>oauth</code>, <code>token</code>, <code>session</code>, <code>sso</code>, <code>saml</code>, <code>oidc</code>, <code>mfa</code>, <code>otp</code>, <code>password</code>, <code>verify</code>. They over-match on purpose
+(protection only removes interventions). Cross-origin requests (a payment provider's own API) are never acted on in
+any case. Alternatively put the routes under a <code>routes</code> rule with <code>mode: "observe"</code>.</p>
+<h2 id="turning-it-off-and-restoring-the-page">Turning it off and restoring the page</h2>
+<table>
+<thead>
+<tr>
+<th>How</th>
+<th>Effect</th>
+<th>Code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>?genclass=off</code> or <code>localStorage.genclass = "off"</code></td>
+<td>nothing is installed: no observer, no discovery hooks, no model, no telemetry</td>
+<td><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/index.ts">src/index.ts</a> <code>initUnsafe</code>, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/cdn/config.ts">src/cdn/config.ts</a> <code>isKilled</code></td>
+</tr>
+<tr>
+<td><code>enabled: false</code></td>
+<td>installs nothing</td>
+<td><code>RuntimeImpl</code> constructor</td>
+</tr>
+<tr>
+<td><code>enabled</code> predicate / source turning false</td>
+<td>pass-through: held subjects released, nothing decided</td>
+<td><code>followEnabled</code></td>
+</tr>
+<tr>
+<td><code>rt.pause()</code></td>
+<td>nothing is held or acted on until <code>rt.resume()</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>rt.disable()</code></td>
+<td>releases every held subject unchanged, then <code>destroy()</code></td>
+<td><code>disable</code></td>
+</tr>
+<tr>
+<td><code>rt.disable({ undo: true })</code></td>
+<td>also undoes the actions of the last 60 s, newest first (not counted by the breaker)</td>
+<td><code>disable</code></td>
+</tr>
+<tr>
+<td><code>rt.destroy()</code> / <code>GenClass.destroy()</code></td>
+<td>telemetry's final flush, every uninstaller in reverse order (the "After <code>destroy()</code>" column above), plugins' cleanups, store subscriptions, the model worker</td>
+<td><code>destroy</code></td>
+</tr>
+</tbody>
+</table>
+<p>Per-object instrumentation already handed to the app (a <code>Response</code>'s methods, an XHR's handler accessors, sockets
+created while installed) stays attached and passes through.</p>
+<h2 id="audit-trail">Audit trail</h2>
+<p><code>rt.audit(n?)</code> returns JSON-serialisable entries for every decision, action, undo, breaker trip and reset, and control
+change (<code>setMode</code>, <code>setAggressiveness</code>, <code>pause</code>, <code>resume</code>, <code>enabled</code>, <code>disable</code>), each with a timestamp, sequence
+number, session id, the effective and requested mode, the aggressiveness profile, the gate kind, thresholds and their
+source, the model's probabilities, the action proposed and the one that ran with the reason, the hold and the model
+(name, version, variant, device and the sha256 its file was verified against). <code>InitOptions.audit</code> sets the in-memory
+size (default 1,000) and a <code>sink</code> for your own logging. Query values in free text are replaced with "…". The trail is
+built from values the runtime already has: it never feeds a decision, never changes what the model reads and is never
+sent anywhere by GenClass (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/decide/audit.ts">src/decide/audit.ts</a>; API: <a href="/docs/api">API.md</a>).</p>
+<h2 id="machine-checked-inventory">Machine-checked inventory</h2>
+<p><code>test/interception.test.ts</code> parses this block. <code>patch</code> lines name what a runtime with every observer and <code>autoState</code>
+changes on a browser global, and whether <code>destroy()</code> restores it or leaves it in place (inert). <code>listen</code> lines are the
+listeners it adds to <code>window</code> and <code>document</code> (all removed by <code>destroy()</code>). <code>sites</code> lines count the patch sites per file
+in <code>src/</code> (<code>addEventListener(</code> calls, <code>Object.defineProperty(</code>, <code>Reflect.set</code>/<code>defineProperty</code>, assignments to
+global, prototype and hook objects): a change in a count fails the test until the rows above and this block are
+updated.</p>
+<!-- inventory:start -->
+
+<pre><code class="language-text">patch window.fetch restored
+patch window.setTimeout restored
+patch window.setInterval restored
+patch window.WebSocket restored
+patch window.EventSource restored
+patch window.__REACT_DEVTOOLS_GLOBAL_HOOK__ stays
+patch window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ restored
+patch window.__REDUX_DEVTOOLS_EXTENSION__ restored
+patch XMLHttpRequest.prototype.open restored
+patch XMLHttpRequest.prototype.send restored
+patch XMLHttpRequest.prototype.abort restored
+patch XMLHttpRequest.prototype.setRequestHeader restored
+patch XMLHttpRequest.prototype.addEventListener restored
+patch XMLHttpRequest.prototype.removeEventListener restored
+patch history.pushState restored
+patch history.replaceState restored
+patch Storage.prototype.setItem restored
+patch Storage.prototype.removeItem restored
+patch Storage.prototype.clear restored
+observe PerformanceObserver longtask
+listen window click
+listen window input
+listen window change
+listen window submit
+listen window keydown
+listen window focusin
+listen window pointerdown
+listen window mousedown
+listen window error
+listen window unhandledrejection
+listen window popstate
+listen window hashchange
+listen window pagehide
+listen document visibilitychange
+sites src/adapters/zustand.ts 1
+sites src/cdn/config.ts 1
+sites src/cdn/global.ts 3
+sites src/devtools/index.ts 7
+sites src/devtools/ui.ts 1
+sites src/discover/react.ts 7
+sites src/discover/redux.ts 2
+sites src/model/backend.ts 2
+sites src/model/host.ts 5
+sites src/model/worker.ts 2
+sites src/observe/cache.ts 1
+sites src/observe/dom-user.ts 3
+sites src/observe/errors.ts 2
+sites src/observe/eventsource.ts 4
+sites src/observe/fetch.ts 4
+sites src/observe/nav.ts 6
+sites src/observe/storage.ts 6
+sites src/observe/timers.ts 4
+sites src/observe/websocket.ts 4
+sites src/observe/xhr.ts 15
+sites src/runtime.ts 1
+sites src/telemetry/client.ts 2
+</code></pre>
+<!-- inventory:end --></article></div></section>
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

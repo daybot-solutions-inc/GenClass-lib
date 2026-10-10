@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GenClass Security Policy</title>
+<meta name="description" content="How to report a vulnerability in GenClass, supported versions and the security design of the runtime.">
+<link rel="canonical" href="https://genclass.dev/security">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/security">
+<meta property="og:title" content="GenClass Security Policy">
+<meta property="og:description" content="How to report a vulnerability in GenClass, supported versions and the security design of the runtime.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GenClass Security Policy">
+<meta name="twitter:description" content="How to report a vulnerability in GenClass, supported versions and the security design of the runtime.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Security", "item": "https://genclass.dev/security"}]}, {"@type": "TechArticle", "headline": "Security policy", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/SECURITY.md"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span>Security</span></nav><h1>Security policy</h1>
+<p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/SECURITY.md"><code>SECURITY.md</code></a> in the GenClass repository.</p></div></div>
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><a href="/docs/interception">Interception surface</a><a href="/docs/threat-model">Threat model</a><a href="/security">Security</a><b>On this page</b><a href="#reporting-a-vulnerability">Reporting a vulnerability</a><a href="#supported-versions">Supported versions</a><a href="#in-scope">In scope</a><a href="#security-design">Security design</a></nav><article class="prose"><p>GenClass (<code>@genclass/runtime</code> and the model package <code>@genclass/runtime-model</code>) runs inside your web app: it wraps the
+page's network and timer APIs, reads application state and, when you opt in, changes how requests, responses and
+state writes proceed. We take reports about it seriously.</p>
+<h2 id="reporting-a-vulnerability">Reporting a vulnerability</h2>
+<p>Please report security issues privately, not in public GitHub issues, discussions or pull requests.</p>
+<ul>
+<li><strong>Email:</strong> [SECURITY CONTACT EMAIL]</li>
+<li><strong>GitHub:</strong> a private vulnerability report (Security → Report a vulnerability) on the GenClass-lib repository, if
+  private reporting is enabled there.</li>
+</ul>
+<p>Include what you can of: the affected package and version (<code>GenClass.runtime.status</code>, or the version in
+<code>package.json</code>), how GenClass was installed (<code>@genclass/runtime/auto</code>, <code>GenClass.init</code>, the script tag), the mode
+(<code>observe</code>, <code>guard</code>, <code>heal</code>), a minimal page or steps that reproduce it, and the impact you see. Please do not test
+against sites you do not own, do not access other people's data, and give us a reasonable time to fix the issue before
+you disclose it.</p>
+<p>What to expect:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>acknowledgement</td>
+<td>within 3 business days</td>
+</tr>
+<tr>
+<td>first assessment (severity, affected versions)</td>
+<td>within 10 business days</td>
+</tr>
+<tr>
+<td>fix or mitigation for high and critical issues</td>
+<td>as soon as possible, normally within 30 days</td>
+</tr>
+<tr>
+<td>disclosure</td>
+<td>coordinated with you; we credit reporters who want to be credited</td>
+</tr>
+</tbody>
+</table>
+<p>There is no bug bounty programme at this time.</p>
+<h2 id="supported-versions">Supported versions</h2>
+<p>GenClass is pre-1.0. Security fixes go into the newest published version only; upgrade to receive them.</p>
+<table>
+<thead>
+<tr>
+<th>package</th>
+<th>supported</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@genclass/runtime</code>, the newest published <code>0.1.0</code> beta (npm dist-tag <code>latest</code>)</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>@genclass/runtime</code>, older betas and all <code>0.1.0-alpha.*</code></td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>@genclass/runtime-model</code>, the version the supported runtime loads by default (<code>DEFAULT_MODEL_BASE_URL</code>)</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>jev_local/</code>, <code>extension/</code> and the other legacy directories of this repository</td>
+<td>no</td>
+</tr>
+</tbody>
+</table>
+<h2 id="in-scope">In scope</h2>
+<ul>
+<li>the runtime library (<code>packages/runtime/src</code>), its zero-code entries (<code>/auto</code>, the script-tag build), the <code>init</code> /
+  <code>remove</code> CLI (<code>packages/runtime/bin</code>), the devtools overlay;</li>
+<li>the model loader and host (integrity checks, Cache Storage, the worker);</li>
+<li>the telemetry client and the collector (<code>telemetry-worker/</code>), including anything that sends more than
+  <a href="/docs/telemetry">TELEMETRY.md</a> says;</li>
+<li>a way to make GenClass act where its documentation says it never does (see
+  <a href="/docs/interception">INTERCEPTION.md</a>, "What it never does"): for example changing a request's body,
+  retrying a non-idempotent request without an idempotency key, acting on a <code>requests.protect</code> endpoint, acting in
+  <code>observe</code> mode, or writing discovered React or Zustand state.</li>
+</ul>
+<p>Out of scope: the model choosing a wrong action within what the documentation allows (that is a quality issue: please
+open a normal issue with the situation from <code>rt.explain(id)</code>), attacks that need script execution in the page (any
+page script already has the same access GenClass has; see the threat model), and denial of service against
+infrastructure we do not operate.</p>
+<h2 id="security-design">Security design</h2>
+<ul>
+<li><a href="/docs/threat-model">docs/runtime/THREAT-MODEL.md</a>: who could attack an app through GenClass, how, the
+  mitigations in the code and the risks that remain.</li>
+<li><a href="/docs/interception">packages/runtime/INTERCEPTION.md</a>: every API GenClass wraps or listens to, what
+  each mode may change, the preconditions and undo of every action, and how <code>disable()</code> and <code>?genclass=off</code> restore
+  the page. A unit test keeps it in sync with the code.</li>
+<li><a href="/docs/telemetry">packages/runtime/TELEMETRY.md</a> and <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md">PRIVACY.md</a>: what leaves the page.</li>
+<li><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/RELEASE.md#verifying-a-published-tarball">RELEASE.md</a>: how to check that a published tarball was built from this
+  repository.</li>
+</ul>
+<p>Recommended for production: keep the default <code>observe</code> mode until you have looked at what GenClass reports for your
+app; set <code>mode</code> explicitly (a URL parameter can then only lower it); keep payment, checkout and sign-in endpoints
+observe-only with <code>requests: { protect: protectPreset("payments", "auth") }</code>; self-host the model and onnxruntime-web
+behind a Content-Security-Policy (README, "Content-Security-Policy and self-hosting"); review <code>rt.audit()</code>.</p></article></div></section>
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

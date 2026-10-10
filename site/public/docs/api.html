@@ -48,7 +48,7 @@
 <main id="main">
 <div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>API Reference</span></nav><h1>@genclass/runtime API reference</h1>
 <p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md"><code>docs/runtime/API.md</code></a> in the GenClass repository.</p></div></div>
-<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><b>On this page</b><a href="#init-and-modes">Init and modes</a><a href="#options">Options</a><a href="#state">State</a><a href="#operations-and-user-actions">Operations and user actions</a><a href="#asking-the-model">Asking the model</a><a href="#events">Events</a><a href="#introspection-and-control">Introspection and control</a><a href="#triggers-and-actions">Triggers and actions</a><a href="#policy">Policy</a><a href="#reports-explain-and-undo">Reports, explain and undo</a><a href="#plugins">Plugins</a><a href="#headless-use-tests-ssr-simulation">Headless use (tests, SSR, simulation)</a><a href="#adapters-and-devtools">Adapters and devtools</a><a href="#types">Types</a></nav><article class="prose"><p>GenClass Runtime watches a web app from the inside (user actions, async operations, network, state changes,
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><a href="/docs/interception">Interception surface</a><a href="/docs/threat-model">Threat model</a><a href="/security">Security</a><b>On this page</b><a href="#init-and-modes">Init and modes</a><a href="#options">Options</a><a href="#state">State</a><a href="#operations-and-user-actions">Operations and user actions</a><a href="#asking-the-model">Asking the model</a><a href="#events">Events</a><a href="#introspection-and-control">Introspection and control</a><a href="#triggers-and-actions">Triggers and actions</a><a href="#policy">Policy</a><a href="#reports-explain-and-undo">Reports, explain and undo</a><a href="#plugins">Plugins</a><a href="#headless-use-tests-ssr-simulation">Headless use (tests, SSR, simulation)</a><a href="#adapters-and-devtools">Adapters and devtools</a><a href="#types">Types</a></nav><article class="prose"><p>GenClass Runtime watches a web app from the inside (user actions, async operations, network, state changes,
 errors, timing and causality) and asks a small local model, running in the browser, about situations that look
 risky. Depending on the mode it reports what it saw, or prevents the failure with a minimal, reversible action.</p>
 <pre><code class="language-ts">import { GenClass } from &quot;@genclass/runtime&quot;;
@@ -133,6 +133,9 @@ Control; off by default outside a browser and in <code>createRuntime()</code>. S
     include?: { situation?: boolean };                  // [true] include the redacted situation text
     transport?: { send(url: string, body: string, o: { beacon: boolean }): void | Promise&lt;unknown&gt; }; // tests / custom pipelines
   };
+  autoState?: boolean | { react?: boolean; redux?: boolean; zustand?: boolean; pinia?: boolean };
+                                                        // automatic state discovery: default on in @genclass/runtime/auto* and the script tag,
+                                                        // off in GenClass.init / createRuntime (there it needs import &quot;@genclass/runtime/discover&quot; first)
 
   // batch 12 (docs/runtime/OPTIONS-SPEC.md); defaults in brackets
   enabled?: boolean | (() =&gt; boolean | Promise&lt;boolean&gt;) | { get(): boolean | Promise&lt;boolean&gt;; subscribe?(cb: () =&gt; void): () =&gt; void };
@@ -142,7 +145,8 @@ Control; off by default outside a browser and in <code>createRuntime()</code>. S
                                                         // first match wins; demote only
   requests?: {
     ignore?: RequestMatcher[];                          // not observed at all (native pass-through)
-    protect?: RequestMatcher[];                         // observed, never held/retried/cached/discarded; a throwing predicate = protected
+    protect?: (RequestMatcher | `preset:${string}`)[];  // observed, never held/retried/cached/discarded, nor what its response causes;
+                                                        // a throwing predicate = protected; &quot;preset:payments&quot; / &quot;preset:auth&quot; = protectPreset(...)
     crossOrigin?: &quot;observe&quot; | &quot;ignore&quot;;                 // [&quot;observe&quot;]; cross-origin is always passive
     labels?: { match: RequestMatcher; label: string }[];// names for reports/sinks ([A-Za-z0-9 _-], ≤ 5 words, ≤ 40 chars)
     labelsToModel?: boolean;                            // [false] labels appear in situation text only when true
@@ -155,6 +159,7 @@ Control; off by default outside a browser and in <code>createRuntime()</code>. S
   vetoMode?: &quot;enforce&quot; | &quot;report&quot;;                      // [&quot;enforce&quot;]; &quot;report&quot; records would-veto and runs the action
   sinks?: (SinkFn | { send: SinkFn; kinds?: SinkKind[]; sampleRate?: number; evidence?: boolean; flush?(): Promise&lt;void&gt; })[];
   session?: { id?: string; tags?: Record&lt;string, string | number | boolean&gt; }; // never shown to the model
+  audit?: { size?: number; sink?: (e: AuditEntry) =&gt; void }; // [1000 kept in memory] the audit trail (rt.audit()); sink: your own logging
   redact?: (path: string, value: unknown, kind?: &quot;state&quot; | &quot;url&quot; | &quot;header&quot; | &quot;input&quot;) =&gt; unknown; // runs after built-in redaction; a throw → &quot;[redacted]&quot;
   report?: &quot;console&quot; | &quot;interventions&quot; | &quot;silent&quot; | ((r: Report) =&gt; void);    // &quot;interventions&quot;: console prints interventions, undos, breaker only
   learn?: { persist?: boolean | &quot;local&quot; | &quot;session&quot;; key?: string; version?: string }; // version defaults to session.tags.release; mismatch discards
@@ -162,7 +167,7 @@ Control; off by default outside a browser and in <code>createRuntime()</code>. S
   //        maxDecisionsPerMinute [30], unloadAfterIdleMs [false]
 }
 </code></pre>
-<p>Runtime additions: <code>rt.disable({ undo? })</code> (permanent; <code>undo: true</code> rolls back the last minute's actions),
+<p>Runtime additions: <code>rt.audit(n?)</code> (the audit trail, below), <code>rt.disable({ undo? })</code> (permanent; <code>undo: true</code> rolls back the last minute's actions),
 <code>rt.summary(): SessionSummary</code>, <code>rt.setSession({ id?, tags? })</code>, <code>rt.breaker.{tripped, reset()}</code>, <code>rt.learn.clear()</code>,
 events <code>shadow</code>, <code>breaker</code>, <code>limit</code>, <code>modelBudget</code>. <code>status</code> adds <code>effectiveMode</code>, <code>sampled</code>, <code>breaker</code>, <code>scope</code>,
 <code>modelBudget</code>, and states <code>"disabled" | "skipped" | "unloaded"</code>. <code>status.scope</code> is what is in force on the current
@@ -170,13 +175,24 @@ route: <code>mode</code> is the effective mode there (equal to <code>effectiveMo
 and the matching <code>routes[]</code> rule) and <code>aggressiveness</code> the effective level; with a matching rule it also has <code>rule</code>
 (its index) and <code>ceiling</code> (the mode that rule caps the route at; rules only lower the mode). Before 0.1.0-beta.4,
 <code>scope.mode</code> was that ceiling ("heal" when no rule matched). <code>rt.gates()</code> carries <code>mode</code> (the same effective mode).
-<code>status.blocked</code> (state "error"): <code>{ url, origin, csp, directive? }</code> when the browser blocked a model or ORT download.</p>
+<code>status.blocked</code> (state "error"): <code>{ url, origin, csp, directive? }</code> when the browser blocked a model or ORT download.
+<code>status.sha256</code> (state "ready"): the sha256 from <code>model.json</code> that the loaded variant was verified against.</p>
 <p>Gate order (each request/decision): protected → cross-origin → op scope (created under off/observe) →
 mode/allow/deny/requireDiagnosis (at the effective mode) → thresholds → <code>policy.actionLimits</code>
 (<code>limit:perMinute|perSubject|perSession</code>; defaults 60/min global, 10/min per subject, 200 per session) → <code>onBeforeAction</code> (<code>vetoed</code>, <code>would-veto</code>, or
 <code>limit:hold</code> past the budget) → execute. effectiveMode = min(mode, sample cap, breaker cap, route rule); URL overrides
-(<code>?genclass</code>, <code>?genclass-mode</code>, <code>?genclass-aggr</code>, <code>?genclass-sample</code>) only demote unless <code>debug: true</code>.
-<code>policy.holdBudgetMs</code> is a hard ceiling that includes defers and the veto hook. Hidden tabs skip background
+(<code>?genclass</code>, <code>?genclass-mode</code>, <code>?genclass-aggr</code>, <code>?genclass-sample</code>) only demote unless <code>debug: true</code>, with one
+exception: when the app sets no <code>mode</code>, <code>?genclass=guard</code> (or <code>localStorage.genclass = "guard"</code>) opts that visitor into
+guard; an explicit <code>mode</code> makes it demote-only. <code>policy.holdBudgetMs</code> is a hard ceiling that includes defers, the
+wait for a response or request body, a held write's deferred re-decisions and the veto hook.</p>
+<p>Protected requests (<code>requests.protect</code>) are never held, never wait for their body to be read, and neither they nor
+anything their response callbacks cause (writes, timers, follow-up requests: the ops inherit the protection) are
+acted on. Presets for money and identity flows: <code>import { protectPreset, PROTECT_PRESETS } from "@genclass/runtime"</code>;
+<code>protectPreset("payments", "auth")</code> returns fresh RegExps (<code>payments</code>: checkout, payment(s), payment intents, billing,
+invoices, charges, refunds, subscriptions, orders, purchases, transactions, transfers, payouts, wallets, Stripe,
+PayPal, Braintree, Adyen, Klarna, Square; <code>auth</code>: login/logout, sign-in/up/out, register, oauth, tokens, sessions, SSO,
+SAML, OIDC, MFA, 2FA, OTP, passwords, verify). Recommended for payment, checkout and sign-in flows in every mode
+(packages/runtime/INTERCEPTION.md, "Money and identity flows"). Hidden tabs skip background
 evaluation and release held items unevaluated.</p>
 <p>Performance: GenClass computes cheap facts for every write and request, and asks the model only about salient ones.
 The situation the model reads is sized to the device (<code>situation.budget: "auto"</code>): 2,400 characters (about 1,000
@@ -191,6 +207,17 @@ expected to answer within that budget. Serving your page with <code>Cross-Origin
 <h2 id="state">State</h2>
 <p>GenClass protects state it can see. Register stores with <code>atom</code> (owned by GenClass), <code>guard</code> (owned by you) or an
 adapter (Redux, Zustand, React hooks).</p>
+<p><strong>Automatic state discovery</strong> (<code>autoState</code>, on with the one line: <code>import "@genclass/runtime/auto"</code> or the script tag)
+finds React component state (<code>useState</code>, <code>useReducer</code>, <code>useSyncExternalStore</code>, class state; through the React
+DevTools hook), Redux / Redux Toolkit stores (through the Redux DevTools compose and enhancer globals) and Zustand
+<code>devtools</code> stores (through the Redux DevTools <code>connect</code> API). Each write is recorded with the operation that made it.
+Discovered Redux stores get the Redux adapter (controllable, kind <code>adapter</code>). Discovered React and Zustand state is
+<strong>observed only</strong> (kind <code>observed</code>): it feeds facts, triage, detections and delivery decisions (<code>deliver</code> / <code>defer</code>),
+but GenClass never holds, drops, reverts or rolls back its writes, so <code>discard</code> and <code>rollback</code> are not offered for it.
+React stores are named after the component (<code>SearchPage.state0</code>, <code>SearchPage.external0</code>, class state keys; in
+production builds after the element the component renders). Opt out with <code>autoState: false</code> or
+<code>&lt;meta name="genclass" content="autostate=off"&gt;</code>; <code>?genclass=off</code> installs nothing. With <code>GenClass.init</code>, import
+<code>@genclass/runtime/discover</code> before React / Redux / Zustand and pass <code>autoState: true</code>.</p>
 <pre><code class="language-ts">rt.atom&lt;T&gt;(name: string, initial: T, opts?: StoreOptions&lt;T&gt;): Atom&lt;T&gt;
 rt.guard&lt;T&gt;(name: string, io: { get(): T; set(v: T): void; subscribe?(fn: () =&gt; void): () =&gt; void }, opts?): Guarded&lt;T&gt;
 rt.expect(name: string, predicate: () =&gt; boolean): () =&gt; void   // developer invariant, checked at settled points
@@ -310,7 +337,9 @@ rt.gates(trigger?): EffectiveGates // the gate thresholds in force (see Policy)
 rt.history(n?): RtEvent[]          // recent events, oldest first
 rt.decisions(n?): Decision[]       // last 200 decisions
 rt.interventions(n?): ActionRecord[]
+rt.audit(n?): AuditEntry[]         // the audit trail, oldest first (see Reports, explain and undo)
 rt.inflight(): Op[]
+rt.stores(): StoreInfo[]           // registered and discovered stores: { name, kind: &quot;atom&quot;|&quot;guard&quot;|&quot;adapter&quot;|&quot;observed&quot;, source?, writable, fields, version }
 rt.setMode(mode); rt.pause(); rt.resume(); rt.destroy()
 rt.telemetry?: { enabled; reason?; endpoint?; sessionId?; flush(): Promise&lt;void&gt; } // reason when off: option, headless, url, localStorage, gpc, sampled-out, kill-switch, disabled, ...
 </code></pre>
@@ -507,6 +536,47 @@ rt.explain(a.id);   // { decision, situationText, facts, timeline, answers, acti
 <code>explain(id).message</code> is the same line for any decision or action, also when it was not printed.</p>
 <p>Your own debug UI: GenClass ignores user events from inside any element marked <code>data-genclass-ignore</code> (the devtools
 overlay uses it), so debugging tools never become causes in situations.</p>
+<h3 id="audit-trail">Audit trail</h3>
+<p><code>rt.audit(n?)</code> returns the last <code>n</code> entries (all kept by default) of a structured, JSON-serialisable record of
+everything the runtime decided and did; <code>JSON.stringify(rt.audit())</code> exports it, and it keeps working after
+<code>destroy()</code>. One entry per decision (acted on or not), action, undo, breaker trip or reset, and control change:</p>
+<pre><code class="language-ts">interface AuditEntry {
+  schema: 1; seq: number;              // 1, 2, 3, ... without gaps
+  at: number;                          // runtime clock (ms)
+  kind: &quot;decision&quot; | &quot;action&quot; | &quot;undo&quot; | &quot;breaker&quot; | &quot;control&quot;;
+  sessionId: string;
+  mode: &quot;off&quot; | &quot;observe&quot; | &quot;guard&quot; | &quot;heal&quot;;  // effective mode for the subject (or the session)
+  requestedMode: &quot;observe&quot; | &quot;guard&quot; | &quot;heal&quot;;
+  aggressiveness: number; profile?: &quot;cautious&quot; | &quot;balanced&quot; | &quot;eager&quot;;
+  model: { name: string; state: string; version?: string; variant?: string; device?: &quot;webgpu&quot; | &quot;wasm&quot;; sha256?: string };
+  decisionId?: string; actionId?: string; trigger?: TriggerKind; subject?: string; label?: string; correlationId?: string;
+  // decision
+  diagnosis?: string; diagnosisConfidence?: number; proposed?: string; probabilities?: Record&lt;string, number&gt;;
+  ran?: string; executed?: boolean; tier?: &quot;passive&quot; | &quot;guard&quot; | &quot;heal&quot;; reason?: string;
+  gate?: { kind: &quot;mass&quot; | &quot;gain&quot;; thresholds: { report: number; guard: number; heal: number };
+           source: { report: GateSource; guard: GateSource; heal: GateSource };
+           candidate?: string; mass?: number; threshold?: number; gain?: number; margin?: number };
+  held?: boolean; holdBudgetMs?: number; latencyMs?: number; shadow?: { action; tier; wouldPass; reason? };
+  // action
+  ok?: boolean; error?: string; changed?: string; undoable?: boolean; late?: boolean; dropped?: string[];
+  // undo: byRuntime (true for rt.disable({ undo: true }), which the breaker does not count)
+  byRuntime?: boolean;
+  breaker?: { tripped: boolean; reason: &quot;undos&quot; | &quot;errors&quot; | &quot;reset&quot;; decisionIds: string[]; counts: { undos: number; errors: number } };
+  control?: { what: &quot;setMode&quot; | &quot;setAggressiveness&quot; | &quot;pause&quot; | &quot;resume&quot; | &quot;enabled&quot; | &quot;disable&quot;; from?: string | number; to?: string | number };
+}
+
+GenClass.init({
+  requests: { ignore: [&quot;/my-log&quot;] },
+  audit: { size: 5000, sink: (e) =&gt; navigator.sendBeacon(&quot;/my-log&quot;, JSON.stringify(e)) },
+});
+</code></pre>
+<p><code>audit.size</code> (default 1,000, at most 10,000; 0 keeps none) bounds memory; <code>audit.sink</code> gets a copy of every entry, in
+order, on a microtask after it was recorded (never while a subject is held); a throwing sink is contained (one warning
+a minute). Query and fragment values in <code>subject</code>, <code>changed</code> and <code>error</code> are replaced with "…". The trail is built from
+values the runtime already has: it never feeds a decision, never changes what the model reads, and GenClass never
+sends it anywhere. A sink that ships entries with <code>fetch</code> should send to an endpoint listed in <code>requests.ignore</code> (or
+use <code>navigator.sendBeacon</code>, which GenClass does not wrap): otherwise its requests are observed like any app request
+and may themselves be decided about. <code>AUDIT_SCHEMA</code> is exported.</p>
 <h2 id="plugins">Plugins</h2>
 <pre><code class="language-ts">rt.use(plugin: Plugin): () =&gt; void
 rt.action(def: ActionDef): () =&gt; void
@@ -579,7 +649,8 @@ provider error makes the runtime fail open.</p>
 <h2 id="adapters-and-devtools">Adapters and devtools</h2>
 <p>Subpath exports: <code>@genclass/runtime/react</code> (<code>useGenClassState(name, initial, opts?)</code>, <code>useAtom(atom)</code>,
 <code>useGenClass()</code>), <code>@genclass/runtime/redux</code> (<code>genclassEnhancer(runtime, { name })</code>), <code>@genclass/runtime/zustand</code>
-(<code>genclass(runtime, name)(stateCreator)</code>), <code>@genclass/runtime/devtools</code> (<code>mountDevtools(runtime, opts?)</code>). They are
+(<code>genclass(runtime, name)(stateCreator)</code>), <code>@genclass/runtime/devtools</code> (<code>mountDevtools(runtime, opts?)</code>),
+<code>@genclass/runtime/discover</code> (automatic state discovery for <code>GenClass.init({ autoState: true })</code>; import it first). They are
 documented with their source. To integrate another state library use:</p>
 <pre><code class="language-ts">rt.adapter&lt;T&gt;(name: string, io: { get(): T; set?(v: T): void; subscribe?(fn: () =&gt; void): () =&gt; void }, opts?): {
   propose(w: { fn?: (prev: T) =&gt; T; value?: T; commit: (next: T) =&gt; void }): void;   // commit runs when (and if) the write applies

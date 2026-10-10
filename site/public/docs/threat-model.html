@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GenClass Threat Model</title>
+<meta name="description" content="The GenClass security threat model: model supply chain, crafted responses, page scripts, telemetry and denial of service, with mitigations.">
+<link rel="canonical" href="https://genclass.dev/docs/threat-model">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/docs/threat-model">
+<meta property="og:title" content="GenClass Threat Model">
+<meta property="og:description" content="The GenClass security threat model: model supply chain, crafted responses, page scripts, telemetry and denial of service, with mitigations.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GenClass Threat Model">
+<meta name="twitter:description" content="The GenClass security threat model: model supply chain, crafted responses, page scripts, telemetry and denial of service, with mitigations.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Threat model", "item": "https://genclass.dev/docs/threat-model"}]}, {"@type": "TechArticle", "headline": "Threat model", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/THREAT-MODEL.md"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs" class="on" aria-current="page">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>Threat model</span></nav><h1>Threat model</h1>
+<p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/THREAT-MODEL.md"><code>docs/runtime/THREAT-MODEL.md</code></a> in the GenClass repository.</p></div></div>
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><a href="/docs/interception">Interception surface</a><a href="/docs/threat-model">Threat model</a><a href="/security">Security</a><b>On this page</b><a href="#contents">Contents</a><a href="#what-genclass-is-for-this-purpose">What GenClass is, for this purpose</a><a href="#assets-and-trust-boundaries">Assets and trust boundaries</a><a href="#t1-other-scripts-on-the-page">T1. Other scripts on the page</a><a href="#t2-model-and-code-supply-chain">T2. Model and code supply chain</a><a href="#t3-crafted-responses-and-messages-steering-the-model">T3. Crafted responses and messages steering the model</a><a href="#t4-denial-of-service-through-forced-model-calls">T4. Denial of service through forced model calls</a><a href="#t5-telemetry-and-redaction-leaks">T5. Telemetry and redaction leaks</a><a href="#t6-state-discovery-reading-application-state">T6. State discovery reading application state</a><a href="#t7-a-wrong-action-on-a-correct-app">T7. A wrong action on a correct app</a><a href="#t8-configuration-by-url-storage-and-meta-tags">T8. Configuration by URL, storage and meta tags</a><a href="#t9-cached-and-shared-responses">T9. Cached and shared responses</a><a href="#residual-risks-in-one-list">Residual risks, in one list</a><a href="#recommended-production-setup">Recommended production setup</a></nav><article class="prose"><p>What could go wrong, or be made to go wrong, when <code>@genclass/runtime</code> runs in a web app; what the code does about it;
+and what remains. It covers the runtime as published (<code>packages/runtime</code>), its default model package and the telemetry
+collector. Companion documents: <a href="/docs/interception">INTERCEPTION.md</a> (the full list of what
+GenClass wraps and what each action does), <a href="/security">SECURITY.md</a> (reporting),
+<a href="/docs/telemetry">TELEMETRY.md</a> (what leaves the page). Code references are to
+<code>packages/runtime/src/</code>. Reviewed against commit 2f89fb5 plus the SAFETY changes of 2026-10-10.</p>
+<h2 id="contents">Contents</h2>
+<ul>
+<li><a href="#what-genclass-is-for-this-purpose">What GenClass is, for this purpose</a></li>
+<li><a href="#assets-and-trust-boundaries">Assets and trust boundaries</a></li>
+<li><a href="#t1-other-scripts-on-the-page">T1. Other scripts on the page</a></li>
+<li><a href="#t2-model-and-code-supply-chain">T2. Model and code supply chain</a></li>
+<li><a href="#t3-crafted-responses-and-messages-steering-the-model">T3. Crafted responses and messages steering the model</a></li>
+<li><a href="#t4-denial-of-service-through-forced-model-calls">T4. Denial of service through forced model calls</a></li>
+<li><a href="#t5-telemetry-and-redaction-leaks">T5. Telemetry and redaction leaks</a></li>
+<li><a href="#t6-state-discovery-reading-application-state">T6. State discovery reading application state</a></li>
+<li><a href="#t7-a-wrong-action-on-a-correct-app">T7. A wrong action on a correct app</a></li>
+<li><a href="#t8-configuration-by-url-storage-and-meta-tags">T8. Configuration by URL, storage and meta tags</a></li>
+<li><a href="#t9-cached-and-shared-responses">T9. Cached and shared responses</a></li>
+<li><a href="#residual-risks-in-one-list">Residual risks, in one list</a></li>
+<li><a href="#recommended-production-setup">Recommended production setup</a></li>
+</ul>
+<h2 id="what-genclass-is-for-this-purpose">What GenClass is, for this purpose</h2>
+<p>A JavaScript library in the page's own origin. It wraps <code>fetch</code>, <code>XMLHttpRequest</code>, <code>WebSocket</code>, <code>EventSource</code>, the
+timers, <code>history</code> and <code>Storage</code> methods, listens to user and error events, and (with <code>autoState</code>) hooks React's
+DevTools interface and the Redux DevTools globals. From what it observes it builds a short text, the <em>situation</em>, and,
+for salient ones, asks a small classification model (ONNX, in a Web Worker) to pick a diagnosis and one action from a
+fixed list the runtime offers for that subject. A policy gate decides whether that action runs. The model cannot run
+code, call APIs or name an action that was not offered.</p>
+<h2 id="assets-and-trust-boundaries">Assets and trust boundaries</h2>
+<p>Assets: the correctness of the app's behaviour (no wrong action), the user's data (typed input, application state,
+response contents), the app's availability and latency, and the integrity of the code and model that run.</p>
+<table>
+<thead>
+<tr>
+<th>Boundary</th>
+<th>Trusted?</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the page's own scripts</td>
+<td>same trust as GenClass</td>
+<td>any script in the origin can already read and change everything GenClass can</td>
+</tr>
+<tr>
+<td>responses from the app's servers and third parties</td>
+<td>data, untrusted as instructions</td>
+<td>they become situation text the model reads (T3)</td>
+</tr>
+<tr>
+<td>the model files (<code>model.baseUrl</code>) and onnxruntime-web (<code>model.ortWasmPaths</code>)</td>
+<td>integrity-checked, not trusted blindly</td>
+<td>default: jsDelivr, from the npm packages (T2)</td>
+</tr>
+<tr>
+<td>the telemetry collector</td>
+<td>receives redacted diagnostics only</td>
+<td>default on for <code>GenClass.init</code> in a browser (T5)</td>
+</tr>
+<tr>
+<td>the developer's configuration</td>
+<td>trusted</td>
+<td>but parts of it can come from the URL, <code>localStorage</code> or meta tags (T8)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="t1-other-scripts-on-the-page">T1. Other scripts on the page</h2>
+<p><strong>Threat.</strong> A third-party script, a compromised dependency or an XSS payload reads what GenClass collected (situation
+text, <code>rt.history()</code>, <code>rt.decisions()</code>, <code>rt.explain()</code>, <code>rt.audit()</code>, discovered state) or drives it
+(<code>GenClass.runtime.setMode("heal")</code>, <code>localStorage.genclass</code>, <code>rt.disable()</code>).</p>
+<p><strong>Mitigations.</strong> GenClass adds no capability such a script lacks: it can already read the DOM, the app's state and
+every response, and wrap <code>fetch</code> itself. What GenClass keeps is redacted when it is recorded: values of password, card
+(<code>cc-*</code>), one-time-code and secret-named inputs are never recorded (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/dom-user.ts">observe/dom-user.ts</a>
+<code>isSensitiveField</code>); secret-named state paths and values are replaced by <code>[redacted]</code>
+(<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/util.ts">util.ts</a> <code>defaultRedact</code>, <code>isSensitivePath</code>), a custom <code>redact</code> can only redact
+more (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/runtime.ts">runtime.ts</a> constructor); discovered React hooks whose string equals what a
+sensitive input holds are redacted from then on (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/discover/react.ts">discover/react.ts</a>);
+storage keys are recorded by name only, never values (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/storage.ts">observe/storage.ts</a>).
+Everything stays in memory and is bounded (500 events, 200 decisions, 1,000 audit entries).</p>
+<p><strong>Residual.</strong> Inside the origin there is no isolation from a hostile script. A script can raise the mode with
+<code>setMode("heal")</code> and then rely on the model to act; it could equally perform those effects itself.</p>
+<h2 id="t2-model-and-code-supply-chain">T2. Model and code supply chain</h2>
+<p><strong>Threat.</strong> A tampered model, model card or onnxruntime-web build makes GenClass choose harmful actions, lower its own
+gate, or run hostile code.</p>
+<p><strong>Mitigations.</strong></p>
+<ul>
+<li>The default model URL is a pinned npm version on jsDelivr (<code>DEFAULT_MODEL_BASE_URL</code> in
+  <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/model/host.ts">model/host.ts</a>); npm versions are immutable once published.</li>
+<li>Every model file is checked against the card's <code>bytes</code> and <code>sha256</code> before use; a Cache Storage entry is reused only
+  when it was stored under the same sha256 (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/model/loader.ts">model/loader.ts</a> <code>fetchFile</code>,
+  <code>cachedValid</code>; <code>ModelIntegrityError</code>). The sha256 of the loaded variant is in <code>rt.status.sha256</code> and in every audit
+  entry, so a deployment can verify which model decided.</li>
+<li>A model can only rank the actions the runtime offered for a subject. Out-of-vocabulary answers are ignored
+  (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/runtime.ts">runtime.ts</a> <code>onDecision</code>), and the gate applies the mode, <code>requests.protect</code>,
+  cross-origin, <code>policy.allow</code>/<code>deny</code>, action limits, the breaker and <code>onBeforeAction</code>
+  (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/decide/policy.ts">decide/policy.ts</a> <code>gate</code>). In <code>observe</code> (the default) nothing it says
+  changes anything (<code>test/invariants/observe.test.ts</code>).</li>
+<li>Inference runs in a module Web Worker; the ONNX graph has no network or DOM access.</li>
+<li>Self-hosting: <code>npx @genclass/runtime fetch-model &lt;dir&gt;</code> plus <code>model: { baseUrl, ortWasmPaths }</code> and a
+  Content-Security-Policy limiting <code>connect-src</code>, <code>script-src</code> and <code>worker-src</code> to your origin
+  (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#content-security-policy-and-self-hosting">README</a>). The script-tag build pins
+  every URL it loads later to its own version (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/cdn/config.ts">cdn/config.ts</a>).</li>
+<li>The release workflow (<code>.github/workflows/release.yml</code>) builds from a tag and publishes with npm provenance once the
+  owner has configured npm trusted publishing; <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/RELEASE.md#verifying-a-published-tarball">RELEASE.md</a> shows how to
+  check a tarball against the repository.</li>
+</ul>
+<p><strong>Residual.</strong></p>
+<ul>
+<li><code>model.json</code> itself is not pinned by a hash the app supplies: whoever controls the model URL can publish a new card
+  with matching hashes. The model's meta gate (<code>meta.json</code> → <code>gate</code>) sets the thresholds unless the app sets
+  <code>policy.thresholds</code>, so a hostile model could lower them. Pin <code>policy.thresholds</code> and self-host if that matters.</li>
+<li>onnxruntime-web's wasm is verified by its version tag only, not a sha256; an <code>integrity</code> attribute on the script tag
+  covers that one file, not the modules, worker and wasm it loads later (dynamic <code>import()</code> and module workers take no
+  SRI).</li>
+<li>Cache Storage is per origin: a page script can plant a cache entry (T1).</li>
+<li>Memory-safety bugs in onnxruntime-web's wasm are sandboxed by WebAssembly and the worker, not by GenClass.</li>
+</ul>
+<h2 id="t3-crafted-responses-and-messages-steering-the-model">T3. Crafted responses and messages steering the model</h2>
+<p><strong>Threat.</strong> Data the app receives (an API response, a WebSocket message, a user-generated string another user
+submitted) contains text meant to push the model towards an action, the way prompt injection steers a chat model.</p>
+<p><strong>Mitigations.</strong></p>
+<ul>
+<li>The model is a classifier over a fixed label set, not an instruction follower; the situation text quotes values as
+  data in a fixed format (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/situation/serialize.ts">situation/serialize.ts</a>), and each value
+  summary is truncated (about 60 to 90 characters, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/util.ts">util.ts</a> <code>describe</code>).</li>
+<li>What it can choose is limited to the actions offered for that subject, each with preconditions the runtime checks
+  itself (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/situation/build.ts">situation/build.ts</a> <code>builtinUnavailable</code>): no retry of a
+  non-idempotent request without an idempotency key (<code>repeatUnsafe</code>), cache answers only for GET, nothing for a
+  cross-origin or protected subject.</li>
+<li>Precision-first gate: the summed calibrated probability must reach 0.9 (guard) / 0.8 (heal) by default and the
+  diagnosis must not be <code>expected</code>; action limits (60 per minute, 10 per subject per minute, 200 per session); the
+  breaker drops the session to <code>observe</code> after 2 undos or 3 errors that follow actions.</li>
+<li>Every action is recorded with what it changed and, where possible, can be undone.</li>
+</ul>
+<p><strong>Residual.</strong> An adversarial input can, in principle, flip a classifier. The impact is bounded by the mode and the
+offered actions for that one subject: in guard, dropping a response's writes over newer data, coalescing or delaying a
+request; in heal also block, retry, serve from cache, hedge, roll back. <code>observe</code> and <code>requests.protect</code> remove it.</p>
+<h2 id="t4-denial-of-service-through-forced-model-calls">T4. Denial of service through forced model calls</h2>
+<p><strong>Threat.</strong> A server, a page script or user-generated content makes many situations salient, to burn CPU and battery
+or to add latency through holds.</p>
+<p><strong>Mitigations.</strong> Model evaluations are rate limited (<code>model.maxDecisionsPerMinute</code>, default 30 for the built-in
+model; beyond it decisions fail open: <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/decide/decider.ts">decide/decider.ts</a>); the queue is
+bounded (32) and stale items are dropped; each evaluation times out (10 s, <code>model.timeoutMs</code>); while the model is not
+answering, nothing is held (<code>expectedLatency</code> is infinite). A hold never exceeds the hold budget (at most 800 ms with
+"auto"; <code>test/invariants/*</code> "the hold budget caps"), and only guard and heal hold at all. Hidden tabs skip
+background evaluations. Inference runs off the main thread. React discovery stops after 1 ms per commit. The model
+downloads lazily on Save-Data connections and can be skipped (<code>model.loadIf</code>) or unloaded when idle
+(<code>model.unloadAfterIdleMs</code>).</p>
+<p><strong>Residual.</strong> Up to 30 evaluations a minute of worker CPU, and in guard/heal up to one hold budget of added latency per
+salient request, response or failure. <code>policy.holdBudgetMs</code> lowers it; <code>observe</code> removes holds entirely.</p>
+<h2 id="t5-telemetry-and-redaction-leaks">T5. Telemetry and redaction leaks</h2>
+<p><strong>Threat.</strong> Diagnostics, sink records, reports or the audit trail carry personal data.</p>
+<p><strong>Mitigations.</strong> Telemetry (on by default for <code>GenClass.init</code> in a browser) sends only what <a href="/docs/telemetry">TELEMETRY.md</a>
+lists: the redacted situation text, decisions, action outcomes and counts, never input values of sensitive fields,
+cookies, headers, bodies, the query string or full URL, error messages or the sentences describing changes. It is off
+with <code>telemetry: false</code>, <code>?genclass=no-telemetry</code>, <code>localStorage["genclass.telemetry"]="off"</code>, Global Privacy
+Control, and in <code>createRuntime()</code>; <code>telemetry: { include: { situation: false } }</code> keeps the situation text out. The transport omits
+credentials and the referrer (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/telemetry/transport.ts">telemetry/transport.ts</a>); the
+collector stores no IP address or user agent. Query values are redacted in situation text and replaced with "…" in
+sink evidence and audit entries (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/runtime.ts">runtime.ts</a> <code>redactUrlText</code>).</p>
+<p><strong>Residual.</strong> Redaction is by name and by the sensitive inputs it saw: a personal value in a field with an ordinary
+name (an email in <code>profile.contact</code>, a search term, an address) can appear in the situation text and so in telemetry,
+<code>rt.explain()</code>, the devtools overlay and sinks with <code>evidence: true</code>. Add a <code>redact</code> function for such fields, set
+<code>telemetry: { include: { situation: false } }</code>, or turn telemetry off.</p>
+<h2 id="t6-state-discovery-reading-application-state">T6. State discovery reading application state</h2>
+<p><strong>Threat.</strong> <code>autoState</code> hooks React's DevTools interface and the Redux DevTools globals and so sees component and store
+state the app never handed to GenClass, including personal data; the hooks could also disturb the framework.</p>
+<p><strong>Mitigations.</strong> Discovered React and Zustand state is observe-only: GenClass records it but never holds, drops,
+reverts, rolls back or resyncs it (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/state/hub.ts">state/hub.ts</a> <code>StoreHub.observe</code>;
+<code>test/invariants/discovery.test.ts</code> with a hostile model in heal mode). Values that equal a sensitive input's value,
+functions, DOM nodes, elements and class instances are not recorded; secret-named fields are redacted; the walk is
+bounded (1 ms, 20,000 fibers, 48 component stores). A real React DevTools or Redux DevTools extension keeps working
+(theirs run first). <code>autoState: false</code> (or <code>{ react: false }</code>, <code>{ redux: false }</code>, <code>{ zustand: false }</code>) turns it off;
+<code>?genclass=off</code> installs nothing.</p>
+<p><strong>Residual.</strong> Discovered state appears in situation text, and so in telemetry (marked <code>autoState</code>), unless redacted or
+turned off. Redux stores created through the DevTools compose or enhancer are full adapters: in guard/heal their writes
+can be acted on like a registered store's (INTERCEPTION.md). The DevTools hook GenClass installs stays (inert) after
+<code>destroy()</code>, since React keeps a reference to it.</p>
+<h2 id="t7-a-wrong-action-on-a-correct-app">T7. A wrong action on a correct app</h2>
+<p><strong>Threat.</strong> The model is simply wrong and GenClass changes a correct app's behaviour (the external review asked for
+evidence that state invariants, optimistic updates, transactions, offline sync and repeated actions survive this).</p>
+<p><strong>Mitigations.</strong> <code>observe</code> is the default and never changes execution. In guard and heal the guarantees below hold
+whatever the model answers; <code>test/invariants/</code> checks each with an adversarial provider that puts probability 1 on the
+most disruptive offered action:</p>
+<table>
+<thead>
+<tr>
+<th>Guarantee</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>observe never changes delivery timing or content (also for requests whose body is read for an identity)</td>
+<td><code>observe.test.ts</code></td>
+</tr>
+<tr>
+<td>a repeated user action is coalesced only when mode, policy, protection and the gate all allow it</td>
+<td><code>observe.test.ts</code></td>
+</tr>
+<tr>
+<td>a non-idempotent request without an idempotency key is never sent twice (retry, hedge)</td>
+<td><code>network.test.ts</code></td>
+</tr>
+<tr>
+<td>an action that was not offered never runs</td>
+<td><code>network.test.ts</code></td>
+</tr>
+<tr>
+<td><code>requests.protect</code> endpoints, and what their responses cause, are never held, delayed, retried, cached, coalesced or discarded</td>
+<td><code>network.test.ts</code>, <code>presets.test.ts</code></td>
+</tr>
+<tr>
+<td>the hold budget caps the latency of a held response, request or write</td>
+<td><code>network.test.ts</code>, <code>state.test.ts</code></td>
+</tr>
+<tr>
+<td>an offline outbox drained in order is never reordered or duplicated</td>
+<td><code>network.test.ts</code></td>
+</tr>
+<tr>
+<td>concurrent writes to different fields are never dropped</td>
+<td><code>state.test.ts</code></td>
+</tr>
+<tr>
+<td>optimistic update → confirm / server rollback ends in a state the app's own logic produces</td>
+<td><code>state.test.ts</code></td>
+</tr>
+<tr>
+<td><code>disable({ undo: true })</code> restores what the app would have without GenClass; every global is restored</td>
+<td><code>state.test.ts</code>, <code>interception.test.ts</code></td>
+</tr>
+<tr>
+<td>the breaker demotes the session after undos (and ignores <code>disable</code>'s own undos)</td>
+<td><code>state.test.ts</code></td>
+</tr>
+<tr>
+<td>discovered React and Zustand state is observe-only</td>
+<td><code>discovery.test.ts</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Residual (documented by tests).</strong> With every situation consulted and a model at probability 1: an identical POST
+repeated within 2 s can be coalesced in guard (that is the double-submit action; it cannot be undone); a late revert
+of an app's own bookkeeping write can make a sync loop send an item again, bounded by <code>actionLimits.perSubject</code>; in
+heal a request can be answered with a synthetic 503 (<code>block</code>). Transactions that span several stores are not
+recognised as one unit: an inconsistency <code>rollback</code> (heal) restores whole stores to their last consistent snapshot,
+including fields other flows wrote. Recommended: <code>observe</code> or <code>requests.protect</code> for payment, checkout and sign-in
+flows.</p>
+<h2 id="t8-configuration-by-url-storage-and-meta-tags">T8. Configuration by URL, storage and meta tags</h2>
+<p><strong>Threat.</strong> Someone who can make a user open a link, or inject markup, changes GenClass's configuration.</p>
+<p><strong>Mitigations.</strong> <code>?genclass-mode</code>, <code>?genclass-aggr</code> and <code>?genclass-sample=0</code> can only lower the mode, aggressiveness or
+sampling unless the app sets <code>debug: true</code>; <code>?genclass=off</code> turns GenClass off for that visitor only
+(<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/runtime.ts">runtime.ts</a> constructor, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/index.ts">index.ts</a>
+<code>initUnsafe</code>). <code>?genclass=heal</code> needs <code>debug: true</code>.</p>
+<p><strong>Residual.</strong> When the app does not set <code>mode</code>, <code>?genclass=guard</code> (or <code>localStorage.genclass = "guard"</code>) turns guard on
+for that visitor: a crafted link can opt a user into guard-tier actions (<code>discard</code>, <code>defer</code>, <code>coalesce</code>, <code>delay</code>).
+Setting <code>mode: "observe"</code> (or any mode) explicitly makes the URL demote-only. With the zero-code entries (<code>/auto</code>, the
+script tag), every <code>&lt;meta name="genclass"&gt;</code> in the document can set the mode and the model and onnxruntime-web URLs
+(<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/cdn/config.ts">cdn/config.ts</a>): on pages that render untrusted HTML that could contain
+meta tags, configure through <code>window.GENCLASS_CONFIG</code> (it wins) or <code>GenClass.init(options)</code>.</p>
+<h2 id="t9-cached-and-shared-responses">T9. Cached and shared responses</h2>
+<p><strong>Threat.</strong> A response cached or shared by GenClass reaches a request it was not meant for.</p>
+<p><strong>Mitigations.</strong> <code>serve_cached</code> (heal) answers only an identical GET (same method, URL, headers and body), from memory
+only (≤ 64 responses of ≤ 256 KB, never persisted); <code>coalesce</code> (guard) shares the response of an identical request in
+flight or finished within 2 s; both mark the response <code>x-genclass</code>. Neither is offered for protected or cross-origin
+requests (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/cache.ts">observe/cache.ts</a>, <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/observe/fetch.ts">observe/fetch.ts</a>).</p>
+<p><strong>Residual.</strong> The identity does not include cookies: in a single-page app where a user signs out and another signs in
+without a page load, a heal-mode <code>serve_cached</code> could answer a GET with the previous user's cached response. Protect
+account and sign-in endpoints (<code>protectPreset("auth")</code>), <code>policy.deny: ["serve_cached"]</code>, or reload on sign-out.</p>
+<h2 id="residual-risks-in-one-list">Residual risks, in one list</h2>
+<ol>
+<li>Same-origin scripts have full access to GenClass and its data (as to the rest of the page).</li>
+<li>The model card is not pinned by an app-supplied hash; the model's meta gate can lower thresholds unless
+   <code>policy.thresholds</code> is set; onnxruntime-web's wasm has no sha256 check; SRI covers only the script tag's own file.</li>
+<li>Adversarial data may flip the classifier within the offered actions of one subject (guard/heal only).</li>
+<li>Up to 30 model evaluations per minute and one hold budget of latency per held subject can be forced (guard/heal).</li>
+<li>Name-based redaction misses personal data in ordinarily named fields; with default telemetry, such data in situation
+   text leaves the page.</li>
+<li>Discovered state is read and appears in situation text; DevTools-composed Redux stores are actionable.</li>
+<li>In guard/heal, identical POSTs within 2 s may be coalesced; heal may block requests or roll back whole stores; a
+   late revert may make a loop resend (bounded).</li>
+<li><code>?genclass=guard</code> can opt a visitor into guard when the app sets no mode; meta tags configure the zero-code entries.</li>
+<li><code>serve_cached</code> ignores cookies (cross-user responses in a long-lived SPA session, heal only).</li>
+</ol>
+<h2 id="recommended-production-setup">Recommended production setup</h2>
+<pre><code class="language-js">import { GenClass, protectPreset } from &quot;@genclass/runtime&quot;;
+GenClass.init({
+  mode: &quot;observe&quot;,                                         // explicit: URL parameters can then only lower it
+  requests: { protect: protectPreset(&quot;payments&quot;, &quot;auth&quot;) }, // money and identity flows: never acted on
+  policy: { thresholds: { guard: 0.9, heal: 0.8 } },        // gate thresholds you control, not the model's meta
+  audit: { sink: (e) =&gt; myLogger.info(&quot;genclass&quot;, e) },    // keep the audit trail
+  telemetry: false,                                        // if your privacy review requires it
+  model: { baseUrl: &quot;/genclass-model/&quot;, ortWasmPaths: &quot;/genclass-model/ort/&quot; }, // self-hosted, with a CSP
+});
+</code></pre>
+<p>Move to guard route by route once <code>rt.decisions()</code> and the audit trail show what it would do (<code>shadow: "guard"</code>
+records that without acting): <code>mode: "guard"</code> with <code>routes: [{ match: "/search*" }, { match: "*", mode: "observe" }]</code>
+(the first matching rule wins and rules can only lower the mode).</p></article></div></section>
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>
