@@ -39,6 +39,45 @@ observe mode on the same scenario (`debug.js --interference`):
 | decide | `src/decide/*.ts` | queue (deadlines, stale drop, runtime-side timeout, cache, latency samples), §8 gate, reports |
 | runtime | `src/runtime.ts` | wiring, delivery gate, actions (snapshot rollback, chain revert, resync, late revert, undo), settled points, plugins |
 
+## SAFETY (2026-10-10): audit trail, interception inventory, invariant suite, money-flow guardrails
+
+Response to the external review of 2026-10-10 (security 6.0, docs 6.0, production readiness 4.0). On the VM
+(`vm-jev-train`, Node 22): `tsc` clean, `tsup` OK, unit tests **71 files passed, 1 skipped; 664 passed, 14 skipped**
+(the 14 need `GENCLASS_MODEL_DIR`; was 64 files / 562 at 2f89fb5), no unhandled errors; `review-perf` 4/4; `sim`
+with `SIM_RUNTIME=real` 20/20. No model-visible text changed (nothing in
+`src/situation/*`, wording or `util.ts`); `review-*.test.ts` untouched.
+
+- **Audit trail:** `rt.audit(n?)` and `InitOptions.audit { size, sink }` (`src/decide/audit.ts`): one JSON entry per
+  decision, action, undo, breaker trip/reset and control change, with mode, profile, gate values and the model's
+  name/version/variant/device/sha256 (`ModelStatus.sha256`, set by `model/backend.ts` from the card). Tests:
+  `test/audit.test.ts` (incl. identical evaluation requests with and without a sink).
+- **Interception inventory:** `packages/runtime/INTERCEPTION.md` (rendered at genclass.dev/docs/interception);
+  `test/interception.test.ts` installs every observer and `autoState` on a synthetic browser global and fails when the
+  patched globals, listeners, `destroy()` restoration or the per-file patch-site counts in `src/` differ from the doc.
+- **Money flows:** `protectPreset("payments", "auth")`, `PROTECT_PRESETS`, `"preset:<name>"` strings in
+  `requests.protect` (`src/presets.ts`); protection now covers the protected request's causal chain (see Deviations);
+  `init` suggests the presets when the project uses a payment SDK or has checkout/payment source files.
+- **Invariant suite** `test/invariants/*.test.ts` (adversarial providers: probability 1 on the most disruptive offered
+  action, or never answering): observe never changes timing or content; deliberate repeats are coalesced only when
+  everything allows it; non-idempotent unkeyed requests are never sent twice; out-of-vocabulary actions never run;
+  protected endpoints (and their chains) are never acted on; hold budgets cap latency (responses, requests, held
+  writes); an offline outbox is never reordered or duplicated; concurrent field writes are never dropped; optimistic
+  update / rollback ends in an app-reachable state; `disable({ undo: true })` restores; the breaker demotes after
+  undos; discovered React and Zustand state is observe-only. All pass. Residual risks they document: see
+  `docs/runtime/THREAT-MODEL.md` T7.
+- **Fixes found by the suite** (no model-visible text): (1) a deferred held write (`policy.holdWrites`) waited up to
+  10 s per defer, measured 9.7 s with a 150 ms budget: now its re-decisions share one hold budget (`MutationRec.heldSince`,
+  `waitRelated`); (2) a delivery's wait for its body (≤ 100 ms) and (3) a request's identity body read were not counted
+  against the hold budget; (4) in observe mode (and for protected, cross-origin or no-ready-model requests) a fetch whose
+  `Request`/`Blob` body is read for its identity was delayed until the read finished: now sent at once
+  (`NetHost.mayHold`, `RuntimeImpl.requestHoldable`); (5) a delivery discard's mark counted GenClass's own writes (a late
+  revert) as newer data, so one revert dropped every later write of the chain to that field (`writtenOver`).
+- Docs: `SECURITY.md`, `docs/runtime/THREAT-MODEL.md`, API.md (audit, presets, URL-override exception), README
+  (observability, presets, links), RELEASE.md (CI publishing with provenance, verifying a tarball),
+  `.github/workflows/release.yml` (not run; owner configures npm trusted publishing first).
+- Bundle: `/auto` 98.3 KB, main entry 91.1 KB gzip first load (+1.6 KB each); `test/bundle.test.ts` limit for `/auto`
+  98 → 99 KB.
+
 ## feat/one-line (2026-10-10): automatic state discovery
 
 The one line (`@genclass/runtime/auto*`, the script tag) now finds app state: `InitOptions.autoState` (default on
@@ -1273,6 +1312,12 @@ Deviations / not done:
   deltas). XHR `on*` getters return GenClass's wrapper of the app's handler (needed so XHR implementations that call
   `this.onload(e)` themselves are gated too).
 - With `holdWrites` off (default) `mutation` `defer` cannot do anything (the write already applied): it is recorded only.
+- `requests.protect` (OPTIONS-SPEC §4.4 says "writes to the store caused by delivering its response are gated
+  normally"): since SAFETY 2026-10-10 an op created while a protected op is ambient inherits `scope.protected`
+  (`RuntimeImpl.startOp`), so writes, timers and follow-up requests caused by a protected response are never acted on
+  either. Writes made directly in the response callback were already blocked before (their subject op is the
+  protected request). Narrowing only, not model-visible (`notOffered` is not part of the model's input); needs the
+  owner's confirmation for CONTRACT §13.
 - Extra public surface: `Runtime.adapter()/inflight()/holdBudgetMs()/situationBudget()`, `on("report")`,
   `Situation.salient/facts/compact/budget`, `Decision.tier/ran/answers/subjectRef/candidate/mass`,
   `ActionRecord.late/dropped`, `Explanation.message`, `StandingQuestion.always`, `PolicyOptions.holdWrites`,
@@ -1281,6 +1326,17 @@ Deviations / not done:
   `ActionContext.builtin/describe/onUndo`, `EvaluateRequest.timeoutMs/subject`.
 
 ## Open issues
+
+- SAFETY (2026-10-10), documented residual risks (THREAT-MODEL.md, tests in `test/invariants/`): in guard, an
+  identical POST within 2 s can be coalesced (the double-submit action; no undo); with `triage: "always"` a late revert
+  of an app's own bookkeeping write can make a sync loop resend an item (bounded by `actionLimits.perSubject`); an
+  inconsistency `rollback` (heal) restores whole stores, including fields a protected flow wrote; `serve_cached` (heal)
+  does not key on cookies (another user's cached GET after an in-page sign-out/sign-in); when the app sets no `mode`,
+  `?genclass=guard` / `localStorage.genclass = "guard"` opt a visitor into guard (by design, `test/default-mode.test.ts`;
+  an explicit `mode` makes it demote-only); the model card is not pinned by an app-supplied hash and its meta gate
+  sets thresholds unless `policy.thresholds` is set; onnxruntime-web's wasm is checked by version tag, not sha256.
+- SAFETY: the runtime does not release holds when the tab becomes hidden (it only skips new holds and background
+  evaluations); `API.md` says hidden tabs "release held items unevaluated". Bounded by the hold budget either way.
 
 - In-place mutation detection is best effort: arrays by reference/length plus 8 sampled elements, collections by key
   count, last key and 8 sampled values; a deep in-place change outside the samples can go unseen (subscribers are

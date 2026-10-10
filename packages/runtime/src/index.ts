@@ -36,6 +36,9 @@ export { describeElement } from "./observe/dom-user.js";
 export { RuntimeImpl } from "./runtime.js";
 export { DEFAULT_TELEMETRY_ENDPOINT, TELEMETRY_SCHEMA, TELEMETRY_NOTICE } from "./telemetry/index.js";
 export { RUNTIME_VERSION } from "./version.js";
+export { PROTECT_PRESETS, PRESET_PREFIX, protectPreset } from "./presets.js";
+export type { ProtectPresetName } from "./presets.js";
+export { AUDIT_SCHEMA } from "./decide/audit.js";
 
 /** fetch as it was when this module loaded: the model host downloads with it, so GenClass never observes itself. */
 const NATIVE_FETCH: typeof fetch | undefined =

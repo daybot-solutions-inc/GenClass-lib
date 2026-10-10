@@ -497,6 +497,66 @@ Update every place that lists `0.1.0-alpha.1` as latest or the model as unpublis
   - `mvp-v2-b6` (4e95373);
   - `smoke.sh` and `run-all.sh` on the merged tree.
 
+## Publishing from CI with provenance
+
+`.github/workflows/release.yml` (added 2026-10-10, not run yet) publishes `@genclass/runtime` from a version tag with
+npm provenance, so anyone can check that a tarball was built from this repository at the tagged commit. It runs on a
+pushed tag `v<version>` that equals `packages/runtime/package.json` and `src/version.ts`, then: `npm ci`, typecheck,
+build, the unit tests, `npm pack` (the tarball and its file list are kept as a workflow artifact, with sha1 and sha512
+printed in the log), `npm publish <tgz> --provenance --access public --tag <dist-tag>` (a prerelease goes to the
+dist-tag named after it, `0.1.0-beta.5` → `beta`; `latest` only for a plain version), and finally `npm audit
+signatures` on a fresh install. It authenticates with npm trusted publishing (OIDC, `permissions: id-token: write`);
+no npm token is stored anywhere.
+
+**Owner steps before the first run [user only]:**
+
+1. npmjs.com → `@genclass/runtime` → Settings → Trusted publishing → add a GitHub Actions publisher: organization
+   `daybot-solutions-inc`, repository `GenClass-lib`, workflow `release.yml`, environment `npm-publish`.
+2. GitHub → repository Settings → Environments → create `npm-publish`, with required reviewers (a second person
+   approves each publish) and the deployment branch/tag rule `v*`.
+3. Optionally, on npmjs.com, require 2FA and disallow tokens for publishing once the first CI publish worked.
+4. Release: bump the version (C3), commit, then `git tag -a v<version> -m "@genclass/runtime <version>" && git push
+   origin v<version>`. Approve the `npm-publish` environment when the run asks. Move `latest` by hand afterwards
+   if it was a prerelease: `npm dist-tag add @genclass/runtime@<version> latest`.
+
+The unscoped alias `genclass-runtime` and `@genclass/runtime-model` are still published by hand (C5, B4).
+
+## Verifying a published tarball
+
+Anyone can check a published version against this repository. For a version published by the release workflow:
+
+```sh
+# 1. registry signatures and the provenance attestation (in any project that installed it)
+npm install @genclass/runtime@<version>
+npm audit signatures                    # counts packages with verified registry signatures and verified attestations
+npm view @genclass/runtime@<version> dist.attestations   # the provenance bundle URL
+# npmjs.com shows "Built and signed on GitHub Actions" with links to the workflow run, the commit and release.yml
+```
+
+The provenance names the repository, the workflow file, the tag and the commit SHA the tarball was built from. To
+compare the contents with that commit yourself (any published version, also the hand-published ones):
+
+```sh
+V=<version>
+mkdir -p /tmp/gc-verify && cd /tmp/gc-verify
+npm pack @genclass/runtime@$V                       # the published tarball, byte for byte
+npm view @genclass/runtime@$V dist.shasum dist.integrity gitHead
+shasum -a 1 genclass-runtime-$V.tgz                 # equals dist.shasum
+mkdir published && tar -xzf genclass-runtime-$V.tgz -C published
+git clone https://github.com/daybot-solutions-inc/GenClass-lib.git src && cd src
+git checkout v$V                                    # or the commit in the provenance / gitHead
+ONNXRUNTIME_NODE_INSTALL=skip npm ci --no-audit --no-fund
+npm run build -w @genclass/runtime
+cd packages/runtime && npm pack && mkdir ../../../rebuilt && tar -xzf genclass-runtime-$V.tgz -C ../../../rebuilt
+cd /tmp/gc-verify && diff -r published/package rebuilt/package && echo "same files, same contents"
+```
+
+`npm pack` normalises timestamps and file modes, and the build is deterministic for a given lockfile and Node major
+version (the workflow uses Node 22), so the two trees should be identical; when they are not, `diff` shows where. The
+model files are verified separately: every file under `https://cdn.jsdelivr.net/npm/@genclass/runtime-model@<v>/files/`
+must match the `sha256` its `model.json` lists (the runtime checks this on every load), and `rt.status.sha256` /
+`rt.audit()` name the variant digest a page actually used.
+
 ## Related docs
 
 - [docs/agents/runtime/build-test-release.md](docs/agents/runtime/build-test-release.md): build, tests, CI, publish history.

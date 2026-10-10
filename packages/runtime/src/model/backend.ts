@@ -281,6 +281,8 @@ export class ModelBackend {
             loadMs: Math.round(clock.now() - t0),
             bytes: vf.bytes.byteLength,
             fromCache: vf.fromCache,
+            // the digest the variant bytes were verified against (loader.ts -> fetchFile), for the audit trail
+            ...(card.variants[plan.variant]?.sha256 ? { sha256: card.variants[plan.variant].sha256 } : {}),
             ...(warmupMs !== undefined ? { warmupMs } : {}),
             ...(latency ? { latency } : {}),
             ...(attempts.length ? { attempts } : {}),

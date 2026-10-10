@@ -187,7 +187,7 @@ demos eval, Python tests, training. One test: `npx vitest run test/delivery.test
 | `docs/runtime/` | `CONTRACT.md` (binding; changes appended to §13), `API.md`, `ARCHITECTURE.md`, [RESULTS.md](docs/runtime/RESULTS.md) (model and design comparisons, data volume, training log) | [status-and-known-issues](docs/agents/status-and-known-issues.md) |
 | `docs/agents/` | these docs | [README](docs/agents/README.md) |
 | `telemetry-worker/` | Cloudflare Worker `genclass-telemetry` (collector for the runtime's default-on telemetry; R2 bucket `genclass-telemetry`), not a workspace; deploy with `npx --yes wrangler@4 deploy` | [telemetry](docs/agents/telemetry.md) |
-| `.github/workflows/ci.yml` | the only CI workflow | [build-test-release](docs/agents/runtime/build-test-release.md) |
+| `.github/workflows/ci.yml`, `release.yml` | CI; `release.yml` (2026-10-10, not run yet) publishes `@genclass/runtime` from a `v*` tag with npm provenance once the owner configures npm trusted publishing (RELEASE.md) | [build-test-release](docs/agents/runtime/build-test-release.md) |
 | `jev_local/`, `tests/` | legacy Python predecessor and its tests | [genclass-model-lineage](docs/agents/genclass-model-lineage.md) |
 | `extension/`, `bench/`, `results/`, `scripts/` | legacy extension and benchmarks; `scripts/vm.sh`, `azvm.sh`, `launch_run.sh`, `genclass_export.py` serve the runtime | [extension-and-benchmarks](docs/agents/extension-and-benchmarks.md) |
 | root files | `HANDOFF.md` (live handoff), `OPEN_TASKS.md`, [`RELEASE.md`](RELEASE.md) (release procedure), `package.json` + `package-lock.json`, `tsconfig.base.json`, `pyproject.toml`, `README.md`, `BENCHMARKS.md`, `LICENSE` (Apache-2.0) | [repo-map](docs/agents/repo-map.md) |

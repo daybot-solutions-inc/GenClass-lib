@@ -38,7 +38,10 @@ export interface TriggerOpts {
   /** The subject waits for the decision (held write/request/failure). */
   hold: boolean;
   priority: number;
-  /** A deferred subject: when it was first held (holdBudgetMs is a ceiling on its total added latency). */
+  /**
+   * When the subject started waiting (a deferred re-decision, a delivery that waited for its body, a request that
+   * waited for its body to be read): holdBudgetMs is a ceiling on its total added latency.
+   */
   heldSince?: number;
 }
 
@@ -63,6 +66,12 @@ export interface NetHost {
   endOp(op: OpRec, status: "ok" | "error" | "aborted" | "blocked", o?: EndOpts): void;
   /** True when triggers may be raised for this op (not paused, not a GenClass-issued request). */
   gated(op: OpRec): boolean;
+  /**
+   * Whether a request trigger for this op could hold it at all: a ready model, guard or heal in force for it, and
+   * the op neither protected, cross-origin nor created under an off/observe route scope. False: the request never
+   * waits for anything, so it is sent at once (also before its body is read for its identity).
+   */
+  mayHold?(op: OpRec): boolean;
   /** A request's scope (protect, labels, correlation), or "ignore": pass-through, no op (OPTIONS-SPEC §4.4). */
   scopeOf?(r: { url: string; method: string; channel: "fetch" | "xhr" | "ws" | "sse"; headers?: Record<string, string> }): OpScope | "ignore";
   trigger(spec: SubjectSpec, ctl: Controller, opts: TriggerOpts): void;

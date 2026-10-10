@@ -6,6 +6,15 @@
 
 ## TL;DR
 
+- **SAFETY additions (verified against e84ddc7, branch from `runtime` 2f89fb5, 2026-10-10):** `rt.audit(n?)` and
+  `InitOptions.audit { size, sink }` (`src/decide/audit.ts`; entries built in `RuntimeImpl.onDecision`, the undo
+  closure, `onBreakerTrip`, `breaker.reset`, `setMode`, `setAggressiveness`, `pause`, `resume`, `followEnabled`,
+  `disable`); `ModelStatus.sha256`; `protectPreset`, `PROTECT_PRESETS`, `PRESET_PREFIX`, `AUDIT_SCHEMA` exported from
+  the root (`src/presets.ts`, `"preset:<name>"` strings expanded in the constructor); `packages/runtime/INTERCEPTION.md`
+  is the inventory of every patched global and listener, kept honest by `test/interception.test.ts` (add a patch →
+  update the doc's tables and its `sites` counts). The kill switch's `?genclass=guard` raises the default observe to
+  guard when no `mode` is set (by design, `test/default-mode.test.ts`); an explicit `mode` makes it demote-only.
+
 - Two entry points: `GenClass.init(options)` (browser facade: singleton, never throws, kill switch, loads the local model by default) and `createRuntime(options)` (headless: tests, sim, SSR; no model unless `decider` or `model: {...}` is passed). Both return a `RuntimeImpl` typed as `Runtime`. `createRuntime` can throw on malformed options; `GenClass.init` never throws (it falls back to an inert runtime).
 - `GenClass.init` is idempotent: a second call returns the first runtime and **ignores its new options**. Only `GenClass.destroy()` clears the singleton; `rt.destroy()` alone does not.
 - Zero-code entries (merged from origin/runtime f3a9dd1; **not** in the published `0.1.0-alpha.1`; they ship in `0.1.0-beta.0`, `latest` since 2026-10-08): `import "@genclass/runtime/auto"` (and `/auto/observe`, `/auto/guard`, `/auto/heal`), the script tag `dist/genclass.global(.min).js` (exposes `window.GenClass`), and the CLI `npx @genclass/runtime init|remove`. All of them end in `GenClass.init`, so the singleton, the kill switch and the defaults below apply unchanged. See [Zero-code entries](#zero-code-entries-auto-script-tag-cli).

@@ -1,0 +1,111 @@
+name: Release
+
+# Publishes @genclass/runtime to npm from a version tag, with npm provenance (a signed statement, verifiable with
+# `npm audit signatures`, that the tarball was built by this workflow from this repository at that commit).
+#
+# Trigger: push a tag `v<version>` whose version equals packages/runtime/package.json (e.g. v0.1.0-beta.5).
+# Authentication: npm trusted publishing (OIDC, `id-token: write`); no npm token is stored in the repository.
+# Owner setup before the first run (RELEASE.md, "Publishing from CI with provenance"): on npmjs.com, package
+# @genclass/runtime → Settings → Trusted publishing → GitHub Actions: organization daybot-solutions-inc, repository
+# GenClass-lib, workflow filename release.yml, environment npm-publish; and a GitHub environment `npm-publish`
+# (Settings → Environments), ideally with required reviewers.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: "@genclass/runtime: verify, build, test, publish with provenance"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write # OIDC token for npm trusted publishing and the provenance attestation
+    env:
+      ONNXRUNTIME_NODE_INSTALL: skip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      # trusted publishing needs npm >= 11.5.1 (Node 22 ships npm 10)
+      - name: npm 11
+        run: npm install -g npm@11 && npm --version
+
+      - name: The tag names the package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./packages/runtime/package.json').version")
+          echo "tag $TAG, package.json $PKG"
+          test "$TAG" = "$PKG"
+          grep -q "\"$PKG\"" packages/runtime/src/version.ts
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck -w @genclass/runtime
+
+      - name: Build
+        run: npm run build -w @genclass/runtime
+
+      - name: Unit tests
+        working-directory: packages/runtime
+        env:
+          NODE_OPTIONS: --expose-gc
+        run: npx vitest run --exclude "test/browser/**" --exclude test/review-perf.test.ts
+
+      - name: Pack
+        id: pack
+        working-directory: packages/runtime
+        run: |
+          FILE=$(npm pack --silent | tail -1)
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+          sha1sum "$FILE"
+          sha512sum "$FILE"
+          tar -tzf "$FILE" | sort > "$FILE.files.txt"
+          wc -l "$FILE.files.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: |
+            packages/runtime/${{ steps.pack.outputs.file }}
+            packages/runtime/${{ steps.pack.outputs.file }}.files.txt
+          if-no-files-found: error
+
+      # prereleases go to the dist-tag named after them (0.1.0-beta.5 -> beta); the owner moves `latest`
+      # (`npm dist-tag add @genclass/runtime@<version> latest`) after checking the release (RELEASE.md)
+      - name: Publish with provenance
+        working-directory: packages/runtime
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          case "$VERSION" in
+            *-*) DIST_TAG=$(echo "${VERSION#*-}" | cut -d. -f1) ;;
+            *) DIST_TAG=latest ;;
+          esac
+          npm publish "${{ steps.pack.outputs.file }}" --provenance --access public --tag "$DIST_TAG"
+
+      - name: Verify the registry signature and provenance
+        run: |
+          VERSION=$(node -p "require('./packages/runtime/package.json').version")
+          mkdir -p "$RUNNER_TEMP/verify" && cd "$RUNNER_TEMP/verify"
+          npm init -y > /dev/null
+          for i in 1 2 3 4 5 6; do npm view "@genclass/runtime@$VERSION" version && break; sleep 10; done
+          npm install --no-audit --no-fund --ignore-scripts "@genclass/runtime@$VERSION"
+          npm audit signatures

@@ -672,16 +672,25 @@ export function installFetch(host: NetHost): (() => void) | null {
           throw new Error(`unsupported action ${action}`);
         },
       };
-      const gate = () => {
+      /** `waited`: the request already waited for its body to be read; that time counts against the hold budget. */
+      const gate = (waited = false) => {
         if (answered) return;
         if (!gateRequest || !host.gated(op)) {
           sendNow();
           return;
         }
-        host.trigger({ trigger: "request", op, req }, reqCtl, { hold: true, priority: 2 });
+        host.trigger({ trigger: "request", op, req }, reqCtl, { hold: true, priority: 2, ...(waited ? { heldSince: op.start } : {}) });
       };
-      if (parsed.pendingIdentity && gateRequest) {
+      if (parsed.pendingIdentity && gateRequest && host.mayHold?.(op) !== false) {
         // the identity needs the body: read it first (bounded), then decide
+        within(host, parsed.pendingIdentity, IDENTITY_READ_MS, "").then((id) => {
+          host.setIdentity(op, req, id || host.uniqueId());
+          gate(true);
+        });
+      } else if (parsed.pendingIdentity && gateRequest) {
+        // it can never be held (observe mode, a protected or cross-origin request, no ready model): it goes out now,
+        // exactly as without GenClass; the decision (detection only) follows once the identity is known
+        sendNow();
         within(host, parsed.pendingIdentity, IDENTITY_READ_MS, "").then((id) => {
           host.setIdentity(op, req, id || host.uniqueId());
           gate();

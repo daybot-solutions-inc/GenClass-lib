@@ -76,7 +76,8 @@ what your app does (see Known limitations). `npx @genclass/runtime init` writes 
 [Ask it questions](#ask-it-questions) · [Observability](#observability) · [Extend it](#extend-it) ·
 [Model quality](#model-quality) · [Performance](#performance) · [Costs](#costs) ·
 [Content-Security-Policy and self-hosting](#content-security-policy-and-self-hosting) · [Privacy and telemetry](#privacy-and-telemetry) ·
-[Known limitations](#known-limitations) · [API reference](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md)
+[Known limitations](#known-limitations) · [API reference](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md) ·
+[Interception surface](INTERCEPTION.md) · [Security](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/SECURITY.md)
 
 ## What it looks like
 
@@ -269,7 +270,7 @@ These hold for the runtime; whether the model's decisions are good is a separate
   it changed carry an `x-genclass` header.
 - **Off in one step.** `?genclass=off` in the URL installs nothing, and observe (the default) never changes
   execution.
-- **Small on the main thread.** The main entry is about 89 KB gzip (minified, without the optional devtools). The
+- **Small on the main thread.** The main entry is about 91 KB gzip (minified, without the optional devtools). The
   default model is 10.2 MB on WASM (13.6 MB fp16 on WebGPU with `shader-f16`), downloaded once at idle and cached.
   It runs in a worker that holds 190 to 280 MB while loaded: see [Costs](#costs).
 
@@ -476,6 +477,13 @@ Standing questions ride along with built-in decisions: `rt.question({ id, on: ["
   `rollback` and chain reverts, plus custom actions that register `onUndo`. `defer`, `coalesce`, `delay`, `block`,
   `serve_cached`, `retry`, `hedge` and `resync` cannot be undone; their record says what changed.
 - **Altered responses** carry an `x-genclass` header: `coalesced`, `cached` or `blocked`.
+- **Audit trail:** `rt.audit()` returns a JSON-serialisable record of every decision (acted on or not), action, undo,
+  breaker trip and mode change, each with the mode, aggressiveness profile, gate thresholds, the model's
+  probabilities and the model's name, version and sha256. `audit: { sink }` ships it to your logging.
+- **What it touches:** [INTERCEPTION.md](INTERCEPTION.md) lists every API GenClass wraps or listens to, what each mode
+  may change, what it never does, every action's preconditions and undo, and how `disable()` restores the page (a
+  unit test keeps it in sync with the code). Threat model:
+  [docs/runtime/THREAT-MODEL.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/THREAT-MODEL.md).
 - **Devtools overlay** with four views: **Interventions** (what GenClass did, with Undo where it exists),
   **Detections** (what it noticed but did not act on), **Activity** (a live log of requests, writes, user actions and
   errors with their causal links) and **Now** (what the model would see at this moment). About 52 KB minified /
@@ -521,7 +529,7 @@ GenClass runs with safe defaults (`mode: "observe"`, a `"balanced"` gate that ap
 
 Action limits default to 60 per minute overall, 10 per minute on the same subject (store field or endpoint), and 200 per session.
 
-URL overrides (`?genclass-mode`, `?genclass-aggr`, `?genclass-sample`) can only lower settings, unless `debug: true` is set.
+URL overrides (`?genclass-mode`, `?genclass-aggr`, `?genclass-sample`) can only lower settings, unless `debug: true` is set. One exception: when you set no `mode`, `?genclass=guard` opts that visitor into guard; set `mode` explicitly to make the URL demote-only.
 
 ```ts
 import { GenClass } from "@genclass/runtime";
@@ -579,8 +587,21 @@ onIncident(() => rt.disable({ undo: true }));
 `{ route, mode, aggressiveness }`, plus `rule` (index into `routes`) and `ceiling` (that rule's mode) when a rule
 matches. Route rules only ever lower the mode. `rt.gates()` carries the same `mode` next to the thresholds.
 
-**Recommended `requests.protect` starter** (it is not built in; adapt it to your endpoints):
-`[/\/(auth|login|logout|oauth|token|session)\b/, /\/(payment|checkout|billing)\b/]`
+**Payments, checkout and sign-in: keep them observe-only.** Automatic intervention in money and identity flows is not
+recommended. `requests.protect` is checked before everything else, in every mode, and covers the request, its
+response and everything its response callbacks cause. Opt-in presets (adapt or extend them to your endpoints):
+
+```ts
+import { GenClass, protectPreset } from "@genclass/runtime";
+GenClass.init({ mode: "guard", requests: { protect: [...protectPreset("payments", "auth"), "/api/cart"] } });
+// JSON configs (window.GENCLASS_CONFIG, the file `init` writes): requests: { protect: ["preset:payments", "preset:auth"] }
+```
+
+`payments` matches URL words such as checkout, payment(s), payment intents, billing, invoices, charges, refunds,
+subscriptions, orders, transactions, transfers, wallets and Stripe/PayPal/Braintree/Adyen/Klarna/Square; `auth`
+matches login, logout, sign-in/up, oauth, tokens, sessions, SSO, MFA, OTP, passwords and verify. `npx
+@genclass/runtime init` suggests them when your project uses a payment SDK. Details:
+[INTERCEPTION.md](INTERCEPTION.md#money-and-identity-flows).
 
 **Rollout recipe:** start with `mode: "observe", shadow: "guard"`, and compare the shadow records with your undo and complaint rates. Then switch to `mode: "guard", sample: 0.05`. Watch `rt.summary().undos` and `breaker` events, and widen `sample` as they stay quiet. For QA, `?genclass-sample=1` together with `debug: true` forces a session into the acting group.
 
@@ -661,9 +682,10 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
   | Redux-style dispatch on 5,000 entities | about 0.7 ms |
   | settled-point check | 0.3 ms |
 
-- **Bundle:** what every page loads is about 96 KB gzip for `@genclass/runtime/auto` with automatic state
-  discovery (89 KB before it) and 89 KB for the main entry with `GenClass.init()`, which does not carry discovery,
-  measured with esbuild (`test/bundle.test.ts` keeps them under 98 KB and 92 KB). It was
+- **Bundle:** what every page loads is about 98 KB gzip for `@genclass/runtime/auto` with automatic state
+  discovery (89 KB before it) and 91 KB for the main entry with `GenClass.init()`, which does not carry discovery,
+  measured with esbuild (`test/bundle.test.ts` keeps them under 99 KB and 92 KB; the audit trail and protect presets
+  added about 1.6 KB to each). It was
   97 to 99 KB up to `0.1.0-beta.3`, whose README said 83 KB. The model worker, ONNX Runtime Web's JavaScript (about
   70 KB gzip for WASM, 115 KB with WebGPU, minified) and the devtools are separate chunks loaded on demand. ONNX
   Runtime's own `.wasm` (14 MB, 3.1 MB brotli; 27 MB, 5.5 MB brotli with WebGPU) is never part of your build: the
