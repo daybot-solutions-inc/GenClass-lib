@@ -40,8 +40,9 @@ are ordinary data); telemetry now includes discovered state (below).
 ### From the compatibility matrix (`compat/RESULTS.md`)
 
 Seven framework apps (React + Vite, Next.js 16, Vue + Pinia, SvelteKit 3, Angular 22, Solid, plain HTML) and 15 data
-layers, every mode, 10 seeds: no bug introduced, observe identical to no GenClass. No situation text or other
-model-visible text changes; no telemetry change.
+layers, every mode, 10 seeds: no bug introduced; observe identical to no GenClass except one seed of an app race (SWR
+optimistic rollback) that GenClass's timing tipped to the correct outcome. No situation text or other model-visible
+text changes; no telemetry change.
 
 - **Fix: the "Model ready" console line repeated.** The model host also notifies while it stays ready (latency
   stats after the first decision, then every 5 s), and each notification printed `[GenClass] Model ready (…)` again.

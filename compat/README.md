@@ -18,8 +18,8 @@ whether to install GenClass). This directory is separate from the training data:
 | `harness/report.mjs` | results JSON → `RESULTS.md` (`npm run report -- results/<date>.json`) |
 | `apps/*` | React 19 + Vite (useState, TanStack Query, Zustand ×2, Redux Toolkit + RTK Query, Apollo), Next.js 16 App Router (useState, SWR), Vue 3 + Pinia, SvelteKit 3 (Svelte stores), Angular 22 (HttpClient on fetch and on XHR), Solid (createResource), plain HTML with the CDN script tag (fetch; WebSocket + EventSource) |
 | `templates-check.mjs` | builds and boots the starter templates in `../templates/` against the packed runtime |
-| `results/` | one JSON per published run |
-| `scripts/vm-setup.sh` | one-time setup on the Linux VM; `scripts/summarize-dev.cjs` prints one line per trial |
+| `results/` | one JSON per published run; `<date>.notes.json`: analysis of a ✗ written after the run (shown as *Analysis* on the page); `templates-<date>.json`: the template check |
+| `scripts/vm-setup.sh` | one-time setup on the Linux VM; `scripts/summarize-dev.cjs` prints one line per trial; `scripts/debug-template.mjs` prints a served page's console |
 
 ## Every app implements the same DOM contract
 

@@ -261,6 +261,13 @@ These hold for the runtime; whether the model's decisions are good is a separate
   outcome in **0 of 396** clean runs across **66 real apps in 23 frameworks** (React, Vue, Svelte, Solid, Angular,
   Ember, Elm, Lit, Redux, Zustand, MobX, TanStack Query and more, including 14 unmodified open-source RealWorld
   front-ends), 6 seeds each. What that check does and does not compare is under [Model quality](#model-quality).
+- **Every mode, on idiomatic apps in seven frameworks.** The
+  [compatibility matrix](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md) (React,
+  Next.js, Vue, SvelteKit, Angular, Solid, plain HTML; 15 data layers; 10 seeds per cell) found 0 bugs introduced in
+  3,510 runs with GenClass and 0 actions on correct apps. Observe left page and server state identical to the run
+  without GenClass in every cell but one: an app's own timing race (SWR's optimistic rollback) that came out right
+  with GenClass and wrong without it, with no action taken. Observe holds nothing, but its main-thread work is not
+  zero.
 - **Normal traffic costs little.** Facts are computed for every write and request; the model is consulted only for
   salient situations. Clean in-order typeahead makes no model calls and holds nothing. A keystroke write to a store
   holding a 5,000-item array takes about 0.22 ms.

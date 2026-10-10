@@ -55,8 +55,11 @@ docs/runtime/RESULTS.md §5 and `bench/heal/README.md`.
 with useState, TanStack Query, Zustand ×2, RTK + RTK Query, Apollo; Next.js 16 App Router with useState and SWR;
 Vue 3 + Pinia; SvelteKit 3; Angular 22 HttpClient on fetch and on XHR; Solid; plain HTML script tag with fetch and
 WebSocket + EventSource), scenarios a-h, off/observe/guard/heal, 10 seeds, headless Chromium, model 0.2.0.
-Result in `compat/RESULTS.md`: every cell never-worse, 0 bugs introduced, 0 non-passive actions on correct apps,
-boot/kill switch/devtools/CSP/SSR checks pass for every app. Found and fixed: the "Model ready" console line repeated
+Result in `compat/RESULTS.md` (run at d04eff3): 350 of 351 cells ✓; 0 bugs introduced in 3,510 mode runs; 0
+non-passive actions on correct apps; 10 double submits fixed (heal `block`, Angular on XHR); boot, kill switch,
+devtools, CSP (page and every response) and SSR checks pass for every app. The ✗: observe was not identical to no
+GenClass on one seed of SWR scenario d, an app race (SWR `rollbackOnError` with overlapping optimistic mutations)
+that went wrong without GenClass and right with it, with no action taken (timing). Found and fixed: the "Model ready" console line repeated
 after the first decision and every 5 s (`runtime.ts`, the decider `onStatus` listener; `test/status-report.test.ts`,
 3 tests). Documented: Zustand `devtools` is off in production builds (no discovery without `enabled: true`);
 the `?genclass=` URL mode limits. Tests: 65 files, 565 passed + 14 skipped; review-perf 4/4.
@@ -1321,9 +1324,12 @@ Deviations / not done:
   components read from them (`useQuery` / `useSWR` snapshots as `Comp.externalN`, observed only), not the caches.
   Design note, not built: `docs/runtime/QUERY-CACHE-ADAPTERS.md`.
 - **Guard/heal holds can change which stale answer wins on an already-buggy page (compat, 2026-10-10).** In the
-  stale-typeahead scenario, guard and heal held deliveries while the model decided, and on 4 of 10 seeds a different
-  stale answer ended on screen than without GenClass (no fix, no new bug; observe never holds). Expected from
-  holding, listed in `compat/RESULTS.md`; worth knowing when reading guard traces.
-- **SWR concurrent optimistic mutations (app/library, not GenClass).** In `compat` scenario d, SWR's
-  `rollbackOnError` with two overlapping optimistic mutations left the first toggle unchecked on screen while the
-  server had it checked in 1 of 20 runs without GenClass. Recorded in the matrix's determinism control.
+  stale-typeahead scenario, guard and heal held deliveries while the model decided (only where state is discovered:
+  the React, Redux and Zustand layers), and on 3 to 4 of 10 seeds per layer a different stale answer ended on screen
+  than without GenClass (no fix, no new bug; observe never holds). Expected from holding; listed in
+  `compat/RESULTS.md`.
+- **Observe changes timing on racy apps (compat, 2026-10-10).** SWR's `rollbackOnError` with two overlapping
+  optimistic mutations (scenario d, seed 7) left the first toggle unchecked while the server had it checked in 3 of 4
+  runs without GenClass, and in 0 of 6 with GenClass in any mode, with no action taken. Observe never holds or
+  delays a delivery, but its main-thread work can shift which side of an app's own race wins. The matrix reports it
+  as the only observe ✗; not traced further.

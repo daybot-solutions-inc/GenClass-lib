@@ -124,8 +124,8 @@ Mehar operates the Azure cluster; nobody else touches Azure. The jobs below run 
 ## Next
 
 - **Review the COMPAT branch** (local, 2026-10-10; `compat/RESULTS.md`, docs/agents/compat.md): public
-  compatibility matrix (7 frameworks, 15 data layers, 8 scenarios, 4 modes, 10 seeds; never-worse everywhere, 0 bugs
-  introduced), starter templates (`templates/`, checked by `compat/templates-check.mjs`), one runtime fix (the
+  compatibility matrix (7 frameworks, 15 data layers, 8 scenarios, 4 modes, 10 seeds; 350/351 cells ✓, 0 bugs
+  introduced; the ✗ is observe tipping an SWR app race, no action), starter templates (`templates/`, checked by `compat/templates-check.mjs`), one runtime fix (the
   "Model ready" console line repeated), README fixes (Zustand devtools off in production builds; `?genclass=` limits),
   design note `docs/runtime/QUERY-CACHE-ADAPTERS.md`. It also exercised real `@reduxjs/toolkit` 2.13 discovery
   (240/240 runs; the `feat/one-line` item below tested a replica). Then: publish `RESULTS.md` at
