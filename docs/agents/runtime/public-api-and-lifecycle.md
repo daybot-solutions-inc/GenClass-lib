@@ -152,7 +152,7 @@ Pair keys (`fromPairs`; unknown keys and invalid values are ignored): `mode` (`o
 - Every added line or created file carries the marker `genclass:init` (`edit.mjs` -> `MARK`), except the inline forms used when the insertion point shares its line with other code (a one-line `<head>` or `<body>`), marked `genclass:inline` (`MARK_INLINE`); `remove` deletes exactly the marked lines/blocks/inline forms and uninstalls the package unless `--keep-package` or `--no-install` (or something else still uses it).
 - Mode mapping (`plan.mjs` -> `AUTO`): `observe` -> `/auto/observe`, `heal` -> `/auto/heal`, `guard` **or no `--mode`** -> plain `/auto`. On this branch plain `/auto` runs in `observe`, so `init --mode guard` currently produces an observe-mode install, and the CLI's help/summary still call `guard` the default. See Drift.
 
-**Automatic state discovery (branch `feat/one-line`, ships in `0.1.0-beta.4`).** `InitOptions.autoState?: boolean |
+**Automatic state discovery (branch `feat/one-line`, ships in `0.2.0`).** `InitOptions.autoState?: boolean |
 AutoStateOptions` (`{ react?, redux?, zustand?, pinia? }`, each default on; `pinia` is ignored). The zero-code entries
 default it on (`cdn/auto-start.ts` -> `AUTO_DEFAULTS = { autoState: true }`, merged lowest; `cdn/global.ts` merges
 `{ autoState: true }` under the page config); `GenClass.init` / `createRuntime` default off. Page config key

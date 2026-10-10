@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-10-10)
+
+The first release without the beta label, versioned to match `@genclass/runtime-model@0.2.0`. It contains the safety
+work below and everything listed under `0.1.0-beta.4`, which was never published.
 
 ### Safety: audit trail, interception inventory, money-flow guardrails
 
@@ -32,7 +35,7 @@
   revert counted as newer data).
 - First-load size: `/auto` about 98 KB gzip, the main entry about 91 KB (+1.6 KB each).
 
-## 0.1.0-beta.4 (unpublished, 2026-10-10)
+## 0.1.0-beta.4 (never published; shipped in 0.2.0)
 
 ### One line covers the whole app (automatic state discovery)
 

@@ -260,7 +260,7 @@ MD_DOCS = [
     ("docs/runtime/ARCHITECTURE.md", "/docs/architecture", "Architecture", "GenClass Runtime Architecture",
      "How the GenClass runtime is built: observers, causality, stores, facts, triage, the policy gate, actions and the on-device model host."),
     ("packages/runtime/TELEMETRY.md", "/docs/telemetry", "Telemetry", "GenClass Telemetry and Privacy",
-     "What anonymous diagnostics the GenClass runtime sends during the beta, what it never sends, and every way to turn it off."),
+     "What anonymous diagnostics the GenClass runtime sends by default, what it never sends, and every way to turn it off."),
     ("packages/runtime/INTERCEPTION.md", "/docs/interception", "Interception surface", "GenClass Interception Surface",
      "Every browser API GenClass wraps or observes, what each mode may change, what it never does, and how it restores the originals."),
     ("docs/runtime/THREAT-MODEL.md", "/docs/threat-model", "Threat model", "GenClass Threat Model",

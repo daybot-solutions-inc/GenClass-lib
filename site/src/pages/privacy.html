@@ -13,7 +13,7 @@
     <div class="prose">
       <h2>The runtime</h2>
       <p>The GenClass runtime makes every decision in the browser with a local model. It does not need a GenClass account or server to work.</p>
-      <p>During the beta, the runtime sends anonymous, redacted diagnostics by default to help improve the model: decisions with the redacted situation text the model read, outcomes and counts. It never sends typed password, payment or secret values, cookies, headers, request bodies, storage or query strings, and the collector stores no IP address or user agent. Turn it off with <code>GenClass.init({ telemetry: false })</code>, <code>?genclass=no-telemetry</code>, or Global Privacy Control. Full details are in <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md">TELEMETRY.md</a>.</p>
+      <p>The runtime sends anonymous, redacted diagnostics by default to help improve the model: decisions with the redacted situation text the model read, outcomes and counts. It never sends typed password, payment or secret values, cookies, headers, request bodies, storage or query strings, and the collector stores no IP address or user agent. Turn it off with <code>GenClass.init({ telemetry: false })</code>, <code>?genclass=no-telemetry</code>, or Global Privacy Control. Full details are in <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md">TELEMETRY.md</a>.</p>
       <h2>GenClass Cloud</h2>
       <p>Cloud is optional and only receives data from apps you connect with a publishable project key: aggregate metrics such as counts, categories and timings.</p>
       <h2>Early-access sign-ups</h2>
