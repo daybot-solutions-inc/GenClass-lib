@@ -6,7 +6,7 @@ import { applyMiddleware, compose, createStore, legacy_createStore, type Middlew
 import { createStore as createZustand } from "zustand/vanilla";
 import { devtools } from "zustand/middleware";
 import { afterEach, describe, expect, it } from "vitest";
-import "../src/discover/index.js"; // registers autoState (the zero-code entries do this)
+import "./discover-register.js"; // registers autoState (the zero-code entries do this)
 import { createRuntime } from "../src/index.js";
 import type { RuntimeImpl } from "../src/runtime.js";
 import { drain, FakeClock, ScriptedDecider, defaultScript } from "./helpers.js";

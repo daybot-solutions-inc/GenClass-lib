@@ -3,7 +3,7 @@
 // (development build here; discover-react-prod.test.ts runs the production build). React is loaded after the runtime,
 // as with the one line first: the runtime installs the DevTools hook, react-dom injects into it.
 import { afterEach, describe, expect, it } from "vitest";
-import "../src/discover/index.js"; // registers autoState (the zero-code entries do this)
+import "./discover-register.js"; // registers autoState (the zero-code entries do this)
 import { createRuntime } from "../src/index.js";
 import type { RuntimeImpl } from "../src/runtime.js";
 import { defaultScript, drain, FakeClock, FakeServer, ScriptedDecider } from "./helpers.js";

@@ -970,6 +970,19 @@ export class RuntimeImpl implements Runtime {
       log: (m, e) => this.log(m, e),
     };
     const d: { react: ReactDiscovery | null; redux: ReduxDiscovery | null } = { react: null, redux: null };
+    const early = discoveryRegistry.early;
+    if (early && !early.host.attached) {
+      // installed when @genclass/runtime/discover was evaluated (before the framework): attach to it
+      early.host.attach(host);
+      if (on("react")) d.react = early.react;
+      else early.react?.uninstall();
+      d.redux = early.redux;
+      early.redux?.configure({ redux: on("redux"), connect: on("zustand") });
+      if (on("redux")) early.redux?.attached();
+      this.discovered = d;
+      this.uninstall.push(() => early.host.detach(host));
+      return;
+    }
     try {
       if (on("react")) d.react = inst.react(host);
     } catch (e) {

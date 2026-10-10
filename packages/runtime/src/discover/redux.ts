@@ -28,11 +28,16 @@ type AnyFn = (...a: unknown[]) => unknown;
 type AnyObj = Record<string, unknown>;
 
 export interface ReduxDiscoveryHost extends DiscoveryHost {
-  readonly runtime: Runtime;
+  /** The runtime stores are registered with (null while none is attached: everything passes through). */
+  readonly runtime: Runtime | null;
 }
 
 export interface ReduxDiscovery {
   uninstall(): void;
+  /** Turn the sources on or off after installation (a runtime attaching to an early install). */
+  configure(o: { redux: boolean; connect: boolean }): void;
+  /** A runtime attached: Redux stores created before it are registered now, observed only. */
+  attached(): void;
   stats(): { reduxStores: string[]; connected: string[] };
 }
 
@@ -58,7 +63,8 @@ function dataOf(state: unknown): unknown {
   return out ?? state;
 }
 
-export function installReduxDiscovery(host: ReduxDiscoveryHost, o: { redux: boolean; connect: boolean }): ReduxDiscovery | null {
+export function installReduxDiscovery(host: ReduxDiscoveryHost, opts: { redux: boolean; connect: boolean }): ReduxDiscovery | null {
+  const o = { ...opts };
   const g = host.global as AnyObj;
   if (typeof g.document !== "object" || !g.document) return null;
   let active = true;
@@ -69,13 +75,22 @@ export function installReduxDiscovery(host: ReduxDiscoveryHost, o: { redux: bool
   const realCompose = g[COMPOSE_KEY] as AnyFn | undefined;
   const realExt = g[EXT_KEY] as (AnyFn & AnyObj) | undefined;
 
+  const early: { want: string; store: AnyObj }[] = [];
+
   /** GenClass's enhancer, registered under a free name when the store is created. */
   const gcEnhancer = (opts: unknown): AnyFn => {
     const want = storeBase((opts as AnyObj | null | undefined)?.name) || "redux";
     return (createStore: unknown) =>
       (...args: unknown[]) => {
         const cs = createStore as AnyFn;
-        if (!active) return cs(...args);
+        const runtime = host.runtime;
+        if (!active || !o.redux) return cs(...args);
+        if (!runtime) {
+          // created before any runtime (early install, GenClass.init later): observed once one attaches
+          const store = cs(...args) as AnyObj;
+          early.push({ want, store });
+          return store;
+        }
         let name: string | null = null;
         try {
           name = host.freeName(want);
@@ -85,7 +100,7 @@ export function installReduxDiscovery(host: ReduxDiscoveryHost, o: { redux: bool
         if (!name) return cs(...args);
         let enhanced: AnyFn;
         try {
-          enhanced = (genclassEnhancer(host.runtime, { name }) as unknown as (c: unknown) => AnyFn)(cs);
+          enhanced = (genclassEnhancer(runtime, { name }) as unknown as (c: unknown) => AnyFn)(cs);
         } catch (e) {
           host.log("Redux discovery: could not wrap a store", e);
           return cs(...args);
@@ -103,7 +118,7 @@ export function installReduxDiscovery(host: ReduxDiscoveryHost, o: { redux: bool
 
   /** compose with GenClass's enhancer innermost (middleware see each action once, at dispatch time). */
   const composeWith = (opts: unknown, funcs: unknown[]): unknown => {
-    if (!active) {
+    if (!active || !o.redux) {
       if (realCompose) return opts !== undefined ? (realCompose(opts) as AnyFn)(...funcs) : realCompose(...funcs);
       return compose(...funcs);
     }
@@ -143,15 +158,24 @@ export function installReduxDiscovery(host: ReduxDiscoveryHost, o: { redux: bool
     const want = storeBase((options as AnyObj | null | undefined)?.name) || "store";
     let st: ObservedStore | null = null;
     let failed = false;
+    /** The last state seen while no runtime was attached (early install): the store's initial value later. */
+    let last: unknown;
     const seen = (state: unknown, w: Captured | null) => {
       if (!active || failed || !o.connect || state === undefined) return;
       try {
         const v = dataOf(state);
         if (!st) {
-          st = host.observed(want, v, "devtools");
-          if (!st) failed = true;
-          else connected.push(st.name);
-          return;
+          if (!host.runtime) {
+            last = v;
+            return;
+          }
+          st = host.observed(want, last !== undefined ? last : v, "devtools");
+          if (!st) {
+            failed = true;
+            return;
+          }
+          connected.push(st.name);
+          if (last === undefined) return;
         }
         st.write(v, w);
       } catch (e) {
@@ -226,6 +250,30 @@ export function installReduxDiscovery(host: ReduxDiscoveryHost, o: { redux: bool
   if (o.redux || o.connect) define(EXT_KEY, extShim, realExt);
 
   return {
+    attached() {
+      for (const { want, store } of early.splice(0)) {
+        try {
+          const getState = store.getState as AnyFn;
+          const st = host.observed(want, getState(), "redux");
+          if (!st) continue;
+          reduxStores.push(st.name);
+          (store.subscribe as AnyFn)(() => {
+            if (!active || !host.runtime) return;
+            try {
+              st.write(getState(), host.capture());
+            } catch {
+              /* never break a dispatch */
+            }
+          });
+        } catch (e) {
+          host.log("Redux discovery: could not observe an early store", e);
+        }
+      }
+    },
+    configure(c) {
+      o.redux = c.redux;
+      o.connect = c.connect;
+    },
     uninstall() {
       active = false;
       for (const r of restore) {

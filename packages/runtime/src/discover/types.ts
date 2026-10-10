@@ -6,8 +6,6 @@
 // with the op that made them, but can never hold, drop or revert them. Redux stores created through the devtools
 // compose/enhancer shims get the full adapter (src/adapters/redux.ts), like a manual genclassEnhancer.
 
-import type { Clock } from "../types.js";
-
 /** The writer of a write, captured when the app made it (resolved to an op only when the write is recorded). */
 export interface Captured {
   /** Opaque ambient value (an op, a lazy timer op or null). */
@@ -26,7 +24,8 @@ export interface ObservedStore {
 
 export interface DiscoveryHost {
   readonly global: Record<string, unknown>;
-  readonly clock: Clock;
+  /** The runtime's clock (only now() is used: the commit-walk budget). */
+  readonly clock: { now(): number };
   /** Capture the writer of a write happening right now (cheap: nothing is materialised). */
   capture(): Captured;
   /** Register an observed-only store under a free name derived from `base`; null when the store cap is reached. */
