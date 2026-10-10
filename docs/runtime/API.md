@@ -34,7 +34,10 @@ GenClass.destroy(): void                        // uninstall observers, restore 
 Kill switch, for "is my app broken or did GenClass change something?":
 
 - `?genclass=off` in the page URL, or `localStorage.genclass = "off"`: `init` installs nothing and logs one line.
-- `?genclass=observe|guard|heal`: overrides the mode.
+- `?genclass=observe|guard|heal`: overrides the mode, within limits (`src/index.ts` -> `initUnsafe`; a missing
+  `mode` counts as `guard` there): `observe` always; `guard` when no mode, `guard` or `heal` is configured (the
+  default `/auto` and script tag included, not `/auto/observe`); `heal` only when `heal` is configured, or with
+  `debug: true`.
 
 Outside a browser (no `window`/`document`, e.g. SSR), `GenClass.init()` returns an inert runtime: no observers,
 no model. Use [`createRuntime`](#headless-use-tests-ssr-simulation) for headless work.
@@ -165,7 +168,8 @@ adapter (Redux, Zustand, React hooks).
 **Automatic state discovery** (`autoState`, on with the one line: `import "@genclass/runtime/auto"` or the script tag)
 finds React component state (`useState`, `useReducer`, `useSyncExternalStore`, class state; through the React
 DevTools hook), Redux / Redux Toolkit stores (through the Redux DevTools compose and enhancer globals) and Zustand
-`devtools` stores (through the Redux DevTools `connect` API). Each write is recorded with the operation that made it.
+`devtools` stores (through the Redux DevTools `connect` API; Zustand disables `devtools` in production builds unless
+`enabled: true` is passed, so such builds are not discovered). Each write is recorded with the operation that made it.
 Discovered Redux stores get the Redux adapter (controllable, kind `adapter`). Discovered React and Zustand state is
 **observed only** (kind `observed`): it feeds facts, triage, detections and delivery decisions (`deliver` / `defer`),
 but GenClass never holds, drops, reverts or rolls back its writes, so `discard` and `rollback` are not offered for it.

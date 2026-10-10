@@ -1,0 +1,258 @@
+{
+  "at": "2026-10-10T20:28:25.620Z",
+  "runtime": "0.1.0-beta.4",
+  "templates": {
+    "react-vite": {
+      "name": "react-vite",
+      "install": "ok",
+      "build": "ok",
+      "versions": {
+        "@genclass/runtime": "0.1.0-beta.4",
+        "react": "19.3.0",
+        "react-dom": "19.3.0",
+        "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0",
+        "@vitejs/plugin-react": "6.1.2",
+        "typescript": "6.0.3",
+        "vite": "8.3.4"
+      },
+      "prod": {
+        "main": {
+          "modelReady": true,
+          "results": [
+            "San Diego",
+            "San Francisco",
+            "San Jose",
+            "Santiago"
+          ],
+          "overlay": false,
+          "disabled": false,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Model ready (genclass-runtime-r17, wasm, q8, 0.78s). Mode: observe."
+          ]
+        },
+        "off": {
+          "disabled": true,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Disabled by ?genclass=off or localStorage.genclass = \"off\": nothing is installed."
+          ]
+        },
+        "pass": true
+      },
+      "dev": {
+        "main": {
+          "modelReady": true,
+          "results": [
+            "San Diego",
+            "San Francisco",
+            "San Jose",
+            "Santiago"
+          ],
+          "overlay": true,
+          "disabled": false,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Model ready (genclass-runtime-r17, wasm, q8, 0.89s). Mode: observe."
+          ]
+        },
+        "off": null,
+        "pass": true
+      }
+    },
+    "nextjs": {
+      "name": "nextjs",
+      "install": "ok",
+      "build": "ok",
+      "versions": {
+        "@genclass/runtime": "0.1.0-beta.4",
+        "next": "16.4.0",
+        "react": "19.3.0",
+        "react-dom": "19.3.0",
+        "@types/node": "22.20.5",
+        "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0",
+        "typescript": "5.9.3"
+      },
+      "prod": {
+        "main": {
+          "modelReady": true,
+          "results": [
+            "San Diego",
+            "San Francisco",
+            "San Jose",
+            "Santiago"
+          ],
+          "overlay": false,
+          "disabled": false,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Model ready (genclass-runtime-r17, wasm, q8, 0.77s). Mode: observe."
+          ]
+        },
+        "off": {
+          "disabled": true,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Disabled by ?genclass=off or localStorage.genclass = \"off\": nothing is installed."
+          ]
+        },
+        "pass": true
+      },
+      "dev": {
+        "main": {
+          "modelReady": true,
+          "results": [
+            "San Diego",
+            "San Francisco",
+            "San Jose",
+            "Santiago"
+          ],
+          "overlay": true,
+          "disabled": false,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Model ready (genclass-runtime-r17, wasm, q8, 0.78s). Mode: observe."
+          ]
+        },
+        "off": null,
+        "pass": true
+      }
+    },
+    "vue-vite": {
+      "name": "vue-vite",
+      "install": "ok",
+      "build": "ok",
+      "versions": {
+        "@genclass/runtime": "0.1.0-beta.4",
+        "vue": "3.5.43",
+        "@vitejs/plugin-vue": "6.0.10",
+        "typescript": "6.0.3",
+        "vite": "8.3.4",
+        "vue-tsc": "3.3.13"
+      },
+      "prod": {
+        "main": {
+          "modelReady": true,
+          "results": [
+            "San Diego",
+            "San Francisco",
+            "San Jose",
+            "Santiago",
+            "Seattle",
+            "Seoul",
+            "Sydney"
+          ],
+          "overlay": false,
+          "disabled": false,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Model ready (genclass-runtime-r17, wasm, q8, 0.74s). Mode: observe."
+          ]
+        },
+        "off": {
+          "disabled": true,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Disabled by ?genclass=off or localStorage.genclass = \"off\": nothing is installed."
+          ]
+        },
+        "pass": true
+      },
+      "dev": {
+        "main": {
+          "modelReady": true,
+          "results": [
+            "San Diego",
+            "San Francisco",
+            "San Jose",
+            "Santiago"
+          ],
+          "overlay": true,
+          "disabled": false,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Model ready (genclass-runtime-r17, wasm, q8, 0.89s). Mode: observe."
+          ]
+        },
+        "off": null,
+        "pass": true
+      }
+    },
+    "sveltekit": {
+      "name": "sveltekit",
+      "install": "ok",
+      "build": "ok",
+      "versions": {
+        "@genclass/runtime": "0.1.0-beta.4",
+        "@sveltejs/adapter-auto": "8.0.0",
+        "@sveltejs/kit": "3.0.1",
+        "@sveltejs/vite-plugin-svelte": "7.3.1",
+        "svelte": "5.57.2",
+        "svelte-check": "4.7.6",
+        "typescript": "6.0.3",
+        "vite": "8.3.4"
+      },
+      "prod": {
+        "main": {
+          "modelReady": true,
+          "results": [
+            "San Diego",
+            "San Francisco",
+            "San Jose",
+            "Santiago"
+          ],
+          "overlay": false,
+          "disabled": false,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Model ready (genclass-runtime-r17, wasm, q8, 0.77s). Mode: observe."
+          ]
+        },
+        "off": {
+          "disabled": true,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Disabled by ?genclass=off or localStorage.genclass = \"off\": nothing is installed."
+          ]
+        },
+        "pass": true
+      },
+      "dev": {
+        "main": {
+          "modelReady": true,
+          "results": [
+            "San Diego",
+            "San Francisco",
+            "San Jose",
+            "Santiago",
+            "Seattle",
+            "Seoul",
+            "Sydney"
+          ],
+          "overlay": true,
+          "disabled": false,
+          "errors": [],
+          "blocked": [],
+          "genclass": [
+            "info: [GenClass] Model ready (genclass-runtime-r17, wasm, q8, 0.86s). Mode: observe."
+          ]
+        },
+        "off": null,
+        "pass": true
+      }
+    }
+  }
+}

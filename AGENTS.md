@@ -116,8 +116,8 @@ UI, SIM, REAL, DEMOS, TRAIN, REVIEW) belong to the original team. Where a rule s
    Same inputs give byte-identical situations. Known exceptions, none touching situation text:
    `packages/runtime/src/model/engine.ts` (default `now`), `packages/runtime/src/model/host.ts` -> `scheduleIdle`
    (`requestIdleCallback`), `packages/runtime/src/devtools/index.ts` (`rawRaf`, `rawSetTimeout`).
-4. **Honest-evaluation separation.** `sim/` and `realapps/` never read or model `demos/`; demos are never tuned and contain
-   nothing beyond a normal integration. (`realapps/` does import the sim's cost weights and label rule from `sim/src`.)
+4. **Honest-evaluation separation.** `sim/` and `realapps/` never read or model `demos/` or `compat/`; demos and the
+   compat apps are never tuned, never trained on, and contain nothing beyond a normal integration. (`realapps/` does import the sim's cost weights and label rule from `sim/src`.)
 5. **Default `observe`; never make a correct app worse.** Since f3636b2 the default mode is `observe` (`runtime.ts` ->
    `o.mode ?? "observe"`, CONTRACT §13): it never takes an action and, since 054da38, never holds or delays a delivery
    (`RuntimeImpl.deliveryHoldable` is false in observe, so `runDelivery` releases at once). `origin/runtime` still
@@ -184,6 +184,8 @@ demos eval, Python tests, training. One test: `npx vitest run test/delivery.test
 | `realapps/` | 128 app directories with a `manifest.ts` (Mehar's commits say 96 after wave 3; wave-4 apps arrived inside f3a9dd1/eff18cb), incl. 14 open-source Conduit front-ends, in headless Chromium; REAL rows and the never-worse sweep | [realapps.md](docs/agents/realapps.md) |
 | `training/` | Python training, curriculum (`curriculum/rt.py`), eval, export, Azure launch scripts; `NEEDS.md`, `LOG.md`, `EVAL.md` | [training.md](docs/agents/training.md) |
 | `demos/` | `@genclass/demos`: six Vite demo apps, Service Worker chaos backend, Playwright trials | [demos.md](docs/agents/demos.md) |
+| `compat/` | public framework compatibility matrix: 7 apps (React, Next.js, Vue, SvelteKit, Angular, Solid, plain HTML), 15 data layers, seeded mock backend, `run.mjs` -> `RESULTS.md` (genclass.dev/docs/compatibility); evaluation only, VM only, not a workspace | [compat.md](docs/agents/compat.md) |
+| `templates/` | starter templates (react-vite, nextjs, vue-vite, sveltekit) with the one line and the dev overlay; checked by `compat/templates-check.mjs`; not published | [compat.md](docs/agents/compat.md) |
 | `docs/runtime/` | `CONTRACT.md` (binding; changes appended to §13), `API.md`, `ARCHITECTURE.md`, [RESULTS.md](docs/runtime/RESULTS.md) (model and design comparisons, data volume, training log) | [status-and-known-issues](docs/agents/status-and-known-issues.md) |
 | `docs/agents/` | these docs | [README](docs/agents/README.md) |
 | `telemetry-worker/` | Cloudflare Worker `genclass-telemetry` (collector for the runtime's default-on telemetry; R2 bucket `genclass-telemetry`), not a workspace; deploy with `npx --yes wrangler@4 deploy` | [telemetry](docs/agents/telemetry.md) |

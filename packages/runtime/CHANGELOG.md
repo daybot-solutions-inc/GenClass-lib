@@ -72,6 +72,20 @@ are ordinary data); telemetry now includes discovered state (below).
 - **Cost:** `/auto` first load about 96 KB gzip (was 89 KB; the main entry is unchanged at 89 KB); the script-tag
   file about 110 KB gzip. Commit-walk and Troy measurements: README "Costs".
 
+### From the compatibility matrix (`compat/RESULTS.md`)
+
+Seven framework apps (React + Vite, Next.js 16, Vue + Pinia, SvelteKit 3, Angular 22, Solid, plain HTML) and 15 data
+layers, every mode, 10 seeds: no bug introduced; observe identical to no GenClass except one seed of an app race (SWR
+optimistic rollback) that GenClass's timing tipped to the correct outcome. No situation text or other model-visible
+text changes; no telemetry change.
+
+- **Fix: the "Model ready" console line repeated.** The model host also notifies while it stays ready (latency
+  stats after the first decision, then every 5 s), and each notification printed `[GenClass] Model ready (…)` again.
+  It is now printed once per transition into ready.
+- **Docs:** Zustand's `devtools` middleware is off in production builds unless `enabled: true`, so production
+  Zustand stores are not discovered without it (README "Automatic state discovery"); `?genclass=guard|heal` only
+  raise the mode within limits (README "Kill switch").
+
 ### Fixes from the local healing benchmark (`bench/heal/`, `NIGHT-REPORT.md`)
 
 No situation text or other

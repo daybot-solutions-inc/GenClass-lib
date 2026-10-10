@@ -468,9 +468,14 @@ export class RuntimeImpl implements Runtime {
     };
     this.events.onEvent((e) => this.fire("event", e));
     if (this.decider?.onStatus) {
+      // the model host also notifies while it stays ready (latency stats after the first decision, then every 5 s):
+      // the "Model ready" line is printed when the model becomes ready, not on each of those updates
+      let wasReady = false;
       const off = this.decider.onStatus((s) => {
         this.fire("status", s);
-        if (s.state === "ready") this.emitReport({ kind: "status", message: `[GenClass] Model ready (${[s.model, s.device, s.variant].filter(Boolean).join(", ")}${s.loadMs !== undefined ? `, ${secs(s.loadMs)}` : ""}). Mode: ${this._mode}.` });
+        const becameReady = s.state === "ready" && !wasReady;
+        wasReady = s.state === "ready";
+        if (becameReady) this.emitReport({ kind: "status", message: `[GenClass] Model ready (${[s.model, s.device, s.variant].filter(Boolean).join(", ")}${s.loadMs !== undefined ? `, ${secs(s.loadMs)}` : ""}). Mode: ${this._mode}.` });
         // a blocked download (CSP, most often): one warning naming the origin and the fix, instead of the bare error
         if (s.state === "error" && s.blocked) this.warnOnce("model-blocked", blockedMessage(s.blocked));
         else if (s.state === "error") this.emitReport({ kind: "status", message: `[GenClass] Model unavailable (${s.error ?? "error"}); observing only.` });

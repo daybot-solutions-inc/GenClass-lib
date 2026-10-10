@@ -1,0 +1,20 @@
+{
+  "name": "compat-solid-vite",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@genclass/runtime": "file:../../.pack/genclass-runtime.tgz",
+    "solid-js": "1.9.17"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vite": "8.3.4",
+    "vite-plugin-solid": "2.11.14"
+  }
+}

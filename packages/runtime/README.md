@@ -155,6 +155,11 @@ Nuxt 4.6, React Router 8 (framework mode), Angular 20 and plain HTML. In all 15 
 - `remove` left every file byte-identical to the scaffold (node_modules, lockfiles and build output excluded).
 
 Remix, Solid, Preact and Next.js before 15.3 are detected but were not scaffolded with their own generators.
+The [compatibility matrix](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md) runs the
+one line in React + Vite, Next.js 16, Vue + Pinia, SvelteKit 3, Angular 22, Solid and plain HTML, with 15 data layers
+(TanStack Query, SWR, Redux Toolkit, Zustand, Apollo, WebSocket and EventSource among them), in every mode, and checks
+that GenClass never makes those apps worse; starter templates are in
+[templates/](https://github.com/daybot-solutions-inc/GenClass-lib/tree/main/templates).
 Details: [test/install/RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/test/install/RESULTS.md).
 Those runs predate observe becoming the default and the `init` / `remove` fixes in this version (`--mode`, formatter
 handling, server and library detection). The fixes are covered by unit tests; the scaffolds have not been re-run.
@@ -217,7 +222,7 @@ response would overwrite newer data") need those writes: without them, GenClass 
 |---|---|---|
 | React ≥ 16.8 (development and production builds): `useState`, `useReducer`, `useSyncExternalStore`, class component state | the React DevTools global hook (installed, or chained onto the real extension's, which keeps working); each commit, only the components that re-rendered are compared, within 1 ms | **observed only**: detections, facts, triage and delivery decisions (`deliver` / `defer`); never held, dropped, reverted or rolled back |
 | Redux / Redux Toolkit (`configureStore` with `devTools` on, its default; `createStore` with the Redux DevTools compose or enhancer) | the Redux DevTools globals (forwarded to the real extension when installed) | **controllable**: GenClass's Redux enhancer, as if you had added it: delivery `discard`, late revert, `rollback`, `resync` |
-| Zustand with the `devtools` middleware (and other libraries reporting to Redux DevTools' `connect`) | the Redux DevTools `connect` API | **observed only** |
+| Zustand with the `devtools` middleware (and other libraries reporting to Redux DevTools' `connect`) | the Redux DevTools `connect` API. **Production builds:** Zustand turns `devtools` off when `import.meta.env.MODE` is `production` unless you pass `enabled: true`, so a production build is not discovered without it (or wrap the store with `genclass` from `@genclass/runtime/zustand`, which also makes it controllable) | **observed only** |
 
 - **Names.** A component's store is named after the component: `SearchPage.state0`, `SearchPage.state1` (hooks in
   order), `SearchPage.external0` (`useSyncExternalStore`), or the class state's keys (`Wizard.step`). Production
@@ -257,6 +262,13 @@ These hold for the runtime; whether the model's decisions are good is a separate
   outcome in **0 of 396** clean runs across **66 real apps in 23 frameworks** (React, Vue, Svelte, Solid, Angular,
   Ember, Elm, Lit, Redux, Zustand, MobX, TanStack Query and more, including 14 unmodified open-source RealWorld
   front-ends), 6 seeds each. What that check does and does not compare is under [Model quality](#model-quality).
+- **Every mode, on idiomatic apps in seven frameworks.** The
+  [compatibility matrix](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md) (React,
+  Next.js, Vue, SvelteKit, Angular, Solid, plain HTML; 15 data layers; 10 seeds per cell) found 0 bugs introduced in
+  3,510 runs with GenClass and 0 actions on correct apps. Observe left page and server state identical to the run
+  without GenClass in every cell but one: an app's own timing race (SWR's optimistic rollback) that came out right
+  with GenClass and wrong without it, with no action taken. Observe holds nothing, but its main-thread work is not
+  zero.
 - **Normal traffic costs little.** Facts are computed for every write and request; the model is consulted only for
   salient situations. Clean in-order typeahead makes no model calls and holds nothing. A keystroke write to a store
   holding a 5,000-item array takes about 0.22 ms.
@@ -326,7 +338,9 @@ GenClass.init({ mode: "guard" });
 
 **Kill switch.** Append `?genclass=off` to the URL, or set `localStorage.genclass = "off"`, and nothing is installed.
 `?genclass=observe|guard|heal` (or the same localStorage value) overrides the mode, including the mode of the `/auto`
-entries and the script tag.
+entries and the script tag, within limits: `observe` always works; `guard` works when no mode, `guard` or `heal` is
+configured (so on the default `/auto` and script tag, but not on `/auto/observe`); `heal` works only when `heal` is
+configured, or with `debug: true` (for QA).
 
 `GenClass.init()` never throws, and a second call returns the first runtime (its options are ignored). Outside a
 browser (SSR, Node) it returns a runtime with no observers and no model. For tests and headless use, call
@@ -868,7 +882,9 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
 - **Causality** across `await` is tracked by instrumenting fetch, XHR, timers, message events and Response bodies.
   This is best effort; wrap important work in `rt.op(name, fn)` for exact attribution.
 - **Store state.** With the one line, React, Redux and Zustand (`devtools`) state is discovered; discovered React
-  and Zustand state is observed only (detections and delivery `deliver` / `defer`, no write actions). Other state
+  and Zustand state is observed only (detections and delivery `deliver` / `defer`, no write actions). Zustand's
+  `devtools` middleware is off in production builds unless you pass `enabled: true`, and then nothing is discovered
+  from it (measured in the [compatibility matrix](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md)). Other state
   (Vue / Pinia, MobX, Jotai, signals, module variables) is seen only through its effects unless you register it.
   Discovered React state has no variable names (`Comp.state0`), production builds minify component names (the store
   is then named after the element the component renders), and a component's store appears on its first state change.
