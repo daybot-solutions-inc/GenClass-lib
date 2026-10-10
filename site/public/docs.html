@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GenClass Docs: Install the Runtime in Two Lines</title>
+<meta name="description" content="Install @genclass/runtime from npm, a script tag or the CLI. Choose observe, guard or heal mode, tune aggressiveness, explain and undo decisions.">
+<link rel="canonical" href="https://genclass.dev/docs">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/docs">
+<meta property="og:title" content="GenClass Docs: Install the Runtime in Two Lines">
+<meta property="og:description" content="Install @genclass/runtime from npm, a script tag or the CLI. Choose observe, guard or heal mode, tune aggressiveness, explain and undo decisions.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GenClass Docs: Install the Runtime in Two Lines">
+<meta name="twitter:description" content="Install @genclass/runtime from npm, a script tag or the CLI. Choose observe, guard or heal mode, tune aggressiveness, explain and undo decisions.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}]}, {"@type": "HowTo", "name": "Install GenClass in a web app", "description": "Add the GenClass self-healing runtime to any web app.", "totalTime": "PT2M", "tool": [{"@type": "HowToTool", "name": "npm"}], "step": [{"@type": "HowToStep", "name": "Install the package", "text": "Run npm install @genclass/runtime.", "url": "https://genclass.dev/docs#install"}, {"@type": "HowToStep", "name": "Initialize the runtime", "text": "Import GenClass from @genclass/runtime and call GenClass.init() at the top of your entry file.", "url": "https://genclass.dev/docs#init"}, {"@type": "HowToStep", "name": "Choose a mode", "text": "Start in observe mode, then pass { mode: 'guard' } to let GenClass act.", "url": "https://genclass.dev/docs#modes"}]}, {"@type": "TechArticle", "headline": "GenClass documentation: getting started", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "proficiencyLevel": "Beginner"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs" class="on" aria-current="page">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span>Docs</span></nav>
+    <h1>Get started with <em>GenClass.</em></h1>
+    <p class="lede">Install the runtime, add one line, and your app is watched by an on-device model. No account and no API key.</p>
+  </div>
+</div>
+<section style="padding-top: 8px">
+  <div class="wrap doc">
+    <nav class="toc" aria-label="On this page">
+      <b>Start</b><a href="#install">Install</a><a href="#init">Initialize</a><a href="#modes">Modes</a><a href="#profiles">Aggressiveness</a>
+      <b>Operate</b><a href="#explain">Explain and undo</a><a href="#off">Kill switch</a><a href="#selfhost">Self-host the model</a><a href="#privacy">Privacy</a>
+      <b>Cloud</b><a href="#cloud">Connect Cloud</a><a href="#more">Reference</a>
+    </nav>
+    <div class="prose">
+      <h2 id="install">Install</h2>
+      <p>GenClass works in any web app that runs in a browser: React, Next.js, Vue, Svelte, Angular or plain HTML.</p>
+<pre><code>npm install @genclass/runtime</code></pre>
+      <p>Or let the CLI detect your stack, show the diff and write it for you:</p>
+<pre><code>npx @genclass/runtime init            # observe mode
+npx @genclass/runtime init --mode guard
+npx @genclass/runtime remove          # undo exactly what init added</code></pre>
+      <p>No build step? Add one script tag first in <code>&lt;head&gt;</code>:</p>
+<pre><code>&lt;script src="https://cdn.jsdelivr.net/npm/@genclass/runtime"
+        data-mode="observe" data-devtools="local"&gt;&lt;/script&gt;</code></pre>
+
+      <h2 id="init">Initialize</h2>
+      <p>Call <code>init()</code> as early as possible, before your app starts making requests:</p>
+<pre><code>import { GenClass } from "@genclass/runtime";
+
+GenClass.init();</code></pre>
+      <p>Prefer zero code? Import the auto entry instead: <code>import "@genclass/runtime/auto";</code> (or <code>/auto/guard</code>). The model downloads at idle, is cached, and runs in a Web Worker on WebGPU or WASM.</p>
+
+      <h2 id="modes">Modes</h2>
+      <table>
+        <thead><tr><th>Mode</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>observe</code></td><td>Default. Reports likely problems with the evidence and never changes app behaviour.</td></tr>
+          <tr><td><code>guard</code></td><td>Acts at the network boundary: <code>discard</code>, <code>defer</code>, <code>coalesce</code>, <code>delay</code>.</td></tr>
+          <tr><td><code>heal</code></td><td>Experimental. Adds <code>retry</code>, <code>serve_cached</code>, <code>hedge</code>, <code>rollback</code>, <code>resync</code> and custom actions.</td></tr>
+        </tbody>
+      </table>
+<pre><code>GenClass.init({ mode: "guard" });</code></pre>
+      <div class="callout"><b>Recommended path:</b> ship observe first, read the detections for a week, then turn on guard for the routes where they look right.</div>
+
+      <h2 id="profiles">Aggressiveness</h2>
+      <p>Once GenClass can act, the profile sets how sure it must be first. <code>balanced</code> is the default.</p>
+<pre><code>GenClass.init({ mode: "guard", aggressiveness: "cautious" }); // "cautious" | "balanced" | "eager"</code></pre>
+
+      <h2 id="explain">Explain and undo</h2>
+      <p>Every detection and intervention is logged in plain English. <code>rt.explain(id)</code> returns the exact situation the model read, its facts and every answer. Discards and rollbacks return an <code>ActionRecord</code> with <code>undo()</code>, and the devtools overlay lists everything live.</p>
+<pre><code>[GenClass] Prevented a stale write: GET /search?q=pa landed after q=paris was shown (stale; discard)</code></pre>
+
+      <h2 id="off">Kill switch</h2>
+      <p>Append <code>?genclass=off</code> to any URL and nothing is installed. <code>?genclass=observe|guard|heal</code> overrides the mode for that page. A breaker downgrades the mode automatically after repeated undos.</p>
+
+      <h2 id="selfhost">Self-host the model</h2>
+      <p>Strict Content-Security-Policy or no third-party CDNs? Serve the model from your own origin:</p>
+<pre><code>npx @genclass/runtime fetch-model public/genclass-model
+npx @genclass/runtime init --model-url /genclass-model/</code></pre>
+
+      <h2 id="privacy">Privacy</h2>
+      <p>Decisions are made on-device. During the beta, anonymous redacted diagnostics are on by default to improve the model; turn them off with <code>GenClass.init({ telemetry: false })</code> or <code>npx @genclass/runtime init --no-telemetry</code>. See <a href="/privacy">privacy</a>.</p>
+
+      <h2 id="cloud">Connect GenClass Cloud</h2>
+      <div class="callout"><b>Early access.</b> The <code>cloud</code> option below is the proposed API and ships with GenClass Cloud. <a href="/cloud#early-access">Request access</a>.</div>
+<pre><code>GenClass.init({
+  cloud: { projectKey: "gc_pub_..." },   // publishable, metrics-only key
+});</code></pre>
+      <p>The runtime never waits on the cloud. If it is unreachable, protection continues locally.</p>
+
+      <h2 id="more">Reference</h2>
+      <ul>
+        <li><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md">API reference</a></li>
+        <li><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/OPTIONS-SPEC.md">All options</a>: routes, protected endpoints, breaker, shadow mode, veto, action limits</li>
+        <li><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md">Runtime guide</a></li>
+        <li><a href="/how-it-works">How it works</a> and <a href="/benchmarks">benchmarks</a></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

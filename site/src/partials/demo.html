@@ -1,0 +1,13 @@
+    <div class="demo">
+      <div class="dtop">
+        <div class="field"><label for="q">Search cities</label><input id="q" type="text" autocomplete="off" spellcheck="false" placeholder="Try paris, toronto, san francisco"></div>
+        <div class="btns"><button class="btn" id="auto" type="button">Auto-type</button><button class="btn ghost" id="reset" type="button">Reset</button></div>
+      </div>
+      <div class="lanes">
+        <div class="lanebox" id="laneOff"><h3>Without GenClass <span>last response wins</span></h3><div class="for">showing: <b id="offFor">nothing yet</b></div><ul class="res" id="offRes"></ul><div class="st" id="offSt">Waiting for input.</div></div>
+        <div class="lanebox" id="laneOn"><h3>With GenClass <span>guard mode</span></h3><div class="for">showing: <b id="onFor">nothing yet</b></div><ul class="res" id="onRes"></ul><div class="st" id="onSt">Waiting for input.</div></div>
+      </div>
+      <div class="score"><span class="a"><b id="sOff">0</b>stale screens without GenClass</span><span class="c"><b id="sDisc">0</b>stale responses discarded</span></div>
+      <div class="reqs" id="reqs" aria-live="polite"></div>
+    </div>
+    <p class="note">This demo simulates the network and the discard in the page. In a real test, <code>@genclass/runtime</code> installed from npm into a fresh app fixed an out-of-order typeahead in 6 of 6 trials, and clean typing made no model calls at all. <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md">Full results</a>.</p>

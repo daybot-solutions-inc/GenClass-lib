@@ -1,0 +1,25 @@
+<!--meta {"path":"/privacy","nav":"","priority":"0.3","crumbs":[["Privacy","/privacy"]],
+"title":"Privacy | GenClass",
+"description":"How GenClass handles data: on-device inference, what the open-source runtime's optional diagnostics contain, and how we use early-access sign-ups."} -->
+<div class="page-hero">
+  <div class="wrap">
+    <!--@crumbs-->
+    <h1>Privacy</h1>
+    <p class="lede">Short version: the model runs on your users' devices, decisions never need our servers, and we only use your email to talk to you about GenClass.</p>
+  </div>
+</div>
+<section style="padding-top: 48px">
+  <div class="wrap">
+    <div class="prose">
+      <h2>The runtime</h2>
+      <p>The GenClass runtime makes every decision in the browser with a local model. It does not need a GenClass account or server to work.</p>
+      <p>During the beta, the runtime sends anonymous, redacted diagnostics by default to help improve the model: decisions with the redacted situation text the model read, outcomes and counts. It never sends typed password, payment or secret values, cookies, headers, request bodies, storage or query strings, and the collector stores no IP address or user agent. Turn it off with <code>GenClass.init({ telemetry: false })</code>, <code>?genclass=no-telemetry</code>, or Global Privacy Control. Full details are in <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md">TELEMETRY.md</a>.</p>
+      <h2>GenClass Cloud</h2>
+      <p>Cloud is optional and only receives data from apps you connect with a publishable project key: aggregate metrics such as counts, categories and timings.</p>
+      <h2>Early-access sign-ups</h2>
+      <p>When you request early access we store your email, company, number of apps and the plan you picked. We use it only to contact you about GenClass, never sell or share it, and delete it on request.</p>
+      <h2>This website</h2>
+      <p>genclass.dev uses Cloudflare Web Analytics, which counts page views without cookies.</p>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fix Race Conditions in React Data Fetching (useEffect)</title>
+<meta name="description" content="Why React useEffect fetches show stale data when responses arrive out of order, and four fixes: ignore flags, AbortController, request IDs, runtime.">
+<link rel="canonical" href="https://genclass.dev/guides/race-conditions-react">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/guides/race-conditions-react">
+<meta property="og:title" content="Fix Race Conditions in React Data Fetching (useEffect)">
+<meta property="og:description" content="Why React useEffect fetches show stale data when responses arrive out of order, and four fixes: ignore flags, AbortController, request IDs, runtime.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2026-10-10">
+<meta property="article:modified_time" content="2026-10-10">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Fix Race Conditions in React Data Fetching (useEffect)">
+<meta name="twitter:description" content="Why React useEffect fetches show stale data when responses arrive out of order, and four fixes: ignore flags, AbortController, request IDs, runtime.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://genclass.dev/guides"}, {"@type": "ListItem", "position": 3, "name": "Race conditions in React", "item": "https://genclass.dev/guides/race-conditions-react"}]}, {"@type": "TechArticle", "headline": "How to fix race conditions in React data fetching", "datePublished": "2026-10-10", "dateModified": "2026-10-10", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "proficiencyLevel": "Intermediate", "about": ["React", "useEffect", "Race condition", "AbortController"], "mainEntityOfPage": "https://genclass.dev/guides/race-conditions-react"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides" class="on" aria-current="page">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/guides">Guides</a><span aria-hidden="true">/</span><span>Race conditions in React</span></nav>
+    <h1>How to fix race conditions in <em>React data fetching.</em></h1>
+    <p class="lede">A user changes a filter twice, two requests fly, and the slower, older one lands last. Your component now shows data for a choice the user already undid. Here is why it happens and four ways to stop it.</p>
+  </div>
+</div>
+<section style="padding-top: 40px">
+  <div class="wrap doc">
+    <nav class="toc" aria-label="On this page"><b>In this guide</b><a href="#why">Why it happens</a><a href="#ignore">1. Ignore flag</a><a href="#abort">2. AbortController</a><a href="#ids">3. Request IDs</a><a href="#runtime">4. Runtime protection</a><a href="#checklist">Checklist</a></nav>
+    <article class="prose">
+      <h2 id="why">Why useEffect fetches go stale</h2>
+      <p>Here is the classic version. It looks correct and passes every test on a fast network:</p>
+<pre><code>function Results({ query }) {
+  const [items, setItems] = useState([]);
+  useEffect(() =&gt; {
+    fetch(`/api/search?q=${query}`)
+      .then((r) =&gt; r.json())
+      .then(setItems);            // whichever response arrives last wins
+  }, [query]);
+  return &lt;List items={items} /&gt;;
+}</code></pre>
+      <p>Each change of <code>query</code> starts a new request, but nothing cancels the old one. Network latency is not ordered: a request for <code>"pa"</code> can take 1,200 ms while the request for <code>"paris"</code> takes 190 ms. When the old response finally arrives, <code>setItems</code> overwrites the correct results with stale ones. No error is thrown, so error monitoring never sees it.</p>
+      <p>The same bug appears with tabs, pagination, filters, autosave and anything else where a newer request supersedes an older one.</p>
+
+      <h2 id="ignore">Fix 1: an ignore flag in the effect cleanup</h2>
+      <p>React runs the cleanup function before the next effect. Use it to mark the old request as obsolete:</p>
+<pre><code>useEffect(() =&gt; {
+  let ignore = false;
+  fetch(`/api/search?q=${query}`)
+    .then((r) =&gt; r.json())
+    .then((data) =&gt; { if (!ignore) setItems(data); });
+  return () =&gt; { ignore = true; };
+}, [query]);</code></pre>
+      <p>This is the pattern the React docs recommend. It fixes the stale write, but the old request still runs to completion and still costs bandwidth.</p>
+
+      <h2 id="abort">Fix 2: cancel with AbortController</h2>
+<pre><code>useEffect(() =&gt; {
+  const controller = new AbortController();
+  fetch(`/api/search?q=${query}`, { signal: controller.signal })
+    .then((r) =&gt; r.json())
+    .then(setItems)
+    .catch((e) =&gt; { if (e.name !== "AbortError") throw e; });
+  return () =&gt; controller.abort();
+}, [query]);</code></pre>
+      <p>Aborting stops the browser from reading the response, and you skip the stale update. Remember to swallow the <code>AbortError</code>, or it will show up as a noisy failure.</p>
+
+      <h2 id="ids">Fix 3: request IDs for shared state</h2>
+      <p>Cleanup only helps when the request lives inside one component. When responses write into a global store, such as Redux, Zustand or a context, tag each request and only accept the latest:</p>
+<pre><code>let latest = 0;
+async function loadResults(query) {
+  const id = ++latest;
+  const data = await fetch(`/api/search?q=${query}`).then((r) =&gt; r.json());
+  if (id === latest) store.setState({ results: data });
+}</code></pre>
+      <p>Libraries like TanStack Query and SWR do this bookkeeping for you per cache key, which is one of the best reasons to use them.</p>
+
+      <h2 id="runtime">Fix 4: let the runtime catch the ones you missed</h2>
+      <p>The fixes above work where you remember to apply them. Real apps have hundreds of fetches written by different people over years. <a href="/">GenClass</a> sits underneath all of them: it versions every field in your store, sees a response about to overwrite newer data, and in guard mode discards it before your app renders it.</p>
+<pre><code>import { GenClass } from "@genclass/runtime";
+GenClass.init({ mode: "guard" });</code></pre>
+      <p>It logs what it did in plain English, and the discard can be undone:</p>
+<pre><code>[GenClass] Prevented a stale write: GET /api/search?q=pa landed after q=paris was shown (stale; discard)</code></pre>
+      <div class="callout"><b>Try it:</b> the <a href="/#demo">live demo</a> races two search boxes against the same out-of-order network.</div>
+
+      <h2 id="checklist">Checklist</h2>
+      <ul>
+        <li>Every <code>useEffect</code> fetch has a cleanup: an ignore flag or <code>abort()</code>.</li>
+        <li>Writes to shared stores check that the response is still the latest.</li>
+        <li>Use a data-fetching library with per-key deduplication where you can.</li>
+        <li>Test with network throttling and random latency, not just a fast local API.</li>
+        <li>Run a runtime safety net in production for the cases you missed.</li>
+      </ul>
+      <p>Related: <a href="/guides/stale-responses-out-of-order">out-of-order responses in search and autocomplete</a> and <a href="/guides/prevent-duplicate-submissions">preventing duplicate form submissions</a>.</p>
+    </article>
+  </div>
+</section>
+
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

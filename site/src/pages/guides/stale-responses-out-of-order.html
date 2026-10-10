@@ -1,0 +1,54 @@
+<!--meta {"path":"/guides/stale-responses-out-of-order","nav":"guides","priority":"0.7","og_type":"article","published":"2026-10-10","crumbs":[["Guides","/guides"],["Out-of-order responses","/guides/stale-responses-out-of-order"]],
+"title":"Out-of-Order Responses: Fix Stale Search Results",
+"description":"Search and autocomplete show stale results when responses arrive out of order. Why debounce is not enough, and how to fix it with cancel and compare.",
+"jsonld":[{"@type":"TechArticle","headline":"Out-of-order responses: fixing stale search and autocomplete results","datePublished":"2026-10-10","dateModified":"2026-10-10","author":{"@id":"https://genclass.dev/#org"},"publisher":{"@id":"https://genclass.dev/#org"},"proficiencyLevel":"Intermediate","about":["Autocomplete","Typeahead","Out-of-order responses","Debounce"],"mainEntityOfPage":"https://genclass.dev/guides/stale-responses-out-of-order"}]} -->
+<div class="page-hero">
+  <div class="wrap">
+    <!--@crumbs-->
+    <h1>Out-of-order responses and <em>stale search results.</em></h1>
+    <p class="lede">The box says "paris" and the dropdown shows results for "pa". It is the most common race condition on the web, and it only shows up on real networks.</p>
+  </div>
+</div>
+<section style="padding-top: 40px">
+  <div class="wrap">
+<!--@trace-->
+  </div>
+</section>
+<section style="padding-top: 56px">
+  <div class="wrap doc">
+    <nav class="toc" aria-label="On this page"><b>In this guide</b><a href="#what">What goes wrong</a><a href="#debounce">Debounce is not enough</a><a href="#cancel">Cancel or compare</a><a href="#rx">switchMap</a><a href="#prod">Catch it in production</a></nav>
+    <article class="prose">
+      <h2 id="what">What goes wrong</h2>
+      <p>Every keystroke sends a request. HTTP responses are not guaranteed to arrive in the order they were sent: one may hit a cold cache, a slower server or a congested connection. In the trace above, the request for <code>"pa"</code> takes 1,240 ms and lands after the results for <code>"paris"</code> are already on screen. If the app writes whatever arrives, the screen goes backwards.</p>
+
+      <h2 id="debounce">Debounce is not enough</h2>
+      <p>Debouncing input to 200–300 ms reduces the number of requests, which is good, but it does not order them. Two debounced requests can still race. Debounce for load; use one of the fixes below for correctness.</p>
+
+      <h2 id="cancel">Cancel the old request, or compare before writing</h2>
+<pre><code>let controller;
+async function search(q) {
+  controller?.abort();
+  controller = new AbortController();
+  const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+  const data = await res.json();
+  if (q === input.value) render(data);   // only render results for what the box says now
+}</code></pre>
+      <p>Aborting saves bandwidth; comparing against the current input value is the safety check that actually guarantees correctness. Do both.</p>
+
+      <h2 id="rx">The switchMap pattern</h2>
+      <p>In RxJS, <code>switchMap</code> unsubscribes from the previous inner request whenever a new value arrives, which encodes "only the latest matters" directly:</p>
+<pre><code>fromEvent(input, "input").pipe(
+  map((e) =&gt; e.target.value),
+  debounceTime(200),
+  distinctUntilChanged(),
+  switchMap((q) =&gt; fetchResults(q)),
+).subscribe(render);</code></pre>
+
+      <h2 id="prod">Catch the ones you missed in production</h2>
+      <p>Most apps have more than one search box, and filters, tabs and pagination fail the same way. <a href="/">GenClass</a> detects a response that would overwrite newer data across every fetch in your app and, in guard mode, discards it before render. In testing, installed from npm into a fresh app, it fixed an out-of-order typeahead in 6 of 6 trials.</p>
+<pre><code>npm install @genclass/runtime</code></pre>
+      <div class="callout"><b>See it live:</b> the <a href="/#demo">race demo</a> types into two search boxes on the same simulated network.</div>
+      <p>Related: <a href="/guides/race-conditions-react">race conditions in React useEffect</a>.</p>
+    </article>
+  </div>
+</section>

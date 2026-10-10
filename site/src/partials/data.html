@@ -1,0 +1,42 @@
+    <div class="tbl-wrap">
+      <table class="data">
+        <thead><tr><th>Source</th><th>Rows, log scale</th><th style="text-align: right">Rows</th></tr></thead>
+        <tbody>
+          <tr><td>Simulated, unlabeled (teacher-labelled)</td><td class="bar"><div><i style="width: 98.2%"></i></div></td><td class="n">51,272,078</td></tr>
+          <tr><td>Simulated gold, format v2, 115 app domains</td><td class="bar"><div><i style="width: 79.9%"></i></div></td><td class="n">10,423,855</td></tr>
+          <tr><td>On-policy rounds: the model acting in the simulator</td><td class="bar"><div><i style="width: 62.7%"></i></div></td><td class="n">2,343,084</td></tr>
+          <tr><td>Simulated gold, v2.3 top-up</td><td class="bar"><div><i style="width: 61.5%"></i></div></td><td class="n">2,107,824</td></tr>
+          <tr><td>Simulated, format v1</td><td class="bar"><div><i style="width: 60.9%"></i></div></td><td class="n">2,000,000</td></tr>
+          <tr><td>Curriculum, exact labels</td><td class="bar"><div><i style="width: 60.3%"></i></div></td><td class="n">~1,900,000</td></tr>
+          <tr class="rl"><td>Real browsers, gold: 158 apps, 40+ stacks</td><td class="bar"><div><i style="width: 50.9%"></i></div></td><td class="n">837,623</td></tr>
+          <tr class="rl"><td>Real browsers, unlabeled</td><td class="bar"><div><i style="width: 45.5%"></i></div></td><td class="n">~523,000</td></tr>
+          <tr class="rl"><td>Real-app certification set, for gate fitting</td><td class="bar"><div><i style="width: 43.2%"></i></div></td><td class="n">427,576</td></tr>
+          <tr class="ev"><td>Real-app eval set, never trained on</td><td class="bar"><div><i style="width: 5.8%"></i></div></td><td class="n">16,600</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="split">
+      <div>
+        <div class="ftitle">How a label is made</div>
+        <p class="fsub">One decision, every possible future. The label is the cheapest outcome given only what the runtime could have known at that moment.</p>
+        <div class="cf" role="img" aria-label="Counterfactual labelling example: deliver costs 3.0, defer costs 3.0, discard costs 0.0 and becomes the label.">
+          <div class="sit">situation #48213 · trigger: delivery</div>
+          <div class="sit">GET /search?q=pa would overwrite results for "paris"</div>
+          <div class="opt"><span>deliver</span><span>screen shows "pa" results</span><span class="c">cost 3.0</span></div>
+          <div class="opt"><span>defer</span><span>waits for #48214, same result</span><span class="c">cost 3.0</span></div>
+          <div class="opt win"><span>discard</span><span>"paris" results stay</span><span class="c">0.0 · label</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="ftitle">28 hours, from pruning to model 0.2.0</div>
+        <ol class="tl">
+          <li><b>Day 1, 13:00</b>Vocabulary pruned to 16k tokens; the model shrinks to 9.6 MB</li>
+          <li><b>Day 1, 18:00</b>Curriculum stage on 10 nodes: 1.2M exact-label rows</li>
+          <li><b>Day 1, 23:20</b>Situation format frozen; 600k simulated rows in 41 minutes</li>
+          <li><b>Day 2, 04:00</b>Format v2: 10.4M gold rows on 20 nodes in about 31 minutes</li>
+          <li><b>Day 2, 06:15</b>Real-browser gold mixed in; a 150M-parameter teacher trains alongside</li>
+          <li><b>Day 2, 08:34</b>On-policy rounds: the model acts inside the simulator and learns from its mistakes</li>
+          <li><b>Day 2, 16:35</b>Gates certified on 427k real-app rows; model 0.2.0 ships</li>
+        </ol>
+      </div>
+    </div>

@@ -1,0 +1,13 @@
+    <div class="trace" role="img" aria-label="Request trace: five search requests fire as the user types paris. The request for pa takes 1,240 ms and lands after the results for paris are on screen; GenClass discards it.">
+      <div class="trace-head"><b>trace</b><span>/search · typeahead</span><span>user typed "paris"</span><span class="live"><i></i>guard mode</span></div>
+      <div class="trace-body"><div class="tgrid">
+        <div class="trow"><span class="q">#1 GET ?q=<b>p</b></span><div class="lane"><div class="bar d1" style="left: 0%; width: 12%"></div></div><span class="out ok">180 ms · delivered</span></div>
+        <div class="trow"><span class="q">#2 GET ?q=<b>pa</b></span><div class="lane"><div class="bar late d2" style="left: 10%; width: 82.7%"></div></div><span class="out no fade f1">1,240 ms · discarded</span></div>
+        <div class="trow"><span class="q">#3 GET ?q=<b>par</b></span><div class="lane"><div class="bar d3" style="left: 20%; width: 14%"></div></div><span class="out ok">210 ms · delivered</span></div>
+        <div class="trow"><span class="q">#4 GET ?q=<b>pari</b></span><div class="lane"><div class="bar d4" style="left: 30%; width: 10.7%"></div></div><span class="out ok">160 ms · delivered</span></div>
+        <div class="trow"><span class="q">#5 GET ?q=<b>paris</b></span><div class="lane"><div class="bar d5" style="left: 40%; width: 12.7%"></div></div><span class="out ok">190 ms · delivered</span></div>
+        <div class="axis"><span></span><div class="ticks"><div class="mark" style="left: 52.7%"><span class="mark-l">"paris" on screen at 790 ms</span></div><span style="left: 0%">0</span><span style="left: 20%">300</span><span style="left: 40%">600</span><span style="left: 60%">900</span><span style="left: 80%">1,200</span><span style="left: 100%">1,500 ms</span></div><span></span></div>
+      </div></div>
+      <div class="trace-foot fade f1">[GenClass] Prevented a stale write: the response for "pa" landed after "paris" was shown <span>(stale; discard) · undo available</span></div>
+    </div>
+    <p class="cap">Illustration of the failure GenClass targets. Without it, the app renders "pa" results under a search box that says "paris".</p>

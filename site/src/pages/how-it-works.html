@@ -1,0 +1,25 @@
+<!--meta {"path":"/how-it-works","nav":"","priority":"0.8","crumbs":[["How it works","/how-it-works"]],
+"title":"How GenClass Works: On-Device AI for Runtime Bugs",
+"description":"How GenClass observes requests and state writes, asks a 10 MB on-device model what is wrong, acts at the network boundary and explains it.",
+"jsonld":[{"@type":"TechArticle","headline":"How GenClass works","author":{"@id":"https://genclass.dev/#org"},"publisher":{"@id":"https://genclass.dev/#org"},"dateModified":"2026-10-10","about":["Race conditions","Web application reliability","On-device machine learning"]}]} -->
+<div class="page-hero">
+  <div class="wrap">
+    <!--@crumbs-->
+    <h1>It decides at the <em>network boundary.</em></h1>
+    <p class="lede">Responses and push messages are judged before your app sees them. Cheap facts are computed for everything; only salient situations reach the model, so normal traffic costs nothing.</p>
+<!--@trace-->
+  </div>
+</div>
+<section style="padding-top: 72px">
+  <div class="wrap">
+    <div class="sh"><span class="no">The pipeline</span><h2>From fetch to fix in six steps.</h2></div>
+<!--@how-->
+  </div>
+</section>
+<section id="training">
+  <div class="wrap">
+    <div class="sh"><span class="no">Training</span><h2>Trained in a simulated world, checked in real browsers.</h2></div>
+    <p class="intro">Nobody has a dataset of what should have happened during a production race, so we built a world that generates one. Random apps run on the real runtime inside a deterministic simulator. For every decision, each candidate action is replayed and its cost measured, and the label is whatever turned out best. <strong>Up to 1,840 CPU cores, no GPUs.</strong></p>
+<!--@data-->
+  </div>
+</section>

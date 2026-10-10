@@ -1,0 +1,69 @@
+<!--meta {"path":"/guides/prevent-duplicate-submissions","nav":"guides","priority":"0.7","og_type":"article","published":"2026-10-10","crumbs":[["Guides","/guides"],["Duplicate submissions","/guides/prevent-duplicate-submissions"]],
+"title":"How to Prevent Duplicate Form Submissions",
+"description":"Stop double orders and payments: lock the UI, send idempotency keys, deduplicate on the server and coalesce repeated requests at runtime.",
+"jsonld":[{"@type":"TechArticle","headline":"How to prevent duplicate form submissions","datePublished":"2026-10-10","dateModified":"2026-10-10","author":{"@id":"https://genclass.dev/#org"},"publisher":{"@id":"https://genclass.dev/#org"},"proficiencyLevel":"Intermediate","about":["Idempotency","Duplicate requests","Form submission"],"mainEntityOfPage":"https://genclass.dev/guides/prevent-duplicate-submissions"}]} -->
+<div class="page-hero">
+  <div class="wrap">
+    <!--@crumbs-->
+    <h1>How to prevent <em>duplicate submissions.</em></h1>
+    <p class="lede">The checkout spinner hangs, the user taps "Place order" again, and you charge them twice. Duplicate requests are one of the most expensive bugs a web app can ship. Here is how to stop them at every layer.</p>
+  </div>
+</div>
+<section style="padding-top: 40px">
+  <div class="wrap doc">
+    <nav class="toc" aria-label="On this page"><b>In this guide</b><a href="#causes">Where duplicates come from</a><a href="#ui">1. Lock the UI</a><a href="#idem">2. Idempotency keys</a><a href="#server">3. Deduplicate on the server</a><a href="#runtime">4. Coalesce at runtime</a><a href="#checklist">Checklist</a></nav>
+    <article class="prose">
+      <h2 id="causes">Where duplicates come from</h2>
+      <ul>
+        <li><strong>Double clicks and taps</strong> while a slow request is in flight.</li>
+        <li><strong>Automatic retries</strong> after a timeout, when the first request actually committed.</li>
+        <li><strong>A lost response:</strong> the server saved the order, the 200 never arrived, and the client shows an error that invites a second try.</li>
+        <li><strong>Re-renders</strong> that fire the same effect twice.</li>
+      </ul>
+      <p>The third case is the nasty one. The client cannot tell "failed" from "succeeded but I never heard back", so retrying blindly creates a duplicate.</p>
+
+      <h2 id="ui">Fix 1: lock the UI while the request is in flight</h2>
+<pre><code>function PlaceOrder({ cart }) {
+  const [pending, setPending] = useState(false);
+  async function submit() {
+    if (pending) return;
+    setPending(true);
+    try { await api.placeOrder(cart); }
+    finally { setPending(false); }
+  }
+  return &lt;button onClick={submit} disabled={pending}&gt;
+    {pending ? "Placing order…" : "Place order"}
+  &lt;/button&gt;;
+}</code></pre>
+      <p>Cheap and worth doing, but it only covers clicks in one tab, and it does nothing for retries or lost responses.</p>
+
+      <h2 id="idem">Fix 2: send an idempotency key</h2>
+      <p>Generate one key per user intent, not per request, and send it with every attempt:</p>
+<pre><code>const key = crypto.randomUUID();      // created when the user starts checkout
+await fetch("/api/orders", {
+  method: "POST",
+  headers: { "Idempotency-Key": key, "Content-Type": "application/json" },
+  body: JSON.stringify(cart),
+});</code></pre>
+      <p>Now any retry of the same intent carries the same key, and the server can recognise it. This is how payment APIs make retries safe.</p>
+
+      <h2 id="server">Fix 3: deduplicate on the server</h2>
+      <p>Store the key with the result of the first successful request, then answer repeats with that stored result instead of doing the work again. Use a unique constraint so two concurrent requests with the same key cannot both commit, and expire keys after a sensible window.</p>
+
+      <h2 id="runtime">Fix 4: coalesce duplicates at runtime</h2>
+      <p>Even with all of the above, some endpoints ship without a key. <a href="/">GenClass</a> watches every request with its causal chain. When it sees the same mutation repeated with the same body moments later, it can coalesce the repeat into the original request in guard mode, so one order is placed. It only retries a failed write when the request is idempotent or carries an idempotency key.</p>
+<pre><code>[GenClass] Coalesced POST /api/orders with #212, so one order is placed</code></pre>
+      <p>On real apps it had never seen, GenClass detected <strong>3 in 4 duplicate submits</strong> in observe mode. See the <a href="/benchmarks">benchmarks</a>.</p>
+
+      <h2 id="checklist">Checklist</h2>
+      <ul>
+        <li>Disable submit buttons while a mutation is in flight.</li>
+        <li>Send an idempotency key per user intent on every mutating request.</li>
+        <li>Enforce the key server-side with a unique constraint.</li>
+        <li>Never auto-retry a non-idempotent POST without a key.</li>
+        <li>Monitor duplicates in production, because the edge cases will find you.</li>
+      </ul>
+      <p>Related: <a href="/guides/race-conditions-react">race conditions in React</a> and <a href="/guides/stale-responses-out-of-order">out-of-order responses</a>.</p>
+    </article>
+  </div>
+</section>

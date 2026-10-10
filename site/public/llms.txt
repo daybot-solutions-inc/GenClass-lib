@@ -1,0 +1,32 @@
+# GenClass
+
+> GenClass is a self-healing AI runtime for web apps. The open-source runtime (`@genclass/runtime`, Apache-2.0, free forever) runs a 10 MB model in the user's browser (WebGPU or WASM, in a Web Worker) and detects, and can prevent, stale responses, race conditions, duplicate submits, inconsistent state and failure storms. GenClass Cloud (paid, early access) is the reliability control plane for teams: dashboards, release comparisons, alerts, rollouts and team policies. GenClass Enterprise adds SSO, audit logs, private hosting and SLAs.
+
+## Products and pricing
+- Community runtime: $0, unlimited use including commercial, no account or API key. https://genclass.dev/docs
+- GenClass Cloud (Teams): from $99/month, early access. https://genclass.dev/cloud
+- GenClass Enterprise: from $15k/year, design-partner program. https://genclass.dev/enterprise
+- Plan comparison: https://genclass.dev/pricing
+
+## Install
+- `npm install @genclass/runtime`, then `import { GenClass } from "@genclass/runtime"; GenClass.init();`
+- CLI: `npx @genclass/runtime init`; script tag: `<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime" data-mode="observe"></script>`
+- Modes: observe (default, changes nothing), guard (discard, defer, coalesce, delay), heal (experimental: retry, serve_cached, hedge, rollback, resync)
+
+## Results on held-out data (https://genclass.dev/benchmarks)
+- 96% detection precision on real apps never used in training (16,600 situations)
+- 76% of duplicate submits detected on unseen real apps
+- 396 of 396 correct runs left unchanged across 66 real apps
+- No false interventions on held-out real apps at any aggressiveness setting
+- Calibration error 0.009; model 9.6 MB int8, 177 ms per 500-token decision on one WASM thread
+- Trained on 71M+ runtime situations, including 837,623 real-browser rows from 158 apps on 40+ stacks
+
+## Guides
+- How to fix race conditions in React data fetching: https://genclass.dev/guides/race-conditions-react
+- Out-of-order responses and stale search results: https://genclass.dev/guides/stale-responses-out-of-order
+- How to prevent duplicate form submissions: https://genclass.dev/guides/prevent-duplicate-submissions
+
+## Links
+- How it works: https://genclass.dev/how-it-works
+- GitHub: https://github.com/daybot-solutions-inc/GenClass-lib
+- npm: https://www.npmjs.com/package/@genclass/runtime

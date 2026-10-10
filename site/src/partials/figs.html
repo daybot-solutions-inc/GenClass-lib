@@ -1,0 +1,117 @@
+    <div class="figs">
+      <figure>
+        <div class="frame">
+          <div class="ftitle">Accuracy by training stage</div>
+          <div class="fsub">Held-out simulated apps</div>
+          <div class="cols" role="img" aria-label="Bar chart. Base model: diagnosis 8.0%, action 37.6%. Curriculum: 44%, 48%. Simulator pilot: 91.1%, 78.3%. Round 1: 90.5%, 81.9%.">
+            <div class="colg"><div class="dx" style="height: 8%"><span>8.0</span></div><div class="ax" style="height: 37.6%"><span>37.6</span></div></div>
+            <div class="colg"><div class="dx" style="height: 44%"><span>44</span></div><div class="ax" style="height: 48%"><span>48</span></div></div>
+            <div class="colg"><div class="dx" style="height: 91.1%"><span>91.1</span></div><div class="ax" style="height: 78.3%"><span>78.3</span></div></div>
+            <div class="colg"><div class="dx" style="height: 90.5%"><span>90.5</span></div><div class="ax" style="height: 81.9%"><span>81.9</span></div></div>
+          </div>
+          <div class="xl"><span>Base model, no runtime data</span><span>Curriculum, 1.2M rows</span><span>Simulator pilot, 224k rows</span><span>Round 1, 448k rows</span></div>
+          <div class="legend"><span><span class="key" style="background: #0E1F4D"></span>diagnosis %</span><span><span class="key" style="background: #14B86A"></span>action %</span></div>
+        </div>
+        <figcaption><b>Fig. 1</b> Round 1 used situation format v1. The stricter v2 format, with honest labels, scores 84.2% / 77.8% on simulated apps and 83.6% / 80.0% on real apps.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="frame">
+          <div class="ftitle">Detection on real apps it never trained on</div>
+          <div class="fsub">Observe mode, 16,600 held-out situations, precision 0.96</div>
+          <div class="hbar"><div class="r"><span>Duplicate submits detected</span><b>76%</b></div><div class="t"><i class="b" style="width: 76%"></i></div></div>
+          <div class="hbar"><div class="r"><span>Stale overwrites detected</span><b>43%</b></div><div class="t"><i class="b" style="width: 43%"></i></div></div>
+          <div class="hbar"><div class="r"><span>Broken state detected</span><b>27%</b></div><div class="t"><i class="b" style="width: 27%"></i></div></div>
+          <div class="hbar"><div class="r"><span>False detections on clean traffic</span><b>0.62%</b></div><div class="t"><i class="o" style="width: 0.62%; min-width: 3px"></i></div></div>
+        </div>
+        <figcaption><b>Fig. 2</b> Report threshold 0.70. At the shipped threshold of 0.85: duplicates about 76%, stale 28%, false detections 0.36%.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="frame">
+          <div class="ftitle">Three settings, one trade-off</div>
+          <div class="fsub">Model 0.2.0, held-out test. No false interventions on held-out real apps at any setting.</div>
+          <div class="tbl-wrap" style="margin-top: 18px">
+            <table class="prof">
+              <thead><tr><th></th><th>cautious</th><th class="hl">balanced</th><th>eager</th></tr></thead>
+              <tbody>
+                <tr><td>Guard, false interventions</td><td>0.005%</td><td class="hl">0.13%</td><td>0.54%</td></tr>
+                <tr><td>Guard, recall on real apps</td><td>1.4%</td><td class="hl">7.5%</td><td>21.0%</td></tr>
+                <tr><td>Heal, false interventions</td><td>0.26%</td><td class="hl">0.59%</td><td>1.84%</td></tr>
+                <tr><td>Heal, recall on real apps</td><td>3.8%</td><td class="hl">10.4%</td><td>24.2%</td></tr>
+                <tr><td>Report threshold</td><td>0.95</td><td class="hl">0.90</td><td>0.70</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <figcaption><b>Fig. 3</b> Balanced is the default. False-intervention rates in the table are on simulated apps; the targets are 0.1% for guard and 0.5% for heal.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="frame">
+          <div class="ftitle">Precision and recall by class</div>
+          <div class="fsub">Held-out simulated apps, report threshold 0.70</div>
+          <div class="tbl-wrap" style="margin-top: 18px">
+            <table class="pr">
+              <thead><tr><th>Class</th><th>Precision</th><th>Recall</th></tr></thead>
+              <tbody>
+                <tr><td>slow</td><td><div class="mini"><div class="t"><i style="width: 94%"></i></div>0.94</div></td><td><div class="mini"><div class="t"><i class="b" style="width: 91%"></i></div>0.91</div></td></tr>
+                <tr><td>transient</td><td><div class="mini"><div class="t"><i style="width: 88%"></i></div>0.88</div></td><td><div class="mini"><div class="t"><i class="b" style="width: 81%"></i></div>0.81</div></td></tr>
+                <tr><td>failing</td><td><div class="mini"><div class="t"><i style="width: 95%"></i></div>0.95</div></td><td><div class="mini"><div class="t"><i class="b" style="width: 78%"></i></div>0.78</div></td></tr>
+                <tr><td>stale</td><td><div class="mini"><div class="t"><i style="width: 87%"></i></div>0.87</div></td><td><div class="mini"><div class="t"><i class="b" style="width: 57%"></i></div>0.57</div></td></tr>
+                <tr><td>conflict</td><td><div class="mini"><div class="t"><i style="width: 89%"></i></div>0.89</div></td><td><div class="mini"><div class="t"><i class="b" style="width: 54%"></i></div>0.54</div></td></tr>
+                <tr><td>inconsistent</td><td><div class="mini"><div class="t"><i style="width: 97%"></i></div>0.97</div></td><td><div class="mini"><div class="t"><i class="b" style="width: 53%"></i></div>0.53</div></td></tr>
+                <tr><td>duplicate</td><td><div class="mini"><div class="t"><i style="width: 80%"></i></div>0.80</div></td><td><div class="mini"><div class="t"><i class="b" style="width: 49%"></i></div>0.49</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <figcaption><b>Table 1</b> Model r17-v2b on the sim2e test set. Calibration error 0.009; browser and PyTorch outputs agree on 223 of 223 decisions.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="frame">
+          <div class="ftitle">More caught at the same safety, each round</div>
+          <div class="fsub">Heal-mode gain captured at a fixed false-intervention budget</div>
+          <svg class="chart" viewBox="0 0 640 262" role="img" aria-label="Line chart. At false-intervention budgets of 0.05, 0.1, 0.2 and 0.5 percent, model v2dT captures 2.1, 3.4, 6.2 and 12.3 percent; v2d 1.6, 2.5, 5.3 and 10.0; v2c 1.6, 2.8, 4.6 and 8.3.">
+            <line x1="60" x2="540" y1="165.7" y2="165.7" stroke="#DFE4EC"></line>
+            <line x1="60" x2="540" y1="111.4" y2="111.4" stroke="#DFE4EC"></line>
+            <line x1="60" x2="540" y1="57.1" y2="57.1" stroke="#DFE4EC"></line>
+            <line x1="60" x2="540" y1="220" y2="220" stroke="#0E1F4D"></line>
+            <text x="50" y="224" text-anchor="end">0%</text><text x="50" y="169.7" text-anchor="end">4%</text><text x="50" y="115.4" text-anchor="end">8%</text><text x="50" y="61.1" text-anchor="end">12%</text>
+            <text x="60" y="244" text-anchor="middle">0.05%</text><text x="220" y="244" text-anchor="middle">0.1%</text><text x="380" y="244" text-anchor="middle">0.2%</text><text x="540" y="244" text-anchor="middle">0.5%</text>
+            <path d="M60,198.3 L220,182 L380,157.6 L540,107.4" fill="none" stroke="#AAB4C8" stroke-width="2"></path>
+            <path d="M60,198.3 L220,186.1 L380,148.1 L540,84.3" fill="none" stroke="#0E1F4D" stroke-width="2"></path>
+            <path d="M60,191.5 L220,173.9 L380,135.9 L540,53.1" fill="none" stroke="#14B86A" stroke-width="3"></path>
+            <circle cx="60" cy="191.5" r="4" fill="#14B86A"></circle><circle cx="220" cy="173.9" r="4" fill="#14B86A"></circle><circle cx="380" cy="135.9" r="4" fill="#14B86A"></circle><circle cx="540" cy="53.1" r="4" fill="#14B86A"></circle>
+            <text x="552" y="57" style="fill: #08794A">v2dT 12.3%</text>
+            <text x="552" y="88" style="fill: #0E1F4D">v2d 10.0%</text>
+            <text x="552" y="111">v2c 8.3%</text>
+          </svg>
+        </div>
+        <figcaption><b>Fig. 4</b> x: false-intervention budget. y: share of the available gain captured. v2dT ships as model 0.2.0.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="frame">
+          <div class="ftitle">Small enough for every device</div>
+          <div class="fsub">Model file size, int8</div>
+          <div class="hbar"><div class="r"><span>R17, shipped</span><b>9.6 MB</b></div><div class="t"><i class="b" style="width: 16.8%"></i></div></div>
+          <div class="hbar"><div class="r"><span>R32</span><b>22.5 MB</b></div><div class="t"><i style="width: 39.5%"></i></div></div>
+          <div class="hbar"><div class="r"><span>GenClass 0.1, original</span><b>57 MB</b></div><div class="t"><i class="m" style="width: 100%"></i></div></div>
+          <p class="fsub" style="margin-top: 18px">One WASM thread, 500-token situation: 177 ms for R17, 569 ms for R32. WebGPU and multi-threaded WASM are faster, and normal traffic makes no model calls.</p>
+        </div>
+        <figcaption><b>Fig. 5</b> R17 matches R32's accuracy at about a third of the size and latency, so it is the default everywhere.</figcaption>
+      </figure>
+    </div>
+
+    <figure style="margin-top: 56px">
+      <div class="frame">
+        <div class="ftitle">Never make a correct app worse</div>
+        <div class="fsub">Real apps in headless Chromium: final page text and server state, with and without the runtime acting</div>
+        <div class="pair">
+          <div><div class="big" style="color: #C42A12">194 / 198</div><p>clean runs untouched by the v1 runtime, which held store writes. Not good enough: the React/Redux RealWorld app never rendered its home feed.</p></div>
+          <div><div class="big" style="color: #08794A">396 / 396</div><p>clean runs untouched by the v2 runtime, which decides at the network boundary: 66 real apps × 6 seeds. So v2 shipped.</p></div>
+        </div>
+      </div>
+    </figure>

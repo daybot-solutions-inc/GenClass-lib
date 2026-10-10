@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Out-of-Order Responses: Fix Stale Search Results</title>
+<meta name="description" content="Search and autocomplete show stale results when responses arrive out of order. Why debounce is not enough, and how to fix it with cancel and compare.">
+<link rel="canonical" href="https://genclass.dev/guides/stale-responses-out-of-order">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/guides/stale-responses-out-of-order">
+<meta property="og:title" content="Out-of-Order Responses: Fix Stale Search Results">
+<meta property="og:description" content="Search and autocomplete show stale results when responses arrive out of order. Why debounce is not enough, and how to fix it with cancel and compare.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2026-10-10">
+<meta property="article:modified_time" content="2026-10-10">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Out-of-Order Responses: Fix Stale Search Results">
+<meta name="twitter:description" content="Search and autocomplete show stale results when responses arrive out of order. Why debounce is not enough, and how to fix it with cancel and compare.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://genclass.dev/guides"}, {"@type": "ListItem", "position": 3, "name": "Out-of-order responses", "item": "https://genclass.dev/guides/stale-responses-out-of-order"}]}, {"@type": "TechArticle", "headline": "Out-of-order responses: fixing stale search and autocomplete results", "datePublished": "2026-10-10", "dateModified": "2026-10-10", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "proficiencyLevel": "Intermediate", "about": ["Autocomplete", "Typeahead", "Out-of-order responses", "Debounce"], "mainEntityOfPage": "https://genclass.dev/guides/stale-responses-out-of-order"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides" class="on" aria-current="page">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/guides">Guides</a><span aria-hidden="true">/</span><span>Out-of-order responses</span></nav>
+    <h1>Out-of-order responses and <em>stale search results.</em></h1>
+    <p class="lede">The box says "paris" and the dropdown shows results for "pa". It is the most common race condition on the web, and it only shows up on real networks.</p>
+  </div>
+</div>
+<section style="padding-top: 40px">
+  <div class="wrap">
+    <div class="trace" role="img" aria-label="Request trace: five search requests fire as the user types paris. The request for pa takes 1,240 ms and lands after the results for paris are on screen; GenClass discards it.">
+      <div class="trace-head"><b>trace</b><span>/search · typeahead</span><span>user typed "paris"</span><span class="live"><i></i>guard mode</span></div>
+      <div class="trace-body"><div class="tgrid">
+        <div class="trow"><span class="q">#1 GET ?q=<b>p</b></span><div class="lane"><div class="bar d1" style="left: 0%; width: 12%"></div></div><span class="out ok">180 ms · delivered</span></div>
+        <div class="trow"><span class="q">#2 GET ?q=<b>pa</b></span><div class="lane"><div class="bar late d2" style="left: 10%; width: 82.7%"></div></div><span class="out no fade f1">1,240 ms · discarded</span></div>
+        <div class="trow"><span class="q">#3 GET ?q=<b>par</b></span><div class="lane"><div class="bar d3" style="left: 20%; width: 14%"></div></div><span class="out ok">210 ms · delivered</span></div>
+        <div class="trow"><span class="q">#4 GET ?q=<b>pari</b></span><div class="lane"><div class="bar d4" style="left: 30%; width: 10.7%"></div></div><span class="out ok">160 ms · delivered</span></div>
+        <div class="trow"><span class="q">#5 GET ?q=<b>paris</b></span><div class="lane"><div class="bar d5" style="left: 40%; width: 12.7%"></div></div><span class="out ok">190 ms · delivered</span></div>
+        <div class="axis"><span></span><div class="ticks"><div class="mark" style="left: 52.7%"><span class="mark-l">"paris" on screen at 790 ms</span></div><span style="left: 0%">0</span><span style="left: 20%">300</span><span style="left: 40%">600</span><span style="left: 60%">900</span><span style="left: 80%">1,200</span><span style="left: 100%">1,500 ms</span></div><span></span></div>
+      </div></div>
+      <div class="trace-foot fade f1">[GenClass] Prevented a stale write: the response for "pa" landed after "paris" was shown <span>(stale; discard) · undo available</span></div>
+    </div>
+    <p class="cap">Illustration of the failure GenClass targets. Without it, the app renders "pa" results under a search box that says "paris".</p>
+
+  </div>
+</section>
+<section style="padding-top: 56px">
+  <div class="wrap doc">
+    <nav class="toc" aria-label="On this page"><b>In this guide</b><a href="#what">What goes wrong</a><a href="#debounce">Debounce is not enough</a><a href="#cancel">Cancel or compare</a><a href="#rx">switchMap</a><a href="#prod">Catch it in production</a></nav>
+    <article class="prose">
+      <h2 id="what">What goes wrong</h2>
+      <p>Every keystroke sends a request. HTTP responses are not guaranteed to arrive in the order they were sent: one may hit a cold cache, a slower server or a congested connection. In the trace above, the request for <code>"pa"</code> takes 1,240 ms and lands after the results for <code>"paris"</code> are already on screen. If the app writes whatever arrives, the screen goes backwards.</p>
+
+      <h2 id="debounce">Debounce is not enough</h2>
+      <p>Debouncing input to 200–300 ms reduces the number of requests, which is good, but it does not order them. Two debounced requests can still race. Debounce for load; use one of the fixes below for correctness.</p>
+
+      <h2 id="cancel">Cancel the old request, or compare before writing</h2>
+<pre><code>let controller;
+async function search(q) {
+  controller?.abort();
+  controller = new AbortController();
+  const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+  const data = await res.json();
+  if (q === input.value) render(data);   // only render results for what the box says now
+}</code></pre>
+      <p>Aborting saves bandwidth; comparing against the current input value is the safety check that actually guarantees correctness. Do both.</p>
+
+      <h2 id="rx">The switchMap pattern</h2>
+      <p>In RxJS, <code>switchMap</code> unsubscribes from the previous inner request whenever a new value arrives, which encodes "only the latest matters" directly:</p>
+<pre><code>fromEvent(input, "input").pipe(
+  map((e) =&gt; e.target.value),
+  debounceTime(200),
+  distinctUntilChanged(),
+  switchMap((q) =&gt; fetchResults(q)),
+).subscribe(render);</code></pre>
+
+      <h2 id="prod">Catch the ones you missed in production</h2>
+      <p>Most apps have more than one search box, and filters, tabs and pagination fail the same way. <a href="/">GenClass</a> detects a response that would overwrite newer data across every fetch in your app and, in guard mode, discards it before render. In testing, installed from npm into a fresh app, it fixed an out-of-order typeahead in 6 of 6 trials.</p>
+<pre><code>npm install @genclass/runtime</code></pre>
+      <div class="callout"><b>See it live:</b> the <a href="/#demo">race demo</a> types into two search boxes on the same simulated network.</div>
+      <p>Related: <a href="/guides/race-conditions-react">race conditions in React useEffect</a>.</p>
+    </article>
+  </div>
+</section>
+
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How GenClass Works: On-Device AI for Runtime Bugs</title>
+<meta name="description" content="How GenClass observes requests and state writes, asks a 10 MB on-device model what is wrong, acts at the network boundary and explains it.">
+<link rel="canonical" href="https://genclass.dev/how-it-works">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/how-it-works">
+<meta property="og:title" content="How GenClass Works: On-Device AI for Runtime Bugs">
+<meta property="og:description" content="How GenClass observes requests and state writes, asks a 10 MB on-device model what is wrong, acts at the network boundary and explains it.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="How GenClass Works: On-Device AI for Runtime Bugs">
+<meta name="twitter:description" content="How GenClass observes requests and state writes, asks a 10 MB on-device model what is wrong, acts at the network boundary and explains it.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "How it works", "item": "https://genclass.dev/how-it-works"}]}, {"@type": "TechArticle", "headline": "How GenClass works", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "about": ["Race conditions", "Web application reliability", "On-device machine learning"]}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span>How it works</span></nav>
+    <h1>It decides at the <em>network boundary.</em></h1>
+    <p class="lede">Responses and push messages are judged before your app sees them. Cheap facts are computed for everything; only salient situations reach the model, so normal traffic costs nothing.</p>
+    <div class="trace" role="img" aria-label="Request trace: five search requests fire as the user types paris. The request for pa takes 1,240 ms and lands after the results for paris are on screen; GenClass discards it.">
+      <div class="trace-head"><b>trace</b><span>/search · typeahead</span><span>user typed "paris"</span><span class="live"><i></i>guard mode</span></div>
+      <div class="trace-body"><div class="tgrid">
+        <div class="trow"><span class="q">#1 GET ?q=<b>p</b></span><div class="lane"><div class="bar d1" style="left: 0%; width: 12%"></div></div><span class="out ok">180 ms · delivered</span></div>
+        <div class="trow"><span class="q">#2 GET ?q=<b>pa</b></span><div class="lane"><div class="bar late d2" style="left: 10%; width: 82.7%"></div></div><span class="out no fade f1">1,240 ms · discarded</span></div>
+        <div class="trow"><span class="q">#3 GET ?q=<b>par</b></span><div class="lane"><div class="bar d3" style="left: 20%; width: 14%"></div></div><span class="out ok">210 ms · delivered</span></div>
+        <div class="trow"><span class="q">#4 GET ?q=<b>pari</b></span><div class="lane"><div class="bar d4" style="left: 30%; width: 10.7%"></div></div><span class="out ok">160 ms · delivered</span></div>
+        <div class="trow"><span class="q">#5 GET ?q=<b>paris</b></span><div class="lane"><div class="bar d5" style="left: 40%; width: 12.7%"></div></div><span class="out ok">190 ms · delivered</span></div>
+        <div class="axis"><span></span><div class="ticks"><div class="mark" style="left: 52.7%"><span class="mark-l">"paris" on screen at 790 ms</span></div><span style="left: 0%">0</span><span style="left: 20%">300</span><span style="left: 40%">600</span><span style="left: 60%">900</span><span style="left: 80%">1,200</span><span style="left: 100%">1,500 ms</span></div><span></span></div>
+      </div></div>
+      <div class="trace-foot fade f1">[GenClass] Prevented a stale write: the response for "pa" landed after "paris" was shown <span>(stale; discard) · undo available</span></div>
+    </div>
+    <p class="cap">Illustration of the failure GenClass targets. Without it, the app renders "pa" results under a search box that says "paris".</p>
+
+  </div>
+</div>
+<section style="padding-top: 72px">
+  <div class="wrap">
+    <div class="sh"><span class="no">The pipeline</span><h2>From fetch to fix in six steps.</h2></div>
+    <div class="steps">
+      <div class="step"><span class="n">01</span><h3>Observe</h3><p>Instruments fetch, XHR, WebSocket, EventSource, DOM events, errors, storage and timers, and links async work into causal chains.</p></div>
+      <div class="step"><span class="n">02</span><h3>Learn</h3><p>Builds per-operation baselines for latency, failure and request rate, and relations that keep holding, like <code>total == sum(price × qty)</code>.</p></div>
+      <div class="step"><span class="n">03</span><h3>Triage</h3><p>Computes facts for every write and request. Only a response over newer data, a repeat, a failure streak or a broken relation goes to the model.</p></div>
+      <div class="step"><span class="n">04</span><h3>Decide</h3><p>An 8.8M-parameter encoder in a Web Worker reads the situation and returns a calibrated diagnosis and action.</p></div>
+      <div class="step"><span class="n">05</span><h3>Act</h3><p>Only when acting beats doing nothing by the margin of the setting you chose: cautious, balanced or eager.</p></div>
+      <div class="step"><span class="n">06</span><h3>Explain</h3><p>Every call is logged in plain English. <code>rt.explain(id)</code> returns the exact text the model read, and reversible actions can be undone.</p></div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="modes">
+        <thead><tr><th>Mode</th><th>What it does</th><th>Actions</th></tr></thead>
+        <tbody>
+          <tr class="def"><td>observe · default</td><td>Reports likely problems with the evidence. Never holds, delays or changes anything.</td><td>none</td></tr>
+          <tr><td>guard · opt-in</td><td>Small, reversible actions at the network boundary when the model's gate says acting clearly wins.</td><td><span class="pill g">discard</span><span class="pill g">defer</span><span class="pill g">coalesce</span><span class="pill g">delay</span></td></tr>
+          <tr><td>heal · experimental</td><td>The full action set, with idempotency-aware retries and a breaker that downgrades it after undos.</td><td><span class="pill h">retry</span><span class="pill h">serve_cached</span><span class="pill h">hedge</span><span class="pill h">rollback</span><span class="pill h">resync</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="console" role="img" aria-label="Example GenClass console output">
+      <div class="d">// example console output</div>
+      <div class="b">[GenClass] Prevented a stale write: GET /search?q=pa landed after q=paris was shown (stale; discard)</div>
+      <div class="b">[GenClass] Coalesced POST /api/orders with #212, so one order is placed</div>
+      <div class="o">[GenClass] Failing request: GET /api/inventory failed 5 times in 8 s (failing)</div>
+      <div>[GenClass] Held the write to cart.total until the related in-flight operations finish, to decide again.</div>
+      <div class="d">&gt; rt.explain(214)   // situation text, facts, timeline, every answer</div>
+    </div>
+
+  </div>
+</section>
+<section id="training">
+  <div class="wrap">
+    <div class="sh"><span class="no">Training</span><h2>Trained in a simulated world, checked in real browsers.</h2></div>
+    <p class="intro">Nobody has a dataset of what should have happened during a production race, so we built a world that generates one. Random apps run on the real runtime inside a deterministic simulator. For every decision, each candidate action is replayed and its cost measured, and the label is whatever turned out best. <strong>Up to 1,840 CPU cores, no GPUs.</strong></p>
+    <div class="tbl-wrap">
+      <table class="data">
+        <thead><tr><th>Source</th><th>Rows, log scale</th><th style="text-align: right">Rows</th></tr></thead>
+        <tbody>
+          <tr><td>Simulated, unlabeled (teacher-labelled)</td><td class="bar"><div><i style="width: 98.2%"></i></div></td><td class="n">51,272,078</td></tr>
+          <tr><td>Simulated gold, format v2, 115 app domains</td><td class="bar"><div><i style="width: 79.9%"></i></div></td><td class="n">10,423,855</td></tr>
+          <tr><td>On-policy rounds: the model acting in the simulator</td><td class="bar"><div><i style="width: 62.7%"></i></div></td><td class="n">2,343,084</td></tr>
+          <tr><td>Simulated gold, v2.3 top-up</td><td class="bar"><div><i style="width: 61.5%"></i></div></td><td class="n">2,107,824</td></tr>
+          <tr><td>Simulated, format v1</td><td class="bar"><div><i style="width: 60.9%"></i></div></td><td class="n">2,000,000</td></tr>
+          <tr><td>Curriculum, exact labels</td><td class="bar"><div><i style="width: 60.3%"></i></div></td><td class="n">~1,900,000</td></tr>
+          <tr class="rl"><td>Real browsers, gold: 158 apps, 40+ stacks</td><td class="bar"><div><i style="width: 50.9%"></i></div></td><td class="n">837,623</td></tr>
+          <tr class="rl"><td>Real browsers, unlabeled</td><td class="bar"><div><i style="width: 45.5%"></i></div></td><td class="n">~523,000</td></tr>
+          <tr class="rl"><td>Real-app certification set, for gate fitting</td><td class="bar"><div><i style="width: 43.2%"></i></div></td><td class="n">427,576</td></tr>
+          <tr class="ev"><td>Real-app eval set, never trained on</td><td class="bar"><div><i style="width: 5.8%"></i></div></td><td class="n">16,600</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="split">
+      <div>
+        <div class="ftitle">How a label is made</div>
+        <p class="fsub">One decision, every possible future. The label is the cheapest outcome given only what the runtime could have known at that moment.</p>
+        <div class="cf" role="img" aria-label="Counterfactual labelling example: deliver costs 3.0, defer costs 3.0, discard costs 0.0 and becomes the label.">
+          <div class="sit">situation #48213 · trigger: delivery</div>
+          <div class="sit">GET /search?q=pa would overwrite results for "paris"</div>
+          <div class="opt"><span>deliver</span><span>screen shows "pa" results</span><span class="c">cost 3.0</span></div>
+          <div class="opt"><span>defer</span><span>waits for #48214, same result</span><span class="c">cost 3.0</span></div>
+          <div class="opt win"><span>discard</span><span>"paris" results stay</span><span class="c">0.0 · label</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="ftitle">28 hours, from pruning to model 0.2.0</div>
+        <ol class="tl">
+          <li><b>Day 1, 13:00</b>Vocabulary pruned to 16k tokens; the model shrinks to 9.6 MB</li>
+          <li><b>Day 1, 18:00</b>Curriculum stage on 10 nodes: 1.2M exact-label rows</li>
+          <li><b>Day 1, 23:20</b>Situation format frozen; 600k simulated rows in 41 minutes</li>
+          <li><b>Day 2, 04:00</b>Format v2: 10.4M gold rows on 20 nodes in about 31 minutes</li>
+          <li><b>Day 2, 06:15</b>Real-browser gold mixed in; a 150M-parameter teacher trains alongside</li>
+          <li><b>Day 2, 08:34</b>On-policy rounds: the model acts inside the simulator and learns from its mistakes</li>
+          <li><b>Day 2, 16:35</b>Gates certified on 427k real-app rows; model 0.2.0 ships</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

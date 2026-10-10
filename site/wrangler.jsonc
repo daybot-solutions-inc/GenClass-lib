@@ -1,0 +1,27 @@
+// genclass.dev: a Worker serving static assets plus the early-access API.
+// Build: python3 build.py   Deploy: npx --yes wrangler@4 deploy   (from this directory)
+{
+  "name": "genclass-site",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-01",
+  "account_id": "144bd5f5270b51dbe7faf46227a154f0",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "html_handling": "drop-trailing-slash",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "genclass-waitlist", "database_id": "0d998323-fe01-49fc-a7bc-42b2ac1bdf7a" }
+  ],
+  "ratelimits": [
+    { "name": "LIMIT", "namespace_id": "4801", "simple": { "limit": 5, "period": 60 } }
+  ],
+  "routes": [
+    { "pattern": "genclass.dev/*", "zone_name": "genclass.dev" },
+    { "pattern": "www.genclass.dev/*", "zone_name": "genclass.dev" }
+  ],
+  "observability": { "enabled": false }
+}

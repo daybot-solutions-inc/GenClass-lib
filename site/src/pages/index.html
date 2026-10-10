@@ -1,0 +1,175 @@
+<!--meta {"path":"/","nav":"","priority":"1.0",
+"title":"GenClass: Self-Healing AI Runtime for Web Apps",
+"og_title":"GenClass: the bugs your tests miss, caught in production",
+"description":"Free, open-source AI runtime that catches race conditions, stale responses and duplicate submits in production, in the browser. Cloud for teams.",
+"jsonld":[{"@type":"SoftwareApplication","name":"GenClass Runtime","alternateName":"@genclass/runtime","applicationCategory":"DeveloperApplication","applicationSubCategory":"Application reliability","operatingSystem":"Web browser","softwareVersion":"0.1.0-beta","license":"https://www.apache.org/licenses/LICENSE-2.0","url":"https://genclass.dev/","downloadUrl":"https://www.npmjs.com/package/@genclass/runtime","installUrl":"https://genclass.dev/docs","codeRepository":"https://github.com/daybot-solutions-inc/GenClass-lib","programmingLanguage":["TypeScript","JavaScript"],"featureList":["On-device AI inference with WebGPU or WASM","Stale response and race condition prevention","Duplicate request detection","Failure storm detection","React, Redux and Zustand adapters","Plain-English explanations and undo"],"description":"An open-source runtime for web apps that uses a 10 MB on-device model to detect and prevent stale responses, race conditions, duplicate requests, inconsistent state and failure storms.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD","description":"Community edition, free forever"},"publisher":{"@id":"https://genclass.dev/#org"}},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Is GenClass free?","acceptedAnswer":{"@type":"Answer","text":"Yes. The GenClass runtime is open source under Apache-2.0 and free forever, including in commercial apps, with no usage limits. GenClass Cloud and Enterprise are optional paid products for teams that want central dashboards, alerts, rollout controls, SSO and audit logs."}},
+{"@type":"Question","name":"Does GenClass need an account or an API key?","acceptedAnswer":{"@type":"Answer","text":"No. npm install @genclass/runtime and GenClass.init() is all it takes. An account and a publishable project key are only needed if you connect to GenClass Cloud."}},
+{"@type":"Question","name":"Where does the AI model run?","acceptedAnswer":{"@type":"Answer","text":"In your users' browsers, inside a Web Worker on WebGPU or WASM. Decisions never depend on a server, so there are no per-inference fees and protection keeps working offline."}},
+{"@type":"Question","name":"What bugs does GenClass catch?","acceptedAnswer":{"@type":"Answer","text":"Runtime failures that never throw: stale responses that overwrite newer data, out-of-order typeahead results, duplicate form submissions, write conflicts, broken state invariants, failing or slow endpoints and request storms."}}]}]} -->
+<div class="hero">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">Open source</span><span>Apache-2.0</span><span>On-device AI</span><span>Free forever</span></div>
+    <div class="hero-top"><h1>The bugs your tests miss, <em>caught in production.</em></h1><img class="hero-mark" src="/brand/mark-512.png?v=2" alt="" width="330" height="330" fetchpriority="high"></div>
+    <div class="hero-row">
+      <p class="lede">GenClass is a <strong>self-healing runtime for web apps</strong>. A 10 MB AI model runs inside your app, in your users' browsers, catches stale responses, race conditions and duplicate submits as they happen, and can stop them before anyone sees them. <strong>Free and open source.</strong> GenClass Cloud shows your whole team what it fixed.</p>
+      <div class="ctas">
+        <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+        <a class="btn green" href="/cloud#early-access">Get Cloud early access</a>
+      </div>
+    </div>
+<!--@dashboard-->
+  </div>
+</div>
+
+<section style="padding-top: 72px">
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><div class="big g">96%</div><p>detection precision on real apps it had never seen</p><small>16,600 held-out situations</small></div>
+      <div class="stat"><div class="big">3 in 4</div><p>duplicate submits caught in real apps, with no rules written</p><small>observe mode, held-out apps</small></div>
+      <div class="stat"><div class="big g">396/396</div><p>correct production runs left exactly as they were</p><small>66 real apps × 6 seeds</small></div>
+      <div class="stat"><div class="big">10 MB</div><p>model, deciding in 177 ms on a single CPU thread</p><small>faster on WebGPU</small></div>
+    </div>
+    <div class="stacks"><span>Works with</span><b>React</b><b>Next.js</b><b>Vue</b><b>Svelte</b><b>Angular</b><b>Redux</b><b>Zustand</b><b>fetch</b><b>XHR</b><b>WebSocket</b><b>EventSource</b></div>
+  </div>
+</section>
+
+<section id="products">
+  <div class="wrap">
+    <div class="sh"><span class="no">01 / Two products</span><h2>Free runtime. Paid control plane.</h2></div>
+    <p class="intro">Every developer can run GenClass for free, forever, in any app. Companies pay when they want to manage reliability across many production apps. <strong>We never charge per inference and never switch protection off at a quota.</strong></p>
+    <div class="duo">
+      <div class="prod">
+        <span class="badge">Community · open source</span>
+        <h3>GenClass Runtime</h3>
+        <p>The full self-healing runtime with the model built in. Install it, add one line, ship.</p>
+        <ul>
+          <li>On-device inference, no server and no API key</li>
+          <li>Detection and intervention: discard, defer, coalesce, retry</li>
+          <li>React, Redux and Zustand adapters, works with any framework</li>
+          <li>Local DevTools overlay with plain-English explanations and undo</li>
+          <li>Unlimited use, including commercial apps</li>
+        </ul>
+        <div class="foot2"><div class="price">$0 <span>forever</span></div><a class="btn ghost" href="/docs">Read the docs</a></div>
+      </div>
+      <div class="prod dark">
+        <span class="badge">Teams · early access</span>
+        <h3>GenClass Cloud</h3>
+        <p>The reliability control plane for every app that runs GenClass. Connect with a publishable key.</p>
+        <ul>
+          <li>One dashboard for anomalies, interventions and undo rates</li>
+          <li>Release comparisons that show which deploy got worse</li>
+          <li>Alerts in Slack or email when a failure storm starts</li>
+          <li>Safe rollouts: guard mode for 5%, then 25%, then everyone</li>
+          <li>Shared policies and team controls</li>
+        </ul>
+        <div class="foot2"><div class="price" style="color: #fff">$99 <span>/ month and up</span></div><a class="btn green" href="/cloud">Explore Cloud</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="catches">
+  <div class="wrap">
+    <div class="sh"><span class="no">02 / What it catches</span><h2>Ten failure types. One model. No rules.</h2></div>
+    <p class="intro">These bugs never throw an exception, so error monitors never see them. GenClass watches every request, response and state write, and one model decides what is going on.</p>
+    <div class="fgrid">
+      <div class="fcard"><div class="ic r"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg></div><h3>Stale responses</h3><p>An old response lands over newer data, like search results for "pa" under a box that says "paris". GenClass discards it.</p></div>
+      <div class="fcard"><div class="ic r"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="12" height="12" rx="2"/><path d="M9 3h10a2 2 0 0 1 2 2v10"/></svg></div><h3>Duplicate submits</h3><p>A double-tap or a retry places the same order twice. GenClass coalesces the repeat into one request.</p></div>
+      <div class="fcard"><div class="ic r"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M10 3l4 4-4 4M20 17H10M14 13l-4 4 4 4"/></svg></div><h3>Race conditions</h3><p>Two writers race for one field and the wrong one wins. GenClass keeps the newer value.</p></div>
+      <div class="fcard"><div class="ic r"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h8l-1 8 10-12h-8z"/></svg></div><h3>Failure storms</h3><p>An endpoint starts failing and the app hammers it. GenClass spots the storm and backs off.</p></div>
+      <div class="fcard"><div class="ic n"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M4 15l4-4 4 3 7-8"/></svg></div><h3>Broken state</h3><p>It learns rules your data keeps, like a total matching its line items, and flags the moment one breaks.</p></div>
+      <div class="fcard"><div class="ic n"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>Slow and flaky calls</h3><p>Latency far off the learned baseline, or a blip a careful idempotent retry would survive.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="demo">
+  <div class="wrap">
+    <div class="sh"><span class="no">03 / Try it</span><h2>Race the network yourself.</h2></div>
+    <p class="intro">Type a city. Every keystroke fires a request and some come back slowly. The left box trusts whatever lands last; the right one has GenClass.</p>
+<!--@demo-->
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="sh"><span class="no">04 / Install</span><h2>Two lines. No account.</h2></div>
+    <p class="intro">Add the runtime and you are protected. Add a project key later if you want the Cloud dashboard. The runtime never depends on the cloud to keep working.</p>
+    <div class="duo">
+      <div class="code" style="margin-top: 0"><div class="tabs" role="presentation"><button type="button" aria-selected="true" tabindex="-1">Runtime · free</button></div>
+<pre><span class="c">// npm i @genclass/runtime</span>
+<span class="k">import</span> { GenClass } <span class="k">from</span> <span class="s">"@genclass/runtime"</span>;
+
+GenClass.init();   <span class="c">// that's it</span></pre></div>
+      <div class="code" style="margin-top: 0"><div class="tabs" role="presentation"><button type="button" aria-selected="true" tabindex="-1">Cloud · early access</button></div>
+<pre><span class="k">import</span> { GenClass } <span class="k">from</span> <span class="s">"@genclass/runtime"</span>;
+
+GenClass.init({
+  cloud: { projectKey: <span class="s">"gc_pub_..."</span> },
+});
+<span class="c">// proposed API, shipping with Cloud</span></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="principles">
+  <div class="wrap">
+    <div class="sh"><span class="no">05 / Principles</span><h2>Built to be trusted in production.</h2></div>
+    <div class="principles">
+      <div><h3>Inference stays on the device</h3><p>The model runs in your users' browsers. No round trip, no inference bill, works offline.</p></div>
+      <div><h3>No quotas on protection</h3><p>The free runtime never stops protecting an app because a limit ran out.</p></div>
+      <div><h3>No account to run</h3><p>Two lines of code. Cloud is optional and uses a publishable key, never a secret.</p></div>
+      <div><h3>Explains every decision</h3><p>Every intervention is logged in plain English with the evidence, and can be undone.</p></div>
+      <div><h3>Fails open</h3><p>If the model is loading, errors or answers late, your app runs exactly as it would without GenClass.</p></div>
+      <div><h3>Open source, Apache-2.0</h3><p>Runtime, simulator, training code and benchmarks are public on GitHub.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="proof">
+  <div class="wrap">
+    <div class="sh"><span class="no">06 / Proof</span><h2>Trained on 71 million failures.</h2></div>
+    <p class="intro">We built a simulator that runs apps on the real runtime, replays every possible action and keeps the one that worked best. Then we checked the model in real browsers on apps it had never seen.</p>
+    <div class="stats">
+      <div class="stat"><div class="big">71M+</div><p>runtime situations generated for training</p></div>
+      <div class="stat"><div class="big">158</div><p>real apps on 40+ stacks recorded in Chromium</p></div>
+      <div class="stat"><div class="big g">100%</div><p>hands-off on held-out real apps when doing nothing was right</p></div>
+      <div class="stat"><div class="big">1,840</div><p>CPU cores of training, no GPUs needed</p></div>
+    </div>
+    <div class="cards3">
+      <a class="gcard" href="/benchmarks"><span class="k2">Benchmarks</span><h3>Every number, with its method</h3><p>Precision, recall and safety on held-out simulated and real apps.</p><span class="more">See benchmarks →</span></a>
+      <a class="gcard" href="/how-it-works"><span class="k2">How it works</span><h3>From fetch to fix in 6 steps</h3><p>Observe, learn, triage, decide, act, explain.</p><span class="more">Read more →</span></a>
+      <a class="gcard" href="/guides/race-conditions-react"><span class="k2">Guide</span><h3>Fix race conditions in React</h3><p>Why useEffect fetches go stale, and four ways to stop it.</p><span class="more">Read the guide →</span></a>
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <div class="sh"><span class="no">07 / Pricing</span><h2>Start free. Scale when you need to.</h2></div>
+    <div class="tiers">
+      <div class="tier"><h2>Community</h2><div class="price">$0 <span>forever</span></div><p class="who">For every developer and every app.</p><a class="btn ghost" href="/docs">Install now</a></div>
+      <div class="tier pop"><span class="badge tag2">Early access</span><h2>Cloud · Teams</h2><div class="price">$99 <span>/ month and up</span></div><p class="who">For teams running GenClass in production.</p><a class="btn green" href="/cloud#early-access">Request access</a></div>
+      <div class="tier"><h2>Enterprise</h2><div class="price">$15k <span>/ year and up</span></div><p class="who">For organizations with many apps and strict security.</p><a class="btn" href="/enterprise#early-access">Talk to us</a></div>
+    </div>
+    <p class="note"><a href="/pricing">Compare plans in detail</a>.</p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sh"><span class="no">08 / FAQ</span><h2>Questions</h2></div>
+    <div class="faq">
+      <div>
+        <details><summary>Is GenClass free?</summary><p>Yes. The runtime is open source under Apache-2.0 and free forever, including in commercial apps, with no usage limits. Cloud and Enterprise are optional paid products for central dashboards, alerts, rollout controls, SSO and audit logs.</p></details>
+        <details><summary>Does it need an account or an API key?</summary><p>No. <code>npm install @genclass/runtime</code> and <code>GenClass.init()</code> is all it takes. A publishable project key is only needed for GenClass Cloud.</p></details>
+      </div>
+      <div>
+        <details><summary>Where does the AI model run?</summary><p>In your users' browsers, inside a Web Worker on WebGPU or WASM. Decisions never depend on a server, so there are no per-inference fees and protection keeps working offline.</p></details>
+        <details><summary>Will it break my app?</summary><p>The default mode only observes and changes nothing. In our real-app sweep, 396 of 396 correct runs were left exactly as they were. <code>?genclass=off</code> turns it off instantly.</p></details>
+      </div>
+    </div>
+  </div>
+</section>

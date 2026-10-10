@@ -1,0 +1,114 @@
+<!--meta {"path":"/pricing","nav":"pricing","priority":"0.9","crumbs":[["Pricing","/pricing"]],
+"title":"GenClass Pricing: Free Runtime, Cloud and Enterprise",
+"description":"The GenClass runtime is free and open source forever. Cloud for teams starts at $99/month; Enterprise with SSO, audit logs and SLAs from $15k/year.",
+"jsonld":[{"@type":"Product","name":"GenClass","description":"Self-healing AI runtime for web apps, with an optional cloud control plane for teams.","brand":{"@type":"Brand","name":"GenClass"},"image":"https://genclass.dev/icon-512.png","url":"https://genclass.dev/pricing","offers":[
+{"@type":"Offer","name":"Community","price":"0","priceCurrency":"USD","url":"https://genclass.dev/docs","availability":"https://schema.org/InStock","description":"Open-source runtime, free forever, unlimited use."},
+{"@type":"Offer","name":"Cloud Teams","price":"99","priceCurrency":"USD","url":"https://genclass.dev/cloud","availability":"https://schema.org/PreOrder","priceSpecification":{"@type":"UnitPriceSpecification","price":"99","priceCurrency":"USD","unitText":"MONTH"},"description":"Central dashboard, release comparisons, alerts and team controls. Early access."},
+{"@type":"Offer","name":"Enterprise","price":"15000","priceCurrency":"USD","url":"https://genclass.dev/enterprise","availability":"https://schema.org/PreOrder","priceSpecification":{"@type":"UnitPriceSpecification","price":"15000","priceCurrency":"USD","unitText":"YEAR"},"description":"SSO, audit logs, private hosting, security policies, priority support and SLAs."}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Is the GenClass runtime really free for commercial use?","acceptedAnswer":{"@type":"Answer","text":"Yes. The runtime is Apache-2.0 open source. You can use it in commercial apps with unlimited traffic and no account."}},
+{"@type":"Question","name":"Do you charge per inference or per bug fixed?","acceptedAnswer":{"@type":"Answer","text":"No. Inference runs on your users' devices, so it costs us nothing and costs you nothing. Paid plans charge for the team control plane, not for protection."}},
+{"@type":"Question","name":"What happens if my Cloud subscription ends?","acceptedAnswer":{"@type":"Answer","text":"Your apps stay protected. The runtime keeps running locally; only the dashboard, alerts and shared controls stop."}}]}]} -->
+<div class="page-hero">
+  <div class="wrap">
+    <!--@crumbs-->
+    <h1>Free to protect. <em>Paid to manage at scale.</em></h1>
+    <p class="lede">The runtime that catches the bugs is free forever, for every app. You pay only when your team wants one place to manage and measure reliability across production.</p>
+  </div>
+</div>
+
+<section style="padding-top: 8px">
+  <div class="wrap">
+    <div class="tiers">
+      <div class="tier">
+        <h2>Community</h2>
+        <div class="price">$0 <span>forever</span></div>
+        <p class="who">The complete open-source runtime for any developer and any app.</p>
+        <a class="btn ghost" href="/docs">Install in two lines</a>
+        <ul>
+          <li>Full on-device AI inference</li>
+          <li>Detection and intervention in every mode</li>
+          <li>React, Redux and Zustand adapters</li>
+          <li>Local DevTools, explanations and undo</li>
+          <li>Works offline</li>
+          <li>Unlimited use, including commercial</li>
+        </ul>
+      </div>
+      <div class="tier pop">
+        <span class="badge tag2">Early access</span>
+        <h2>Cloud · Teams</h2>
+        <div class="price">$99 <span>/ month and up</span></div>
+        <p class="who">For teams that run GenClass in production and want proof it is working.</p>
+        <a class="btn green" href="/cloud#early-access">Request early access</a>
+        <ul>
+          <li>Everything in Community</li>
+          <li>Central reliability dashboard</li>
+          <li>Intervention and undo analytics</li>
+          <li>Release-by-release comparisons</li>
+          <li>Slack and email alerts</li>
+          <li>Percentage rollouts of guard mode</li>
+          <li>Shared policies and team roles</li>
+        </ul>
+        <p class="fine2">Up to $299 per month depending on apps and seats.</p>
+      </div>
+      <div class="tier">
+        <h2>Enterprise</h2>
+        <div class="price">$15k <span>/ year and up</span></div>
+        <p class="who">For organizations running GenClass across many apps with strict requirements.</p>
+        <a class="btn" href="/enterprise#early-access">Talk to us</a>
+        <ul>
+          <li>Everything in Cloud</li>
+          <li>Organization-wide deployment controls</li>
+          <li>SSO and SCIM</li>
+          <li>Audit logs</li>
+          <li>Private or self-hosted control plane</li>
+          <li>Security policies and data residency</li>
+          <li>Priority support and negotiated SLAs</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">Early-access prices in USD. Final pricing is set with design partners; early-access teams keep their rate.</p>
+  </div>
+</section>
+
+<section id="compare">
+  <div class="wrap">
+    <div class="sh"><span class="no">Compare plans</span><h2>What each plan includes.</h2></div>
+    <div class="tbl-wrap">
+      <table class="cmp">
+        <thead><tr><th>Feature</th><th>Community</th><th>Cloud</th><th>Enterprise</th></tr></thead>
+        <tbody>
+          <tr><td>On-device inference (WebGPU / WASM)</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Observe, guard and heal modes</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Unlimited apps, sessions and interventions</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Local DevTools, explain and undo</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Central dashboard across apps</td><td class="no2">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Release comparisons</td><td class="no2">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Alerts (Slack, email, webhooks)</td><td class="no2">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Percentage rollouts and remote kill switch</td><td class="no2">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Team roles and shared policies</td><td class="no2">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>SSO, SCIM and audit logs</td><td class="no2">–</td><td class="no2">–</td><td class="yes">✓</td></tr>
+          <tr><td>Private hosting and data residency</td><td class="no2">–</td><td class="no2">–</td><td class="yes">✓</td></tr>
+          <tr><td>Priority support and SLA</td><td class="no2">–</td><td class="no2">–</td><td class="yes">✓</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sh"><span class="no">Pricing FAQ</span><h2>Questions about plans</h2></div>
+    <div class="faq">
+      <div>
+        <details><summary>Is the runtime really free for commercial use?</summary><p>Yes. It is Apache-2.0 open source. Use it in commercial apps with unlimited traffic and no account.</p></details>
+        <details><summary>Do you charge per inference or per bug fixed?</summary><p>No. Inference runs on your users' devices, so it costs nothing to run. Paid plans pay for the team control plane, not for protection.</p></details>
+      </div>
+      <div>
+        <details><summary>What happens if a Cloud subscription ends?</summary><p>Your apps stay protected. The runtime keeps running locally; only the dashboard, alerts and shared controls stop.</p></details>
+        <details><summary>What data does Cloud receive?</summary><p>Aggregate metrics from apps you connect with a publishable key: counts, categories, timings. No source code, no request bodies, no user state.</p></details>
+      </div>
+    </div>
+<!--@waitlist cloud "Lock in early-access pricing" "Join the first teams on GenClass Cloud. Early-access teams keep their price and help shape the product."-->
+  </div>
+</section>
