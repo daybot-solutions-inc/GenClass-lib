@@ -9,6 +9,8 @@ import { RuntimeImpl } from "./runtime.js";
 import { createModelHost } from "./model/host.js";
 import { startTelemetry } from "./telemetry/index.js";
 import { telemetryOff } from "./telemetry/client.js";
+import { resolveToken } from "./token.js";
+import { protect, setProtectResolver } from "./protect.js";
 
 export * from "./types.js";
 export { browserClock } from "./clock.js";
@@ -36,6 +38,8 @@ export { describeElement } from "./observe/dom-user.js";
 export { RuntimeImpl } from "./runtime.js";
 export { DEFAULT_TELEMETRY_ENDPOINT, TELEMETRY_SCHEMA, TELEMETRY_NOTICE } from "./telemetry/index.js";
 export { RUNTIME_VERSION } from "./version.js";
+export { protect } from "./protect.js";
+export { TOKEN_PATTERN, isValidToken } from "./token.js";
 
 /** fetch as it was when this module loaded: the model host downloads with it, so GenClass never observes itself. */
 const NATIVE_FETCH: typeof fetch | undefined =
@@ -199,14 +203,29 @@ export function createRuntime(options: CreateOptions = {}): Runtime {
     decider = makeHost(options.model, nf, options.clock, (options.global ?? globalThis) as never);
   }
   const rt = new RuntimeImpl({ ...options, decider: decider ?? null, ownsDecider: owns });
+  const con = () => (rt.global.console as Console | undefined) ?? (globalThis as { console?: Console }).console;
+  const token = resolveToken(options.token, (m) => con()?.warn?.(`[GenClass] ${m}`));
   if (options.enabled === false) rt.telemetry = telemetryOff("disabled");
   else
-    rt.telemetry = startTelemetry(rt, options.telemetry, false, {
-      model: owns ? "local" : decider ? "custom" : "off",
-      ...(options.triage ? { triage: options.triage } : {}),
-      ...(options.shadow ? { shadow: options.shadow } : {}),
-      ...(options.policy?.holdWrites ? { holdWrites: true } : {}),
-    });
+    rt.telemetry = startTelemetry(
+      rt,
+      options.telemetry,
+      false,
+      {
+        model: owns ? "local" : decider ? "custom" : "off",
+        ...(options.triage ? { triage: options.triage } : {}),
+        ...(options.shadow ? { shadow: options.shadow } : {}),
+        ...(options.policy?.holdWrites ? { holdWrites: true } : {}),
+      },
+      token,
+    );
+  if (token && !rt.telemetry.enabled && options.debug) {
+    try {
+      con()?.info?.(`[GenClass] A token is set, but telemetry is off (${rt.telemetry.reason ?? "off"}), so nothing reaches your dashboard from this page.`);
+    } catch {
+      /* ignore */
+    }
+  }
   return rt;
 }
 
@@ -271,7 +290,11 @@ export const GenClass = {
     current = null;
     r?.destroy();
   },
+  /** The same as the named export protect(): wrap a function so GenClass tracks and protects each call. */
+  protect,
 };
+
+setProtectResolver(() => (current instanceof RuntimeImpl ? current : null));
 
 function initUnsafe(options: InitOptions): Runtime {
   {

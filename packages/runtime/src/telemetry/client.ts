@@ -115,6 +115,9 @@ export class TelemetryClient implements TelemetryStatus {
   get sessionId(): string {
     return this.cfg.sessionId;
   }
+  get token(): string | undefined {
+    return this.cfg.token;
+  }
 
   // ------------------------------------------------------------------------------------------------ events
 
@@ -268,6 +271,8 @@ export class TelemetryClient implements TelemetryStatus {
         : undefined,
       effectiveMode: d.effectiveMode,
       shadow: d.shadow ? compact({ action: d.shadow.action, tier: d.shadow.tier, wouldPass: d.shadow.wouldPass, reason: cut(d.shadow.reason, 120) }) : undefined,
+      // the protect()ed function the subject ran inside (a name the app chose)
+      fn: cut(d.fn, 80),
     });
     if (d.reason === "vetoed" || d.reason === "would-veto") {
       c.vetoes++;
@@ -522,7 +527,8 @@ export class TelemetryClient implements TelemetryStatus {
     } catch {
       /* ignore */
     }
-    return `{"schema":${JSON.stringify(TELEMETRY_SCHEMA)},"sid":${JSON.stringify(this.cfg.sessionId)},"sent":${this.at()},"runtime":${JSON.stringify(RUNTIME_VERSION)},"model":${JSON.stringify(model)},"events":[`;
+    const token = this.cfg.token ? `"token":${JSON.stringify(this.cfg.token)},` : "";
+    return `{"schema":${JSON.stringify(TELEMETRY_SCHEMA)},${token}"sid":${JSON.stringify(this.cfg.sessionId)},"sent":${this.at()},"runtime":${JSON.stringify(RUNTIME_VERSION)},"model":${JSON.stringify(model)},"events":[`;
   }
 
   private send(body: string, n: number, beacon: boolean): Promise<void> {

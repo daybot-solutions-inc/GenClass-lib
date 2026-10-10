@@ -36,6 +36,8 @@ export interface OpRec extends Op {
   profiled?: boolean;
   /** Triggers already raised with this op as the subject. */
   triggered?: Set<TriggerKind>;
+  /** Set on the task op of a protect()ed function call: the function's name. */
+  fn?: string;
   /** Root op is a GenClass action: never gated, never profiled. */
   genclass?: boolean;
   /** Children count (diagnostic). */

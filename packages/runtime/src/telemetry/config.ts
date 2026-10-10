@@ -22,6 +22,8 @@ export interface TelemetryConfig {
   situation: boolean;
   transport: TelemetryTransport;
   sessionId: string;
+  /** The app token (InitOptions.token), already validated; sent as the batch envelope's `token`. */
+  token?: string;
 }
 
 export type TelemetryResolution = { on: true; config: TelemetryConfig } | { on: false; reason: string };

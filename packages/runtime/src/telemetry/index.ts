@@ -22,10 +22,12 @@ export function startTelemetry(
   opt: boolean | TelemetryOptions | undefined,
   defaultOn: boolean,
   info: TelemetrySessionInfo,
+  token?: string,
 ): TelemetryStatus {
   try {
     const res = resolveTelemetry(opt, rt.global, defaultOn);
     if (!res.on) return telemetryOff(res.reason);
+    if (token) res.config.token = token;
     const client = new TelemetryClient(rt, res.config, rt.global, info);
     if (!noticeShown) {
       noticeShown = true;
