@@ -123,6 +123,15 @@ Mehar operates the Azure cluster; nobody else touches Azure. The jobs below run 
 
 ## Next
 
+- **Review `feat/one-line`** (local, 2026-10-10): automatic state discovery for the one line (React, Redux/RTK,
+  Zustand devtools; observed-only store kind). Then: Vue 3 + Pinia discovery (`__VUE_DEVTOOLS_GLOBAL_HOOK__` /
+  pinia `$subscribe`; not started, `autoState.pinia` is accepted and ignored); exact attribution for
+  `useSyncExternalStore` and `useActionState`/`useOptimistic` (commit-time today); React 16.8–18 checked by reading
+  their builds only (no 16/17/18 installed here: run `discover-react*.test.ts` against them before publishing);
+  real RTK (`@reduxjs/toolkit` not installed: tested with a replica of RTK 2's `configureStore` devtools path).
+- **Needs the owner:** telemetry now leaves out the situation text of every decision once discovered state was
+  recorded (conservative; AGENTS rule 9). Decide whether discovered state may be sent like registered stores.
+
 The usual order (HANDOFF.md): v2 data collected → teacher → labels → distillation → DAgger → EVAL → model
 package → demos rerun → runtime release.
 

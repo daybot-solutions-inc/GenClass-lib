@@ -16,11 +16,23 @@ WASM, in a Web Worker) answers two questions: what is happening, and which of th
 runtime has no list of known bugs: triage picks the situations, the model decides. By default it only reports; in
 `guard` mode it can also stop the failure before your users see it.
 
-```ts
-import { GenClass } from "@genclass/runtime";
+**One line covers the whole app.** First in `<head>`:
 
-GenClass.init(); // observe mode: reports only, never takes an action (see Known limitations)
+```html
+<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime"></script>
 ```
+
+or first in your entry file (any bundler; Next.js: `instrumentation-client.ts`):
+
+```ts
+import "@genclass/runtime/auto";
+```
+
+That is the whole setup. Network traffic, user actions, errors and timing are observed, and so is your app's state:
+React component state (`useState`, `useReducer`, `useSyncExternalStore`, class state), Redux and Redux Toolkit
+stores, and Zustand stores with `devtools` are found automatically, with no store to register
+([Automatic state discovery](#automatic-state-discovery)). It starts in observe mode: it reports, and never changes
+what your app does (see Known limitations). `npx @genclass/runtime init` writes the line for you.
 
 > **Privacy notice: anonymous diagnostics are on by default since `0.1.0-beta.3`.** `GenClass.init()` in a browser
 > sends GenClass's decisions, including the redacted situation text the model read, to the GenClass maintainers to
@@ -58,7 +70,8 @@ GenClass.init(); // observe mode: reports only, never takes an action (see Known
 
 ## Contents
 
-[Install](#install) · [Why it's an easy yes](#why-its-an-easy-yes-measured) · [Modes](#modes) ·
+[Install](#install) · [Automatic state discovery](#automatic-state-discovery) ·
+[Why it's an easy yes](#why-its-an-easy-yes-measured) · [Modes](#modes) ·
 [What it looks for](#what-it-looks-for) · [State it can protect](#state-it-can-protect) ·
 [Ask it questions](#ask-it-questions) · [Observability](#observability) · [Extend it](#extend-it) ·
 [Model quality](#model-quality) · [Performance](#performance) · [Costs](#costs) ·
@@ -145,7 +158,8 @@ Details: [test/install/RESULTS.md](https://github.com/daybot-solutions-inc/GenCl
 Those runs predate observe becoming the default and the `init` / `remove` fixes in this version (`--mode`, formatter
 handling, server and library detection). The fixes are covered by unit tests; the scaffolds have not been re-run.
 
-**2. One import** (any bundler), first in your entry file so stores created at import time see the runtime:
+**2. One import** (any bundler), first in your entry file, so it is installed before your framework and stores
+created at import time see the runtime (automatic state discovery is on):
 
 ```ts
 import "@genclass/runtime/auto";          // observe (the default)
@@ -166,8 +180,8 @@ SSR or in Node, `/auto` installs nothing and returns an inert runtime.
 <script src="https://cdn.jsdelivr.net/npm/@genclass/runtime" data-mode="observe" data-devtools="local"></script>
 ```
 
-It exposes `window.GenClass` and loads the model worker, ONNX Runtime Web and the overlay on demand from the same
-version on the CDN. `data-mode` takes `observe` (the default), `guard` or `heal`; `data-devtools="local"` shows the
+It exposes `window.GenClass`, discovers the app's state like the import does, and loads the model worker, ONNX
+Runtime Web and the overlay on demand from the same version on the CDN. `data-mode` takes `observe` (the default), `guard` or `heal`; `data-devtools="local"` shows the
 overlay only on localhost; `data-manual` skips the automatic `GenClass.init()`. Pin a version in production
 (`https://cdn.jsdelivr.net/npm/@genclass/runtime@0.1.0-beta.4`); the plain-HTML path of `init` writes a pinned
 jsDelivr URL with SRI.
@@ -185,7 +199,51 @@ import { GenClass } from "@genclass/runtime";
 const rt = GenClass.init(); // observe; GenClass.init({ mode: "guard" }) to let it act
 ```
 
+`GenClass.init()` does not discover state on its own: register stores ([State it can protect](#state-it-can-protect)),
+or import `@genclass/runtime/discover` first and pass `autoState: true`.
+
 The unscoped name `genclass-runtime` is not published; use `npx @genclass/runtime`.
+
+## Automatic state discovery
+
+With the one line (`@genclass/runtime/auto*` or the script tag) GenClass finds the app's state on its own. It
+installs itself before your framework loads (that is why the line goes first), the way React DevTools and Redux
+DevTools do, and records every state change with the operation that caused it (the response, timer or user action
+whose callback called `setState` or `dispatch`), exactly as for a registered store. Delivery decisions ("this
+response would overwrite newer data") need those writes: without them, GenClass could only see the network.
+
+| state | how it is found | what GenClass can do with it |
+|---|---|---|
+| React ≥ 16.8 (development and production builds): `useState`, `useReducer`, `useSyncExternalStore`, class component state | the React DevTools global hook (installed, or chained onto the real extension's, which keeps working); each commit, only the components that re-rendered are compared, within 1 ms | **observed only**: detections, facts, triage and delivery decisions (`deliver` / `defer`); never held, dropped, reverted or rolled back |
+| Redux / Redux Toolkit (`configureStore` with `devTools` on, its default; `createStore` with the Redux DevTools compose or enhancer) | the Redux DevTools globals (forwarded to the real extension when installed) | **controllable**: GenClass's Redux enhancer, as if you had added it: delivery `discard`, late revert, `rollback`, `resync` |
+| Zustand with the `devtools` middleware (and other libraries reporting to Redux DevTools' `connect`) | the Redux DevTools `connect` API | **observed only** |
+
+- **Names.** A component's store is named after the component: `SearchPage.state0`, `SearchPage.state1` (hooks in
+  order), `SearchPage.external0` (`useSyncExternalStore`), or the class state's keys (`Wizard.step`). Production
+  builds minify component names, so a store is then named after the element the component renders (`id`,
+  `data-testid`, its first `data-*` attribute or `aria-label`: `orderChip`, `addToOrder`), else the minified name.
+  At most 3 instances per component (`Item`, `Item_2`, `Item_3`) and 48 component stores. A store appears on its
+  first state change; mounting alone records nothing. Redux stores are named after the devtools `name` option, else
+  `redux`; Zustand stores after their `devtools` `name`, else `store`.
+- **Skipped.** Anonymous components, framework internals (Next.js and React Router components, error boundaries),
+  and values that are not app data: functions, promises, React elements, DOM nodes, class instances and objects
+  holding them (router caches, query clients).
+- **Secrets.** Field names are redacted as usual (`form.password`). A hook has no name, so a `useState` whose
+  string equals what a password, card-number or one-time-code input holds is redacted from then on. Telemetry
+  sends discovered state like registered stores (in the redacted situation text; `include: { situation: false }`
+  keeps it out).
+- **Turn it off:** `<meta name="genclass" content="autostate=off">`, `data-autostate="off"` on the script tag,
+  `window.GENCLASS_CONFIG = { autoState: false }`, or one source only: `autoState: { react: false }` (also `redux`,
+  `zustand`). `?genclass=off` installs nothing at all.
+- **With `GenClass.init()`** discovery is off by default, so explicit setups do not change. To turn it on, import
+  `@genclass/runtime/discover` first (before React, Redux or Zustand) and pass `autoState: true`; the runtime may start
+  later, before the first render. Redux stores created before it starts are observed only.
+- **Not covered yet:** Vue / Pinia, MobX, Jotai, Recoil, signals, Svelte stores, and state kept outside these
+  libraries (module variables, refs). A React renderer that loaded before GenClass is observed without exact causes;
+  one that rendered before GenClass is not observed at all. Register such state with `rt.atom` / `rt.guard`
+  ([State it can protect](#state-it-can-protect)), which also makes it controllable.
+- **Cost:** about 7 KB gzip more JavaScript in `/auto`; a commit walk of p50 below 0.2 ms and p95 under 2 ms on a
+  4× throttled phone profile, about +0.5 MB heap ([Costs](#costs)).
 
 ## Why it's an easy yes (measured)
 
@@ -345,8 +403,10 @@ It does not catch logic that is consistently wrong, CSS or security bugs, and it
 ## State it can protect
 
 Fetch, XHR, WebSocket, EventSource, DOM user events, errors, navigation, storage, long tasks and timers are observed
-automatically, with no code. Store writes are traced (and can be dropped or reverted) only when the store goes
-through GenClass. Each option is one line:
+automatically, with no code. With the one line, React, Redux and Zustand state is found too
+([Automatic state discovery](#automatic-state-discovery)); discovered Redux stores are controllable, React and Zustand
+state is observed only. A write can be dropped or reverted only when the store goes through GenClass. Each option is
+one line:
 
 ```ts
 const rt = GenClass.init({ mode: "guard" });
@@ -375,7 +435,7 @@ What each kind of protection needs:
 
 | protection | how | works with |
 |---|---|---|
-| delivery `discard` | the response is delivered; its chain's writes to the protected fields are dropped synchronously inside each write, and its other fields (loading flags, counts) apply | atoms, `rt.guard`, React state. Redux/Zustand: only when every change of a dispatch is dropped (see [limitations](#known-limitations)) |
+| delivery `discard` | the response is delivered; its chain's writes to the protected fields are dropped synchronously inside each write, and its other fields (loading flags, counts) apply | atoms, `rt.guard`, `useGenClassState`, Redux and Zustand adapters (also discovered Redux stores). Never offered when every field the response would write is observed only (discovered React or Zustand state): `defer` still is |
 | late revert | a background `mutation` decision to `discard` reverts the write if it is at most 2 s old, its fields are unchanged since, and no later write of the same chain followed | any GenClass-aware store |
 | `rollback` (heal) | restores the last settled snapshot where every learned relation held | stores GenClass can write (atoms, `rt.guard`, Redux and Zustand adapters) |
 | `resync` (heal) | calls your `resync` handler | stores registered with `{ resync }` |
@@ -601,14 +661,15 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
   | Redux-style dispatch on 5,000 entities | about 0.7 ms |
   | settled-point check | 0.3 ms |
 
-- **Bundle:** what every page loads is about 264 KB minified / 89 KB gzip for `@genclass/runtime/auto` (88 KB for
-  the main entry with `GenClass.init()`), measured with esbuild (`test/bundle.test.ts` keeps it under 92 KB). It was
+- **Bundle:** what every page loads is about 96 KB gzip for `@genclass/runtime/auto` with automatic state
+  discovery (89 KB before it) and 89 KB for the main entry with `GenClass.init()`, which does not carry discovery,
+  measured with esbuild (`test/bundle.test.ts` keeps them under 98 KB and 92 KB). It was
   97 to 99 KB up to `0.1.0-beta.3`, whose README said 83 KB. The model worker, ONNX Runtime Web's JavaScript (about
   70 KB gzip for WASM, 115 KB with WebGPU, minified) and the devtools are separate chunks loaded on demand. ONNX
   Runtime's own `.wasm` (14 MB, 3.1 MB brotli; 27 MB, 5.5 MB brotli with WebGPU) is never part of your build: the
   runtime fetches it when the model loads (from jsDelivr, or `model.ortWasmPaths`). Up to `0.1.0-beta.3`, bundlers
   copied both `.wasm` builds (41 MB, one file over 25 MiB) into every app's build output unused. The script-tag file
-  is about 255 KB / 86 KB gzip; its model worker and ONNX Runtime glue load on demand.
+  is about 110 KB gzip (with discovery); its model worker and ONNX Runtime glue load on demand.
 - **Model:** the default model is 9.6 MB (q8, pruned 16k vocabulary) on WASM and 13.6 MB (fp16) on WebGPU with
   `shader-f16`. With onnxruntime-web 1.30 on single-thread WASM, measured in Node on the training VM, a forward pass
   took about 176 / 320 / 583 ms at 500 / 780 / 1,170 tokens (p50 315 ms on runtime-sized requests). Single-thread
@@ -644,6 +705,17 @@ without `?genclass=off`:
 | Later visits | about 1 KB (`model.json` revalidated); the rest comes from Cache Storage, checked with sha256 |
 | Model load | WASM (1 thread): 0.9 to 1.3 s cold, 0.4 s warm. WebGPU (Apple M-series): 12 s cold, 2 s warm |
 | App build output | `0.1.0-beta.3`: +41 MB of unused ONNX Runtime files. `0.1.0-beta.4`: none |
+
+**Automatic state discovery** (`0.1.0-beta.4`, Troy with only the one line, 2026-10-10; same build with
+`autoState: false` as the control; Playwright Chromium, 390×844, observe mode, telemetry off):
+
+| | cost |
+|---|---|
+| JavaScript (first load, bytes on the wire) | +7 KB on `/menu` (`/auto` is about 96 KB gzip instead of 89 KB; `GenClass.init()` setups do not load it) |
+| React commit walk, 4× CPU throttling | p50 0.2 ms, p95 1.8 ms, max 2.1 ms per commit including recording the change; total about 5 ms over the `/order` visit |
+| React commit walk, no throttling, 54 bench trials (about 2,000 commits) | p50 below 0.1 ms (the timer's resolution), p95 0.8 to 0.9 ms, max 3.8 ms |
+| Main-thread JS heap (after GC, 4× throttling) | 5.7 MB vs 5.2 MB without discovery |
+| Long tasks (> 50 ms) | unchanged (1 per run, 65 to 70 ms, with and without) |
 
 **On phones** the memory and the download are what matter (the page may also run a call, the camera or a
 recorder). Options that exist today:
@@ -706,6 +778,8 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
     two-letter country, and stores no IP address or user agent.
   - **Situation text can still contain app data** the redactor does not recognise as secret (a product name, a
     search term). `telemetry: { include: { situation: false } }` keeps the text out; `redact` hides more.
+  - **Automatically discovered state is sent like registered stores** (React, Redux or Zustand state, in the same
+    redacted situation text); those decisions carry `autoState: true`.
   - **Opt out** (any one): `npx @genclass/runtime init --no-telemetry`, `GenClass.init({ telemetry: false })` (also `telemetry=off` in the meta tag or
     `data-telemetry="off"` on the script tag), `?genclass=no-telemetry` (or `?genclass=off`) in the URL,
     `localStorage.setItem("genclass.telemetry", "off")`. Browsers that send **Global Privacy Control**
@@ -750,9 +824,6 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
     values read as "back to [redacted]".
 
   Pass a custom `redact`, and avoid keeping secrets in observed stores.
-- **Redux/Zustand discard.** If a stale response's dispatch also changes other fields, a delivery `discard` applies
-  the whole dispatch. The `ActionRecord` still reports the stale fields as dropped. Atoms and `rt.guard` stores drop
-  only the stale fields, as intended.
 - **The discard mark lasts 10 s.** After a `discard`, writes by operations chained from the discarded one (a
   `setTimeout`-driven poll, a saga) to the protected fields are also dropped for 10 s, even when they carry fresh
   data. The marks also outlive `rt.pause()` and `setMode("observe")`.
@@ -774,8 +845,14 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
   while it stays applied.
 - **Causality** across `await` is tracked by instrumenting fetch, XHR, timers, message events and Response bodies.
   This is best effort; wrap important work in `rt.op(name, fn)` for exact attribution.
-- **Store state** is visible and protectable only through GenClass-aware stores. Other state is seen only through
-  its effects.
+- **Store state.** With the one line, React, Redux and Zustand (`devtools`) state is discovered; discovered React
+  and Zustand state is observed only (detections and delivery `deliver` / `defer`, no write actions). Other state
+  (Vue / Pinia, MobX, Jotai, signals, module variables) is seen only through its effects unless you register it.
+  Discovered React state has no variable names (`Comp.state0`), production builds minify component names (the store
+  is then named after the element the component renders), and a component's store appears on its first state change.
+  A response is checked against newer data only once GenClass has seen what that request writes, so the first
+  response of each kind after a page load is never a delivery decision. See
+  [Automatic state discovery](#automatic-state-discovery).
 - **Install and CDN.**
   - **Read the diff.** Always read the diff `init` and `remove` show before you confirm.
   - **SRI covers only the script-tag file.** The model worker, ONNX Runtime glue and overlay it loads from the CDN,

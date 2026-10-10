@@ -2,7 +2,7 @@
 
 > **Scope:** `packages/runtime/src/observe/*.ts` (fetch, xhr, dom-user, errors, nav, storage, perf, websocket, eventsource, messages, timers, cache), `packages/runtime/src/trace/*.ts` (events, ops, context), and the parts of `packages/runtime/src/runtime.ts` that install/uninstall observers and route their events (`installObservers`, `netHost`, `timerHost`, `wsHost`, `onStorage`, `startOp`, `endOp`, `registerIdentity`, `user`, `reportError`, `op`, `emit`, `watchStall`, `runDelivery` (only the observer-facing side), `noteResponse`, `onChannel`, `destroy`). Also the helpers they depend on in `packages/runtime/src/util.ts`, `packages/runtime/src/clock.ts` and `packages/runtime/src/decide/exec.ts`.
 > **Read this when:** you change or debug how GenClass patches `fetch` / `XMLHttpRequest` / `WebSocket` / `EventSource` / timers / DOM events / history / Storage / errors / long tasks; how requests are held, faked, coalesced or served from cache; how a response or a pushed message is held at the delivery gate before the app sees it; how ops, op signatures, request identities and cause/root links are produced; how the ambient op is propagated across `await`; or what lands in the event ring buffer.
-> **Source of truth:** the code. Verified against branch `mvp-v2-merge` (mvp-v2 + origin/runtime eff18cb + observe/redaction fixes), 2026-10-08. If this doc and the code disagree, the code wins.
+> **Source of truth:** the code. The state-discovery attribution note in section 9 was verified against branch `feat/one-line` (from 89237ab), 2026-10-10. Verified against branch `mvp-v2-merge` (mvp-v2 + origin/runtime eff18cb + observe/redaction fixes), 2026-10-08. If this doc and the code disagree, the code wins.
 
 ## TL;DR
 
@@ -476,6 +476,16 @@ The app's promise always settles. Every action that throws or rejects makes `Run
 - `stick` is last-writer-wins within a task. A later stick in the same task (two responses settling in one task, `Promise.all`) overrides the earlier one.
 - Context is lost across `await` on any promise GenClass did not instrument. For example, inside `rt.op(name, async () => { await somethingUninstrumented(); x.set(1) })`, the write after the await has no ambient op. It is regained only at the next instrumented settle point.
 - `browserClock.afterTask` picks the first available of: `setImmediate` when there is no `window` (Node); `MessageChannel`; `setImmediate`; `setTimeout(0)`. It batches callbacks and flushes them once per posted task. The test `FakeClock` models this explicitly (`flush()` drains microtasks, then runs the afterTask hooks).
+
+- **Discovered React state (branch `feat/one-line`).** React commits a render scheduled from a fetch callback or a
+  timer in a later task of its own scheduler (a `MessageChannel` message GenClass does not propagate), where no op is
+  ambient. State discovery therefore captures the writer when the app calls the setter (the dispatcher tap in
+  `packages/runtime/src/discover/react.ts`: `ctx.peek()` plus the user-sync flag, a `LazyOp` materialised only when the
+  write is recorded) and records the write under `ctx.run(writer)` at commit time; writes without a captured writer
+  (`useSyncExternalStore`, renderers tapped too late) use the op ambient at commit, which is exact for synchronous-lane
+  commits (user events, `flushSync`, store-driven `useSyncExternalStore` updates in the same task). Redux DevTools
+  `connect` clients (Zustand `devtools`) report synchronously after the change, so the ambient op at `send` is the
+  writer. Details: [state-and-adapters.md](state-and-adapters.md) section 14.
 
 ### 10. WebSocket (`packages/runtime/src/observe/websocket.ts` -> `installWebSocket`)
 

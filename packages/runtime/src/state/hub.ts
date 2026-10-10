@@ -144,9 +144,11 @@ export interface StoreRec {
   unsubscribeIO?: () => void;
   /** Suppress external-change detection while we commit through io.set. */
   committing: boolean;
-  kind: "atom" | "guard" | "adapter";
-  /** GenClass can write it directly (rollback); false for adapter stores without a setter. */
+  kind: "atom" | "guard" | "adapter" | "observed";
+  /** GenClass can write it directly (rollback); false for adapter stores without a setter and observed stores. */
   writable: boolean;
+  /** Where an automatically discovered store came from ("react", "redux", "zustand", "devtools"); unset when registered by the app. */
+  source?: string;
 }
 
 export interface HubHooks {
@@ -207,7 +209,7 @@ export class StoreHub {
       queue: [],
       committing: false,
       kind,
-      writable: kind !== "adapter" || typeof io?.set === "function",
+      writable: kind === "observed" ? false : kind !== "adapter" || typeof io?.set === "function",
     };
     if (io) s.io = io;
     for (const path of s.leaves.keys()) s.fields.set(path, { path, v: 0, writer: null, t: this.clock.now(), seq: this.seq, hist: [], log: [], born: 0 });
@@ -587,6 +589,50 @@ export class StoreHub {
       next = after;
     }
     return this.record(s, next, writer, m, leaves);
+  }
+
+  /**
+   * A write to an observed-only store (kind "observed": discovered React state, a store connected through the Redux
+   * DevTools API). It already happened in the app, so GenClass never holds, filters, applies or reverts it: it is
+   * recorded with the writer captured when the app made it (`user`: made in a user handler's task) and, like any write
+   * that could not wait, decided in the background (detection only: an observed-only store offers no write actions).
+   */
+  observe(s: StoreRec, next: unknown, writer: OpRec | null, user: boolean): FieldChange[] {
+    const leaves = flatten(s.name, next, s.leaves);
+    const changes = diffLeaves(s.leaves, leaves);
+    const genclass = !!writer?.genclass;
+    const m: MutationRec = {
+      id: ++this.mid,
+      store: s.name,
+      changes,
+      cause: writer,
+      root: writer?.root,
+      t: this.clock.now(),
+      base: s.value,
+      preview: next,
+      leaves,
+      userSync: user,
+      genclass,
+      defers: 0,
+      state: "queued",
+    };
+    if (changes.length) {
+      this.hooks.proposed?.(m);
+      const bypass = (user && !this.holdUserWrites) || genclass || s.opts.hold === false || !this.gating;
+      if (!bypass) {
+        try {
+          this.hooks.observeWrite?.(m);
+        } catch {
+          /* observation never blocks a write */
+        }
+      }
+    }
+    m.state = "done";
+    const applied = this.ctx.run(writer, () => this.record(s, next, writer, m, leaves));
+    m.outcome = "applied";
+    m.appliedAt = this.clock.now();
+    m.applied = applied;
+    return applied;
   }
 
   /** A change made outside the pipeline (guarded store changed by its owner): recorded, never held. */

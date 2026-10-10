@@ -10,15 +10,20 @@
 **A runtime for web apps. It watches the app from the inside and uses a small local model to flag, and optionally
 prevent, stale responses, races, duplicate requests, inconsistent state and failure storms.**
 
-```bash
-npm install @genclass/runtime
+One line, first in `<head>` or first in your entry file:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime"></script>
 ```
 
 ```ts
-import { GenClass } from "@genclass/runtime";
-
-GenClass.init(); // observe mode by default: reports only; pass { mode: "guard" } to let it act
+import "@genclass/runtime/auto"; // after npm install @genclass/runtime
 ```
+
+That covers the whole app: network, user actions, errors, timing, and the app's state (React component state,
+Redux / Redux Toolkit and Zustand `devtools` stores are discovered automatically; discovered React and Zustand state
+is observed only). Observe mode by default: it reports only. `npx @genclass/runtime init` writes the line for you;
+`GenClass.init()` is the explicit setup ([package README](packages/runtime/README.md#automatic-state-discovery)).
 
 GenClass Runtime records what the app does: user actions, async operations and their causal chains, network
 traffic (fetch, XHR, WebSocket, EventSource), store writes with per-field versions, errors and timing. It computes

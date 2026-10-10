@@ -1,0 +1,267 @@
+{
+ "generatedAt": "2026-10-10T03:03:29.351Z",
+ "tag": "reorder2-noauto",
+ "base": "http://127.0.0.1:3100",
+ "aggr": "default",
+ "config": {
+  "autoState": false
+ },
+ "modes": [
+  "observe",
+  "guard"
+ ],
+ "reps": 3,
+ "summary": [
+  {
+   "scenario": "order-poll-reorder-2",
+   "kind": "fault",
+   "mode": "observe",
+   "n": 3,
+   "bugs": 0,
+   "errors": 0,
+   "decisions": 0,
+   "detections": 0,
+   "interventions": 0,
+   "actions": {},
+   "latP50": 71.1820829999997
+  },
+  {
+   "scenario": "order-poll-reorder-2",
+   "kind": "fault",
+   "mode": "guard",
+   "n": 3,
+   "bugs": 0,
+   "errors": 0,
+   "decisions": 0,
+   "detections": 0,
+   "interventions": 0,
+   "actions": {},
+   "latP50": 73.52854200000002
+  }
+ ],
+ "external": [],
+ "raw": [
+  {
+   "scenario": "order-poll-reorder-2",
+   "kind": "fault",
+   "mode": "observe",
+   "rep": 0,
+   "ms": 21475,
+   "bug": false,
+   "reasons": [],
+   "latencyMs": 72.53891700000167,
+   "metrics": {
+    "n0": 1,
+    "nServer": 0,
+    "nShown": 0,
+    "staleMs": 0
+   },
+   "t0": 16797.560833,
+   "pageErrors": [],
+   "gc": {
+    "status": "ready",
+    "mode": "observe",
+    "aggr": 0.5,
+    "decisions": 0,
+    "byTrigger": {},
+    "detections": 0,
+    "detectionKinds": {},
+    "interventions": [],
+    "notExecuted": [],
+    "diagnoses": [],
+    "stores": [],
+    "walk": null
+   },
+   "perf": {
+    "heapMB": 11.3,
+    "longTasks": 0,
+    "longTaskMs": 0
+   }
+  },
+  {
+   "scenario": "order-poll-reorder-2",
+   "kind": "fault",
+   "mode": "guard",
+   "rep": 0,
+   "ms": 21515,
+   "bug": false,
+   "reasons": [],
+   "latencyMs": 79.58062500000233,
+   "metrics": {
+    "n0": 1,
+    "nServer": 0,
+    "nShown": 0,
+    "staleMs": 0
+   },
+   "t0": 16842.323458,
+   "pageErrors": [],
+   "gc": {
+    "status": "ready",
+    "mode": "guard",
+    "aggr": 0.5,
+    "decisions": 0,
+    "byTrigger": {},
+    "detections": 0,
+    "detectionKinds": {},
+    "interventions": [],
+    "notExecuted": [],
+    "diagnoses": [],
+    "stores": [],
+    "walk": null
+   },
+   "perf": {
+    "heapMB": 11.3,
+    "longTasks": 0,
+    "longTaskMs": 0
+   }
+  },
+  {
+   "scenario": "order-poll-reorder-2",
+   "kind": "fault",
+   "mode": "observe",
+   "rep": 1,
+   "ms": 21471,
+   "bug": false,
+   "reasons": [],
+   "latencyMs": 67.26366699999926,
+   "metrics": {
+    "n0": 1,
+    "nServer": 0,
+    "nShown": 0,
+    "staleMs": 0
+   },
+   "t0": 38332.002458,
+   "pageErrors": [],
+   "gc": {
+    "status": "ready",
+    "mode": "observe",
+    "aggr": 0.5,
+    "decisions": 0,
+    "byTrigger": {},
+    "detections": 0,
+    "detectionKinds": {},
+    "interventions": [],
+    "notExecuted": [],
+    "diagnoses": [],
+    "stores": [],
+    "walk": null
+   },
+   "perf": {
+    "heapMB": 12.1,
+    "longTasks": 0,
+    "longTaskMs": 0
+   }
+  },
+  {
+   "scenario": "order-poll-reorder-2",
+   "kind": "fault",
+   "mode": "guard",
+   "rep": 1,
+   "ms": 21461,
+   "bug": false,
+   "reasons": [],
+   "latencyMs": 73.52854200000002,
+   "metrics": {
+    "n0": 1,
+    "nServer": 0,
+    "nShown": 0,
+    "staleMs": 0
+   },
+   "t0": 38329.118333,
+   "pageErrors": [],
+   "gc": {
+    "status": "ready",
+    "mode": "guard",
+    "aggr": 0.5,
+    "decisions": 0,
+    "byTrigger": {},
+    "detections": 0,
+    "detectionKinds": {},
+    "interventions": [],
+    "notExecuted": [],
+    "diagnoses": [],
+    "stores": [],
+    "walk": null
+   },
+   "perf": {
+    "heapMB": 11.3,
+    "longTasks": 0,
+    "longTaskMs": 0
+   }
+  },
+  {
+   "scenario": "order-poll-reorder-2",
+   "kind": "fault",
+   "mode": "observe",
+   "rep": 2,
+   "ms": 21421,
+   "bug": false,
+   "reasons": [],
+   "latencyMs": 71.1820829999997,
+   "metrics": {
+    "n0": 1,
+    "nServer": 0,
+    "nShown": 0,
+    "staleMs": 0
+   },
+   "t0": 59824.579375,
+   "pageErrors": [],
+   "gc": {
+    "status": "ready",
+    "mode": "observe",
+    "aggr": 0.5,
+    "decisions": 0,
+    "byTrigger": {},
+    "detections": 0,
+    "detectionKinds": {},
+    "interventions": [],
+    "notExecuted": [],
+    "diagnoses": [],
+    "stores": [],
+    "walk": null
+   },
+   "perf": {
+    "heapMB": 11.3,
+    "longTasks": 0,
+    "longTaskMs": 0
+   }
+  },
+  {
+   "scenario": "order-poll-reorder-2",
+   "kind": "fault",
+   "mode": "guard",
+   "rep": 2,
+   "ms": 21428,
+   "bug": false,
+   "reasons": [],
+   "latencyMs": 67.83524999999645,
+   "metrics": {
+    "n0": 1,
+    "nServer": 0,
+    "nShown": 0,
+    "staleMs": 0
+   },
+   "t0": 59829.999916,
+   "pageErrors": [],
+   "gc": {
+    "status": "ready",
+    "mode": "guard",
+    "aggr": 0.5,
+    "decisions": 0,
+    "byTrigger": {},
+    "detections": 0,
+    "detectionKinds": {},
+    "interventions": [],
+    "notExecuted": [],
+    "diagnoses": [],
+    "stores": [],
+    "walk": null
+   },
+   "perf": {
+    "heapMB": 11.3,
+    "longTasks": 0,
+    "longTaskMs": 0
+   }
+  }
+ ]
+}

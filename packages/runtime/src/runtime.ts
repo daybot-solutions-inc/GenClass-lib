@@ -29,6 +29,7 @@ import type {
   Report,
   RtEvent,
   Runtime,
+  StoreInfo,
   RuntimeEvents,
   RuntimeHooks,
   Situation,
@@ -68,7 +69,7 @@ import { Cadence } from "./learn/cadence.js";
 import { analyzeBody, createdIds, vhash } from "./situation/content.js";
 import { commitAmbiguity, failureOf, hostOfSig } from "./situation/evidence.js";
 import { Profiles, shapeOf } from "./learn/profiles.js";
-import { buildSituation, relatedInFlight, type BuildOptions, type BuiltSituation } from "./situation/build.js";
+import { buildSituation, deliveryDroppable, relatedInFlight, type BuildOptions, type BuiltSituation } from "./situation/build.js";
 import { computeFacts, NO_BASELINE_STALL_MS } from "./situation/facts.js";
 import type { ChainWriteInfo, CreateRec, DeliverySpec, ErrorInfo, OutcomeRec, ReqMeta, SitEnv, SubjectSpec, Violation } from "./situation/env.js";
 import { conflictsOn, matchFields, predictedWrites } from "./situation/conflicts.js";
@@ -92,6 +93,10 @@ import { installWebSocket } from "./observe/websocket.js";
 import { installTimers } from "./observe/timers.js";
 import { defaultRedact, normalizeFieldPath, plural, ratio, secs, truncate, type Redactor } from "./util.js";
 import { blockedMessage } from "./model/blocked.js";
+import type { ReactDiscovery } from "./discover/react.js";
+import type { ReduxDiscovery } from "./discover/redux.js";
+import { discoveryRegistry } from "./discover/registry.js";
+import type { Captured, DiscoveryHost, ObservedStore, WalkStats } from "./discover/types.js";
 
 const DECISIONS_KEPT = 200;
 /**
@@ -128,6 +133,8 @@ interface ExplainRec {
   held: boolean;
   budget: number;
   compact: boolean;
+  /** Automatically discovered state had been recorded when this situation was built (telemetry leaves its text out). */
+  autoState: boolean;
 }
 
 /** Internal observation points for telemetry (src/telemetry): counts only, never input to a decision. */
@@ -226,6 +233,9 @@ export class RuntimeImpl implements Runtime {
   private _mode: Mode;
   private paused = false;
   private destroyed = false;
+  /** Automatic state discovery (InitOptions.autoState; src/discover). */
+  private discovered: { react: ReactDiscovery | null; redux: ReduxDiscovery | null } | null = null;
+  private captureSeq = 0;
   private decider: DecisionProvider | null;
   private _ready: Promise<void> | null = null;
   private readonly ownsDecider: boolean;
@@ -467,6 +477,7 @@ export class RuntimeImpl implements Runtime {
       return;
     }
     this.installObservers(o.observe ?? {});
+    if (o.autoState) this.installDiscovery(o.autoState);
     for (const p of o.plugins ?? []) this.use(p);
     if (en !== undefined && en !== true) this.followEnabled(en);
     const g = this.global as { addEventListener?: (t: string, fn: () => void) => void; removeEventListener?: (t: string, fn: () => void) => void };
@@ -927,6 +938,130 @@ export class RuntimeImpl implements Runtime {
     if (on("perf")) tryAdd("perf", () => installPerf(g, (name, duration) => this.events.push(this.clock.now(), "perf", name, { data: { duration } })));
   }
 
+  // ------------------------------------------------------------------------------- automatic state discovery
+
+  /**
+   * InitOptions.autoState: React (DevTools hook), Redux / RTK (Redux DevTools compose/enhancer: full adapters),
+   * Zustand and other Redux DevTools `connect` clients (observed only). Installed synchronously, in a browser only.
+   */
+  private installDiscovery(opt: NonNullable<CreateOptions["autoState"]>): void {
+    const g = this.global;
+    if (typeof g.document !== "object" || g.document === null || typeof g.window !== "object") return;
+    const inst = discoveryRegistry.installers;
+    if (!inst) {
+      this.warn('autoState needs the discovery code: use @genclass/runtime/auto or the script tag, or import "@genclass/runtime/discover" before GenClass.init().');
+      return;
+    }
+    const on = (k: "react" | "redux" | "zustand") => (typeof opt === "object" ? opt[k] !== false : true);
+    const host: DiscoveryHost & { runtime: Runtime } = {
+      global: g,
+      clock: this.clock,
+      runtime: this,
+      capture: () => {
+        const a = this.ctx.peek();
+        return { amb: a, user: a !== null && !(a instanceof LazyOp) && this.ctx.isUserSync(a), seq: ++this.captureSeq };
+      },
+      observed: (base, initial, source) => this.observedStore(base, initial, source),
+      freeName: (base) => this.freeStoreName(base),
+      tag: (name, source) => {
+        const s = this.hub.get(name);
+        if (s) s.source = source;
+      },
+      log: (m, e) => this.log(m, e),
+    };
+    const d: { react: ReactDiscovery | null; redux: ReduxDiscovery | null } = { react: null, redux: null };
+    const early = discoveryRegistry.early;
+    if (early && !early.host.attached) {
+      // installed when @genclass/runtime/discover was evaluated (before the framework): attach to it
+      early.host.attach(host);
+      if (on("react")) d.react = early.react;
+      else early.react?.uninstall();
+      d.redux = early.redux;
+      early.redux?.configure({ redux: on("redux"), connect: on("zustand") });
+      if (on("redux")) early.redux?.attached();
+      this.discovered = d;
+      this.uninstall.push(() => early.host.detach(host));
+      return;
+    }
+    try {
+      if (on("react")) d.react = inst.react(host);
+    } catch (e) {
+      this.log("React state discovery could not be installed; skipped", e);
+    }
+    try {
+      if (on("redux") || on("zustand")) d.redux = inst.redux(host, { redux: on("redux"), connect: on("zustand") });
+    } catch (e) {
+      this.log("Redux state discovery could not be installed; skipped", e);
+    }
+    this.discovered = d;
+    this.uninstall.push(() => {
+      d.react?.uninstall();
+      d.redux?.uninstall();
+    });
+  }
+
+  /** A store name derived from `base` that no store uses yet (`base`, `base_2`, ... `base_99`). */
+  private freeStoreName(base: string): string | null {
+    const b = base || "store";
+    if (!this.hub.get(b)) return b;
+    for (let i = 2; i < 100; i++) if (!this.hub.get(`${b}_${i}`)) return `${b}_${i}`;
+    return null;
+  }
+
+  /** Register an observed-only store (kind "observed") under a free name; null after 64 discovered stores. */
+  private observedStore(base: string, initial: unknown, source: string): ObservedStore | null {
+    if (this.destroyed) return null;
+    let n = 0;
+    for (const s of this.hub.stores.values()) if (s.kind === "observed") n++;
+    if (n >= 64) return null;
+    const name = this.freeStoreName(base);
+    if (!name) return null;
+    const s = this.hub.register(name, "observed", initial, {});
+    s.source = source;
+    this.miner.noteValues(s.leaves);
+    const hub = this.hub;
+    const rt = this;
+    return {
+      name,
+      write(value: unknown, w: Captured | null) {
+        // gone when the runtime was destroyed or the app registered a store with this name since
+        if (rt.destroyed || hub.get(name) !== s) return;
+        let op: OpRec | null = null;
+        let user = false;
+        if (w) {
+          const a = w.amb as OpRec | LazyOp | null;
+          op = a instanceof LazyOp ? a.materialize() : a;
+          user = w.user;
+        }
+        hub.observe(s, value, op, user);
+      },
+    };
+  }
+
+  /** Registered and discovered stores (introspection; the devtools overlay lists them). */
+  stores(): StoreInfo[] {
+    const out: StoreInfo[] = [];
+    for (const s of this.hub.stores.values()) {
+      const i: { name: string; kind: StoreRec["kind"]; source?: string; writable: boolean; fields: number; version: number } = {
+        name: s.name,
+        kind: s.kind,
+        writable: s.writable,
+        fields: s.leaves.size,
+        version: s.version,
+      };
+      if (s.source) i.source = s.source;
+      out.push(i);
+    }
+    return out;
+  }
+
+  /** State discovery counters (internal: tests, benchmarks): React commit walks and the stores found. */
+  discoveryStats(): { react: (WalkStats & { renderers: number; tapped: number; components: number }) | null; redux: { reduxStores: string[]; connected: string[] } | null } | null {
+    const d = this.discovered;
+    if (!d) return null;
+    return { react: d.react?.stats() ?? null, redux: d.redux?.stats() ?? null };
+  }
+
   private netHost(): NetHost {
     return {
       clock: this.clock,
@@ -1186,7 +1321,7 @@ export class RuntimeImpl implements Runtime {
     // A delivery that does not wait while its chain's writes can still be discarded or late-reverted by their own
     // decisions (guard, heal: it was not held only because the model would not answer in time): those writes are
     // decided on their own, as before, and the delivery itself only when a question forces it (covering nothing).
-    const writesAct = !waits && spec.trigger === "delivery" && this.writesCanAct(effMode as Mode);
+    const writesAct = !waits && spec.trigger === "delivery" && this.writesCanAct(effMode as Mode) && deliveryDroppable(this.env, spec.matched);
     if (writesAct && !built.forced && this.triage !== "always") return passive();
     // Otherwise (observe, no permitted action) it is decided in the background: while that decision is pending, its
     // chain's predicted writes are covered by it (no second, mutation decision about the same writes). Registered
@@ -1420,6 +1555,7 @@ export class RuntimeImpl implements Runtime {
       held: st.waits,
       budget: built.situation.budget,
       compact: built.situation.compact,
+      autoState: this.discoveredWrites(),
     };
     this.explainMap.set(decision.id, rec);
     if (this.explainMap.size > DECISIONS_KEPT * 2) {
@@ -1911,6 +2047,8 @@ export class RuntimeImpl implements Runtime {
       if (!b || !permitted(name, b.tier)) continue;
       // defer is offered only when related work is in flight (and twice at most)
       if (name === "defer" && (defers >= 2 || !relatedInFlight(this.env, op, matched).length)) continue;
+      // discard drops writes at the store: never for fields that are all in observed-only stores
+      if (name === "discard" && !deliveryDroppable(this.env, matched)) continue;
       any = true;
       break;
     }
@@ -2434,6 +2572,7 @@ export class RuntimeImpl implements Runtime {
       chainWrites: (op) => this.chainWrites(op),
       lastChain: (sig) => this.lastChainMap.get(sig),
       writable: (store) => !!this.hub.get(store)?.writable,
+      observedOnly: (store) => this.hub.get(store)?.kind === "observed",
       creates: () => this.createsBuf,
       cadence: (sig, now) => this.cadence.get(sig, now),
       outcomes: () => this.outcomesBuf,
@@ -2881,10 +3020,20 @@ export class RuntimeImpl implements Runtime {
     return built.situation;
   }
 
-  /** Telemetry (src/telemetry): what explain() has plus whether the subject waited. Internal. */
-  decisionInfo(id: string): { situationText: string; held: boolean; budget: number; compact: boolean; gates: EffectiveGates } | null {
+  /**
+   * Telemetry (src/telemetry): what explain() has plus whether the subject waited, and whether automatically
+   * discovered state had been recorded (its text then stays out of telemetry: it was not registered by the app). Internal.
+   */
+  decisionInfo(id: string): { situationText: string; held: boolean; budget: number; compact: boolean; gates: EffectiveGates; autoState: boolean } | null {
     const r = this.explainMap.get(id);
-    return r ? { situationText: r.situationText, held: r.held, budget: r.budget, compact: r.compact, gates: r.gates } : null;
+    return r ? { situationText: r.situationText, held: r.held, budget: r.budget, compact: r.compact, gates: r.gates, autoState: r.autoState } : null;
+  }
+
+  /** Some automatically discovered store has recorded a write. */
+  private discoveredWrites(): boolean {
+    if (!this.discovered) return false;
+    for (const s of this.hub.stores.values()) if (s.source && s.version > 0) return true;
+    return false;
   }
 
   /** Run fn first when the runtime is destroyed (telemetry's final flush). Internal. */

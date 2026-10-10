@@ -672,6 +672,43 @@ export interface InitOptions {
    * (`navigator.globalPrivacyControl === true`).
    */
   telemetry?: boolean | TelemetryOptions;
+  /**
+   * Automatic state discovery: find the app's state without registering stores. **Default: on in the zero-code
+   * entries** (`@genclass/runtime/auto*`, the script tag); off with `GenClass.init()` / `createRuntime()` unless set
+   * here. Must be installed before the framework loads (the one line first). Covers React ≥ 16.8 component state
+   * (useState, useReducer, useSyncExternalStore, class state, via the React DevTools hook), Redux / Redux Toolkit stores
+   * (via the Redux DevTools compose/enhancer globals: full adapters) and Zustand `devtools` stores (via the Redux
+   * DevTools `connect` API). Discovered React and Zustand state is observed only: GenClass sees its writes and their
+   * causes (detections, delivery decisions) but never holds, drops or reverts them. `false` or an object turning
+   * single sources off (`{ react: false }`). Also `<meta name="genclass" content="autostate=off">`.
+   */
+  autoState?: boolean | AutoStateOptions;
+}
+
+/** InitOptions.autoState as an object: each source defaults to on. */
+export interface AutoStateOptions {
+  /** React state via the React DevTools hook. Default true. */
+  react?: boolean;
+  /** Redux / Redux Toolkit stores via the Redux DevTools compose and enhancer globals (full adapter). Default true. */
+  redux?: boolean;
+  /** Zustand `devtools` stores (and other stores reporting to the Redux DevTools `connect` API). Default true. */
+  zustand?: boolean;
+  /** Vue 3 + Pinia: not implemented yet (ignored). */
+  pinia?: boolean;
+}
+
+/** runtime.stores(): one registered or discovered store. */
+export interface StoreInfo {
+  readonly name: string;
+  /** atom, guard, adapter (registered or a discovered Redux store), observed (discovered, observed only). */
+  readonly kind: "atom" | "guard" | "adapter" | "observed";
+  /** How it was discovered: "react", "redux", "devtools" (a Redux DevTools `connect` client such as Zustand); unset when registered by the app. */
+  readonly source?: string;
+  /** GenClass can write it (rollback, chain revert); false for observed-only stores. */
+  readonly writable: boolean;
+  /** Fields (flattened paths) and the number of recorded writes. */
+  readonly fields: number;
+  readonly version: number;
 }
 
 /** InitOptions.telemetry as an object (enables telemetry). */
@@ -1018,6 +1055,8 @@ export interface Runtime {
   interventions(n?: number): ActionRecord[];
   /** In-flight ops (introspection). */
   inflight(): Op[];
+  /** Registered and automatically discovered stores (introspection). */
+  stores(): StoreInfo[];
   /** The current hold budget in ms (policy.holdBudgetMs, "auto" by default). */
   holdBudgetMs(): number;
   /** The current situation size in characters (situation.budget, "auto" by default). */

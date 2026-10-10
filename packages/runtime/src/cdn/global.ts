@@ -13,6 +13,7 @@
 // cross-origin worker URLs), onnxruntime-web (bundled in dist/cdn/; its wasm comes from the jsDelivr
 // onnxruntime-web package or `data-ort`), and the devtools overlay (dist/devtools/index.js).
 
+import { registerDiscovery } from "../discover/index.js";
 import { GenClass, createRuntime, GenClassUnavailableError } from "../index.js";
 import type { DevtoolsHandle, DevtoolsOptions } from "../devtools/index.js";
 import type { InitOptions, ModelOptions, Runtime } from "../types.js";
@@ -84,6 +85,7 @@ export interface GenClassGlobal {
 }
 
 function install(): void {
+  registerDiscovery(); // automatic state discovery (autoState), on by default for the script tag
   const w = window as unknown as { GenClass?: Partial<GenClassGlobal> & { __genclassGlobal?: boolean } };
   if (w.GenClass && w.GenClass.__genclassGlobal) return; // the tag is on the page twice: keep the first
   const script = findScript();
@@ -133,7 +135,8 @@ function install(): void {
     base,
     init(options: PageConfig = {}): Runtime {
       // the page's configuration (meta tag, the tag's data attributes, window.GENCLASS_CONFIG) is the default
-      const { init, devtools } = splitConfig(mergeConfig(readMetaConfig(document), fromDataset(ds), readWindowConfig(window), options));
+      // automatic state discovery is on by default for the script tag (installed now, before the framework loads)
+      const { init, devtools } = splitConfig(mergeConfig({ autoState: true }, readMetaConfig(document), fromDataset(ds), readWindowConfig(window), options));
       const rt = GenClass.init(withCdnModel(init));
       const dt = devtoolsOptions(devtools, location);
       if (dt && !isKilled(window)) void mount(rt, dt);

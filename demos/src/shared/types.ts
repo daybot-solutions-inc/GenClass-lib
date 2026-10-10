@@ -81,6 +81,8 @@ export interface GcStats {
   interventions: InterventionSummary[];
   decisionLatencyMs: number[];
   diagnoses: Record<string, number>;
+  /** "<name>:<kind>[/<source>]:<fields>f:<writes>w" per store (registered or discovered). */
+  stores?: string[];
 }
 
 export interface TrialResult extends Score {

@@ -304,8 +304,10 @@ export function builtinUnavailable(env: SitEnv, s: SubjectSpec, name: string): s
   const why = (ok: boolean, reason: string): string | null => (ok ? null : reason);
   switch (s.trigger) {
     case "mutation":
+      if (env.observedOnly?.(s.m.store)) return `${s.m.store} is observed only: GenClass cannot hold, drop or revert its writes`;
       return why(name !== "defer" || s.m.defers < 2, "the write was already deferred twice");
     case "delivery":
+      if (name === "discard") return why(deliveryDroppable(env, [...s.conflicts.map((c) => c.path), ...s.matched]), "the fields it would write are in observed-only stores (GenClass cannot drop those writes)");
       if (name === "defer") {
         if (s.defers >= 2) return "the delivery was already deferred twice";
         return why(relatedInFlight(env, s.op, s.matched).length > 0, "no related operation is in flight");
@@ -382,6 +384,15 @@ function builtinApplicable(env: SitEnv, s: SubjectSpec, name: string): boolean {
     default:
       return true;
   }
+}
+
+/**
+ * A delivery `discard` acts at the store (it drops the chain's writes over newer data), so it can only work when one of
+ * the fields the delivery would write is not in an observed-only store (whose writes already happened in the app).
+ */
+export function deliveryDroppable(env: SitEnv, paths: string[]): boolean {
+  if (!paths.length || !env.observedOnly) return true;
+  return paths.some((p) => !env.observedOnly!(p.split(".")[0]));
 }
 
 /** In-flight ops (outside x's chain) with x's signature, or whose chains wrote one of these fields' stores. */

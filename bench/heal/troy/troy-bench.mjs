@@ -258,6 +258,36 @@ const SCENARIOS = {
       return removeAndWatch(page, ctx, { before: 5600, wait: 5000 });
     },
   },
+  /**
+   * Fault (added with automatic state discovery, 2026-10-10): a second device removes a line while the guest watches
+   * /order (poll 1 brings that change in: the page's order state learns what the poll writes); the guest then removes
+   * the other line while poll 2 is answered 3 s late with the pre-removal ticket (out of order, over newer state).
+   */
+  "order-poll-reorder-2": {
+    kind: "fault",
+    async run({ page, ctx, url }) {
+      await seedOrder(page, ctx, url);
+      let gets = 0;
+      await ctx.route(/\/api\/orders\/current(\?.*)?$/, async (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        gets++;
+        if (gets !== 2) return route.fallback();
+        const res = await route.fetch().catch(() => null);
+        await sleep(3000);
+        if (!res) return route.abort();
+        await route.fulfill({ response: res });
+      });
+      await visit(page, url("/order"));
+      // the other device: remove the first line through the API (same visitor cookie)
+      const o0 = await serverOrder(ctx);
+      const first = lines(o0)[0];
+      const cookie = (await ctx.cookies()).map((c) => `${c.name}=${c.value}`).join("; ");
+      const del = first ? await ctx.request.delete(`${BASE}/api/orders/current/items/${first.line_id ?? first.id}`, { headers: { accept: "application/json", cookie, origin: BASE } }) : null;
+      if (!del || !del.ok()) return { bug: false, error: `second-device removal failed (${del ? del.status() : "no line"})`, reasons: ["harness error"] };
+      // poll 1 (~5 s after load) shows it; poll 2 (~10 s) is held 3 s; the guest removes the remaining line at ~11 s
+      return removeAndWatch(page, ctx, { before: 8200, wait: 5000 });
+    },
+  },
   /** Fault: the removal fails once with 503 (not handled); the guest taps × again. */
   "order-remove-5xx": {
     kind: "fault",
@@ -361,6 +391,17 @@ async function trial(browser, scenario, mode, rep) {
     return r.abort();
   });
   const override = mode === "off" ? null : { ...EXTRA, mode, telemetry: false, debug: true, ...(AGGR ? { aggressiveness: AGGR } : {}) };
+  // main-thread long tasks (> 50 ms), for the overhead columns
+  await ctx.addInitScript(() => {
+    const lt = (globalThis.__lt = []);
+    try {
+      new PerformanceObserver((l) => {
+        for (const e of l.getEntries()) lt.push(e.duration);
+      }).observe({ type: "longtask", buffered: true });
+    } catch {
+      /* no long task API */
+    }
+  });
   await ctx.addInitScript((ov) => {
     if (!ov) return;
     let cur = { ...ov };
@@ -383,6 +424,10 @@ async function trial(browser, scenario, mode, rep) {
   } catch (e) {
     res = { bug: false, error: String(e).slice(0, 300), reasons: ["harness error"] };
   }
+  let perf = null;
+  perf = await page
+    .evaluate(() => ({ heapMB: performance.memory ? Math.round((performance.memory.usedJSHeapSize / 1048576) * 10) / 10 : null, longTasks: (globalThis.__lt ?? []).length, longTaskMs: Math.round((globalThis.__lt ?? []).reduce((a, b) => a + b, 0)) }))
+    .catch(() => null);
   let gc = null;
   if (mode !== "off") {
     gc = await page
@@ -404,12 +449,22 @@ async function trial(browser, scenario, mode, rep) {
           interventions: g.interventions().map((a) => ({ action: a.action, tier: a.tier, trigger: a.trigger, ok: a.ok, changed: a.changed })),
           notExecuted: ds.filter((d) => !d.executed && d.reason).map((d) => `${d.trigger}:${d.action}:${String(d.reason).replace(/\d+(\.\d+)?/g, "#")}`),
           diagnoses: ds.map((d) => `${d.trigger}:${d.diagnosis}:${d.action}${d.executed ? "!" : ""}:${d.candidate ?? "-"}:${d.gain !== undefined ? Math.round(d.gain * 100) / 100 : "-"}/${d.margin ?? "-"}`),
+          // automatic state discovery (autoState): stores found, and the React commit-walk cost
+          stores: typeof g.stores === "function" ? g.stores().map((x) => `${x.name}:${x.kind}${x.source ? "/" + x.source : ""}:${x.fields}f:${x.version}w`) : [],
+          walk: (() => {
+            const st = typeof g.discoveryStats === "function" ? g.discoveryStats() : null;
+            const r = st?.react;
+            if (!r) return null;
+            const a = [...r.samples].sort((x, y) => x - y);
+            const q = (p) => (a.length ? a[Math.min(a.length - 1, Math.floor(p * (a.length - 1)))] : null);
+            return { commits: r.commits, overBudget: r.overBudget, visited: r.visited, tapped: r.tapped, p50: q(0.5), p95: q(0.95), max: a.length ? a[a.length - 1] : null, totalMs: Math.round(a.reduce((x, y) => x + y, 0) * 100) / 100, samples: a };
+          })(),
         };
       })
       .catch((e) => ({ evalError: String(e).slice(0, 200) }));
   }
   await ctx.close();
-  return { scenario, kind: sc.kind, mode, rep, ms: Date.now() - started, ...res, pageErrors: errors, gc };
+  return { scenario, kind: sc.kind, mode, rep, ms: Date.now() - started, ...res, pageErrors: errors, gc, perf };
 }
 
 // ------------------------------------------------------------------------------------------------ main
