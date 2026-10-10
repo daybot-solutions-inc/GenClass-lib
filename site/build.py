@@ -275,7 +275,7 @@ MD_DOCS = [
 try:
     import markdown as _md
 except ImportError:
-    _md = None
+    raise SystemExit("build.py needs the 'markdown' package for the reference docs (pip install markdown==3.7)")
 
 def gh_link(src_dir, target):
     if re.match(r"^(https?:|mailto:|#)", target): return target
