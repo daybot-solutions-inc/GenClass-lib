@@ -9,7 +9,8 @@
 //
 // Keys of the meta tag and data attributes: mode, model (a model directory URL, or "off"), device, preload, ort
 // (onnxruntime-web wasm directory), worker, report, debug, triage, devtools (bare / true, "local" = only on
-// localhost, false, or a corner such as "bottom-left"), telemetry (off/false/no: no anonymous diagnostics).
+// localhost, false, or a corner such as "bottom-left"), telemetry (off/false/no: no anonymous diagnostics), autostate
+// (off/false/no: no automatic state discovery; on by default in these entries).
 //
 // Trust: every `<meta name="genclass">` in the document is read (head or body, first to last), and its keys can set
 // the mode and the model and onnxruntime-web URLs. That is deliberate (no build step needed), but on a page that
@@ -105,6 +106,11 @@ export function fromPairs(pairs: Record<string, string>): PageConfig {
         break;
       case "devtools":
         c.devtools = parseDevtools(lv);
+        break;
+      case "autostate":
+      case "state":
+        // automatic state discovery (on by default in the zero-code entries): only an opt-out here
+        if (isOff(lv)) c.autoState = false;
         break;
       case "telemetry":
         // anonymous diagnostics (TELEMETRY.md): only an opt-out here; on is the GenClass.init default

@@ -147,6 +147,11 @@ export interface SitEnv {
   resyncable(store: string): boolean;
   /** GenClass can write the store directly (rollback). */
   writable(store: string): boolean;
+  /**
+   * The store is observed only (kind "observed": discovered React state, a store connected through the Redux DevTools
+   * API): its writes already happened in the app, so they can never be held, dropped or reverted.
+   */
+  observedOnly?(store: string): boolean;
   /** Fields written by an op's causal chain (its root's chain) since the root started. */
   chainWrites(op: OpRec): ChainWriteInfo[];
   /** Normalised fields the last completed op of this signature (its chain) wrote, if any. */

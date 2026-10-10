@@ -23,6 +23,7 @@ import type {
   Runtime,
   RuntimeEvents,
   Situation,
+  StoreInfo,
   TriggerKind,
 } from "../types.js";
 import { CSS } from "./css.js";
@@ -1088,12 +1089,29 @@ class Devtools {
         sit ? sec("Timeline", null, block(linesOf(st.timeline))) : null,
         sit ? sec("State", null, block(linesOf(st.state))) : null,
         sit ? sec("Stats", null, block(linesOf(st.stats).filter((l) => l !== "none"))) : null,
+        this.storesSection(),
         sit?.actions?.length
           ? sec("Actions available", null, h("div", { class: "acts" }, sit.actions.map((n, i) => h("span", { class: "chip" }, h("code", { text: n }), i === 0 ? "passive" : null))))
           : null,
         sit ? sec("Gates", null, block(this.gateLines())) : null,
       ].filter(Boolean) as Node[]),
     );
+  }
+
+  /**
+   * Registered and automatically discovered stores: discovered React and Zustand state is observed only (GenClass
+   * sees its writes, never holds, drops or reverts them); discovered Redux stores are full adapters.
+   */
+  private storesSection(): HTMLElement | null {
+    const fn = (this.rt as { stores?: () => StoreInfo[] }).stores;
+    if (typeof fn !== "function") return null;
+    const list = safe(() => fn.call(this.rt), [] as StoreInfo[]);
+    const lines = list.map((s) => {
+      const how = s.source ? `discovered (${s.source})` : "registered";
+      const ctl = s.kind === "observed" ? "observed only" : s.writable ? "controllable" : "controllable writes, no rollback";
+      return `${s.name}: ${how}, ${ctl}, ${s.fields} field${s.fields === 1 ? "" : "s"}, ${s.version} write${s.version === 1 ? "" : "s"}`;
+    });
+    return sec(`Stores${list.length ? ` · ${list.length}` : ""}`, null, lines.length ? h("pre", { class: "code", "data-part": "stores", text: lines.join("\n") }) : h("div", { class: "none", text: "No stores registered or discovered yet." }));
   }
 
   /** Aggressiveness selector next to the mode switch (cautious / balanced / eager). */
