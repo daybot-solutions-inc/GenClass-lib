@@ -27,7 +27,7 @@ Every template:
 - **can be turned off per page load** with `?genclass=off` in the URL;
 - sends anonymous, redacted diagnostics by default; each README shows the one-line opt-out.
 
-They need `@genclass/runtime` 0.1.0-beta.4 or later (automatic state discovery). Each one builds, boots and passes
+They need `@genclass/runtime` 0.2.0 or later (automatic state discovery). Each one builds, boots and passes
 the checks in `compat/templates-check.mjs` (production build and dev server, Chromium) against the runtime packed
 from this repository; the frameworks behind them are covered by the
 [compatibility matrix](../compat/RESULTS.md).
