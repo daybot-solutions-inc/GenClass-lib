@@ -1,0 +1,30 @@
+{
+  "name": "compat-react-vite",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@apollo/client": "4.3.3",
+    "@genclass/runtime": "file:../../.pack/genclass-runtime.tgz",
+    "@reduxjs/toolkit": "2.13.0",
+    "@tanstack/react-query": "5.104.1",
+    "graphql": "17.0.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-redux": "9.3.0",
+    "rxjs": "7.8.2",
+    "zustand": "5.0.15"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.2",
+    "typescript": "6.0.3",
+    "vite": "8.3.4"
+  }
+}

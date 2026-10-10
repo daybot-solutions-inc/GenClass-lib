@@ -1,0 +1,16 @@
+{
+  "name": "@genclass/compat",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Framework compatibility matrix for @genclass/runtime: real apps, one line install, seeded fault-injecting backend, headless Chromium (Linux; see README.md).",
+  "scripts": {
+    "compat": "node run.mjs",
+    "report": "node harness/report.mjs",
+    "templates": "node templates-check.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "ws": "8.22.0"
+  }
+}
