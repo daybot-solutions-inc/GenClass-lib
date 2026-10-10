@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { gunzipSync } from "node:zlib";
-import { handle, MAX_BODY_BYTES, MAX_EVENTS, validate } from "../src/index.js";
+import { handle, MAX_BODY_BYTES, MAX_EVENTS, validate } from "../src/collector.js";
 
 function bucket() {
   const puts: { key: string; body: Uint8Array }[] = [];

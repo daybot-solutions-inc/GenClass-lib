@@ -79,6 +79,19 @@
   read with `npx --yes wrangler@4 r2 object get "genclass-telemetry/<key>" --remote --file out.gz`.
 - **Retention: 90 days**, by the R2 lifecycle rule `expire-90d` on prefix `events/` (set 2026-10-09; owner may change it).
 
+## Per-app tokens and dashboards (server side)
+
+- Same worker (`genclass-telemetry`), also routed on `genclass.dev/{start*,dashboard*,api/*}` in front of the site
+  (`genclass-site`, not ours; unknown paths go to it via the `SITE` service binding). Code: `telemetry-worker/src/`
+  `index.ts` (entry: default export only), `collector.ts` (ingest + routing), `dashboard.ts` (D1: projects,
+  aggregation, stats, retention), `pages.ts` (`/start`, `/dashboard/<secret>`); tests `test/dashboard.test.ts`
+  (D1 = `node:sqlite` running `migrations/*.sql`). Details: `telemetry-worker/README.md`.
+- Token `gc_` + 22 base62 (public, top-level `token` on a batch); dashboard secret 32 base62 (private; D1 keeps only
+  its SHA-256). Known token -> counters in D1 `genclass-dashboard` (+ raw batch to R2 as always, with `token` in each
+  line); unknown / malformed / missing -> R2 only, record shape unchanged. Decision events may carry `fn`.
+- The dashboard never stores situation text. Retention: daily counters and recent rows 90 days (cron `17 3 * * *`),
+  hourly 48 h.
+
 ## How to change it safely
 
 - Adding a field or event: only data the runtime already has, redacted; update `client.ts`, `TELEMETRY.md` (the

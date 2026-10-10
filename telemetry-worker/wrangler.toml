@@ -8,9 +8,40 @@ workers_dev = true
 # Never log request contents: no observability/logpush of request bodies or headers.
 logpush = false
 
+# genclass.dev paths that the site (worker `genclass-site`, custom domain) does not serve. Routes run in front of
+# the custom domain; unknown paths under /start* and /dashboard* are passed to the site (service binding SITE).
+routes = [
+  { pattern = "genclass.dev/dashboard*", zone_name = "genclass.dev" },
+  { pattern = "genclass.dev/start*", zone_name = "genclass.dev" },
+  { pattern = "genclass.dev/api/*", zone_name = "genclass.dev" },
+]
+
 [observability]
 enabled = false
 
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "genclass-telemetry"
+
+# Per-app tokens and dashboards (see README). D1 holds projects and aggregates; created 2026-10-10.
+[[d1_databases]]
+binding = "DB"
+database_name = "genclass-dashboard"
+database_id = "694d7d16-8a47-4810-8e0d-e9c89533460a"
+migrations_dir = "migrations"
+
+# Project creation: 10 per 60 s per client (keyed by a hash of the client IP, never stored).
+[[ratelimits]]
+name = "CREATE_LIMITER"
+namespace_id = "7301"
+simple = { limit = 10, period = 60 }
+
+# Read-only use of the site worker: unknown genclass.dev/start* and /dashboard* paths are handed to it unchanged.
+[[services]]
+binding = "SITE"
+service = "genclass-site"
+
+# Daily retention sweep of dashboard rows (03:17 UTC).
+[triggers]
+crons = ["17 3 * * *"]
+
