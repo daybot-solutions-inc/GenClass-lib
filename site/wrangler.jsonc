@@ -14,8 +14,14 @@
     "run_worker_first": true
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "genclass-waitlist", "database_id": "0d998323-fe01-49fc-a7bc-42b2ac1bdf7a" }
+    { "binding": "DB", "database_name": "genclass-waitlist", "database_id": "0d998323-fe01-49fc-a7bc-42b2ac1bdf7a" },
+    { "binding": "ADMIN_DB", "database_name": "genclass-admin", "database_id": "9e488fa6-9ac8-4ed4-95cf-3ca612ba0517" },
+    { "binding": "DASH_DB", "database_name": "genclass-dashboard", "database_id": "694d7d16-8a47-4810-8e0d-e9c89533460a" }
   ],
+  "r2_buckets": [
+    { "binding": "TELEMETRY", "bucket_name": "genclass-telemetry" }
+  ],
+  "triggers": { "crons": [] },
   "ratelimits": [
     { "name": "LIMIT", "namespace_id": "4801", "simple": { "limit": 5, "period": 60 } }
   ],

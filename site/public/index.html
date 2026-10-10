@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=2f401439">
+<link rel="stylesheet" href="/styles.css?v=7e5ceaad">
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "SoftwareApplication", "name": "GenClass Runtime", "alternateName": "@genclass/runtime", "applicationCategory": "DeveloperApplication", "applicationSubCategory": "Application reliability", "operatingSystem": "Web browser", "softwareVersion": "0.2.0", "license": "https://www.apache.org/licenses/LICENSE-2.0", "url": "https://genclass.dev/", "downloadUrl": "https://www.npmjs.com/package/@genclass/runtime", "installUrl": "https://genclass.dev/docs", "codeRepository": "https://github.com/daybot-solutions-inc/GenClass-lib", "programmingLanguage": ["TypeScript", "JavaScript"], "featureList": ["On-device AI inference with WebGPU or WASM", "Stale response and race condition prevention", "Duplicate request detection", "Failure storm detection", "Automatic React, Redux and Zustand state discovery", "Plain-English explanations, audit trail and undo"], "description": "An open-source runtime for web apps that uses a 10 MB on-device model to detect and prevent stale responses, race conditions, duplicate requests, inconsistent state and failure storms.", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Community edition, free forever"}, "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is GenClass free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. The GenClass runtime is open source under Apache-2.0 and free forever, including in commercial apps, with no usage limits. GenClass Cloud and Enterprise are optional paid products for teams that want central dashboards, alerts, rollout controls, SSO and audit logs."}}, {"@type": "Question", "name": "Does GenClass need an account or an API key?", "acceptedAnswer": {"@type": "Answer", "text": "No. One script tag or import \"@genclass/runtime/auto\" is all it takes. An account is only needed for GenClass Cloud."}}, {"@type": "Question", "name": "Where does the AI model run?", "acceptedAnswer": {"@type": "Answer", "text": "In your users' browsers, inside a Web Worker on WebGPU or WASM. Decisions never depend on a server, so there are no per-inference fees and protection keeps working offline."}}, {"@type": "Question", "name": "Will GenClass break my app?", "acceptedAnswer": {"@type": "Answer", "text": "The default mode only observes and changes nothing. Across 7 frameworks and 15 data layers, GenClass introduced no bugs in 3,510 test runs, and in a sweep of 66 real apps 396 of 396 correct runs were left unchanged."}}]}]}</script>
 <script>window.__gcRawFetch = window.fetch.bind(window);</script>
 <script src="https://cdn.jsdelivr.net/npm/@genclass/runtime@0.2.0" data-manual></script>
@@ -62,57 +62,55 @@
   </div>
   <div class="wrap">
 <div class="lab" id="lab">
-  <div class="lab-tabs" role="tablist" aria-label="Live demos">
-    <button type="button" role="tab" aria-selected="true" aria-controls="lab-search" id="tab-search">Search race</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="lab-orders" id="tab-orders">Double submit</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="lab-stock" id="tab-stock">Failing API</button>
-    <span class="lab-live"><i></i>Real GenClass 0.2.0 running in this tab</span>
+  <div class="lab-tabs">
+    <b class="lab-title">Live demo</b>
+    <span class="lab-live"><i></i><span id="gc-live">Loading GenClass 0.2.0 on your device…</span></span>
   </div>
-  <div class="lab-body">
-    <div class="lab-stage">
-      <div role="tabpanel" id="lab-search" aria-labelledby="tab-search">
-        <p class="lab-hint">Type a city. Every keystroke calls a real API, and every third response is slow, so answers arrive out of order. Both boxes get identical responses.</p>
-        <div class="lab-ctl"><label class="sr-only" for="lab-q">Search cities</label><input id="lab-q" type="text" autocomplete="off" spellcheck="false" placeholder="Type a city, e.g. paris"><button type="button" class="btn ghost" id="lab-auto">Auto-type</button></div>
-        <div class="lab-lanes">
-          <div class="lane2" id="ls-off"><div class="lane2-h"><b>Without GenClass</b><span>last response wins</span></div><div class="lane2-for">showing: <code id="ls-off-for">–</code></div><ul id="ls-off-res"></ul><div class="lane2-st" id="ls-off-st"></div></div>
-          <div class="lane2 gc" id="ls-on"><div class="lane2-h"><b>With GenClass</b><span id="ls-mode">guard</span></div><div class="lane2-for">showing: <code id="ls-on-for">–</code></div><ul id="ls-on-res"></ul><div class="lane2-st" id="ls-on-st"></div></div>
-        </div>
+
+  <div class="dup">
+    <div class="dup-head">
+      <div>
+        <h3>The double-click that emails your customer twice</h3>
+        <p>A slow "Send invoice" button with no double-click protection, the kind every app has somewhere. Same code on both sides. The right side has GenClass.</p>
       </div>
-      <div role="tabpanel" id="lab-orders" aria-labelledby="tab-orders" hidden>
-        <p class="lab-hint">A slow checkout (about 1 s) with no double-click protection, the most common way stores charge twice. Double-click "Place order" in each box.</p>
-        <div class="lab-lanes">
-          <div class="lane2" id="lo-off"><div class="lane2-h"><b>Without GenClass</b><span>no protection</span></div><button type="button" class="btn" id="lo-off-btn">Place order</button><div class="lane2-big"><b id="lo-off-n">0</b> orders created</div><ul id="lo-off-res"></ul></div>
-          <div class="lane2 gc" id="lo-on"><div class="lane2-h"><b>With GenClass</b><span>same code</span></div><button type="button" class="btn" id="lo-on-btn">Place order</button><div class="lane2-big"><b id="lo-on-n">0</b> orders created</div><ul id="lo-on-res"></ul></div>
-        </div>
-        <div class="lab-ctl"><button type="button" class="btn ghost" id="lo-dbl">Simulate a double-click on both</button><button type="button" class="btn ghost" id="lo-reset">Reset</button></div>
+      <button type="button" class="btn green dup-go" id="dup-go">Double-click both</button>
+    </div>
+    <div class="dup-lanes">
+      <div class="inv" id="inv-off">
+        <div class="inv-top"><span class="tag-off">Without GenClass</span><button type="button" class="btn ghost sm" id="inv-off-btn">Send invoice</button></div>
+        <div class="inv-box"><div class="inv-box-h">customer@acme.com · Inbox</div><ul id="inv-off-list"><li class="inv-empty">No emails yet</li></ul></div>
+        <div class="inv-verdict" id="inv-off-v"></div>
       </div>
-      <div role="tabpanel" id="lab-stock" aria-labelledby="tab-stock" hidden>
-        <p class="lab-hint">A stock widget polls an inventory API every 1.5 s. Break the API and watch what each side shows, and what GenClass reports.</p>
-        <div class="lab-ctl"><button type="button" class="btn" id="lk-toggle">Break the API</button><span class="lab-note" id="lk-api">API: healthy</span></div>
-        <div class="lab-lanes">
-          <div class="lane2" id="lk-off"><div class="lane2-h"><b>Without GenClass</b><span>polling</span></div><div class="lane2-big"><b id="lk-off-v">–</b> in stock</div><div class="lane2-st" id="lk-off-st"></div></div>
-          <div class="lane2 gc" id="lk-on"><div class="lane2-h"><b>With GenClass</b><span>polling</span></div><div class="lane2-big"><b id="lk-on-v">–</b> in stock</div><div class="lane2-st" id="lk-on-st"></div></div>
-        </div>
+      <div class="inv gc" id="inv-on">
+        <div class="inv-top"><span class="tag-on">With GenClass</span><button type="button" class="btn ghost sm" id="inv-on-btn">Send invoice</button></div>
+        <div class="inv-box"><div class="inv-box-h">customer@acme.com · Inbox</div><ul id="inv-on-list"><li class="inv-empty">No emails yet</li></ul></div>
+        <div class="inv-verdict" id="inv-on-v"></div>
       </div>
     </div>
-    <aside class="lab-insp" aria-label="GenClass inspector">
-      <div class="insp-h"><b>Inspector</b><span id="gc-state" class="pill2">loading</span></div>
-      <dl class="insp-kv">
-        <div><dt>Model</dt><dd id="gc-model">–</dd></div>
-        <div><dt>Backend</dt><dd id="gc-backend">–</dd></div>
-        <div><dt>Decisions</dt><dd id="gc-n">0</dd></div>
-        <div><dt>Actions</dt><dd id="gc-a">0</dd></div>
-      </dl>
-      <div class="insp-ctl" role="group" aria-label="GenClass mode">
-        <button type="button" data-mode="observe" aria-pressed="false">observe</button>
-        <button type="button" data-mode="guard" aria-pressed="true">guard</button>
-        <button type="button" data-mode="heal" aria-pressed="false">heal</button>
-        <select id="gc-aggr" aria-label="Aggressiveness"><option value="cautious">cautious</option><option value="balanced">balanced</option><option value="eager" selected>eager</option></select>
-      </div>
-      <ol class="insp-feed" id="gc-feed" aria-live="polite"><li class="mut">Decisions appear here as the model makes them.</li></ol>
-      <p class="insp-foot">The model runs on your device in a Web Worker. Open DevTools to see the same <code>[GenClass]</code> lines. Telemetry is off on this site.</p>
-    </aside>
+    <p class="dup-quote" id="dup-quote" hidden></p>
   </div>
+
+  <div class="radar">
+    <div class="radar-app">
+      <h3>Bugs that never throw, caught live</h3>
+      <p>A search box whose answers race each other, and a stock widget whose API you can break. No errors are thrown. Watch what GenClass reports.</p>
+      <div class="radar-ctl">
+        <label class="sr-only" for="lab-q">Search cities</label>
+        <input id="lab-q" type="text" autocomplete="off" spellcheck="false" placeholder="Type a city fast, e.g. paris">
+        <button type="button" class="btn ghost" id="lab-auto">Auto-type</button>
+      </div>
+      <div class="radar-mini">
+        <div><span class="mini-k">Search shows</span><b id="ls-on-for">–</b><span class="mini-flag" id="ls-flag"></span></div>
+        <div><span class="mini-k">Stock</span><b id="lk-on-v">–</b><button type="button" class="btn ghost sm" id="lk-toggle">Break the API</button></div>
+      </div>
+    </div>
+    <div class="radar-feed">
+      <div class="radar-feed-h"><b>GenClass</b><span><b id="gc-n">0</b> checked · <b id="gc-bugs">0</b> caught · <b id="gc-a">0</b> fixed</span></div>
+      <ol id="gc-feed" aria-live="polite"><li class="feed-empty">Type in the search box or break the API. Detections appear here with the model's confidence and evidence.</li></ol>
+    </div>
+  </div>
+
+  <p class="lab-foot">Everything above is the real <code>@genclass/runtime@0.2.0</code> from npm, deciding on your device (<span id="gc-backend">model loading</span>). The demo runs guard mode at maximum aggressiveness (<code>policy: { thresholds: { guard: 0 } }</code>); production defaults act less often and are <a href="/benchmarks">tuned for near-zero false fixes</a> (<a href="/?lab-thr=default#lab">try them here</a>). Telemetry is off on this site. Open DevTools to see the same <code>[GenClass]</code> lines.</p>
 </div>
 
   </div>
@@ -336,6 +334,6 @@ npx @genclass/runtime remove   <span class="c"># undo exactly what init added</s
   </div>
 </footer>
 <script src="/app.js?v=7a4fd5f9" defer></script>
-<script src="/live.js?v=4" defer></script>
+<script src="/live.js?v=7" defer></script>
 </body>
 </html>
