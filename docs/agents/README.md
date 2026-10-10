@@ -128,6 +128,7 @@ Each row names the doc to read, and then any further docs to check. "Ask first" 
 | Use a new runtime API from the demos (runtime shim) | [demos.md](demos.md) | [runtime/public-api-and-lifecycle.md](runtime/public-api-and-lifecycle.md) |
 | Evaluate a model in the demos (`demos/scripts/vm-eval.sh`; ask first; planned after the v2 model) | [demos.md](demos.md) | [runtime/model-host.md](runtime/model-host.md) |
 | Investigate a regression caused by holds (`e2e/eval.ts --trace`) | [demos.md](demos.md) | [runtime/state-and-adapters.md](runtime/state-and-adapters.md), [runtime/decide-policy-actions.md](runtime/decide-policy-actions.md) |
+| Re-run or extend the public compatibility matrix (`compat/`), or edit a starter template (`templates/`); VM only | [compat.md](compat.md) | `compat/README.md`, `compat/RESULTS.md` |
 
 ### Legacy GenClass, extension and benchmarks
 
@@ -166,6 +167,7 @@ Line counts were taken with `wc -l docs/agents/*.md docs/agents/runtime/*.md AGE
 | [realapps.md](realapps.md) | `realapps/**` | Real-app corpus in headless Chromium, REAL rows and labels, never-worse and determinism sweeps, eval set | ~405 |
 | [training.md](training.md) | `training/**` and the `jev_local` parts it calls | Curriculum (`rt.py` at situation-v2), training rounds, teacher/distillation/DAgger, eval, calibration, export | ~645 |
 | [demos.md](demos.md) | `demos/**` | Demo apps, mock server, chaos, Playwright eval, results (v0.1 model, situation-v1 runtime) | ~550 |
+| [compat.md](compat.md) | `compat/**`, `templates/**` | Public framework compatibility matrix (7 apps, 15 data layers, 8 scenarios, 4 modes) and starter templates | ~60 |
 | [genclass-model-lineage.md](genclass-model-lineage.md) | `jev_local/**` (except bench), Python tests, legacy `docs/*.md` | Python reference for parity; trainer; legacy server and harness | ~570 |
 | [extension-and-benchmarks.md](extension-and-benchmarks.md) | `extension/**`, `bench/**`, `jev_local/bench/**`, `results/**`, `scripts/**` | Chrome extension, benchmarks, ops scripts | ~565 |
 | [status-and-known-issues.md](status-and-known-issues.md) | OPEN_TASKS, HANDOFF, STATUS, NEEDS files, `docs/runtime/*`, git history | Status, ground rules, owners, open issues, cross-doc drift | ~640 |

@@ -49,6 +49,18 @@ telemetry omits situation text once discovered state was recorded. No situation 
 exact-text tests unchanged). Tests: 64 files, 562 passed + 14 skipped; review-perf 4/4. Troy and demo numbers:
 docs/runtime/RESULTS.md §5 and `bench/heal/README.md`.
 
+## compat (2026-10-10): framework compatibility matrix
+
+`compat/` (docs/agents/compat.md): seven apps installed with the one line from the packed tarball (React 19 + Vite 8
+with useState, TanStack Query, Zustand ×2, RTK + RTK Query, Apollo; Next.js 16 App Router with useState and SWR;
+Vue 3 + Pinia; SvelteKit 3; Angular 22 HttpClient on fetch and on XHR; Solid; plain HTML script tag with fetch and
+WebSocket + EventSource), scenarios a-h, off/observe/guard/heal, 10 seeds, headless Chromium, model 0.2.0.
+Result in `compat/RESULTS.md`: every cell never-worse, 0 bugs introduced, 0 non-passive actions on correct apps,
+boot/kill switch/devtools/CSP/SSR checks pass for every app. Found and fixed: the "Model ready" console line repeated
+after the first decision and every 5 s (`runtime.ts`, the decider `onStatus` listener; `test/status-report.test.ts`,
+3 tests). Documented: Zustand `devtools` is off in production builds (no discovery without `enabled: true`);
+the `?genclass=` URL mode limits. Tests: 65 files, 565 passed + 14 skipped; review-perf 4/4.
+
 ## heal/overnight (2026-10-09): healing benchmark fixes
 
 Local benchmark `bench/heal/` (six demos + the Troy dev copy under injected faults; `NIGHT-REPORT.md`). No
@@ -1300,3 +1312,18 @@ Deviations / not done:
   those reads do not see held writes (only the runtime's own `get()` does). Default off; per-store `hold: false`.
 - Content comparison facts (response/write value vs current value: identical / older / newer version) are not
   implemented yet; waiting for SIM's separability proposals (room is left in the fact budget).
+- **Zustand discovery in production builds (compat, 2026-10-10).** Zustand's `devtools` middleware connects only when
+  `enabled ?? import.meta.env.MODE !== "production"`, so a production build never calls the Redux DevTools `connect`
+  shim and its stores are not discovered (`compat/apps/react-vite`, layer `zustand`: 0/240 runs; with
+  `enabled: true`, layer `zustand-on`: 240/240). Nothing in the runtime can see such a store without patching Zustand;
+  documented in the README. Repro: `node compat/run.mjs --apps react-vite --layers zustand,zustand-on --seeds 1`.
+- **Query caches (TanStack Query, SWR, Apollo) are not stores (compat, 2026-10-10).** React discovery records what
+  components read from them (`useQuery` / `useSWR` snapshots as `Comp.externalN`, observed only), not the caches.
+  Design note, not built: `docs/runtime/QUERY-CACHE-ADAPTERS.md`.
+- **Guard/heal holds can change which stale answer wins on an already-buggy page (compat, 2026-10-10).** In the
+  stale-typeahead scenario, guard and heal held deliveries while the model decided, and on 4 of 10 seeds a different
+  stale answer ended on screen than without GenClass (no fix, no new bug; observe never holds). Expected from
+  holding, listed in `compat/RESULTS.md`; worth knowing when reading guard traces.
+- **SWR concurrent optimistic mutations (app/library, not GenClass).** In `compat` scenario d, SWR's
+  `rollbackOnError` with two overlapping optimistic mutations left the first toggle unchecked on screen while the
+  server had it checked in 1 of 20 runs without GenClass. Recorded in the matrix's determinism control.

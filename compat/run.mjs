@@ -6,7 +6,9 @@
 //
 //   npm run compat -- [--apps react-vite,next-app] [--layers state,swr] [--scenarios a,b] [--modes off,observe,guard,heal]
 //                     [--seeds 5] [--seed-start 1] [--workers 16] [--no-pack] [--no-install] [--no-build]
-//                     [--boot-only] [--no-control] [--out results/x.json]
+//                     [--boot-only] [--no-control] [--out results/x.json] [--report RESULTS.md]
+//   Without --out: results/<date>.json and RESULTS.md (the public page). With --out: <out>.json and <out>.md, unless
+//   --report names the page.
 //   COMPAT_MODEL_DIR   a local copy of the runtime's default model (`genclass-runtime fetch-model <dir> --variant q8
 //                      --ort wasm`), served in place of jsDelivr (default /data/compat/model/runtime-model-0.2.0)
 //
@@ -53,6 +55,8 @@ const WORKERS = Number(opt("workers", 16));
 const CONTROL = !flag("no-control") && MODES.includes("off");
 const DATE = new Date().toISOString().slice(0, 10);
 const OUT = resolve(HERE, opt("out", `results/${DATE}.json`));
+/** The public page is rewritten only by `--report RESULTS.md` or a default full run; other runs write <out>.md. */
+const REPORT = resolve(HERE, opt("report", opt("out", null) ? OUT.replace(/\.json$/, "") + ".md" : "RESULTS.md"));
 
 /** The Content-Security-Policy of the CSP boot check: what the app itself needs plus the README's additions for GenClass. */
 const CSP_BUNDLED =
@@ -180,6 +184,7 @@ function probe(cfg) {
       name: "compat-probe",
       setup(api) {
         C.rt = api.runtime;
+        C.storesApi = api.stores;
         api.on("decide", (d) =>
           ev("decide", { id: d.id, trigger: d.trigger, subject: d.subject, diagnosis: d.diagnosis, dconf: Math.round(d.diagnosisConfidence * 100) / 100, action: d.action, candidate: d.candidate, executed: d.executed, tier: d.tier, reason: d.reason }),
         );
@@ -191,14 +196,22 @@ function probe(cfg) {
   window.GENCLASS_CONFIG = conf;
 }
 
-/** Page-side: what GenClass found and did, read after the trial. */
-function readProbe() {
+/** Page-side: what GenClass found and did, read after the trial (`shapes`: also the top-level shape of each store). */
+function readProbe(shapes = false) {
   const C = window.__compat;
   const rt = C?.rt;
   const st = rt?.status;
   let stores = [];
   try {
     stores = rt ? rt.stores().map((s) => ({ name: s.name, kind: s.kind, source: s.source ?? null, fields: s.fields, version: s.version })) : [];
+    if (shapes && C.storesApi) {
+      const shape = (v, d) => {
+        if (Array.isArray(v)) return `array(${v.length})${v.length && d < 2 ? ` of ${shape(v[0], d + 1)}` : ""}`;
+        if (v && typeof v === "object") return d >= 2 ? "object" : `{${Object.keys(v).slice(0, 12).map((k) => `${k}: ${shape(v[k], d + 1)}`).join(", ")}}`;
+        return typeof v;
+      };
+      for (const s of stores) s.shape = shape(C.storesApi.get(s.name), 0).slice(0, 600);
+    }
   } catch {
     /* introspection failed: recorded as none */
   }
@@ -310,7 +323,7 @@ async function runTrial(w, app, t) {
     r.dom = await page.evaluate(domSnapshotFn);
     r.server = w.backend.snapshot();
     r.bug = sc.oracle(r.dom, r.server, { seed: t.seed });
-    Object.assign(r, await page.evaluate(readProbe));
+    Object.assign(r, await page.evaluate(readProbe, !!process.env.COMPAT_SHAPES));
     r.ok = true;
   } catch (e) {
     r.ok = false;
@@ -548,7 +561,7 @@ async function main() {
     writeFileSync(OUT, JSON.stringify(results));
   }
   writeFileSync(OUT, JSON.stringify(results));
-  const md = writeReport(results, { jsonPath: OUT, mdPath: join(HERE, "RESULTS.md") });
+  const md = writeReport(results, { jsonPath: OUT, mdPath: REPORT });
   log(`results: ${OUT}\n${md.summary}`);
 }
 

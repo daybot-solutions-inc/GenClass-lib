@@ -72,6 +72,7 @@ export const SCENARIOS = {
   d: {
     name: "optimistic update, confirmation, rollback on failure",
     kind: "legit",
+    injects: { trigger: "failure", what: "the HTTP 500" },
     what: "toggle todo 1 (server confirms) and 120 ms later todo 2 (server answers 500: must roll back)",
     async drive(page) {
       await page.click('[data-testid="toggle-1"]');
@@ -87,6 +88,7 @@ export const SCENARIOS = {
   e: {
     name: "offline, then reconnect and sync",
     kind: "legit",
+    injects: { trigger: "failure", what: "going offline" },
     what: "go offline, add two notes (queued), go online: the app syncs its outbox",
     async drive(page, { context }) {
       await context.setOffline(true);

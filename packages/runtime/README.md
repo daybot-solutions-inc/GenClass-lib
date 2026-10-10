@@ -216,7 +216,7 @@ response would overwrite newer data") need those writes: without them, GenClass 
 |---|---|---|
 | React ≥ 16.8 (development and production builds): `useState`, `useReducer`, `useSyncExternalStore`, class component state | the React DevTools global hook (installed, or chained onto the real extension's, which keeps working); each commit, only the components that re-rendered are compared, within 1 ms | **observed only**: detections, facts, triage and delivery decisions (`deliver` / `defer`); never held, dropped, reverted or rolled back |
 | Redux / Redux Toolkit (`configureStore` with `devTools` on, its default; `createStore` with the Redux DevTools compose or enhancer) | the Redux DevTools globals (forwarded to the real extension when installed) | **controllable**: GenClass's Redux enhancer, as if you had added it: delivery `discard`, late revert, `rollback`, `resync` |
-| Zustand with the `devtools` middleware (and other libraries reporting to Redux DevTools' `connect`) | the Redux DevTools `connect` API | **observed only** |
+| Zustand with the `devtools` middleware (and other libraries reporting to Redux DevTools' `connect`) | the Redux DevTools `connect` API. **Production builds:** Zustand turns `devtools` off when `import.meta.env.MODE` is `production` unless you pass `enabled: true`, so a production build is not discovered without it (or wrap the store with `genclass` from `@genclass/runtime/zustand`, which also makes it controllable) | **observed only** |
 
 - **Names.** A component's store is named after the component: `SearchPage.state0`, `SearchPage.state1` (hooks in
   order), `SearchPage.external0` (`useSyncExternalStore`), or the class state's keys (`Wizard.step`). Production
@@ -325,7 +325,9 @@ GenClass.init({ mode: "guard" });
 
 **Kill switch.** Append `?genclass=off` to the URL, or set `localStorage.genclass = "off"`, and nothing is installed.
 `?genclass=observe|guard|heal` (or the same localStorage value) overrides the mode, including the mode of the `/auto`
-entries and the script tag.
+entries and the script tag, within limits: `observe` always works; `guard` works when no mode, `guard` or `heal` is
+configured (so on the default `/auto` and script tag, but not on `/auto/observe`); `heal` works only when `heal` is
+configured, or with `debug: true` (for QA).
 
 `GenClass.init()` never throws, and a second call returns the first runtime (its options are ignored). Outside a
 browser (SSR, Node) it returns a runtime with no observers and no model. For tests and headless use, call
@@ -846,7 +848,9 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
 - **Causality** across `await` is tracked by instrumenting fetch, XHR, timers, message events and Response bodies.
   This is best effort; wrap important work in `rt.op(name, fn)` for exact attribution.
 - **Store state.** With the one line, React, Redux and Zustand (`devtools`) state is discovered; discovered React
-  and Zustand state is observed only (detections and delivery `deliver` / `defer`, no write actions). Other state
+  and Zustand state is observed only (detections and delivery `deliver` / `defer`, no write actions). Zustand's
+  `devtools` middleware is off in production builds unless you pass `enabled: true`, and then nothing is discovered
+  from it (measured in the [compatibility matrix](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md)). Other state
   (Vue / Pinia, MobX, Jotai, signals, module variables) is seen only through its effects unless you register it.
   Discovered React state has no variable names (`Comp.state0`), production builds minify component names (the store
   is then named after the element the component renders), and a component's store appears on its first state change.

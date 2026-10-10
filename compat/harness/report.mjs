@@ -2,8 +2,10 @@
 // Also runnable on its own:  node compat/harness/report.mjs compat/results/<date>.json [out.md]
 //
 // Per (app, layer, scenario, seed) every mode is paired with `off` (GenClass installed, switched off by ?genclass=off).
-//   observe ✓     every seed: final DOM and server state identical to off, no new console/page errors, model ready
-//   guard/heal ✓  every seed: no bug introduced (oracle), identical to off wherever off was correct, no new errors,
+//   observe ✓     every seed: final DOM and server state identical to a run without GenClass (off, or the control
+//                 offR when the app is racy on that seed), no new console/page errors, model ready
+//   guard/heal ✓  every seed: no bug introduced (oracle), identical to a run without GenClass wherever that was correct,
+//                 no new errors,
 //                 model ready
 // A trial that did not complete, or a mode trial whose model never became ready, makes the cell ✗ (never hidden).
 
@@ -70,10 +72,10 @@ export function computeCells(results) {
     offCell.controlDiffs = ctl.filter(([r, o]) => !same(r, o)).map(([r, o, s]) => `seed ${s}: ${domDiff(r, o).slice(0, 3).join("; ")}`);
     cells.set(`${combo}|off`, offCell);
     for (const mode of MODE_ORDER) {
-      const pairs = seeds.map((s) => [by.get(`${combo}|${mode}|${s}`), by.get(`${combo}|off|${s}`), s]).filter(([m]) => m);
+      const pairs = seeds.map((s) => [by.get(`${combo}|${mode}|${s}`), by.get(`${combo}|off|${s}`), s, by.get(`${combo}|offR|${s}`)]).filter(([m]) => m);
       if (!pairs.length) continue;
-      const c = { app, layer, scenario, mode, kind, runs: pairs.length, failed: 0, notReady: 0, bugs: 0, fixed: 0, introduced: 0, equal: 0, unequalClean: 0, newErrors: 0, detections: 0, decisions: 0, executed: 0, actions: {}, diagnoses: {}, issues: [], notes: [] };
-      for (const [m, o, s] of pairs) {
+      const c = { app, layer, scenario, mode, kind, runs: pairs.length, failed: 0, notReady: 0, bugs: 0, fixed: 0, introduced: 0, equal: 0, equalControlOnly: 0, unequalClean: 0, newErrors: 0, detections: 0, decisions: 0, executed: 0, actions: {}, diagnoses: {}, issues: [], notes: [] };
+      for (const [m, o, s, oR] of pairs) {
         if (!m.ok) {
           c.failed++;
           c.issues.push(`seed ${s}: trial failed: ${m.error}`);
@@ -106,21 +108,31 @@ export function computeCells(results) {
           c.failed++;
           continue;
         }
-        const eq = same(m, o);
+        // The baseline is both runs without GenClass on this seed (off and the control offR). When they disagree, the
+        // app itself is racy on that seed: a mode run equal to either of them is what the app does without GenClass.
+        const base = [o, oR].filter((b) => b && b.ok);
+        const eqOff = same(m, o);
+        const eq = base.some((b) => same(m, b));
         if (eq) c.equal++;
-        if (o.bug && !m.bug) {
+        if (eq && !eqOff) {
+          c.equalControlOnly++;
+          c.notes.push(`seed ${s}: differs from the first run without GenClass but equals the second (the app is racy on this seed: ${domDiff(oR, o).slice(0, 2).join("; ")})`);
+        }
+        const baseBug = base.every((b) => b.bug);
+        const baseClean = base.every((b) => !b.bug);
+        if (baseBug && !m.bug) {
           c.fixed++;
           c.notes.push(`seed ${s}: fixed (${acts.map((a) => `${a.trigger}:${a.action}`).join(", ") || "no action recorded"}); off: ${o.bug}`);
         }
-        if (!o.bug && m.bug) {
+        if (baseClean && m.bug) {
           c.introduced++;
           c.issues.push(`seed ${s}: bug introduced: ${m.bug}; actions: ${acts.map((a) => `${a.trigger}:${a.action} (${a.changed ?? ""})`).join(" / ") || "none"}`);
         }
-        if (!eq && (mode === "observe" || !o.bug)) {
+        if (!eq && (mode === "observe" || baseClean)) {
           c.unequalClean++;
-          if (!(!o.bug && m.bug)) c.issues.push(`seed ${s}: differs from off: ${domDiff(m, o).slice(0, 4).join("; ")}; actions: ${acts.map((a) => `${a.trigger}:${a.action}`).join(", ") || "none"}`);
+          if (!(baseClean && m.bug)) c.issues.push(`seed ${s}: differs from off: ${domDiff(m, o).slice(0, 4).join("; ")}; actions: ${acts.map((a) => `${a.trigger}:${a.action}`).join(", ") || "none"}`);
         }
-        if (!eq && o.bug && m.bug) c.notes.push(`seed ${s}: still buggy, but differs from off: ${m.bug}`);
+        if (!eq && !baseClean && m.bug) c.notes.push(`seed ${s}: still buggy, but differs from off: ${m.bug}`);
       }
       c.pass = c.failed === 0 && c.notReady === 0 && c.newErrors === 0 && c.introduced === 0 && c.unequalClean === 0;
       cells.set(`${combo}|${mode}`, c);
@@ -184,10 +196,25 @@ export function writeReport(results, { jsonPath, mdPath }) {
   L.push("");
   L.push("**Summary**");
   L.push("");
-  L.push(`- **${passCells} of ${modeCells.length}** (app × data layer × scenario × mode) cells are ✓: GenClass in that mode left the app as correct as it was without GenClass, on every seed. Observe mode (the default) must leave the final page and server state *identical* to the run without GenClass.`);
+  L.push(`- **${passCells} of ${modeCells.length}** (app × data layer × scenario × mode) cells are ✓: GenClass in that mode left the app as correct as it was without GenClass, on every seed. Observe mode (the default) must leave the final page and server state *identical* to a run without GenClass.${modeCells.some((c) => c.equalControlOnly) ? ` (Each seed runs twice without GenClass. Where those two runs differ, the app itself is racy on that seed, and a mode run equal to either counts as unchanged: ${modeCells.reduce((a, c) => a + c.equalControlOnly, 0)} mode runs, listed under [Determinism control](#determinism-control).)` : ""}`);
   L.push(`- **Bugs introduced: ${introduced}** across ${modeCells.reduce((a, c) => a + c.runs, 0)} mode runs. Non-passive actions on correct apps (scenarios c to h, guard + heal): **${actsOnLegit}** in ${legitActRuns} runs.`);
-  L.push(`- **Bugs fixed: ${fixed}.** The two scenarios with a latent bug (a stale typeahead, a double submit) showed it in ${offBugs} of ${offBugRuns} runs without GenClass; guard left ${bugRuns("guard").reduce((a, c) => a + c.bugs, 0)} and heal ${bugRuns("heal").reduce((a, c) => a + c.bugs, 0)} of the same runs buggy. GenClass is conservative by design: it acts only when its model is confident (see [Model quality](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#model-quality)).`);
-  L.push(`- **Observe-mode findings on correct apps: ${falseFindings}** in ${obsLegit.reduce((a, c) => a + c.runs, 0)} runs (scenarios c to h). Some of them are real failures the scenario injects on purpose (an HTTP 500, going offline); they are listed per cell in [What GenClass reported and did](#what-genclass-reported-and-did).`);
+  const fixedBy = {};
+  for (const c of modeCells) if (c.fixed) fixedBy[`${c.mode}: ${APPS[c.app]?.layers[c.layer]?.title ?? c.layer} (${APPS[c.app]?.title ?? c.app}), scenario ${c.scenario}, ${Object.keys(c.actions).join(", ") || "no action"}`] = c.fixed;
+  const fixedText = Object.entries(fixedBy).map(([k, v]) => `${v} × ${k}`).join("; ");
+  L.push(`- **Bugs fixed: ${fixed}${fixedText ? ` (${fixedText})` : ""}.** The two scenarios with a latent bug (a stale typeahead, a double submit) showed it in ${offBugs} of ${offBugRuns} runs without GenClass; guard left ${bugRuns("guard").reduce((a, c) => a + c.bugs, 0)} and heal ${bugRuns("heal").reduce((a, c) => a + c.bugs, 0)} of the same runs buggy. GenClass acts only when its model is confident, and with the shipped model that is rare: it reports far more than it fixes (see [Model quality](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#model-quality)).`);
+  // findings on correct apps: the ones about a failure the scenario injects on purpose, and the rest (false findings)
+  let injected = 0;
+  const falseBy = {};
+  for (const c of obsLegit) {
+    const inj = SCENARIOS[c.scenario].injects;
+    for (const [k, v] of Object.entries(c.diagnoses)) {
+      if (inj && k.startsWith(`${inj.trigger}:`)) injected += v;
+      else falseBy[`${k} in ${c.scenario}`] = (falseBy[`${k} in ${c.scenario}`] ?? 0) + v;
+    }
+  }
+  const falseN = Object.values(falseBy).reduce((a, v) => a + v, 0);
+  const injWhat = Object.entries(SCENARIOS).filter(([, s]) => s.injects).map(([k, s]) => `${s.injects.what} in ${k}`).join(", ");
+  L.push(`- **Observe-mode findings on correct apps: ${falseFindings}** in ${obsLegit.reduce((a, c) => a + c.runs, 0)} runs (scenarios c to h). ${injected} of them report the failure a scenario injects on purpose (${injWhat}), which the app handles correctly; **${falseN} are false findings** (${Object.entries(falseBy).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ×${v}`).join(", ") || "none"}). Findings change nothing in observe mode; they are listed per cell in [What GenClass reported and did](#what-genclass-reported-and-did).`);
   L.push("");
   L.push(`Versions: \`@genclass/runtime\` ${m.runtime} packed from this repository${m.commit ? ` (commit \`${m.commit}\`)` : ""}, model \`${m.modelName ?? "?"}\` ${m.model ?? "?"} (the default model, WASM, balanced profile), headless Chromium ${m.chromium}, Node ${m.node}. Framework versions are in the first table.`);
   L.push("");
@@ -215,7 +242,7 @@ export function writeReport(results, { jsonPath, mdPath }) {
   // ------------------------------------------------------------------------------------------------ matrix
   L.push("## Never-worse matrix");
   L.push("");
-  L.push("Each cell shows **observe · guard · heal** for one data layer and one scenario. ✓ means: on every seed, that mode left the app at least as correct as the same run without GenClass (observe: identical final DOM and server state; guard and heal: no bug introduced, and identical wherever the run without GenClass was correct), with no new console errors and the model loaded. Click a ✗ for the details.");
+  L.push("Each cell shows **observe · guard · heal** for one data layer and one scenario. ✓ means: on every seed, that mode left the app at least as correct as the same run without GenClass (observe: identical final DOM and server state; guard and heal: no bug introduced, and identical wherever the run without GenClass was correct; a seed runs twice without GenClass, and either run counts), with no new console errors and the model loaded. Click a ✗ for the details.");
   L.push("");
   L.push(`| app | data layer | ${SC.map((s) => `${s}`).join(" | ")} |`);
   L.push(`|---|---|${SC.map(() => "---").join("|")}|`);
@@ -265,7 +292,7 @@ export function writeReport(results, { jsonPath, mdPath }) {
   // ------------------------------------------------------------------------------- detections and actions
   L.push("## What GenClass reported and did");
   L.push("");
-  L.push("Per cell: user-visible bugs without GenClass (`off`, out of the seeds run) and in each mode, then observe detections / guard actions / heal actions summed over seeds. A bug is what a user would see (stale results, a duplicate on the server, a lost note); oracles read only the page and the mock server's state, never GenClass. *Fixed*: buggy without GenClass, correct in the mode (same seed). *Introduced*: correct without GenClass, buggy in the mode.");
+  L.push("Per cell: user-visible bugs without GenClass (`off`, out of the seeds run) and in each mode, then observe detections / guard actions / heal actions summed over seeds. A bug is what a user would see (stale results, a duplicate on the server, a lost note); oracles read only the page and the mock server's state, never GenClass. *Fixed*: buggy without GenClass, correct in the mode (same seed). *Introduced*: correct without GenClass, buggy in the mode. In guard and heal GenClass may hold a response for a moment while its model decides (observe never does); on a seed that was already buggy this can change which stale answer ends up on screen without fixing it (listed at the end of the page).");
   L.push("");
   L.push(`| app | data layer | ${SC.join(" | ")} |`);
   L.push(`|---|---|${SC.map(() => "---").join("|")}|`);
@@ -303,7 +330,7 @@ export function writeReport(results, { jsonPath, mdPath }) {
     const n = ctl.reduce((a, c) => a + c.controlRuns, 0);
     L.push("## Determinism control");
     L.push("");
-    L.push(`Every seed also ran twice without GenClass. ${eqc} of ${n} pairs (${pct(eqc, n)}) ended identical (final DOM and server state), so a difference between a mode and \`off\` is a real difference, not harness noise${eqc < n ? ", except in these cells" : ""}.`);
+    L.push(`Every seed also ran twice without GenClass. ${eqc} of ${n} pairs (${pct(eqc, n)}) ended identical (final DOM and server state), so a difference between a mode and \`off\` is almost always a real difference${eqc < n ? ". The exceptions below are races in the apps themselves (they also happen without GenClass); in those seeds a mode run is compared with both runs without GenClass" : ""}.`);
     L.push("");
     for (const c of ctl.filter((x) => x.controlEqual < x.controlRuns)) L.push(`- ${c.app} / ${c.layer} / ${c.scenario}: ${c.controlEqual}/${c.controlRuns} identical (${c.controlDiffs.slice(0, 2).join(" | ").slice(0, 400)})`);
     if (eqc < n) L.push("");
