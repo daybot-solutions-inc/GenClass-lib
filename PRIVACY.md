@@ -37,9 +37,9 @@ works on their own site. We do not sell the data, use it for advertising, or try
 ## Dashboards for website owners
 
 A website owner can get a private dashboard link for their site's token. Whoever holds that link can see aggregated
-diagnostics for that site (counts of decisions, detections and actions, routes, model speed, versions) and its
-recent detections, which may include the situation text described above. Data from browsers that opted out or send
-Global Privacy Control never reaches a dashboard.
+diagnostics for that site (counts of decisions, detections and actions, routes, model speed, versions) and a list
+of recent detections (time, route or function name, diagnosis, action). Dashboards do not show the situation text.
+Data from browsers that opted out or send Global Privacy Control never reaches a dashboard.
 
 ## Where it goes and how long we keep it
 
