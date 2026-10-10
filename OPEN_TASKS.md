@@ -231,7 +231,7 @@ package → demos rerun → runtime release.
 
 ## Needs the user
 
-- **SAFETY owner steps (2026-10-10):** (1) put the security contact address into `SECURITY.md` (placeholder
+- **SAFETY owner steps (2026-10-10):** (1) DONE 2026-10-10: security contact is mehar@daybot.ca in `SECURITY.md` (was placeholder
   `[SECURITY CONTACT EMAIL]`) and confirm the response targets there; enable GitHub private vulnerability reporting;
   (2) configure npm trusted publishing for `@genclass/runtime` (workflow `release.yml`, environment `npm-publish`) and
   create the GitHub environment with required reviewers (RELEASE.md "Publishing from CI with provenance"); (3) confirm
