@@ -7,7 +7,7 @@ document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click"
   setTimeout(() => { b.classList.remove("done"); k.textContent = "Copy"; }, 1600);
 }));
 
-const tabs = [...document.querySelectorAll('[role="tab"]')];
+const tabs = [...document.querySelectorAll('.code [role="tab"]')];
 function select(i, focus) {
   tabs.forEach((b, j) => { b.setAttribute("aria-selected", i === j); b.tabIndex = i === j ? 0 : -1; $(b.getAttribute("aria-controls")).hidden = i !== j; });
   if (focus) tabs[i].focus();

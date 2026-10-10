@@ -1,0 +1,53 @@
+<div class="lab" id="lab">
+  <div class="lab-tabs" role="tablist" aria-label="Live demos">
+    <button type="button" role="tab" aria-selected="true" aria-controls="lab-search" id="tab-search">Search race</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="lab-orders" id="tab-orders">Double submit</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="lab-stock" id="tab-stock">Failing API</button>
+    <span class="lab-live"><i></i>Real GenClass 0.2.0 running in this tab</span>
+  </div>
+  <div class="lab-body">
+    <div class="lab-stage">
+      <div role="tabpanel" id="lab-search" aria-labelledby="tab-search">
+        <p class="lab-hint">Type a city. Every keystroke calls a real API, and every third response is slow, so answers arrive out of order. Both boxes get identical responses.</p>
+        <div class="lab-ctl"><label class="sr-only" for="lab-q">Search cities</label><input id="lab-q" type="text" autocomplete="off" spellcheck="false" placeholder="Type a city, e.g. paris"><button type="button" class="btn ghost" id="lab-auto">Auto-type</button></div>
+        <div class="lab-lanes">
+          <div class="lane2" id="ls-off"><div class="lane2-h"><b>Without GenClass</b><span>last response wins</span></div><div class="lane2-for">showing: <code id="ls-off-for">–</code></div><ul id="ls-off-res"></ul><div class="lane2-st" id="ls-off-st"></div></div>
+          <div class="lane2 gc" id="ls-on"><div class="lane2-h"><b>With GenClass</b><span id="ls-mode">guard</span></div><div class="lane2-for">showing: <code id="ls-on-for">–</code></div><ul id="ls-on-res"></ul><div class="lane2-st" id="ls-on-st"></div></div>
+        </div>
+      </div>
+      <div role="tabpanel" id="lab-orders" aria-labelledby="tab-orders" hidden>
+        <p class="lab-hint">A slow checkout (about 1 s) with no double-click protection, the most common way stores charge twice. Double-click "Place order" in each box.</p>
+        <div class="lab-lanes">
+          <div class="lane2" id="lo-off"><div class="lane2-h"><b>Without GenClass</b><span>no protection</span></div><button type="button" class="btn" id="lo-off-btn">Place order</button><div class="lane2-big"><b id="lo-off-n">0</b> orders created</div><ul id="lo-off-res"></ul></div>
+          <div class="lane2 gc" id="lo-on"><div class="lane2-h"><b>With GenClass</b><span>same code</span></div><button type="button" class="btn" id="lo-on-btn">Place order</button><div class="lane2-big"><b id="lo-on-n">0</b> orders created</div><ul id="lo-on-res"></ul></div>
+        </div>
+        <div class="lab-ctl"><button type="button" class="btn ghost" id="lo-dbl">Simulate a double-click on both</button><button type="button" class="btn ghost" id="lo-reset">Reset</button></div>
+      </div>
+      <div role="tabpanel" id="lab-stock" aria-labelledby="tab-stock" hidden>
+        <p class="lab-hint">A stock widget polls an inventory API every 1.5 s. Break the API and watch what each side shows, and what GenClass reports.</p>
+        <div class="lab-ctl"><button type="button" class="btn" id="lk-toggle">Break the API</button><span class="lab-note" id="lk-api">API: healthy</span></div>
+        <div class="lab-lanes">
+          <div class="lane2" id="lk-off"><div class="lane2-h"><b>Without GenClass</b><span>polling</span></div><div class="lane2-big"><b id="lk-off-v">–</b> in stock</div><div class="lane2-st" id="lk-off-st"></div></div>
+          <div class="lane2 gc" id="lk-on"><div class="lane2-h"><b>With GenClass</b><span>polling</span></div><div class="lane2-big"><b id="lk-on-v">–</b> in stock</div><div class="lane2-st" id="lk-on-st"></div></div>
+        </div>
+      </div>
+    </div>
+    <aside class="lab-insp" aria-label="GenClass inspector">
+      <div class="insp-h"><b>Inspector</b><span id="gc-state" class="pill2">loading</span></div>
+      <dl class="insp-kv">
+        <div><dt>Model</dt><dd id="gc-model">–</dd></div>
+        <div><dt>Backend</dt><dd id="gc-backend">–</dd></div>
+        <div><dt>Decisions</dt><dd id="gc-n">0</dd></div>
+        <div><dt>Actions</dt><dd id="gc-a">0</dd></div>
+      </dl>
+      <div class="insp-ctl" role="group" aria-label="GenClass mode">
+        <button type="button" data-mode="observe" aria-pressed="false">observe</button>
+        <button type="button" data-mode="guard" aria-pressed="true">guard</button>
+        <button type="button" data-mode="heal" aria-pressed="false">heal</button>
+        <select id="gc-aggr" aria-label="Aggressiveness"><option value="cautious">cautious</option><option value="balanced">balanced</option><option value="eager" selected>eager</option></select>
+      </div>
+      <ol class="insp-feed" id="gc-feed" aria-live="polite"><li class="mut">Decisions appear here as the model makes them.</li></ol>
+      <p class="insp-foot">The model runs on your device in a Web Worker. Open DevTools to see the same <code>[GenClass]</code> lines. Telemetry is off on this site.</p>
+    </aside>
+  </div>
+</div>

@@ -106,11 +106,11 @@ def page(meta, body):
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css?v={CSSV}">
 <script type="application/ld+json">{json.dumps({"@context": "https://schema.org", "@graph": graph}, ensure_ascii=False)}</script>
-</head>
+{meta.get("head_extra", "")}</head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 '''
-    return head + nav(meta.get("nav")) + f'\n<main id="main">\n{body}\n</main>\n' + FOOTER + f'\n<script src="/app.js?v={JSV}" defer></script>\n</body>\n</html>\n'
+    return head + nav(meta.get("nav")) + f'\n<main id="main">\n{body}\n</main>\n' + FOOTER + f'\n<script src="/app.js?v={JSV}" defer></script>\n{meta.get("body_extra", "")}</body>\n</html>\n'
 
 # ---------- shared blocks ----------
 def bars():
@@ -234,7 +234,7 @@ def waitlist(plan, heading, text):
 def blocks(s):
     s = s.replace("<!--@dashboard-->", dashboard())
     s = re.sub(r'<!--@waitlist (\w+) "([^"]*)" "([^"]*)"-->', lambda m: waitlist(m.group(1), m.group(2), m.group(3)), s)
-    for name in ("trace", "demo", "figs", "data", "status", "how"):
+    for name in ("trace", "demo", "figs", "data", "status", "how", "lab"):
         p = SRC / "partials" / f"{name}.html"
         if p.exists(): s = s.replace(f"<!--@{name}-->", p.read_text())
     return s

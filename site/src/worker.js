@@ -8,8 +8,8 @@ const SECURITY = {
   "permissions-policy": "camera=(), microphone=(), geolocation=(), interest-cohort=()",
   "x-frame-options": "DENY",
   "content-security-policy":
-    "default-src 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-    "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; " +
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://static.cloudflareinsights.com https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+    "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://cloudflareinsights.com https://cdn.jsdelivr.net; " +
     "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
 };
 
@@ -58,6 +58,36 @@ async function waitlist(request, env) {
   return reply(200, { ok: true });
 }
 
+
+// ---------- demo backend for the live GenClass lab on the home page ----------
+const CITIES = ["San Francisco","San Diego","San Jose","San Antonio","Santa Fe","Santiago","Sapporo","Salvador","Paris","Panama City",
+  "Palermo","Perth","Porto","Prague","Lisbon","London","Los Angeles","Lima","Lagos","Toronto","Tokyo","Tallinn","Taipei","Berlin",
+  "Bergen","Bern","Boston","Bogota","Mumbai","Munich","Montreal","Madrid","Melbourne","Seoul","Seattle","Singapore","Stockholm",
+  "Sydney","Vancouver","Vienna","Venice","Waterloo"];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const ms = (url, d) => Math.max(0, Math.min(3000, Number(url.searchParams.get("ms")) || d));
+const demoJson = (body, status = 200) =>
+  Response.json(body, { status, headers: { "cache-control": "no-store", "x-robots-tag": "noindex" } });
+
+async function demoApi(request, url) {
+  const path = url.pathname.slice("/demo-api".length);
+  if (path === "/search" && request.method === "GET") {
+    const q = (url.searchParams.get("q") || "").trim().toLowerCase().slice(0, 40);
+    await sleep(ms(url, 200));
+    return demoJson({ q, results: q ? CITIES.filter((c) => c.toLowerCase().startsWith(q)).slice(0, 5) : [] });
+  }
+  if (path === "/orders" && request.method === "POST") {
+    await sleep(ms(url, 900));
+    return demoJson({ orderId: "ord_" + crypto.randomUUID().slice(0, 8), placedAt: Date.now() }, 201);
+  }
+  if (path === "/stock" && request.method === "GET") {
+    await sleep(ms(url, 120));
+    if (url.searchParams.get("fail") === "1") return demoJson({ error: "inventory service unavailable" }, 503);
+    return demoJson({ sku: "esp32-devkit", stock: 40 + Math.floor(Math.random() * 8), at: Date.now() });
+  }
+  return demoJson({ error: "not found" }, 404);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -70,6 +100,7 @@ export default {
       return waitlist(request, env);
     }
     if (url.pathname.startsWith("/forms/")) return new Response("Not found", { status: 404 });
+    if (url.pathname.startsWith("/demo-api/")) return demoApi(request, url);
 
     const res = await env.ASSETS.fetch(request);
     const out = new Response(res.body, res);
