@@ -95,3 +95,18 @@ and `--browse <ms>` (reading time after each page load, default 2500: decisions 
 ## Results
 
 See [../../NIGHT-REPORT.md](../../NIGHT-REPORT.md) for the baseline and final tables and what changed.
+
+## 3. Automatic state discovery (2026-10-10, branch `feat/one-line`)
+
+- `troy/troy-bench.mjs` records the discovered stores and the React commit-walk samples per trial (`gc.stores`,
+  `gc.walk`) and heap / long tasks (`perf`), and has the scenario `order-poll-reorder-2` (a second device removes a
+  line; the guest removes the other while the next poll is answered 3 s late). `--config '{"autoState":false}'` is
+  the control on the same build. `troy/summarize-oneline.mjs <results.json>...` prints the table.
+- `troy/overhead.mjs` measures first-load JS, heap after GC, long tasks and walk cost with 4× CPU throttling for
+  `off` (`?genclass=off`), `noauto` (`autoState: false`) and `on`.
+- Demos without hand-registered stores: `GENCLASS_DISCOVER=1 DEMOS_OUT_DIR=bench/heal/.dist/discover npm run build`
+  in `demos/` (aliases in `demos/vite.config.ts` to `discover/*.ts`; the app code is untouched), then
+  `demos/e2e/eval.ts --dist ../bench/heal/.dist/discover/ ...`; `discover/summarize.mjs` compares runs.
+- Results: `results/troy/oneline-*.json`, `reorder2-*.json`, `overhead-*.json`, `results/demos/results-discover-*.json`;
+  summary in `docs/runtime/RESULTS.md` §5.
+

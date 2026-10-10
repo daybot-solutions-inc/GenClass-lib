@@ -124,5 +124,7 @@ export function collectStats(s: GcSession): GcStats {
     interventions: s.actions.map((a) => ({ action: a.action, tier: a.tier, trigger: a.trigger, changed: a.changed, at: a.at })),
     decisionLatencyMs: s.decisions.map((d) => Math.round(d.latencyMs * 10) / 10),
     diagnoses,
+    // registered and automatically discovered stores (bench/heal: discovery vs manual registration)
+    stores: typeof (s.gc as { stores?: unknown }).stores === "function" ? s.gc.stores().map((x) => `${x.name}:${x.kind}${x.source ? "/" + x.source : ""}:${x.fields}f:${x.version}w`) : [],
   };
 }

@@ -1,0 +1,5746 @@
+{
+ "generatedAt": "2026-10-10T03:14:48.055Z",
+ "runtime": "real",
+ "model": {
+  "name": "genclass-runtime-r17",
+  "note": "Model: genclass-runtime-r17 on wasm q8, cross-origin isolated (WASM threads available).",
+  "status": "ready",
+  "baseUrl": "genclass-model/",
+  "card": {
+   "name": "genclass-runtime-r17",
+   "version": "2.0.0-rc4t",
+   "variants": {
+    "q8": {
+     "file": "genclass-runtime-r17-q8.onnx",
+     "bytes": 10160186,
+     "sha256": "2699ce5bb4d1d83a2ff0c17239f19f0237eb37b46085ce6fc7c996c6fd018c16",
+     "provider": "wasm"
+    }
+   },
+   "source": "../.cache-model/runtime-model-0.2.0"
+  },
+  "tag": "discover-manual"
+ },
+ "runtimeBuild": {
+  "version": "0.1.0-beta.4",
+  "dist": "c21a94ca2f92",
+  "git": "60d465a"
+ },
+ "driver": "playwright (real keyboard and mouse input), headless Chromium",
+ "policy": "runtime defaults",
+ "trials": {
+  "chaos": 5,
+  "clean": 3
+ },
+ "modes": [
+  "off",
+  "observe",
+  "guard"
+ ],
+ "seeds": {
+  "chaos": "1000..1004",
+  "clean": "1500..1502"
+ },
+ "definitions": {
+  "bugRate": "share of chaos trials where the demo's oracle found a bug",
+  "falseInterventions": "non-passive actions GenClass took on clean runs (no chaos, calm user, correct app behaviour); each one is a false positive",
+  "fixedIntroduced": "paired with Off on the same chaos seed: bugs that disappeared / appeared",
+  "latency": "the demo's user-visible latency metric (see README), median over clean runs",
+  "decisionLatency": "time the runtime waited for a model decision"
+ },
+ "demos": {
+  "checkout": {
+   "off": {
+    "mode": "off",
+    "chaos": {
+     "n": 5,
+     "k": 4,
+     "rate": 0.8,
+     "lo": 0.3755282641185388,
+     "hi": 0.9637768390302125
+    },
+    "clean": {
+     "n": 3,
+     "k": 0,
+     "rate": 0,
+     "lo": 0,
+     "hi": 0.5615060804490177
+    },
+    "falseInterventions": 0,
+    "falseFindings": 0,
+    "cleanTrialsWithFinding": 0,
+    "findingsPerChaosTrial": 0,
+    "cleanTrialsWithIntervention": 0,
+    "cleanTrials": 3,
+    "interventionsPerChaosTrial": 0,
+    "decisionsPerTrial": 0,
+    "detectionsPerTrial": 0,
+    "latencyMs": 191,
+    "latencyChaosMs": 512.5,
+    "decisionP50": null,
+    "decisionP95": null,
+    "fixed": 0,
+    "introduced": 0,
+    "paired": 0,
+    "notExecuted": {},
+    "actions": {},
+    "errors": 0,
+    "runtime": "real",
+    "modelStatus": "off",
+    "metrics": {
+     "chaos.ordersCreated": 1.2,
+     "clean.ordersCreated": 1,
+     "chaos.duplicates": 0.4,
+     "clean.duplicates": 0,
+     "chaos.wrongCharges": 1.2,
+     "clean.wrongCharges": 0,
+     "chaos.driftMs": 2464.2,
+     "clean.driftMs": 0,
+     "chaos.maxDriftMs": 2464.2,
+     "clean.maxDriftMs": 0,
+     "chaos.errorsShown": 0,
+     "clean.errorsShown": 0,
+     "chaos.latencyMs": 1245,
+     "clean.latencyMs": 194.66666666666666,
+     "chaos.untilTimeouts": 2,
+     "clean.untilTimeouts": null
+    }
+   },
+   "observe": {
+    "mode": "observe",
+    "chaos": {
+     "n": 5,
+     "k": 4,
+     "rate": 0.8,
+     "lo": 0.3755282641185388,
+     "hi": 0.9637768390302125
+    },
+    "clean": {
+     "n": 3,
+     "k": 0,
+     "rate": 0,
+     "lo": 0,
+     "hi": 0.5615060804490177
+    },
+    "falseInterventions": 0,
+    "falseFindings": 0,
+    "cleanTrialsWithFinding": 0,
+    "findingsPerChaosTrial": 1.8,
+    "cleanTrialsWithIntervention": 0,
+    "cleanTrials": 3,
+    "interventionsPerChaosTrial": 0,
+    "decisionsPerTrial": 2.875,
+    "detectionsPerTrial": 1.125,
+    "latencyMs": 196,
+    "latencyChaosMs": 411,
+    "decisionP50": 142.4,
+    "decisionP95": 240.11999999999998,
+    "fixed": 0,
+    "introduced": 0,
+    "paired": 5,
+    "notExecuted": {
+     "observe mode never changes execution": 7
+    },
+    "actions": {},
+    "errors": 0,
+    "runtime": "real",
+    "modelStatus": "ready",
+    "metrics": {
+     "chaos.ordersCreated": 1.2,
+     "clean.ordersCreated": 1,
+     "chaos.duplicates": 0.4,
+     "clean.duplicates": 0,
+     "chaos.wrongCharges": 1.2,
+     "clean.wrongCharges": 0,
+     "chaos.driftMs": 2421.8,
+     "clean.driftMs": 0,
+     "chaos.maxDriftMs": 2421.8,
+     "clean.maxDriftMs": 0,
+     "chaos.errorsShown": 0,
+     "clean.errorsShown": 0,
+     "chaos.latencyMs": 1191.5,
+     "clean.latencyMs": 200.66666666666666,
+     "chaos.untilTimeouts": 2,
+     "clean.untilTimeouts": null
+    }
+   },
+   "guard": {
+    "mode": "guard",
+    "chaos": {
+     "n": 5,
+     "k": 4,
+     "rate": 0.8,
+     "lo": 0.3755282641185388,
+     "hi": 0.9637768390302125
+    },
+    "clean": {
+     "n": 3,
+     "k": 0,
+     "rate": 0,
+     "lo": 0,
+     "hi": 0.5615060804490177
+    },
+    "falseInterventions": 0,
+    "falseFindings": 0,
+    "cleanTrialsWithFinding": 0,
+    "findingsPerChaosTrial": 2,
+    "cleanTrialsWithIntervention": 0,
+    "cleanTrials": 3,
+    "interventionsPerChaosTrial": 0,
+    "decisionsPerTrial": 2.5,
+    "detectionsPerTrial": 1.25,
+    "latencyMs": 208,
+    "latencyChaosMs": 514.5,
+    "decisionP50": 139.25,
+    "decisionP95": 239.34,
+    "fixed": 0,
+    "introduced": 0,
+    "paired": 5,
+    "notExecuted": {
+     "guard mode does not allow heal-tier actions": 1,
+     "gain # of coalesce over send is not above the guard margin #": 3,
+     "gain # of discard over apply is not above the guard margin #": 2
+    },
+    "actions": {},
+    "errors": 0,
+    "runtime": "real",
+    "modelStatus": "ready",
+    "metrics": {
+     "chaos.ordersCreated": 1.2,
+     "clean.ordersCreated": 1,
+     "chaos.duplicates": 0.4,
+     "clean.duplicates": 0,
+     "chaos.wrongCharges": 1.2,
+     "clean.wrongCharges": 0,
+     "chaos.driftMs": 2458.6,
+     "clean.driftMs": 0,
+     "chaos.maxDriftMs": 2458.6,
+     "clean.maxDriftMs": 0,
+     "chaos.errorsShown": 0,
+     "clean.errorsShown": 0,
+     "chaos.latencyMs": 1241.75,
+     "clean.latencyMs": 206,
+     "chaos.untilTimeouts": 2,
+     "clean.untilTimeouts": null
+    }
+   }
+  },
+  "board": {
+   "off": {
+    "mode": "off",
+    "chaos": {
+     "n": 5,
+     "k": 4,
+     "rate": 0.8,
+     "lo": 0.3755282641185388,
+     "hi": 0.9637768390302125
+    },
+    "clean": {
+     "n": 3,
+     "k": 0,
+     "rate": 0,
+     "lo": 0,
+     "hi": 0.5615060804490177
+    },
+    "falseInterventions": 0,
+    "falseFindings": 0,
+    "cleanTrialsWithFinding": 0,
+    "findingsPerChaosTrial": 0,
+    "cleanTrialsWithIntervention": 0,
+    "cleanTrials": 3,
+    "interventionsPerChaosTrial": 0,
+    "decisionsPerTrial": 0,
+    "detectionsPerTrial": 0,
+    "latencyMs": 47,
+    "latencyChaosMs": 417,
+    "decisionP50": null,
+    "decisionP95": null,
+    "fixed": 0,
+    "introduced": 0,
+    "paired": 0,
+    "notExecuted": {},
+    "actions": {},
+    "errors": 0,
+    "runtime": "real",
+    "modelStatus": "off",
+    "metrics": {
+     "chaos.finalMismatches": 0.6,
+     "clean.finalMismatches": 0,
+     "chaos.divergedMs": 4562.2,
+     "clean.divergedMs": 0,
+     "chaos.maxDivergedMs": 4222,
+     "clean.maxDivergedMs": 0,
+     "chaos.jumpBacks": 4.6,
+     "clean.jumpBacks": 0.3333333333333333,
+     "chaos.userMoves": 11.2,
+     "clean.userMoves": 5.666666666666667,
+     "chaos.teammateMoves": 5,
+     "clean.teammateMoves": 0.3333333333333333,
+     "chaos.latencyMs": 417,
+     "clean.latencyMs": 526.3333333333334
+    }
+   },
+   "observe": {
+    "mode": "observe",
+    "chaos": {
+     "n": 5,
+     "k": 3,
+     "rate": 0.6,
+     "lo": 0.23071993220883708,
+     "hi": 0.8823817688407467
+    },
+    "clean": {
+     "n": 3,
+     "k": 0,
+     "rate": 0,
+     "lo": 0,
+     "hi": 0.5615060804490177
+    },
+    "falseInterventions": 0,
+    "falseFindings": 0,
+    "cleanTrialsWithFinding": 0,
+    "findingsPerChaosTrial": 2.8,
+    "cleanTrialsWithIntervention": 0,
+    "cleanTrials": 3,
+    "interventionsPerChaosTrial": 0,
+    "decisionsPerTrial": 9.5,
+    "detectionsPerTrial": 1.75,
+    "latencyMs": 47,
+    "latencyChaosMs": 498,
+    "decisionP50": 160.7,
+    "decisionP95": 330.825,
+    "fixed": 1,
+    "introduced": 0,
+    "paired": 5,
+    "notExecuted": {
+     "observe mode never changes execution": 23
+    },
+    "actions": {},
+    "errors": 0,
+    "runtime": "real",
+    "modelStatus": "ready",
+    "metrics": {
+     "chaos.finalMismatches": 0.6,
+     "clean.finalMismatches": 0,
+     "chaos.divergedMs": 4706.6,
+     "clean.divergedMs": 0,
+     "chaos.maxDivergedMs": 4396.6,
+     "clean.maxDivergedMs": 0,
+     "chaos.jumpBacks": 4.4,
+     "clean.jumpBacks": 0,
+     "chaos.userMoves": 11.2,
+     "clean.userMoves": 5.666666666666667,
+     "chaos.teammateMoves": 5,
+     "clean.teammateMoves": 0.3333333333333333,
+     "chaos.latencyMs": 498,
+     "clean.latencyMs": 348.3333333333333
+    }
+   },
+   "guard": {
+    "mode": "guard",
+    "chaos": {
+     "n": 5,
+     "k": 4,
+     "rate": 0.8,
+     "lo": 0.3755282641185388,
+     "hi": 0.9637768390302125
+    },
+    "clean": {
+     "n": 3,
+     "k": 0,
+     "rate": 0,
+     "lo": 0,
+     "hi": 0.5615060804490177
+    },
+    "falseInterventions": 0,
+    "falseFindings": 0,
+    "cleanTrialsWithFinding": 0,
+    "findingsPerChaosTrial": 2.8,
+    "cleanTrialsWithIntervention": 0,
+    "cleanTrials": 3,
+    "interventionsPerChaosTrial": 0,
+    "decisionsPerTrial": 9.125,
+    "detectionsPerTrial": 1.75,
+    "latencyMs": 33,
+    "latencyChaosMs": 37,
+    "decisionP50": 164.4,
+    "decisionP95": 341.6999999999999,
+    "fixed": 0,
+    "introduced": 0,
+    "paired": 5,
+    "notExecuted": {
+     "gain # of discard over apply is not above the guard margin #": 15,
+     "gain # of coalesce over send is not above the guard margin #": 2,
+     "gain # of discard over deliver is not above the guard margin #": 6
+    },
+    "actions": {},
+    "errors": 0,
+    "runtime": "real",
+    "modelStatus": "ready",
+    "metrics": {
+     "chaos.finalMismatches": 1,
+     "clean.finalMismatches": 0,
+     "chaos.divergedMs": 6427.6,
+     "clean.divergedMs": 0,
+     "chaos.maxDivergedMs": 6148.2,
+     "clean.maxDivergedMs": 0,
+     "chaos.jumpBacks": 4.6,
+     "clean.jumpBacks": 0.6666666666666666,
+     "chaos.userMoves": 11.2,
+     "clean.userMoves": 5.666666666666667,
+     "chaos.teammateMoves": 5,
+     "clean.teammateMoves": 0.3333333333333333,
+     "chaos.latencyMs": 37,
+     "clean.latencyMs": 25.666666666666668
+    }
+   }
+  },
+  "editor": {
+   "off": {
+    "mode": "off",
+    "chaos": {
+     "n": 5,
+     "k": 5,
+     "rate": 1,
+     "lo": 0.5655085052479191,
+     "hi": 1
+    },
+    "clean": {
+     "n": 3,
+     "k": 0,
+     "rate": 0,
+     "lo": 0,
+     "hi": 0.5615060804490177
+    },
+    "falseInterventions": 0,
+    "falseFindings": 0,
+    "cleanTrialsWithFinding": 0,
+    "findingsPerChaosTrial": 0,
+    "cleanTrialsWithIntervention": 0,
+    "cleanTrials": 3,
+    "interventionsPerChaosTrial": 0,
+    "decisionsPerTrial": 0,
+    "detectionsPerTrial": 0,
+    "latencyMs": 776,
+    "latencyChaosMs": 2456.5,
+    "decisionP50": null,
+    "decisionP95": null,
+    "fixed": 0,
+    "introduced": 0,
+    "paired": 0,
+    "notExecuted": {},
+    "actions": {},
+    "errors": 0,
+    "runtime": "real",
+    "modelStatus": "off",
+    "metrics": {
+     "chaos.lostLocal": 1,
+     "clean.lostLocal": 0,
+     "chaos.lostServer": 0.2,
+     "clean.lostServer": 0,
+     "chaos.finalLie": 0.2,
+     "clean.finalLie": 0,
+     "chaos.lieMs": 12168.8,
+     "clean.lieMs": 0,
+     "chaos.maxLieMs": 11738.2,
+     "clean.maxLieMs": 0,
+     "chaos.reverts": 1.6,
+     "clean.reverts": 0,
+     "chaos.saves": 7.2,
+     "clean.saves": 13.666666666666666,
+     "chaos.latencyMs": 2714.75,
+     "clean.latencyMs": 783.6666666666666
+    }
+   },
+   "observe": {
+    "mode": "observe",
+    "chaos": {
+     "n": 5,
+     "k": 5,
+     "rate": 1,
+     "lo": 0.5655085052479191,
+     "hi": 1
+    },
+    "clean": {
+     "n": 3,
+     "k": 0,
+     "rate": 0,
+     "lo": 0,
+     "hi": 0.5615060804490177
+    },
+    "falseInterventions": 0,
+    "falseFindings": 0,
+    "cleanTrialsWithFinding": 0,
+    "findingsPerChaosTrial": 4.2,
+    "cleanTrialsWithIntervention": 0,
+    "cleanTrials": 3,
+    "interventionsPerChaosTrial": 0,
+    "decisionsPerTrial": 6.25,
+    "detectionsPerTrial": 2.625,
+    "latencyMs": 793,
+    "latencyChaosMs": 2456.5,
+    "decisionP50": 148.10000000000002,
+    "decisionP95": 252.04499999999996,
+    "fixed": 0,
+    "introduced": 0,
+    "paired": 5,
+    "notExecuted": {
+     "observe mode never changes execution": 26
+    },
+    "actions": {},
+    "errors": 0,
+    "runtime": "real",
+    "modelStatus": "ready",
+    "metrics": {
+     "chaos.lostLocal": 1,
+     "clean.lostLocal": 0,
+     "chaos.lostServer": 0.2,
+     "clean.lostServer": 0,
+     "chaos.finalLie": 0.2,
+     "clean.finalLie": 0,
+     "chaos.lieMs": 12230.8,
+     "clean.lieMs": 0,
+     "chaos.maxLieMs": 11745.4,
+     "clean.maxLieMs": 0,
+     "chaos.reverts": 1.6,
+     "clean.reverts": 0,
+     "chaos.saves": 7.2,
+     "clean.saves": 13.666666666666666,
+     "chaos.latencyMs": 2710,
+     "clean.latencyMs": 792.6666666666666
+    }
+   },
+   "guard": {
+    "mode": "guard",
+    "chaos": {
+     "n": 5,
+     "k": 5,
+     "rate": 1,
+     "lo": 0.5655085052479191,
+     "hi": 1
+    },
+    "clean": {
+     "n": 3,
+     "k": 0,
+     "rate": 0,
+     "lo": 0,
+     "hi": 0.5615060804490177
+    },
+    "falseInterventions": 0,
+    "falseFindings": 0,
+    "cleanTrialsWithFinding": 0,
+    "findingsPerChaosTrial": 4,
+    "cleanTrialsWithIntervention": 0,
+    "cleanTrials": 3,
+    "interventionsPerChaosTrial": 0,
+    "decisionsPerTrial": 6.625,
+    "detectionsPerTrial": 2.5,
+    "latencyMs": 790,
+    "latencyChaosMs": 2179.5,
+    "decisionP50": 150.4,
+    "decisionP95": 286.03999999999996,
+    "fixed": 0,
+    "introduced": 0,
+    "paired": 5,
+    "notExecuted": {
+     "guard mode does not allow heal-tier actions": 1,
+     "gain # of discard over deliver is not above the guard margin #": 16,
+     "gain # of discard over apply is not above the guard margin #": 4,
+     "gain # of coalesce over send is not above the guard margin #": 5
+    },
+    "actions": {},
+    "errors": 0,
+    "runtime": "real",
+    "modelStatus": "ready",
+    "metrics": {
+     "chaos.lostLocal": 1,
+     "clean.lostLocal": 0,
+     "chaos.lostServer": 0.2,
+     "clean.lostServer": 0,
+     "chaos.finalLie": 0.2,
+     "clean.finalLie": 0,
+     "chaos.lieMs": 12133.6,
+     "clean.lieMs": 0,
+     "chaos.maxLieMs": 11728,
+     "clean.maxLieMs": 0,
+     "chaos.reverts": 1.6,
+     "clean.reverts": 0,
+     "chaos.saves": 7.2,
+     "clean.saves": 13.666666666666666,
+     "chaos.latencyMs": 2503.75,
+     "clean.latencyMs": 797
+    }
+   }
+  }
+ },
+ "raw": [
+  {
+   "demo": "checkout",
+   "mode": "off",
+   "kind": "clean",
+   "seed": 1500,
+   "label": "2 products, +1 cap, −1 cap, one click",
+   "durationMs": 8192,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "cart:atom:3f:5w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": 191
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "observe",
+   "kind": "clean",
+   "seed": 1500,
+   "label": "2 products, +1 cap, −1 cap, one click",
+   "durationMs": 8212,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 395,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "cart:atom:3f:5w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": 226
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "guard",
+   "kind": "clean",
+   "seed": 1500,
+   "label": "2 products, +1 cap, −1 cap, one click",
+   "durationMs": 8215,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 301,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "cart:atom:3f:5w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": 216
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1000,
+   "label": "7 moves, 4 quick re-moves, 2 conflicts",
+   "durationMs": 12419,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 2,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:95f:30w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "board disagreed with the server for 4.1 s"
+   ],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601662359.5051,
+    "tEnd": 1791601674778.215,
+    "samples": [
+     {
+      "t": 1791601662386.8,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 4550,
+    "maxDivergedMs": 4100,
+    "jumpBacks": 4,
+    "userMoves": 8,
+    "teammateMoves": 4,
+    "latencyMs": 813
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1000,
+   "label": "4 products, +1 mug, +2 tee, one click",
+   "durationMs": 46262,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 2,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "cart:atom:3f:0w",
+     "orders:atom:3f:0w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 0,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": null,
+    "untilTimeouts": 2
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1000,
+   "label": "4 products, +1 mug, +2 tee, one click",
+   "durationMs": 46255,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 600,
+    "decisions": 1,
+    "detections": 1,
+    "findings": [
+     "failure:transient"
+    ],
+    "triggers": {
+     "failure": 1
+    },
+    "gates": [
+     "failure:transient:-:-/-:no"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     91
+    ],
+    "diagnoses": {
+     "transient": 1
+    },
+    "stores": [
+     "cart:atom:3f:0w",
+     "orders:atom:3f:0w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 0,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": null,
+    "untilTimeouts": 2
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1000,
+   "label": "4 products, +1 mug, +2 tee, one click",
+   "durationMs": 46262,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 605,
+    "decisions": 1,
+    "detections": 1,
+    "findings": [
+     "failure:transient"
+    ],
+    "triggers": {
+     "failure": 1
+    },
+    "gates": [
+     "failure:transient:-:-/-:no"
+    ],
+    "notExecuted": {
+     "guard mode does not allow heal-tier actions": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     94.5
+    ],
+    "diagnoses": {
+     "transient": 1
+    },
+    "stores": [
+     "cart:atom:3f:0w",
+     "orders:atom:3f:0w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 0,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": null,
+    "untilTimeouts": 2
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1000,
+   "label": "7 moves, 4 quick re-moves, 2 conflicts",
+   "durationMs": 12455,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 304,
+    "decisions": 14,
+    "detections": 4,
+    "findings": [
+     "failure:transient",
+     "mutation:stale",
+     "mutation:stale",
+     "failure:transient"
+    ],
+    "triggers": {
+     "mutation": 8,
+     "failure": 2,
+     "delivery": 4
+    },
+    "gates": [
+     "mutation:conflict:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "mutation:expected:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "delivery:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "mutation:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 4
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     191.3,
+     113.8,
+     140.4,
+     248,
+     153.1,
+     194.3,
+     103,
+     148.8,
+     230.7,
+     321.7,
+     130,
+     118.5,
+     143.9,
+     136.7
+    ],
+    "diagnoses": {
+     "conflict": 1,
+     "stale": 4,
+     "transient": 2,
+     "expected": 7
+    },
+    "stores": [
+     "board:adapter:95f:30w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "1 card in the wrong column at the end (c2)"
+   ],
+   "details": {
+    "mismatched": [
+     {
+      "card": "c2",
+      "shown": "doing",
+      "server": "done",
+      "moves": [
+       {
+        "t": 1791601679668.4,
+        "card": "c2",
+        "column": "doing",
+        "by": "Mei",
+        "version": 2
+       },
+       {
+        "t": 1791601680006.5999,
+        "card": "c2",
+        "column": "doing",
+        "by": "you",
+        "version": 3
+       },
+       {
+        "t": 1791601682098.7998,
+        "card": "c2",
+        "column": "done",
+        "by": "Ana",
+        "version": 4
+       }
+      ]
+     }
+    ],
+    "t0": 1791601678958.45,
+    "tEnd": 1791601691413.295,
+    "samples": [
+     {
+      "t": 1791601678957.47,
+      "cols": {
+       "c2": "backlog"
+      }
+     },
+     {
+      "t": 1791601679707.455,
+      "cols": {
+       "c2": "doing"
+      }
+     },
+     {
+      "t": 1791601682308.63,
+      "cols": {
+       "c2": "done"
+      }
+     },
+     {
+      "t": 1791601683457.19,
+      "cols": {
+       "c2": "doing"
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 1,
+    "divergedMs": 11649,
+    "maxDivergedMs": 11198,
+    "jumpBacks": 4,
+    "userMoves": 8,
+    "teammateMoves": 4,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "off",
+   "kind": "clean",
+   "seed": 1500,
+   "label": "6 moves",
+   "durationMs": 9665,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:94f:14w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601692874.2349,
+    "tEnd": 1791601702539.68,
+    "samples": [
+     {
+      "t": 1791601692914.41,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 0,
+    "maxDivergedMs": 0,
+    "jumpBacks": 1,
+    "userMoves": 6,
+    "teammateMoves": 0,
+    "latencyMs": 27
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "observe",
+   "kind": "clean",
+   "seed": 1500,
+   "label": "6 moves",
+   "durationMs": 9674,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 318,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:94f:14w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601693284.055,
+    "tEnd": 1791601702957.87,
+    "samples": [
+     {
+      "t": 1791601693250.6401,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 0,
+    "maxDivergedMs": 0,
+    "jumpBacks": 0,
+    "userMoves": 6,
+    "teammateMoves": 0,
+    "latencyMs": 47
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "guard",
+   "kind": "clean",
+   "seed": 1500,
+   "label": "6 moves",
+   "durationMs": 9692,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 317,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:94f:14w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601695301.385,
+    "tEnd": 1791601704993.3801,
+    "samples": [
+     {
+      "t": 1791601695272.915,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 0,
+    "maxDivergedMs": 0,
+    "jumpBacks": 1,
+    "userMoves": 6,
+    "teammateMoves": 0,
+    "latencyMs": 33
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1000,
+   "label": "7 moves, 4 quick re-moves, 2 conflicts",
+   "durationMs": 12461,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 400,
+    "decisions": 14,
+    "detections": 4,
+    "findings": [
+     "failure:transient",
+     "mutation:stale",
+     "mutation:stale",
+     "failure:transient"
+    ],
+    "triggers": {
+     "mutation": 8,
+     "failure": 2,
+     "delivery": 4
+    },
+    "gates": [
+     "mutation:conflict:defer:-1.17/6:ran",
+     "mutation:stale:discard:0.49/6:no",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:discard:1.58/6:no",
+     "mutation:expected:defer:-1.01/6:ran",
+     "mutation:stale:discard:-0.02/6:ran",
+     "delivery:expected:discard:-0.49/4:ran",
+     "mutation:expected:defer:-1.57/6:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:conflict:discard:3.21/6:no",
+     "mutation:expected:defer:-1.19/6:ran",
+     "delivery:expected:discard:-0.16/4:ran",
+     "delivery:expected:discard:-0.99/4:ran",
+     "delivery:expected:discard:-0.92/4:ran"
+    ],
+    "notExecuted": {
+     "gain # of discard over apply is not above the guard margin #": 3
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     222.5,
+     166.9,
+     153.2,
+     256.9,
+     140.3,
+     185.3,
+     97.7,
+     158.1,
+     222.7,
+     335.7,
+     125.2,
+     129.7,
+     142.9,
+     173.7
+    ],
+    "diagnoses": {
+     "conflict": 2,
+     "stale": 3,
+     "transient": 2,
+     "expected": 7
+    },
+    "stores": [
+     "board:adapter:95f:30w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "1 card in the wrong column at the end (c2)"
+   ],
+   "details": {
+    "mismatched": [
+     {
+      "card": "c2",
+      "shown": "doing",
+      "server": "done",
+      "moves": [
+       {
+        "t": 1791601693822.7,
+        "card": "c2",
+        "column": "doing",
+        "by": "Mei",
+        "version": 2
+       },
+       {
+        "t": 1791601694162,
+        "card": "c2",
+        "column": "doing",
+        "by": "you",
+        "version": 3
+       },
+       {
+        "t": 1791601696149.1,
+        "card": "c2",
+        "column": "done",
+        "by": "Ana",
+        "version": 4
+       }
+      ]
+     }
+    ],
+    "t0": 1791601693108.155,
+    "tEnd": 1791601705568.835,
+    "samples": [
+     {
+      "t": 1791601693133.385,
+      "cols": {
+       "c2": "backlog"
+      }
+     },
+     {
+      "t": 1791601693865.39,
+      "cols": {
+       "c2": "doing"
+      }
+     },
+     {
+      "t": 1791601696382.3699,
+      "cols": {
+       "c2": "done"
+      }
+     },
+     {
+      "t": 1791601697632.8,
+      "cols": {
+       "c2": "doing"
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 1,
+    "divergedMs": 11622,
+    "maxDivergedMs": 11171,
+    "jumpBacks": 4,
+    "userMoves": 8,
+    "teammateMoves": 4,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "off",
+   "kind": "clean",
+   "seed": 1500,
+   "label": "3 bursts, 131 chars",
+   "durationMs": 42245,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 3,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:167w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "lostLocal": 0,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 0,
+    "maxLieMs": 0,
+    "reverts": 0,
+    "saves": 15,
+    "latencyMs": 804
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1000,
+   "label": "4 bursts, 165 chars",
+   "durationMs": 53752,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 3,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:5f:0w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed",
+    "the server copy differs from the editor",
+    "“Saved” shown while the server holds older text"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 1,
+    "finalLie": 1,
+    "lieMs": 56235,
+    "maxLieMs": 56235,
+    "reverts": 0,
+    "saves": 0,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1000,
+   "label": "4 bursts, 165 chars",
+   "durationMs": 53786,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 320,
+    "decisions": 1,
+    "detections": 1,
+    "findings": [
+     "failure:transient"
+    ],
+    "triggers": {
+     "failure": 1
+    },
+    "gates": [
+     "failure:transient:-:-/-:no"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     70.2
+    ],
+    "diagnoses": {
+     "transient": 1
+    },
+    "stores": [
+     "notes:adapter:5f:0w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed",
+    "the server copy differs from the editor",
+    "“Saved” shown while the server holds older text"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 1,
+    "finalLie": 1,
+    "lieMs": 56278,
+    "maxLieMs": 56278,
+    "reverts": 0,
+    "saves": 0,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1000,
+   "label": "4 bursts, 165 chars",
+   "durationMs": 53756,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 299,
+    "decisions": 1,
+    "detections": 1,
+    "findings": [
+     "failure:transient"
+    ],
+    "triggers": {
+     "failure": 1
+    },
+    "gates": [
+     "failure:transient:-:-/-:no"
+    ],
+    "notExecuted": {
+     "guard mode does not allow heal-tier actions": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     62.9
+    ],
+    "diagnoses": {
+     "transient": 1
+    },
+    "stores": [
+     "notes:adapter:5f:0w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed",
+    "the server copy differs from the editor",
+    "“Saved” shown while the server holds older text"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 1,
+    "finalLie": 1,
+    "lieMs": 56242,
+    "maxLieMs": 56242,
+    "reverts": 0,
+    "saves": 0,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1001,
+   "label": "4 products, +2 tee, +1 mug, double-click order",
+   "durationMs": 5180,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "cart:atom:3f:12w",
+     "orders:atom:3f:3w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "2 orders created for 1 intended",
+    "charged $203.00, $203.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 1.2 s"
+   ],
+   "metrics": {
+    "ordersCreated": 2,
+    "duplicates": 1,
+    "wrongCharges": 2,
+    "driftMs": 1201,
+    "maxDriftMs": 1201,
+    "errorsShown": 0,
+    "latencyMs": 283
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1001,
+   "label": "4 products, +2 tee, +1 mug, double-click order",
+   "durationMs": 5176,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 315,
+    "decisions": 8,
+    "detections": 3,
+    "findings": [
+     "failure:transient",
+     "mutation:inconsistent",
+     "request:duplicate"
+    ],
+    "triggers": {
+     "request": 3,
+     "mutation": 3,
+     "failure": 1,
+     "delivery": 1
+    },
+    "gates": [
+     "request:expected:-:-/-:ran",
+     "request:duplicate:-:-/-:no",
+     "mutation:inconsistent:-:-/-:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:inconsistent:-:-/-:no",
+     "delivery:expected:-:-/-:ran",
+     "request:duplicate:-:-/-:no",
+     "mutation:stale:-:-/-:ran"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 3
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     219.6,
+     134.4,
+     142.4,
+     124.8,
+     243.9,
+     242.4,
+     85.5,
+     121.4
+    ],
+    "diagnoses": {
+     "expected": 2,
+     "duplicate": 2,
+     "inconsistent": 2,
+     "transient": 1,
+     "stale": 1
+    },
+    "stores": [
+     "cart:atom:3f:12w",
+     "orders:atom:3f:3w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "2 orders created for 1 intended",
+    "charged $203.00, $203.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 1.2 s"
+   ],
+   "metrics": {
+    "ordersCreated": 2,
+    "duplicates": 1,
+    "wrongCharges": 2,
+    "driftMs": 1168,
+    "maxDriftMs": 1168,
+    "errorsShown": 0,
+    "latencyMs": 268
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "observe",
+   "kind": "clean",
+   "seed": 1500,
+   "label": "3 bursts, 131 chars",
+   "durationMs": 42165,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 327,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:167w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "lostLocal": 0,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 0,
+    "maxLieMs": 0,
+    "reverts": 0,
+    "saves": 15,
+    "latencyMs": 812
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "off",
+   "kind": "clean",
+   "seed": 1501,
+   "label": "4 products, +2 mug, +2 cap, one click",
+   "durationMs": 10554,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "cart:atom:3f:9w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": 186
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1001,
+   "label": "4 products, +2 tee, +1 mug, double-click order",
+   "durationMs": 5160,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 317,
+    "decisions": 6,
+    "detections": 3,
+    "findings": [
+     "failure:transient",
+     "mutation:inconsistent",
+     "request:duplicate"
+    ],
+    "triggers": {
+     "request": 2,
+     "mutation": 3,
+     "failure": 1
+    },
+    "gates": [
+     "request:duplicate:coalesce:0.16/4:no",
+     "mutation:inconsistent:defer:-1.58/6:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:inconsistent:discard:0.81/6:no",
+     "request:duplicate:coalesce:1.07/4:no",
+     "mutation:stale:defer:-1.07/6:ran"
+    ],
+    "notExecuted": {
+     "gain # of coalesce over send is not above the guard margin #": 2,
+     "gain # of discard over apply is not above the guard margin #": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     138.4,
+     141.4,
+     130.5,
+     245.8,
+     93.2,
+     133.2
+    ],
+    "diagnoses": {
+     "duplicate": 2,
+     "inconsistent": 2,
+     "transient": 1,
+     "stale": 1
+    },
+    "stores": [
+     "cart:atom:3f:12w",
+     "orders:atom:3f:3w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "2 orders created for 1 intended",
+    "charged $203.00, $203.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 1.2 s"
+   ],
+   "metrics": {
+    "ordersCreated": 2,
+    "duplicates": 1,
+    "wrongCharges": 2,
+    "driftMs": 1200,
+    "maxDriftMs": 1200,
+    "errorsShown": 0,
+    "latencyMs": 283
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "observe",
+   "kind": "clean",
+   "seed": 1501,
+   "label": "4 products, +2 mug, +2 cap, one click",
+   "durationMs": 10545,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 327,
+    "decisions": 1,
+    "detections": 0,
+    "findings": [],
+    "triggers": {
+     "inconsistency": 1
+    },
+    "gates": [
+     "inconsistency:expected:-:-/-:ran"
+    ],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [
+     186.7
+    ],
+    "diagnoses": {
+     "expected": 1
+    },
+    "stores": [
+     "cart:atom:3f:9w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": 180
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "guard",
+   "kind": "clean",
+   "seed": 1500,
+   "label": "3 bursts, 131 chars",
+   "durationMs": 42113,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 326,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:167w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "lostLocal": 0,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 0,
+    "maxLieMs": 0,
+    "reverts": 0,
+    "saves": 15,
+    "latencyMs": 814
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "guard",
+   "kind": "clean",
+   "seed": 1501,
+   "label": "4 products, +2 mug, +2 cap, one click",
+   "durationMs": 10536,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 318,
+    "decisions": 1,
+    "detections": 0,
+    "findings": [],
+    "triggers": {
+     "inconsistency": 1
+    },
+    "gates": [
+     "inconsistency:expected:-:-/-:ran"
+    ],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [
+     175.1
+    ],
+    "diagnoses": {
+     "expected": 1
+    },
+    "stores": [
+     "cart:atom:3f:9w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": 194
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1001,
+   "label": "7 moves, 3 quick re-moves, 4 conflicts",
+   "durationMs": 9107,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:95f:27w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601814095.705,
+    "tEnd": 1791601823202.81,
+    "samples": [
+     {
+      "t": 1791601814121.205,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 1255,
+    "maxDivergedMs": 1255,
+    "jumpBacks": 2,
+    "userMoves": 9,
+    "teammateMoves": 6,
+    "latencyMs": 21
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1001,
+   "label": "7 moves, 3 quick re-moves, 4 conflicts",
+   "durationMs": 9265,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 319,
+    "decisions": 11,
+    "detections": 0,
+    "findings": [],
+    "triggers": {
+     "mutation": 4,
+     "delivery": 6,
+     "request": 1
+    },
+    "gates": [
+     "mutation:conflict:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "delivery:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "request:expected:-:-/-:no",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:no"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 3
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     202.1,
+     106.3,
+     158.9,
+     142.6,
+     246.2,
+     232.8,
+     322.3,
+     233.8,
+     265.3,
+     127.2,
+     111
+    ],
+    "diagnoses": {
+     "conflict": 1,
+     "stale": 1,
+     "expected": 9
+    },
+    "stores": [
+     "board:adapter:95f:27w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601814936.93,
+    "tEnd": 1791601824201.4348,
+    "samples": [
+     {
+      "t": 1791601814982.0598,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 1300,
+    "maxDivergedMs": 1300,
+    "jumpBacks": 2,
+    "userMoves": 9,
+    "teammateMoves": 6,
+    "latencyMs": 34
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1001,
+   "label": "7 moves, 3 quick re-moves, 4 conflicts",
+   "durationMs": 9111,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 332,
+    "decisions": 9,
+    "detections": 0,
+    "findings": [],
+    "triggers": {
+     "mutation": 5,
+     "request": 1,
+     "delivery": 3
+    },
+    "gates": [
+     "mutation:conflict:defer:-1.36/6:ran",
+     "mutation:stale:discard:3.77/6:no",
+     "mutation:conflict:defer:-1.43/6:ran",
+     "mutation:expected:defer:-1.53/6:ran",
+     "mutation:expected:defer:-1.47/6:ran",
+     "request:expected:coalesce:0.98/4:no",
+     "delivery:expected:discard:-0.67/4:ran",
+     "delivery:expected:discard:-0.99/4:ran",
+     "delivery:expected:discard:0.52/4:no"
+    ],
+    "notExecuted": {
+     "gain # of discard over apply is not above the guard margin #": 1,
+     "gain # of coalesce over send is not above the guard margin #": 1,
+     "gain # of discard over deliver is not above the guard margin #": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     183.8,
+     180.8,
+     318.5,
+     165,
+     332.3,
+     496.4,
+     121.1,
+     118.7,
+     112.9
+    ],
+    "diagnoses": {
+     "conflict": 2,
+     "stale": 1,
+     "expected": 6
+    },
+    "stores": [
+     "board:adapter:95f:27w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601824389.74,
+    "tEnd": 1791601833500.6301,
+    "samples": [
+     {
+      "t": 1791601824431.055,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 1250,
+    "maxDivergedMs": 1250,
+    "jumpBacks": 2,
+    "userMoves": 9,
+    "teammateMoves": 6,
+    "latencyMs": 37
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "off",
+   "kind": "clean",
+   "seed": 1501,
+   "label": "5 moves",
+   "durationMs": 8796,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:96f:13w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601825148.865,
+    "tEnd": 1791601833944.53,
+    "samples": [
+     {
+      "t": 1791601825195.36,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 0,
+    "maxDivergedMs": 0,
+    "jumpBacks": 0,
+    "userMoves": 5,
+    "teammateMoves": 1,
+    "latencyMs": 1505
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "observe",
+   "kind": "clean",
+   "seed": 1501,
+   "label": "5 moves",
+   "durationMs": 8802,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 434,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:96f:13w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601826421.2852,
+    "tEnd": 1791601835222.8,
+    "samples": [
+     {
+      "t": 1791601826394.8,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 0,
+    "maxDivergedMs": 0,
+    "jumpBacks": 0,
+    "userMoves": 5,
+    "teammateMoves": 1,
+    "latencyMs": 974
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "guard",
+   "kind": "clean",
+   "seed": 1501,
+   "label": "5 moves",
+   "durationMs": 8791,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 404,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:96f:13w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601827382.96,
+    "tEnd": 1791601836173.59,
+    "samples": [
+     {
+      "t": 1791601827430.0151,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 0,
+    "maxDivergedMs": 0,
+    "jumpBacks": 0,
+    "userMoves": 5,
+    "teammateMoves": 1,
+    "latencyMs": 10
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1001,
+   "label": "2 bursts, 73 chars",
+   "durationMs": 23950,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 3,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:108w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 1389,
+    "maxLieMs": 600,
+    "reverts": 3,
+    "saves": 12,
+    "latencyMs": 2451
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1001,
+   "label": "2 bursts, 73 chars",
+   "durationMs": 24004,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 310,
+    "decisions": 19,
+    "detections": 8,
+    "findings": [
+     "mutation:stale",
+     "delivery:stale",
+     "delivery:stale",
+     "delivery:stale",
+     "failure:transient",
+     "delivery:stale",
+     "delivery:stale",
+     "delivery:stale"
+    ],
+    "triggers": {
+     "mutation": 7,
+     "delivery": 7,
+     "request": 3,
+     "failure": 2
+    },
+    "gates": [
+     "mutation:expected:-:-/-:ran",
+     "mutation:stale:-:-/-:ran",
+     "delivery:stale:-:-/-:no",
+     "mutation:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "mutation:expected:-:-/-:ran",
+     "delivery:stale:-:-/-:no",
+     "delivery:stale:-:-/-:no",
+     "delivery:stale:-:-/-:no",
+     "request:expected:-:-/-:no",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "delivery:stale:-:-/-:no",
+     "request:expected:-:-/-:no",
+     "request:expected:-:-/-:no",
+     "delivery:stale:-:-/-:ran",
+     "delivery:stale:-:-/-:no",
+     "failure:transient:-:-/-:no"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 12
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     197.5,
+     256,
+     131.6,
+     147.9,
+     223.2,
+     136.2,
+     160.9,
+     132.5,
+     132.9,
+     135.1,
+     147.1,
+     136.5,
+     255.6,
+     97.1,
+     136.5,
+     119.5,
+     148.3,
+     124,
+     208.4
+    ],
+    "diagnoses": {
+     "expected": 7,
+     "stale": 10,
+     "transient": 2
+    },
+    "stores": [
+     "notes:adapter:19f:108w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 1399,
+    "maxLieMs": 623,
+    "reverts": 3,
+    "saves": 12,
+    "latencyMs": 2449
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1001,
+   "label": "2 bursts, 73 chars",
+   "durationMs": 23964,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 309,
+    "decisions": 19,
+    "detections": 8,
+    "findings": [
+     "mutation:stale",
+     "mutation:stale",
+     "delivery:stale",
+     "delivery:stale",
+     "delivery:stale",
+     "failure:transient",
+     "delivery:stale",
+     "delivery:stale"
+    ],
+    "triggers": {
+     "mutation": 8,
+     "delivery": 7,
+     "transition": 1,
+     "request": 2,
+     "failure": 1
+    },
+    "gates": [
+     "mutation:expected:defer:-1.35/6:ran",
+     "mutation:stale:discard:-0.64/6:ran",
+     "delivery:stale:discard:0.41/4:no",
+     "mutation:expected:discard:-0.47/6:ran",
+     "mutation:expected:discard:-0.81/6:ran",
+     "mutation:stale:discard:0.14/6:no",
+     "mutation:expected:discard:-0.37/6:ran",
+     "delivery:stale:discard:0.2/4:no",
+     "delivery:stale:discard:1.02/4:no",
+     "transition:expected:-:-/-:ran",
+     "delivery:stale:discard:1.48/4:no",
+     "request:expected:coalesce:1.95/4:no",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:discard:0.18/6:no",
+     "delivery:stale:discard:1.49/4:no",
+     "mutation:expected:discard:-0.95/6:ran",
+     "request:expected:coalesce:2.43/4:no",
+     "delivery:stale:discard:-0.55/4:ran",
+     "delivery:stale:discard:0.65/4:no"
+    ],
+    "notExecuted": {
+     "gain # of discard over deliver is not above the guard margin #": 6,
+     "gain # of discard over apply is not above the guard margin #": 2,
+     "gain # of coalesce over send is not above the guard margin #": 2
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     274.6,
+     140,
+     129.9,
+     215.8,
+     159.4,
+     102,
+     150.4,
+     117.4,
+     124.7,
+     193.5,
+     136,
+     156.2,
+     114.1,
+     226,
+     126.7,
+     162.1,
+     294.5,
+     92.4,
+     95.3
+    ],
+    "diagnoses": {
+     "expected": 8,
+     "stale": 10,
+     "transient": 1
+    },
+    "stores": [
+     "notes:adapter:19f:109w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 1436,
+    "maxLieMs": 600,
+    "reverts": 2,
+    "saves": 12,
+    "latencyMs": 1856
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1002,
+   "label": "4 products, +1 mug, +3 tee, one click",
+   "durationMs": 8592,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "cart:atom:3f:14w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "charged $180.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 6.9 s"
+   ],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 1,
+    "driftMs": 6902,
+    "maxDriftMs": 6902,
+    "errorsShown": 0,
+    "latencyMs": 3672
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1002,
+   "label": "4 products, +1 mug, +3 tee, one click",
+   "durationMs": 8587,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 326,
+    "decisions": 4,
+    "detections": 2,
+    "findings": [
+     "failure:transient",
+     "failure:transient"
+    ],
+    "triggers": {
+     "failure": 2,
+     "mutation": 1,
+     "delivery": 1
+    },
+    "gates": [
+     "failure:transient:-:-/-:ran",
+     "mutation:inconsistent:-:-/-:ran",
+     "failure:transient:-:-/-:ran",
+     "delivery:expected:-:-/-:ran"
+    ],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [
+     191.4,
+     142.4,
+     113.7,
+     153
+    ],
+    "diagnoses": {
+     "transient": 2,
+     "inconsistent": 1,
+     "expected": 1
+    },
+    "stores": [
+     "cart:atom:3f:14w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "charged $180.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 6.9 s"
+   ],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 1,
+    "driftMs": 6900,
+    "maxDriftMs": 6900,
+    "errorsShown": 0,
+    "latencyMs": 3676
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "off",
+   "kind": "clean",
+   "seed": 1501,
+   "label": "4 bursts, 164 chars",
+   "durationMs": 54069,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 3,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:204w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "lostLocal": 0,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 0,
+    "maxLieMs": 0,
+    "reverts": 0,
+    "saves": 18,
+    "latencyMs": 771
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1002,
+   "label": "4 products, +1 mug, +3 tee, one click",
+   "durationMs": 8600,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 304,
+    "decisions": 4,
+    "detections": 2,
+    "findings": [
+     "failure:transient",
+     "failure:transient"
+    ],
+    "triggers": {
+     "failure": 2,
+     "mutation": 1,
+     "delivery": 1
+    },
+    "gates": [
+     "failure:transient:-:-/-:ran",
+     "mutation:inconsistent:discard:-1.2/6:ran",
+     "failure:transient:-:-/-:ran",
+     "delivery:expected:discard:-0.19/4:ran"
+    ],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [
+     181.9,
+     135.5,
+     113.1,
+     160
+    ],
+    "diagnoses": {
+     "transient": 2,
+     "inconsistent": 1,
+     "expected": 1
+    },
+    "stores": [
+     "cart:atom:3f:14w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "charged $180.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 6.9 s"
+   ],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 1,
+    "driftMs": 6894,
+    "maxDriftMs": 6894,
+    "errorsShown": 0,
+    "latencyMs": 3655
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "off",
+   "kind": "clean",
+   "seed": 1502,
+   "label": "4 products, +2 tote, +3 tee, one click",
+   "durationMs": 12422,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "cart:atom:3f:10w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": 207
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "observe",
+   "kind": "clean",
+   "seed": 1502,
+   "label": "4 products, +2 tote, +3 tee, one click",
+   "durationMs": 12425,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 311,
+    "decisions": 1,
+    "detections": 0,
+    "findings": [],
+    "triggers": {
+     "inconsistency": 1
+    },
+    "gates": [
+     "inconsistency:expected:-:-/-:ran"
+    ],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [
+     193.1
+    ],
+    "diagnoses": {
+     "expected": 1
+    },
+    "stores": [
+     "cart:atom:3f:10w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": 196
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "observe",
+   "kind": "clean",
+   "seed": 1501,
+   "label": "4 bursts, 164 chars",
+   "durationMs": 54032,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 397,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:204w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "lostLocal": 0,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 0,
+    "maxLieMs": 0,
+    "reverts": 0,
+    "saves": 18,
+    "latencyMs": 773
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "guard",
+   "kind": "clean",
+   "seed": 1501,
+   "label": "4 bursts, 164 chars",
+   "durationMs": 54052,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 306,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:204w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "lostLocal": 0,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 0,
+    "maxLieMs": 0,
+    "reverts": 0,
+    "saves": 18,
+    "latencyMs": 790
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "guard",
+   "kind": "clean",
+   "seed": 1502,
+   "label": "4 products, +2 tote, +3 tee, one click",
+   "durationMs": 12461,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 322,
+    "decisions": 1,
+    "detections": 0,
+    "findings": [],
+    "triggers": {
+     "inconsistency": 1
+    },
+    "gates": [
+     "inconsistency:expected:-:-/-:ran"
+    ],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [
+     202.2
+    ],
+    "diagnoses": {
+     "expected": 1
+    },
+    "stores": [
+     "cart:atom:3f:10w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 0,
+    "driftMs": 0,
+    "maxDriftMs": 0,
+    "errorsShown": 0,
+    "latencyMs": 208
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1002,
+   "label": "10 moves, 6 quick re-moves, 3 conflicts",
+   "durationMs": 12166,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 2,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:98f:39w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "1 card in the wrong column at the end (c9)"
+   ],
+   "details": {
+    "mismatched": [
+     {
+      "card": "c9",
+      "shown": "backlog",
+      "server": "doing",
+      "moves": [
+       {
+        "t": 1791601928689.0999,
+        "card": "c9",
+        "column": "backlog",
+        "by": "you",
+        "version": 2
+       },
+       {
+        "t": 1791601928775.2998,
+        "card": "c9",
+        "column": "doing",
+        "by": "you",
+        "version": 3
+       }
+      ]
+     }
+    ],
+    "t0": 1791601921280.835,
+    "tEnd": 1791601933446.615,
+    "samples": [
+     {
+      "t": 1791601921303.8052,
+      "cols": {
+       "c9": "doing"
+      }
+     },
+     {
+      "t": 1791601927803.56,
+      "cols": {
+       "c9": "backlog"
+      }
+     },
+     {
+      "t": 1791601928153.54,
+      "cols": {
+       "c9": "doing"
+      }
+     },
+     {
+      "t": 1791601929403.585,
+      "cols": {
+       "c9": "backlog"
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 1,
+    "divergedMs": 5646,
+    "maxDivergedMs": 5646,
+    "jumpBacks": 7,
+    "userMoves": 15,
+    "teammateMoves": 6,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "off",
+   "kind": "clean",
+   "seed": 1502,
+   "label": "6 moves",
+   "durationMs": 8825,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:94f:14w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601926889.03,
+    "tEnd": 1791601935713.7148,
+    "samples": [
+     {
+      "t": 1791601926909.935,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 0,
+    "maxDivergedMs": 0,
+    "jumpBacks": 0,
+    "userMoves": 6,
+    "teammateMoves": 0,
+    "latencyMs": 47
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1002,
+   "label": "10 moves, 6 quick re-moves, 3 conflicts",
+   "durationMs": 12115,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 318,
+    "decisions": 13,
+    "detections": 2,
+    "findings": [
+     "mutation:stale",
+     "mutation:stale"
+    ],
+    "triggers": {
+     "delivery": 7,
+     "mutation": 5,
+     "request": 1
+    },
+    "gates": [
+     "delivery:expected:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "mutation:expected:-:-/-:ran",
+     "request:expected:-:-/-:no",
+     "mutation:conflict:-:-/-:no",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "mutation:stale:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:no"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 5
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     180.6,
+     315.4,
+     467.2,
+     184.6,
+     264.4,
+     195.3,
+     154.7,
+     147.1,
+     172.7,
+     110.1,
+     99.4,
+     103,
+     167.5
+    ],
+    "diagnoses": {
+     "expected": 9,
+     "stale": 3,
+     "conflict": 1
+    },
+    "stores": [
+     "board:adapter:98f:39w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "1 card in the wrong column at the end (c9)"
+   ],
+   "details": {
+    "mismatched": [
+     {
+      "card": "c9",
+      "shown": "backlog",
+      "server": "doing",
+      "moves": [
+       {
+        "t": 1791601933705.7,
+        "card": "c9",
+        "column": "backlog",
+        "by": "you",
+        "version": 2
+       },
+       {
+        "t": 1791601933788.9001,
+        "card": "c9",
+        "column": "doing",
+        "by": "you",
+        "version": 3
+       }
+      ]
+     }
+    ],
+    "t0": 1791601926329.145,
+    "tEnd": 1791601938444.07,
+    "samples": [
+     {
+      "t": 1791601926373.805,
+      "cols": {
+       "c9": "doing"
+      }
+     },
+     {
+      "t": 1791601932821.89,
+      "cols": {
+       "c9": "backlog"
+      }
+     },
+     {
+      "t": 1791601933171.89,
+      "cols": {
+       "c9": "doing"
+      }
+     },
+     {
+      "t": 1791601934421.8298,
+      "cols": {
+       "c9": "backlog"
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 1,
+    "divergedMs": 5675,
+    "maxDivergedMs": 5626,
+    "jumpBacks": 7,
+    "userMoves": 15,
+    "teammateMoves": 6,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1002,
+   "label": "10 moves, 6 quick re-moves, 3 conflicts",
+   "durationMs": 12173,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 308,
+    "decisions": 13,
+    "detections": 2,
+    "findings": [
+     "mutation:stale",
+     "mutation:stale"
+    ],
+    "triggers": {
+     "mutation": 7,
+     "request": 1,
+     "delivery": 5
+    },
+    "gates": [
+     "mutation:conflict:defer:-1.5/6:ran",
+     "mutation:stale:discard:0.24/6:no",
+     "request:expected:coalesce:0.78/4:no",
+     "mutation:conflict:discard:3.96/6:no",
+     "delivery:expected:discard:-1.16/4:ran",
+     "delivery:expected:discard:-0.93/4:ran",
+     "mutation:stale:discard:0.76/6:no",
+     "mutation:stale:defer:-1.78/6:ran",
+     "delivery:expected:discard:-0.27/4:ran",
+     "delivery:expected:discard:-0.21/4:ran",
+     "mutation:expected:defer:-1.18/6:ran",
+     "mutation:conflict:discard:2.21/6:no",
+     "delivery:expected:discard:0.25/4:no"
+    ],
+    "notExecuted": {
+     "gain # of discard over apply is not above the guard margin #": 4,
+     "gain # of coalesce over send is not above the guard margin #": 1,
+     "gain # of discard over deliver is not above the guard margin #": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     389.2,
+     350.7,
+     272,
+     272.8,
+     176.1,
+     126.1,
+     165.5,
+     130,
+     150.1,
+     173.1,
+     314.7,
+     201.5,
+     118.1
+    ],
+    "diagnoses": {
+     "conflict": 3,
+     "stale": 3,
+     "expected": 7
+    },
+    "stores": [
+     "board:adapter:98f:39w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "1 card in the wrong column at the end (c9)"
+   ],
+   "details": {
+    "mismatched": [
+     {
+      "card": "c9",
+      "shown": "backlog",
+      "server": "doing",
+      "moves": [
+       {
+        "t": 1791601934338.7,
+        "card": "c9",
+        "column": "backlog",
+        "by": "you",
+        "version": 2
+       },
+       {
+        "t": 1791601934427.7998,
+        "card": "c9",
+        "column": "doing",
+        "by": "you",
+        "version": 3
+       }
+      ]
+     }
+    ],
+    "t0": 1791601926923.18,
+    "tEnd": 1791601939096.085,
+    "samples": [
+     {
+      "t": 1791601926973.7148,
+      "cols": {
+       "c9": "doing"
+      }
+     },
+     {
+      "t": 1791601933426.155,
+      "cols": {
+       "c9": "backlog"
+      }
+     },
+     {
+      "t": 1791601933820.74,
+      "cols": {
+       "c9": "doing"
+      }
+     },
+     {
+      "t": 1791601935020.56,
+      "cols": {
+       "c9": "backlog"
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 1,
+    "divergedMs": 5673,
+    "maxDivergedMs": 5628,
+    "jumpBacks": 8,
+    "userMoves": 15,
+    "teammateMoves": 6,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "observe",
+   "kind": "clean",
+   "seed": 1502,
+   "label": "6 moves",
+   "durationMs": 8852,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 329,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:94f:14w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601936620.835,
+    "tEnd": 1791601945473.09,
+    "samples": [
+     {
+      "t": 1791601936593.21,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 0,
+    "maxDivergedMs": 0,
+    "jumpBacks": 0,
+    "userMoves": 6,
+    "teammateMoves": 0,
+    "latencyMs": 24
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "guard",
+   "kind": "clean",
+   "seed": 1502,
+   "label": "6 moves",
+   "durationMs": 8841,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 345,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:94f:14w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791601938843.4,
+    "tEnd": 1791601947683.92,
+    "samples": [
+     {
+      "t": 1791601938814.44,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 0,
+    "maxDivergedMs": 0,
+    "jumpBacks": 1,
+    "userMoves": 6,
+    "teammateMoves": 0,
+    "latencyMs": 34
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "off",
+   "kind": "clean",
+   "seed": 1502,
+   "label": "2 bursts, 71 chars",
+   "durationMs": 23681,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 3,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:91w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "lostLocal": 0,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 0,
+    "maxLieMs": 0,
+    "reverts": 0,
+    "saves": 8,
+    "latencyMs": 776
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1002,
+   "label": "2 bursts, 81 chars",
+   "durationMs": 25964,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 3,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:103w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 557,
+    "maxLieMs": 231,
+    "reverts": 2,
+    "saves": 8,
+    "latencyMs": 2462
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1002,
+   "label": "2 bursts, 81 chars",
+   "durationMs": 25983,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 312,
+    "decisions": 8,
+    "detections": 4,
+    "findings": [
+     "failure:transient",
+     "mutation:stale",
+     "delivery:stale",
+     "delivery:stale"
+    ],
+    "triggers": {
+     "request": 3,
+     "failure": 1,
+     "mutation": 2,
+     "delivery": 2
+    },
+    "gates": [
+     "request:expected:-:-/-:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:-:-/-:ran",
+     "mutation:stale:-:-/-:ran",
+     "request:expected:-:-/-:no",
+     "delivery:stale:-:-/-:no",
+     "request:expected:-:-/-:no",
+     "delivery:stale:-:-/-:no"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 4
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     105.1,
+     170.6,
+     153.7,
+     157.6,
+     273.9,
+     137.7,
+     130.2,
+     134.9
+    ],
+    "diagnoses": {
+     "expected": 3,
+     "transient": 1,
+     "stale": 4
+    },
+    "stores": [
+     "notes:adapter:19f:103w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 776,
+    "maxLieMs": 227,
+    "reverts": 2,
+    "saves": 8,
+    "latencyMs": 2464
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1002,
+   "label": "2 bursts, 81 chars",
+   "durationMs": 25942,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 318,
+    "decisions": 8,
+    "detections": 4,
+    "findings": [
+     "failure:transient",
+     "mutation:stale",
+     "delivery:stale",
+     "delivery:stale"
+    ],
+    "triggers": {
+     "request": 3,
+     "failure": 1,
+     "mutation": 2,
+     "delivery": 2
+    },
+    "gates": [
+     "request:expected:coalesce:-0.79/4:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:defer:-0.86/6:ran",
+     "mutation:stale:defer:-0.64/6:ran",
+     "request:expected:coalesce:2.2/4:no",
+     "delivery:stale:discard:1.22/4:no",
+     "request:expected:coalesce:2.42/4:no",
+     "delivery:stale:discard:1.59/4:no"
+    ],
+    "notExecuted": {
+     "gain # of coalesce over send is not above the guard margin #": 2,
+     "gain # of discard over deliver is not above the guard margin #": 2
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     109.5,
+     177.3,
+     150.8,
+     151.4,
+     277.8,
+     138.1,
+     144,
+     119.4
+    ],
+    "diagnoses": {
+     "expected": 3,
+     "transient": 1,
+     "stale": 4
+    },
+    "stores": [
+     "notes:adapter:19f:103w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 437,
+    "maxLieMs": 225,
+    "reverts": 2,
+    "saves": 8,
+    "latencyMs": 2482
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1003,
+   "label": "4 products, +2 stickers, +1 notebook, double-click order",
+   "durationMs": 6384,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "cart:atom:3f:9w",
+     "orders:atom:3f:3w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "2 orders created for 1 intended",
+    "charged $82.00, $82.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 2.5 s"
+   ],
+   "metrics": {
+    "ordersCreated": 2,
+    "duplicates": 1,
+    "wrongCharges": 2,
+    "driftMs": 2490,
+    "maxDriftMs": 2490,
+    "errorsShown": 0,
+    "latencyMs": 679
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1003,
+   "label": "4 products, +2 stickers, +1 notebook, double-click order",
+   "durationMs": 6192,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 306,
+    "decisions": 4,
+    "detections": 2,
+    "findings": [
+     "failure:transient",
+     "request:duplicate"
+    ],
+    "triggers": {
+     "mutation": 2,
+     "failure": 1,
+     "request": 1
+    },
+    "gates": [
+     "mutation:stale:-:-/-:no",
+     "mutation:inconsistent:-:-/-:no",
+     "failure:transient:-:-/-:ran",
+     "request:duplicate:-:-/-:no"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 3
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     141.7,
+     144.8,
+     131.9,
+     132.4
+    ],
+    "diagnoses": {
+     "stale": 1,
+     "inconsistent": 1,
+     "transient": 1,
+     "duplicate": 1
+    },
+    "stores": [
+     "cart:atom:3f:10w",
+     "orders:atom:3f:3w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "2 orders created for 1 intended",
+    "charged $58.00, $58.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 2.3 s"
+   ],
+   "metrics": {
+    "ordersCreated": 2,
+    "duplicates": 1,
+    "wrongCharges": 2,
+    "driftMs": 2310,
+    "maxDriftMs": 2310,
+    "errorsShown": 0,
+    "latencyMs": 488
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "observe",
+   "kind": "clean",
+   "seed": 1502,
+   "label": "2 bursts, 71 chars",
+   "durationMs": 23637,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 313,
+    "decisions": 1,
+    "detections": 0,
+    "findings": [],
+    "triggers": {
+     "transition": 1
+    },
+    "gates": [
+     "transition:expected:-:-/-:ran"
+    ],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [
+     211.8
+    ],
+    "diagnoses": {
+     "expected": 1
+    },
+    "stores": [
+     "notes:adapter:19f:91w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "lostLocal": 0,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 0,
+    "maxLieMs": 0,
+    "reverts": 0,
+    "saves": 8,
+    "latencyMs": 793
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1003,
+   "label": "4 products, +2 stickers, +1 notebook, double-click order",
+   "durationMs": 6404,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 349,
+    "decisions": 3,
+    "detections": 2,
+    "findings": [
+     "failure:transient",
+     "request:duplicate"
+    ],
+    "triggers": {
+     "mutation": 1,
+     "failure": 1,
+     "request": 1
+    },
+    "gates": [
+     "mutation:inconsistent:defer:-0.72/6:ran",
+     "failure:transient:-:-/-:ran",
+     "request:duplicate:coalesce:1.32/4:no"
+    ],
+    "notExecuted": {
+     "gain # of coalesce over send is not above the guard margin #": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     154,
+     104.5,
+     102.4
+    ],
+    "diagnoses": {
+     "inconsistent": 1,
+     "transient": 1,
+     "duplicate": 1
+    },
+    "stores": [
+     "cart:atom:3f:9w",
+     "orders:atom:3f:3w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "2 orders created for 1 intended",
+    "charged $82.00, $82.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 2.5 s"
+   ],
+   "metrics": {
+    "ordersCreated": 2,
+    "duplicates": 1,
+    "wrongCharges": 2,
+    "driftMs": 2490,
+    "maxDriftMs": 2490,
+    "errorsShown": 0,
+    "latencyMs": 685
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "guard",
+   "kind": "clean",
+   "seed": 1502,
+   "label": "2 bursts, 71 chars",
+   "durationMs": 23639,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 327,
+    "decisions": 1,
+    "detections": 0,
+    "findings": [],
+    "triggers": {
+     "transition": 1
+    },
+    "gates": [
+     "transition:expected:-:-/-:ran"
+    ],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [
+     202.4
+    ],
+    "diagnoses": {
+     "expected": 1
+    },
+    "stores": [
+     "notes:adapter:19f:91w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "metrics": {
+    "lostLocal": 0,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 0,
+    "maxLieMs": 0,
+    "reverts": 0,
+    "saves": 8,
+    "latencyMs": 787
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1003,
+   "label": "7 moves, 4 quick re-moves, 2 conflicts",
+   "durationMs": 7527,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:97f:31w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "1 card in the wrong column at the end (c6)",
+    "1 card stuck “syncing”"
+   ],
+   "details": {
+    "mismatched": [
+     {
+      "card": "c6",
+      "shown": "done",
+      "server": "review",
+      "moves": [
+       {
+        "t": 1791602001138.4,
+        "card": "c6",
+        "column": "done",
+        "by": "you",
+        "version": 2
+       },
+       {
+        "t": 1791602001179.7,
+        "card": "c6",
+        "column": "doing",
+        "by": "Mei",
+        "version": 3
+       },
+       {
+        "t": 1791602001949.5999,
+        "card": "c6",
+        "column": "review",
+        "by": "you",
+        "version": 4
+       }
+      ]
+     }
+    ],
+    "t0": 1791601996578.13,
+    "tEnd": 1791602004104.775,
+    "samples": [
+     {
+      "t": 1791601996603.195,
+      "cols": {
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602000905.685,
+      "cols": {
+       "c6": "done"
+      }
+     },
+     {
+      "t": 1791602001202.975,
+      "cols": {
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602001603.24,
+      "cols": {
+       "c6": "doing"
+      }
+     },
+     {
+      "t": 1791602001753.155,
+      "cols": {
+       "c6": "done"
+      }
+     },
+     {
+      "t": 1791602002252.53,
+      "cols": {
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602002903.27,
+      "cols": {
+       "c6": "done"
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 1,
+    "divergedMs": 4992,
+    "maxDivergedMs": 3891,
+    "jumpBacks": 3,
+    "userMoves": 8,
+    "teammateMoves": 4,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1003,
+   "label": "7 moves, 4 quick re-moves, 2 conflicts",
+   "durationMs": 7503,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 312,
+    "decisions": 15,
+    "detections": 3,
+    "findings": [
+     "failure:transient",
+     "failure:transient",
+     "mutation:stale"
+    ],
+    "triggers": {
+     "request": 2,
+     "mutation": 6,
+     "failure": 3,
+     "delivery": 4
+    },
+    "gates": [
+     "request:expected:-:-/-:no",
+     "mutation:conflict:-:-/-:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "delivery:conflict:-:-/-:ran",
+     "mutation:conflict:-:-/-:ran",
+     "failure:transient:-:-/-:ran",
+     "request:duplicate:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "delivery:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:no",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:-:-/-:no"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 5
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     245.5,
+     241.9,
+     234.2,
+     358.4,
+     216.8,
+     412.7,
+     189.8,
+     114.1,
+     143.5,
+     138.8,
+     307.1,
+     105.5,
+     146.3,
+     214.2,
+     301.5
+    ],
+    "diagnoses": {
+     "expected": 5,
+     "conflict": 3,
+     "transient": 3,
+     "stale": 3,
+     "duplicate": 1
+    },
+    "stores": [
+     "board:adapter:97f:30w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "1 card in the wrong column at the end (c6)",
+    "1 card stuck “syncing”"
+   ],
+   "details": {
+    "mismatched": [
+     {
+      "card": "c6",
+      "shown": "done",
+      "server": "review",
+      "moves": [
+       {
+        "t": 1791602009760.5,
+        "card": "c6",
+        "column": "done",
+        "by": "you",
+        "version": 2
+       },
+       {
+        "t": 1791602009822.1,
+        "card": "c6",
+        "column": "doing",
+        "by": "Mei",
+        "version": 3
+       },
+       {
+        "t": 1791602010587.1,
+        "card": "c6",
+        "column": "review",
+        "by": "you",
+        "version": 4
+       }
+      ]
+     }
+    ],
+    "t0": 1791602005240.665,
+    "tEnd": 1791602012743.81,
+    "samples": [
+     {
+      "t": 1791602005288.0352,
+      "cols": {
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602009537.435,
+      "cols": {
+       "c6": "done"
+      }
+     },
+     {
+      "t": 1791602009837.8,
+      "cols": {
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602010236.925,
+      "cols": {
+       "c6": "doing"
+      }
+     },
+     {
+      "t": 1791602010387.1501,
+      "cols": {
+       "c6": "done"
+      }
+     },
+     {
+      "t": 1791602010887.6301,
+      "cols": {
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602011537.59,
+      "cols": {
+       "c6": "done"
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 1,
+    "divergedMs": 4758,
+    "maxDivergedMs": 3708,
+    "jumpBacks": 3,
+    "userMoves": 8,
+    "teammateMoves": 4,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1003,
+   "label": "7 moves, 4 quick re-moves, 2 conflicts",
+   "durationMs": 7551,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 330,
+    "decisions": 13,
+    "detections": 3,
+    "findings": [
+     "mutation:conflict",
+     "failure:transient",
+     "failure:transient"
+    ],
+    "triggers": {
+     "mutation": 6,
+     "failure": 3,
+     "delivery": 3,
+     "request": 1
+    },
+    "gates": [
+     "mutation:conflict:defer:-1.4/6:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:discard:3.18/6:no",
+     "mutation:expected:defer:-1.32/6:ran",
+     "delivery:expected:discard:-0.53/4:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:expected:defer:-0.83/6:ran",
+     "request:expected:coalesce:-0.12/4:ran",
+     "mutation:stale:discard:0.4/6:no",
+     "delivery:expected:discard:-0.29/4:ran",
+     "delivery:expected:discard:-0.13/4:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:stale:discard:2.54/6:no"
+    ],
+    "notExecuted": {
+     "gain # of discard over apply is not above the guard margin #": 3
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     284.6,
+     308.7,
+     411.5,
+     146.7,
+     164.4,
+     131,
+     234.6,
+     111.6,
+     189.9,
+     178.9,
+     116.3,
+     111.1,
+     201
+    ],
+    "diagnoses": {
+     "conflict": 1,
+     "transient": 3,
+     "stale": 3,
+     "expected": 6
+    },
+    "stores": [
+     "board:adapter:96f:30w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "2 cards in the wrong column at the end (c4, c6)",
+    "1 card stuck “syncing”"
+   ],
+   "details": {
+    "mismatched": [
+     {
+      "card": "c4",
+      "shown": "doing",
+      "server": "review",
+      "moves": [
+       {
+        "t": 1791602007517.7998,
+        "card": "c4",
+        "column": "doing",
+        "by": "you",
+        "version": 2
+       },
+       {
+        "t": 1791602007993.7,
+        "card": "c4",
+        "column": "review",
+        "by": "you",
+        "version": 3
+       }
+      ]
+     },
+     {
+      "card": "c6",
+      "shown": "done",
+      "server": "review",
+      "moves": [
+       {
+        "t": 1791602010400.7,
+        "card": "c6",
+        "column": "done",
+        "by": "you",
+        "version": 2
+       },
+       {
+        "t": 1791602010458.5,
+        "card": "c6",
+        "column": "doing",
+        "by": "Mei",
+        "version": 3
+       },
+       {
+        "t": 1791602011223.7998,
+        "card": "c6",
+        "column": "review",
+        "by": "you",
+        "version": 4
+       }
+      ]
+     }
+    ],
+    "t0": 1791602005829.9902,
+    "tEnd": 1791602013381.395,
+    "samples": [
+     {
+      "t": 1791602005874.2852,
+      "cols": {
+       "c4": "doing",
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602006816.76,
+      "cols": {
+       "c4": "review",
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602007334.875,
+      "cols": {
+       "c4": "doing",
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602007634.685,
+      "cols": {
+       "c4": "review",
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602007824.6052,
+      "cols": {
+       "c4": "doing",
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602008374.375,
+      "cols": {
+       "c4": "review",
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602009023.725,
+      "cols": {
+       "c4": "doing",
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602010174.245,
+      "cols": {
+       "c4": "doing",
+       "c6": "done"
+      }
+     },
+     {
+      "t": 1791602010474.7651,
+      "cols": {
+       "c4": "doing",
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602010873.9502,
+      "cols": {
+       "c4": "doing",
+       "c6": "doing"
+      }
+     },
+     {
+      "t": 1791602011024.83,
+      "cols": {
+       "c4": "doing",
+       "c6": "done"
+      }
+     },
+     {
+      "t": 1791602011674.6,
+      "cols": {
+       "c4": "doing",
+       "c6": "review"
+      }
+     },
+     {
+      "t": 1791602012174.05,
+      "cols": {
+       "c4": "doing",
+       "c6": "done"
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 2,
+    "divergedMs": 7110,
+    "maxDivergedMs": 6359,
+    "jumpBacks": 4,
+    "userMoves": 8,
+    "teammateMoves": 4,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1004,
+   "label": "4 products, +1 cap, +3 mug, −1 stickers, one click",
+   "durationMs": 5903,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "cart:atom:3f:13w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "charged $150.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 1.7 s"
+   ],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 1,
+    "driftMs": 1728,
+    "maxDriftMs": 1728,
+    "errorsShown": 0,
+    "latencyMs": 346
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1003,
+   "label": "2 bursts, 76 chars",
+   "durationMs": 21453,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 3,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:106w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 1538,
+    "maxLieMs": 975,
+    "reverts": 2,
+    "saves": 9,
+    "latencyMs": 3713
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1003,
+   "label": "2 bursts, 76 chars",
+   "durationMs": 21478,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 463,
+    "decisions": 11,
+    "detections": 2,
+    "findings": [
+     "mutation:stale",
+     "mutation:stale"
+    ],
+    "triggers": {
+     "mutation": 7,
+     "delivery": 2,
+     "transition": 2
+    },
+    "gates": [
+     "mutation:stale:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "delivery:stale:-:-/-:no",
+     "transition:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "mutation:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "transition:expected:-:-/-:ran"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 2
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     247.7,
+     151.2,
+     123.2,
+     191.6,
+     167,
+     134.7,
+     176,
+     121.7,
+     194.5,
+     126.8,
+     174
+    ],
+    "diagnoses": {
+     "stale": 3,
+     "expected": 8
+    },
+    "stores": [
+     "notes:adapter:19f:107w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 1474,
+    "maxLieMs": 949,
+    "reverts": 2,
+    "saves": 9,
+    "latencyMs": 3696
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1004,
+   "label": "4 products, +1 cap, +3 mug, −1 stickers, one click",
+   "durationMs": 5908,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 308,
+    "decisions": 4,
+    "detections": 1,
+    "findings": [
+     "failure:transient"
+    ],
+    "triggers": {
+     "request": 2,
+     "failure": 1,
+     "mutation": 1
+    },
+    "gates": [
+     "request:expected:-:-/-:ran",
+     "request:expected:-:-/-:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:expected:-:-/-:ran"
+    ],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [
+     187.8,
+     187.2,
+     137.3,
+     148.9
+    ],
+    "diagnoses": {
+     "expected": 3,
+     "transient": 1
+    },
+    "stores": [
+     "cart:atom:3f:13w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "charged $150.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 1.7 s"
+   ],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 1,
+    "driftMs": 1731,
+    "maxDriftMs": 1731,
+    "errorsShown": 0,
+    "latencyMs": 334
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1003,
+   "label": "2 bursts, 76 chars",
+   "durationMs": 21447,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 304,
+    "decisions": 12,
+    "detections": 2,
+    "findings": [
+     "mutation:stale",
+     "mutation:stale"
+    ],
+    "triggers": {
+     "mutation": 7,
+     "delivery": 2,
+     "transition": 3
+    },
+    "gates": [
+     "mutation:stale:discard:-0.87/6:ran",
+     "mutation:expected:discard:-0.87/6:ran",
+     "delivery:stale:discard:0.25/4:no",
+     "transition:expected:-:-/-:ran",
+     "transition:expected:-:-/-:ran",
+     "mutation:expected:discard:-1.27/6:ran",
+     "mutation:stale:discard:0.3/6:no",
+     "mutation:expected:discard:-1.17/6:ran",
+     "mutation:expected:discard:-1.84/6:ran",
+     "mutation:expected:discard:-0.3/6:ran",
+     "delivery:stale:discard:1.16/4:no",
+     "transition:expected:-:-/-:ran"
+    ],
+    "notExecuted": {
+     "gain # of discard over deliver is not above the guard margin #": 2,
+     "gain # of discard over apply is not above the guard margin #": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     189.4,
+     153.6,
+     129.2,
+     185.6,
+     294.9,
+     161.2,
+     147.4,
+     231.9,
+     175.1,
+     145.4,
+     131.5,
+     106.9
+    ],
+    "diagnoses": {
+     "stale": 4,
+     "expected": 8
+    },
+    "stores": [
+     "notes:adapter:19f:107w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 1688,
+    "maxLieMs": 1049,
+    "reverts": 2,
+    "saves": 9,
+    "latencyMs": 3800
+   }
+  },
+  {
+   "demo": "checkout",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1004,
+   "label": "4 products, +1 cap, +3 mug, −1 stickers, one click",
+   "durationMs": 5894,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 378,
+    "decisions": 4,
+    "detections": 2,
+    "findings": [
+     "failure:transient",
+     "mutation:inconsistent"
+    ],
+    "triggers": {
+     "request": 1,
+     "failure": 1,
+     "mutation": 2
+    },
+    "gates": [
+     "request:expected:coalesce:-1.43/4:ran",
+     "failure:transient:-:-/-:ran",
+     "mutation:inconsistent:discard:1.34/6:no",
+     "mutation:expected:defer:-0.84/6:ran"
+    ],
+    "notExecuted": {
+     "gain # of discard over apply is not above the guard margin #": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     140.1,
+     132.5,
+     239,
+     189.4
+    ],
+    "diagnoses": {
+     "expected": 2,
+     "transient": 1,
+     "inconsistent": 1
+    },
+    "stores": [
+     "cart:atom:3f:13w",
+     "orders:atom:3f:2w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "charged $150.00 for items worth a different amount",
+    "displayed total ≠ sum of the lines for 1.7 s"
+   ],
+   "metrics": {
+    "ordersCreated": 1,
+    "duplicates": 0,
+    "wrongCharges": 1,
+    "driftMs": 1709,
+    "maxDriftMs": 1709,
+    "errorsShown": 0,
+    "latencyMs": 344
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1004,
+   "label": "10 moves, 7 quick re-moves, 4 conflicts",
+   "durationMs": 11003,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 1,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "board:adapter:94f:49w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "1 card in the wrong column at the end (c3)"
+   ],
+   "details": {
+    "mismatched": [
+     {
+      "card": "c3",
+      "shown": "review",
+      "server": "doing",
+      "moves": [
+       {
+        "t": 1791602043467,
+        "card": "c3",
+        "column": "review",
+        "by": "you",
+        "version": 2
+       },
+       {
+        "t": 1791602044483.2998,
+        "card": "c3",
+        "column": "done",
+        "by": "you",
+        "version": 3
+       },
+       {
+        "t": 1791602044820.7998,
+        "card": "c3",
+        "column": "doing",
+        "by": "you",
+        "version": 4
+       }
+      ]
+     }
+    ],
+    "t0": 1791602038502.3699,
+    "tEnd": 1791602049505.2449,
+    "samples": [
+     {
+      "t": 1791602038527.385,
+      "cols": {
+       "c3": "doing"
+      }
+     },
+     {
+      "t": 1791602042526.935,
+      "cols": {
+       "c3": "review"
+      }
+     },
+     {
+      "t": 1791602042876.6199,
+      "cols": {
+       "c3": "done"
+      }
+     },
+     {
+      "t": 1791602043926.77,
+      "cols": {
+       "c3": "review"
+      }
+     },
+     {
+      "t": 1791602044477.09,
+      "cols": {
+       "c3": "doing"
+      }
+     },
+     {
+      "t": 1791602044776.51,
+      "cols": {
+       "c3": "done"
+      }
+     },
+     {
+      "t": 1791602045076.35,
+      "cols": {
+       "c3": "doing"
+      }
+     },
+     {
+      "t": 1791602045526.22,
+      "cols": {
+       "c3": "review"
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 1,
+    "divergedMs": 6368,
+    "maxDivergedMs": 6218,
+    "jumpBacks": 7,
+    "userMoves": 16,
+    "teammateMoves": 5,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1004,
+   "label": "10 moves, 7 quick re-moves, 4 conflicts",
+   "durationMs": 11133,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 317,
+    "decisions": 23,
+    "detections": 5,
+    "findings": [
+     "mutation:stale",
+     "mutation:conflict",
+     "mutation:stale",
+     "failure:transient",
+     "mutation:stale"
+    ],
+    "triggers": {
+     "mutation": 11,
+     "request": 1,
+     "delivery": 10,
+     "failure": 1
+    },
+    "gates": [
+     "mutation:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:no",
+     "request:expected:-:-/-:ran",
+     "mutation:stale:-:-/-:no",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "mutation:conflict:-:-/-:no",
+     "mutation:stale:-:-/-:no",
+     "failure:transient:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:stale:-:-/-:no",
+     "mutation:expected:-:-/-:ran",
+     "mutation:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "mutation:conflict:-:-/-:no",
+     "delivery:expected:-:-/-:ran",
+     "delivery:expected:-:-/-:ran",
+     "mutation:stale:-:-/-:ran",
+     "delivery:expected:-:-/-:ran"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 6
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     204.2,
+     122.5,
+     157,
+     131.6,
+     153.1,
+     126.2,
+     117.8,
+     230.5,
+     154,
+     106.7,
+     190.8,
+     107.5,
+     98.5,
+     162.5,
+     135.9,
+     168.5,
+     96,
+     89.7,
+     179,
+     104.4,
+     189.9,
+     356.4,
+     174.5
+    ],
+    "diagnoses": {
+     "expected": 16,
+     "stale": 4,
+     "conflict": 2,
+     "transient": 1
+    },
+    "stores": [
+     "board:adapter:94f:50w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": false,
+   "reasons": [],
+   "details": {
+    "mismatched": [],
+    "t0": 1791602041888.46,
+    "tEnd": 1791602053021.7651,
+    "samples": [
+     {
+      "t": 1791602041931.575,
+      "cols": {}
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 0,
+    "divergedMs": 151,
+    "maxDivergedMs": 151,
+    "jumpBacks": 6,
+    "userMoves": 16,
+    "teammateMoves": 5,
+    "latencyMs": 962
+   }
+  },
+  {
+   "demo": "board",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1004,
+   "label": "10 moves, 7 quick re-moves, 4 conflicts",
+   "durationMs": 11144,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 316,
+    "decisions": 24,
+    "detections": 5,
+    "findings": [
+     "mutation:stale",
+     "mutation:conflict",
+     "mutation:stale",
+     "failure:transient",
+     "mutation:stale"
+    ],
+    "triggers": {
+     "mutation": 11,
+     "delivery": 11,
+     "request": 1,
+     "failure": 1
+    },
+    "gates": [
+     "mutation:expected:defer:-1.21/6:ran",
+     "delivery:expected:discard:0.43/4:no",
+     "request:expected:coalesce:-0.07/4:ran",
+     "mutation:stale:discard:0.29/6:no",
+     "delivery:expected:discard:-0.01/4:ran",
+     "mutation:expected:defer:-1.45/6:ran",
+     "delivery:expected:discard:-0.27/4:ran",
+     "delivery:expected:discard:-0.79/4:ran",
+     "mutation:expected:defer:-1.66/6:ran",
+     "mutation:expected:defer:-1.95/6:ran",
+     "mutation:conflict:discard:2.97/6:no",
+     "mutation:stale:discard:0.97/6:no",
+     "failure:transient:-:-/-:ran",
+     "delivery:expected:discard:-0.18/4:ran",
+     "delivery:stale:discard:0.44/4:no",
+     "mutation:expected:defer:-1.5/6:ran",
+     "delivery:expected:discard:-0.24/4:ran",
+     "delivery:expected:discard:-0.16/4:ran",
+     "delivery:expected:discard:-0.4/4:ran",
+     "mutation:stale:discard:2.56/6:no",
+     "delivery:expected:discard:0.07/4:no",
+     "mutation:stale:discard:-0.8/6:ran",
+     "mutation:expected:defer:-1.54/6:ran",
+     "delivery:expected:discard:0.11/4:no"
+    ],
+    "notExecuted": {
+     "gain # of discard over deliver is not above the guard margin #": 4,
+     "gain # of discard over apply is not above the guard margin #": 4
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     169.1,
+     144.5,
+     157.9,
+     102.2,
+     195.4,
+     182.9,
+     108.2,
+     182.7,
+     168.9,
+     165,
+     97,
+     169.8,
+     107.6,
+     98.6,
+     131,
+     141,
+     103.9,
+     91.6,
+     153,
+     111.7,
+     117.6,
+     104.7,
+     149.5,
+     118.6
+    ],
+    "diagnoses": {
+     "expected": 17,
+     "stale": 5,
+     "conflict": 1,
+     "transient": 1
+    },
+    "stores": [
+     "board:adapter:94f:47w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "1 card in the wrong column at the end (c3)"
+   ],
+   "details": {
+    "mismatched": [
+     {
+      "card": "c3",
+      "shown": "review",
+      "server": "doing",
+      "moves": [
+       {
+        "t": 1791602052122.2,
+        "card": "c3",
+        "column": "review",
+        "by": "you",
+        "version": 2
+       },
+       {
+        "t": 1791602053137.9001,
+        "card": "c3",
+        "column": "done",
+        "by": "you",
+        "version": 3
+       },
+       {
+        "t": 1791602053592.3,
+        "card": "c3",
+        "column": "doing",
+        "by": "you",
+        "version": 4
+       }
+      ]
+     }
+    ],
+    "t0": 1791602047134.025,
+    "tEnd": 1791602058277.765,
+    "samples": [
+     {
+      "t": 1791602047181.95,
+      "cols": {
+       "c3": "doing"
+      }
+     },
+     {
+      "t": 1791602051182.105,
+      "cols": {
+       "c3": "review"
+      }
+     },
+     {
+      "t": 1791602051532.1648,
+      "cols": {
+       "c3": "done"
+      }
+     },
+     {
+      "t": 1791602052782.42,
+      "cols": {
+       "c3": "review"
+      }
+     },
+     {
+      "t": 1791602053240.7449,
+      "cols": {
+       "c3": "doing"
+      }
+     },
+     {
+      "t": 1791602053432.17,
+      "cols": {
+       "c3": "done"
+      }
+     },
+     {
+      "t": 1791602053981.815,
+      "cols": {
+       "c3": "doing"
+      }
+     },
+     {
+      "t": 1791602054331.2349,
+      "cols": {
+       "c3": "review"
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "finalMismatches": 1,
+    "divergedMs": 6483,
+    "maxDivergedMs": 6333,
+    "jumpBacks": 5,
+    "userMoves": 16,
+    "teammateMoves": 5,
+    "latencyMs": null
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "off",
+   "kind": "chaos",
+   "seed": 1004,
+   "label": "2 bursts, 72 chars",
+   "durationMs": 20324,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "off",
+    "situationBudget": 2400,
+    "loadMs": 4,
+    "decisions": 0,
+    "detections": 0,
+    "findings": [],
+    "triggers": {},
+    "gates": [],
+    "notExecuted": {},
+    "interventions": [],
+    "decisionLatencyMs": [],
+    "diagnoses": {},
+    "stores": [
+     "notes:adapter:19f:92w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 1125,
+    "maxLieMs": 650,
+    "reverts": 1,
+    "saves": 7,
+    "latencyMs": 2233
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "observe",
+   "kind": "chaos",
+   "seed": 1004,
+   "label": "2 bursts, 72 chars",
+   "durationMs": 20357,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 477,
+    "decisions": 10,
+    "detections": 6,
+    "findings": [
+     "delivery:stale",
+     "mutation:stale",
+     "delivery:stale",
+     "delivery:stale",
+     "delivery:stale",
+     "delivery:stale"
+    ],
+    "triggers": {
+     "delivery": 6,
+     "mutation": 3,
+     "transition": 1
+    },
+    "gates": [
+     "delivery:stale:-:-/-:no",
+     "mutation:stale:-:-/-:no",
+     "transition:expected:-:-/-:ran",
+     "delivery:stale:-:-/-:no",
+     "mutation:expected:-:-/-:ran",
+     "delivery:stale:-:-/-:no",
+     "mutation:expected:-:-/-:ran",
+     "delivery:stale:-:-/-:no",
+     "delivery:stale:-:-/-:no",
+     "delivery:stale:-:-/-:no"
+    ],
+    "notExecuted": {
+     "observe mode never changes execution": 7
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     191.8,
+     149.5,
+     204.4,
+     133.7,
+     209.9,
+     130.6,
+     153.1,
+     124.6,
+     135.6,
+     161.3
+    ],
+    "diagnoses": {
+     "stale": 7,
+     "expected": 3
+    },
+    "stores": [
+     "notes:adapter:19f:92w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 1227,
+    "maxLieMs": 650,
+    "reverts": 1,
+    "saves": 7,
+    "latencyMs": 2231
+   }
+  },
+  {
+   "demo": "editor",
+   "mode": "guard",
+   "kind": "chaos",
+   "seed": 1004,
+   "label": "2 bursts, 72 chars",
+   "durationMs": 20361,
+   "gc": {
+    "runtime": "real",
+    "isolated": true,
+    "status": "ready",
+    "model": "genclass-runtime-r17",
+    "device": "wasm",
+    "variant": "q8",
+    "threads": 4,
+    "situationBudget": 2000,
+    "loadMs": 366,
+    "decisions": 12,
+    "detections": 5,
+    "findings": [
+     "delivery:stale",
+     "mutation:stale",
+     "delivery:stale",
+     "delivery:stale",
+     "delivery:stale"
+    ],
+    "triggers": {
+     "delivery": 6,
+     "mutation": 3,
+     "transition": 2,
+     "request": 1
+    },
+    "gates": [
+     "delivery:stale:discard:0.75/4:no",
+     "mutation:stale:discard:0.56/6:no",
+     "transition:expected:-:-/-:ran",
+     "delivery:stale:discard:0.89/4:no",
+     "mutation:expected:discard:-0.73/6:ran",
+     "delivery:stale:discard:1.47/4:no",
+     "mutation:expected:discard:-0.76/6:ran",
+     "request:expected:coalesce:1.46/4:no",
+     "delivery:stale:discard:0.69/4:no",
+     "delivery:stale:discard:0.76/4:no",
+     "transition:expected:-:-/-:ran",
+     "delivery:stale:discard:0.47/4:no"
+    ],
+    "notExecuted": {
+     "gain # of discard over deliver is not above the guard margin #": 6,
+     "gain # of discard over apply is not above the guard margin #": 1,
+     "gain # of coalesce over send is not above the guard margin #": 1
+    },
+    "interventions": [],
+    "decisionLatencyMs": [
+     188.2,
+     182.2,
+     300,
+     105.4,
+     138.2,
+     128.3,
+     158.8,
+     280.4,
+     134.7,
+     124.2,
+     189.6,
+     132.9
+    ],
+    "diagnoses": {
+     "stale": 7,
+     "expected": 5
+    },
+    "stores": [
+     "notes:adapter:19f:92w"
+    ]
+   },
+   "driver": "playwright",
+   "bug": true,
+   "reasons": [
+    "the editor lost text the user typed"
+   ],
+   "metrics": {
+    "lostLocal": 1,
+    "lostServer": 0,
+    "finalLie": 0,
+    "lieMs": 865,
+    "maxLieMs": 524,
+    "reverts": 2,
+    "saves": 7,
+    "latencyMs": 1877
+   }
+  }
+ ]
+}
