@@ -240,8 +240,9 @@ export class TelemetryClient implements TelemetryStatus {
       model: cut(d.model, 80),
       latencyMs: Math.round(d.latencyMs),
       held: info?.held,
-      // automatically discovered state (InitOptions.autoState) is not sent: the app never registered it
-      situation: this.cfg.situation && !info?.autoState ? info?.situationText : undefined,
+      situation: this.cfg.situation ? info?.situationText : undefined,
+      // the situation includes automatically discovered state (InitOptions.autoState), redacted like registered stores
+      autoState: info?.autoState ? true : undefined,
       budget: info?.budget,
       compact: info?.compact,
       questions: Object.keys(d.answers ?? {}),

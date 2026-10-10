@@ -8,7 +8,7 @@
 also finds the app's state, so delivery decisions (a response that would overwrite newer data) work in apps that
 register no store. In the Troy trial (Next.js 16, React state) GenClass had made no state-based decision at all,
 because it saw only the network. No situation text or other model-visible text format changes (discovered fields
-are ordinary data); telemetry sends less, not more (below).
+are ordinary data); telemetry now includes discovered state (below).
 
 - **`InitOptions.autoState`** (`boolean | { react?, redux?, zustand?, pinia? }`): on by default in
   `@genclass/runtime/auto*` and the script tag, off in `GenClass.init()` / `createRuntime()` so explicit setups do
@@ -32,8 +32,8 @@ are ordinary data); telemetry sends less, not more (below).
 - **`@genclass/runtime/discover`**: the discovery code for `GenClass.init({ autoState: true })` setups (the main
   entry stays without it). Importing it first installs the hooks at once; a runtime started later attaches.
 - **`runtime.stores()`** lists registered and discovered stores; the devtools overlay's Now view shows them.
-- **Telemetry:** once discovered state has been recorded, decisions are sent without their situation text (the app
-  never registered that state).
+- **Telemetry:** discovered state is sent like registered stores, in the redacted situation text; decisions made
+  after discovered state was recorded carry `autoState: true`. PRIVACY.md says so.
 - **Cost:** `/auto` first load about 96 KB gzip (was 89 KB; the main entry is unchanged at 89 KB); the script-tag
   file about 110 KB gzip. Commit-walk and Troy measurements: README "Costs".
 

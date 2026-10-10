@@ -36,9 +36,9 @@ Only data the runtime already computes for its own decisions, after redaction:
   by `[redacted]`; see the README's [Privacy](README.md#privacy-and-telemetry) section for the rules and their known
   gaps). Situation text describes operations (e.g. `GET /api/items/:id`), store fields and short value summaries,
   timing and the facts GenClass computed. It can contain app data that the redactor does not recognise as secret
-  (for example a product name or a search term). `include: { situation: false }` leaves it out. It is also left
-  out of every decision once automatically discovered state (`autoState`: React, Redux or Zustand state the app
-  never registered) has been recorded on the page (since `0.1.0-beta.4`).
+  (for example a product name or a search term). `include: { situation: false }` leaves it out. Since `0.1.0-beta.4` it
+  also covers state the runtime discovered on its own (`autoState`: React, Redux or Zustand state the app never
+  registered), redacted the same way; those decisions carry `autoState: true`.
 - **Never:** typed values of password, payment (`cc-*`), one-time-code or secret-named inputs (the runtime never
   records them in the first place), cookies, request or response headers, request or response bodies, storage
   contents, the page's query string or fragment, the full URL, error messages or stack traces of your app, the
@@ -66,7 +66,7 @@ Every event has `t` (type), `seq` (0, 1, 2, … per page) and `at` (ms since sta
 | `session` | once, at init | `runtime`, `host` (the page's hostname, which identifies the app using GenClass), `route` (the page path with id-like segments replaced by `:id`, no query or fragment), `mode`, `effectiveMode`, `aggressiveness`, `sampled`, `model` (`local` / `custom` / `off`), `modelState`, `modelVersion`, `triage`, `shadow`, `holdWrites`, `device` (`webgpu` available, `cores`, `memoryGB` (the browser's coarse deviceMemory), `crossOriginIsolated`, `effectiveType`, `saveData`), `sample`, `situation` (whether situation text is included) |
 | `model` | model state changes | `state`, `version`, `model`, `variant`, `device` (webgpu/wasm), `threads`, `worker`, `workerError`, `gpu` (WebGPU probe summary), `ort`, `loadMs`, `warmupMs`, `fromCache`, `bytes`, `phase`, `reason`, `error` (GenClass model-host error text, ≤ 200 chars), `attempts` |
 | `status` | mode, aggressiveness or breaker changes | `mode`, `effectiveMode`, `aggressiveness`, `breaker` |
-| `decision` | every model decision | `id`, `trigger`, `route`, `model`, `latencyMs`, `held` (the subject waited for the answer; false = decided in the background), `situation` (text, see above), `budget`, `compact`, `questions` (question ids), `answers` (per question: calibrated `probabilities` per label, `choice`, `confidence`; or `p` / `score`), `diagnosis`, `diagnosisConfidence`, `action` (chosen), `confidence`, `tier`, `candidate`, `ran`, `executed`, `acted`, `reason` (why the passive action ran), `mass`, `gateKind`, `threshold` / `gain` / `margin`, `thresholdSource`, `gates` (report/guard/heal thresholds, aggressiveness, level and sources), `effectiveMode`, `shadow` |
+| `decision` | every model decision | `id`, `trigger`, `route`, `model`, `latencyMs`, `held` (the subject waited for the answer; false = decided in the background), `situation` (text, see above), `autoState` (true when discovered state was recorded on the page), `budget`, `compact`, `questions` (question ids), `answers` (per question: calibrated `probabilities` per label, `choice`, `confidence`; or `p` / `score`), `diagnosis`, `diagnosisConfidence`, `action` (chosen), `confidence`, `tier`, `candidate`, `ran`, `executed`, `acted`, `reason` (why the passive action ran), `mass`, `gateKind`, `threshold` / `gain` / `margin`, `thresholdSource`, `gates` (report/guard/heal thresholds, aggressiveness, level and sources), `effectiveMode`, `shadow` |
 | `detect` | a decision reported as a detection | `decision`, `trigger`, `diagnosis`, `p` |
 | `action` | an action ran, failed or was undone | `id`, `decision`, `action`, `tier`, `trigger`, `outcome` (`applied` / `failed` / `undone`), `late` (a late revert), `reversible`, `droppedFields` (count) |
 | `veto` | `onBeforeAction` vetoed an action | `decision`, `action`, `enforced` |

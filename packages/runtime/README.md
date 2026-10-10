@@ -229,9 +229,9 @@ response would overwrite newer data") need those writes: without them, GenClass 
   and values that are not app data: functions, promises, React elements, DOM nodes, class instances and objects
   holding them (router caches, query clients).
 - **Secrets.** Field names are redacted as usual (`form.password`). A hook has no name, so a `useState` whose
-  string equals what a password, card-number or one-time-code input holds is redacted from then on. Discovered
-  state never reaches telemetry: once discovered state has been recorded, decisions are sent without their
-  situation text.
+  string equals what a password, card-number or one-time-code input holds is redacted from then on. Telemetry
+  sends discovered state like registered stores (in the redacted situation text; `include: { situation: false }`
+  keeps it out).
 - **Turn it off:** `<meta name="genclass" content="autostate=off">`, `data-autostate="off"` on the script tag,
   `window.GENCLASS_CONFIG = { autoState: false }`, or one source only: `autoState: { react: false }` (also `redux`,
   `zustand`). `?genclass=off` installs nothing at all.
@@ -778,8 +778,8 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
     two-letter country, and stores no IP address or user agent.
   - **Situation text can still contain app data** the redactor does not recognise as secret (a product name, a
     search term). `telemetry: { include: { situation: false } }` keeps the text out; `redact` hides more.
-  - **Automatically discovered state is not sent.** Once discovered React, Redux or Zustand state has been recorded
-    on a page, decisions are sent without their situation text (answers, diagnosis and counts still are).
+  - **Automatically discovered state is sent like registered stores** (React, Redux or Zustand state, in the same
+    redacted situation text); those decisions carry `autoState: true`.
   - **Opt out** (any one): `npx @genclass/runtime init --no-telemetry`, `GenClass.init({ telemetry: false })` (also `telemetry=off` in the meta tag or
     `data-telemetry="off"` on the script tag), `?genclass=no-telemetry` (or `?genclass=off`) in the URL,
     `localStorage.setItem("genclass.telemetry", "off")`. Browsers that send **Global Privacy Control**

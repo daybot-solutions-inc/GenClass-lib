@@ -432,8 +432,8 @@ describe("autoState React: devtools overlay and telemetry", () => {
     dt.unmount();
   });
 
-  it("telemetry leaves the situation text out once discovered state was recorded", async () => {
-    const sent: { events: { t: string; situation?: string }[] }[] = [];
+  it("telemetry sends discovered state like registered stores and marks the decision autoState", async () => {
+    const sent: { events: { t: string; situation?: string; autoState?: boolean }[] }[] = [];
     const transport = { send: (_u: string, body: string) => void sent.push(JSON.parse(body)) };
     const e = start({ telemetry: { transport, flushMs: 1000 }, triage: "always" });
     const { createElement: h, useState } = e.R.React;
@@ -453,8 +453,8 @@ describe("autoState React: devtools overlay and telemetry", () => {
     await e.rt.telemetry?.flush();
     const decisions = sent.flatMap((b) => b.events).filter((x) => x.t === "decision");
     expect(decisions.length).toBeGreaterThan(0);
-    expect(decisions.every((d) => d.situation === undefined)).toBe(true);
-    expect(JSON.stringify(sent)).not.toContain("naan");
+    expect(decisions.every((d) => d.autoState === true)).toBe(true);
+    expect(decisions.some((d) => d.situation?.includes("Basket.state0"))).toBe(true);
   });
 });
 

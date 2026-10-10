@@ -157,7 +157,7 @@ the runtime warns once. The kill switch path of `GenClass.init` never passes `au
 no discovery. Mechanics: [state-and-adapters.md](state-and-adapters.md) section 14. New public `Runtime.stores():
 StoreInfo[]` (`{ name, kind: "atom"|"guard"|"adapter"|"observed", source?, writable, fields, version }`); internal
 `RuntimeImpl.discoveryStats()` (React walk stats, Redux/connected store names); `decisionInfo().autoState` (telemetry
-omits the situation text when true).
+marks the decision event `autoState: true`; the situation text is sent as usual).
 
 ### Modes and tiers
 

@@ -16,7 +16,8 @@ When a website runs GenClass with telemetry on (the default), the browser sends 
 - **Decisions the runtime made:** what kind of event it looked at (for example a network response or a store
   write), the model's diagnosis and suggested action, its confidence, and whether anything was changed or undone.
 - **The situation text the model read.** This describes recent app activity: request paths, store field names and
-  short summaries of their values, and timing. GenClass removes passwords, payment details and fields whose names
+  short summaries of their values (including app state GenClass finds on its own, such as React component state),
+  and timing. GenClass removes passwords, payment details and fields whose names
   look like secrets before this text is created. Other values, such as names or search terms typed into the app,
   can appear in shortened form.
 - **Technical details:** GenClass and model versions, settings, device type (WebGPU or WASM), load times and error
