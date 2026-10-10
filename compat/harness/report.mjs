@@ -222,10 +222,10 @@ export function writeReport(results, { jsonPath, mdPath }) {
   // ------------------------------------------------------------------------------------------ frameworks
   L.push("## Frameworks");
   L.push("");
-  L.push("Each app is built for production and served the way it would be in production (static files, `next start`, the SvelteKit Node adapter, Angular's SSR server). *Boots clean*: the model loads, fetch is instrumented, no console errors or GenClass warnings, no request leaves the machine. *Kill switch*: with `?genclass=off` nothing is installed (WebSocket, EventSource and timers are the browser's own, no model worker) and the app works. *Devtools*: the overlay mounts. *CSP*: the app still boots clean under a Content-Security-Policy that adds only what the README asks for. *SSR*: the page is rendered on the server with GenClass installed, and importing the one line on the server returns an inert runtime (server `fetch` untouched, no globals added).");
+  L.push("Each app is built for production and served the way it would be in production (static files, `next start`, the SvelteKit Node adapter, Angular's SSR server). *Boots clean*: the model loads, fetch is instrumented, no console errors or GenClass warnings, no request leaves the machine. *Kill switch*: with `?genclass=off` nothing is installed (WebSocket, EventSource and timers are the browser's own, no model worker) and the app works. *Devtools*: the overlay mounts. *CSP*: the app still boots clean (model ready, no violation) under a Content-Security-Policy that adds only what the README asks for, sent with the HTML page (*page*) or with every response, scripts and the model worker included, as many production servers do (*every response*). *SSR*: the page is rendered on the server with GenClass installed, and importing the one line on the server returns an inert runtime (server `fetch` untouched, no globals added).");
   L.push("");
-  L.push("| app | where the one line goes | versions | builds | boots clean | kill switch | devtools | CSP | SSR inert | hydration errors |");
-  L.push("|---|---|---|---|---|---|---|---|---|---|");
+  L.push("| app | where the one line goes | versions | builds | boots clean | kill switch | devtools | CSP (page) | CSP (every response) | SSR inert | hydration errors |");
+  L.push("|---|---|---|---|---|---|---|---|---|---|---|");
   for (const name of appsRun) {
     const a = results.apps[name];
     const b = a.boot ?? {};
@@ -233,7 +233,7 @@ export function writeReport(results, { jsonPath, mdPath }) {
     const yes = (x) => (x === undefined ? "–" : x ? "✓" : `[✗](#${anchor("boot", name)})`);
     const ib = a.error ? `[✗](#${anchor("boot", name)})` : ["install", "build", "serve"].some((k) => a.steps?.[k]?.ok === false) ? `[✗](#${anchor("boot", name)})` : "✓";
     const hyd = results.trials.filter((t) => t.app === name).flatMap((t) => (t.errors ?? []).filter(isHydration)).length;
-    L.push(`| ${APPS[name]?.title ?? name} | ${a.install ?? APPS[name]?.install ?? ""} | ${v} | ${ib} | ${yes(b.boot?.pass)} | ${yes(b.killswitch?.pass)} | ${yes(b.devtools?.pass)} | ${yes(b.csp?.pass)} | ${APPS[name]?.ssr ? yes(b.ssr?.pass) : "–"} | ${APPS[name]?.ssr ? hyd : "–"} |`);
+    L.push(`| ${APPS[name]?.title ?? name} | ${a.install ?? APPS[name]?.install ?? ""} | ${v} | ${ib} | ${yes(b.boot?.pass)} | ${yes(b.killswitch?.pass)} | ${yes(b.devtools?.pass)} | ${yes(b.csp?.pass)} | ${yes(b.cspAll?.pass)} | ${APPS[name]?.ssr ? yes(b.ssr?.pass) : "–"} | ${APPS[name]?.ssr ? hyd : "–"} |`);
   }
   L.push("");
   L.push(`CSP used (bundled apps): \`${m.csp?.bundled ?? m.csp}\`. Script-tag app: \`${m.csp?.cdn ?? m.csp}\`.`);
@@ -343,7 +343,7 @@ export function writeReport(results, { jsonPath, mdPath }) {
   for (const name of appsRun) {
     const a = results.apps[name];
     const b = a.boot ?? {};
-    const bad = ["boot", "killswitch", "devtools", "csp", "ssr"].filter((k) => b[k] && !b[k].pass);
+    const bad = ["boot", "killswitch", "devtools", "csp", "cspAll", "ssr"].filter((k) => b[k] && !b[k].pass);
     if (a.error || bad.length || ["install", "build", "serve"].some((k) => a.steps?.[k]?.ok === false)) {
       any = true;
       L.push(`### ${anchor("boot", name)}`);

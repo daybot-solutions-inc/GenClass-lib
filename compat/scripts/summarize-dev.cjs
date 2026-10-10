@@ -3,7 +3,7 @@ const r = require(require("node:path").resolve(process.argv[2]));
 const f = process.argv[3] ? new RegExp(process.argv[3]) : null;
 for (const [n, a] of Object.entries(r.apps)) {
   const b = a.boot || {};
-  for (const k of ["boot", "killswitch", "devtools", "csp", "ssr"]) if (b[k] && !b[k].pass) console.log("BOOT", n, k, JSON.stringify({ ...b[k], genclass: undefined }).slice(0, 1500));
+  for (const k of ["boot", "killswitch", "devtools", "csp", "cspAll", "ssr"]) if (b[k] && !b[k].pass) console.log("BOOT", n, k, JSON.stringify({ ...b[k], genclass: undefined }).slice(0, 1500));
   if (b.ssr) console.log("SSR", n, JSON.stringify(b.ssr).slice(0, 600));
   for (const k of ["install", "build", "serve"]) if (a.steps?.[k]?.ok === false) console.log("STEP", n, k, (a.steps[k].out || a.steps[k].error || "").slice(-1500));
 }

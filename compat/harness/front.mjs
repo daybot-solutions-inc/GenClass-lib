@@ -25,9 +25,9 @@ const MIME = {
   ".woff2": "font/woff2",
 };
 
-function serveFile(res, file, extraHeaders = {}) {
+function serveFile(res, file, extraHeaders = {}, all = false) {
   const type = MIME[extname(file)] ?? "application/octet-stream";
-  res.writeHead(200, { "content-type": type, "cache-control": "no-store", ...(type.startsWith("text/html") ? extraHeaders : {}) });
+  res.writeHead(200, { "content-type": type, "cache-control": "no-store", ...(all || type.startsWith("text/html") ? extraHeaders : {}) });
   createReadStream(file).pipe(res);
 }
 
@@ -36,23 +36,26 @@ function safeJoin(root, urlPath) {
   return p.startsWith(resolve(root)) ? p : null;
 }
 
-function serveStatic(root, urlPath, res, { fallback, headers }) {
+function serveStatic(root, urlPath, res, { fallback, headers, all = false }) {
   let f = safeJoin(root, urlPath);
   if (f && existsSync(f) && statSync(f).isDirectory()) f = join(f, "index.html");
-  if (f && existsSync(f) && statSync(f).isFile()) return serveFile(res, f, headers), true;
+  if (f && existsSync(f) && statSync(f).isFile()) return serveFile(res, f, headers, all), true;
   if (fallback && !extname(urlPath)) {
     const fb = join(root, fallback);
-    if (existsSync(fb)) return serveFile(res, fb, headers), true;
+    if (existsSync(fb)) return serveFile(res, fb, headers, all), true;
   }
   return false;
 }
 
 /**
  * startFront({ backend, upstream?: "http://127.0.0.1:port", staticDir?, pkgDir?, port? })
- * -> { url, port, setCsp(policy|null), close() }
+ * -> { url, port, setCsp(policy|null, { all }), close() }
+ * setCsp(policy) adds the header to HTML responses (the page's policy); with { all: true } to every response the app
+ * serves, as many production servers do (the model worker script then carries the policy too).
  */
 export function startFront({ backend, upstream = null, staticDir = null, pkgDir = null, port = 0 }) {
   let csp = null;
+  let cspAll = false;
   const htmlHeaders = () => (csp ? { "content-security-policy": csp } : {});
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
@@ -65,7 +68,7 @@ export function startFront({ backend, upstream = null, staticDir = null, pkgDir 
         return;
       }
       if (staticDir) {
-        if (serveStatic(staticDir, url.pathname, res, { fallback: "index.html", headers: htmlHeaders() })) return;
+        if (serveStatic(staticDir, url.pathname, res, { fallback: "index.html", headers: htmlHeaders(), all: cspAll })) return;
         res.writeHead(404, { "content-type": "text/plain" }).end("not found");
         return;
       }
@@ -83,7 +86,7 @@ export function startFront({ backend, upstream = null, staticDir = null, pkgDir 
     delete headers["accept-encoding"]; // keep HTML bodies readable for the CSP header and SSR checks
     const preq = http.request({ hostname: u.hostname, port: u.port, path: req.url, method: req.method, headers }, (pres) => {
       const h = { ...pres.headers };
-      if (csp && String(h["content-type"] ?? "").includes("text/html")) h["content-security-policy"] = csp;
+      if (csp && (cspAll || String(h["content-type"] ?? "").includes("text/html"))) h["content-security-policy"] = csp;
       res.writeHead(pres.statusCode ?? 502, h);
       pres.pipe(res);
     });
@@ -106,7 +109,10 @@ export function startFront({ backend, upstream = null, staticDir = null, pkgDir 
       resolveP({
         url: `http://127.0.0.1:${p}`,
         port: p,
-        setCsp: (policy) => (csp = policy),
+        setCsp: (policy, o = {}) => {
+          csp = policy;
+          cspAll = !!o.all;
+        },
         close: () =>
           new Promise((r) => {
             server.close(() => r());

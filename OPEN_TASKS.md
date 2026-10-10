@@ -123,6 +123,13 @@ Mehar operates the Azure cluster; nobody else touches Azure. The jobs below run 
 
 ## Next
 
+- **Review the COMPAT branch** (local, 2026-10-10; `compat/RESULTS.md`, docs/agents/compat.md): public
+  compatibility matrix (7 frameworks, 15 data layers, 8 scenarios, 4 modes, 10 seeds; never-worse everywhere, 0 bugs
+  introduced), starter templates (`templates/`, checked by `compat/templates-check.mjs`), one runtime fix (the
+  "Model ready" console line repeated), README fixes (Zustand devtools off in production builds; `?genclass=` limits),
+  design note `docs/runtime/QUERY-CACHE-ADAPTERS.md`. It also exercised real `@reduxjs/toolkit` 2.13 discovery
+  (240/240 runs; the `feat/one-line` item below tested a replica). Then: publish `RESULTS.md` at
+  genclass.dev/docs/compatibility (the landing site's build), and re-run `compat/` before each release.
 - **Review `feat/one-line`** (local, 2026-10-10): automatic state discovery for the one line (React, Redux/RTK,
   Zustand devtools; observed-only store kind). Then: Vue 3 + Pinia discovery (`__VUE_DEVTOOLS_GLOBAL_HOOK__` /
   pinia `$subscribe`; not started, `autoState.pinia` is accepted and ignored); exact attribution for

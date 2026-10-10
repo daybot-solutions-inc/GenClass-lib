@@ -154,6 +154,11 @@ Nuxt 4.6, React Router 8 (framework mode), Angular 20 and plain HTML. In all 15 
 - `remove` left every file byte-identical to the scaffold (node_modules, lockfiles and build output excluded).
 
 Remix, Solid, Preact and Next.js before 15.3 are detected but were not scaffolded with their own generators.
+The [compatibility matrix](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md) runs the
+one line in React + Vite, Next.js 16, Vue + Pinia, SvelteKit 3, Angular 22, Solid and plain HTML, with 15 data layers
+(TanStack Query, SWR, Redux Toolkit, Zustand, Apollo, WebSocket and EventSource among them), in every mode, and checks
+that GenClass never makes those apps worse; starter templates are in
+[templates/](https://github.com/daybot-solutions-inc/GenClass-lib/tree/main/templates).
 Details: [test/install/RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/test/install/RESULTS.md).
 Those runs predate observe becoming the default and the `init` / `remove` fixes in this version (`--mode`, formatter
 handling, server and library detection). The fixes are covered by unit tests; the scaffolds have not been re-run.

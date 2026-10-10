@@ -348,9 +348,9 @@ async function bootChecks(w, app) {
   const layer = Object.keys(app.layers).find((l) => !LAYER_FILTER || LAYER_FILTER.includes(l)) ?? Object.keys(app.layers)[0];
   const scen = app.layers[layer].scenarios.includes("h") ? "h" : app.layers[layer].scenarios[0];
   const out = { layer };
-  const visit = async (name, { off = false, extra = null, csp = false, check }) => {
+  const visit = async (name, { off = false, extra = null, csp = false, cspAll = false, check }) => {
     w.backend.reset({ seed: 1, scenario: scen });
-    if (csp) w.front.setCsp(app.cdn ? CSP_CDN : CSP_BUNDLED);
+    if (csp) w.front.setCsp(app.cdn ? CSP_CDN : CSP_BUNDLED, { all: cspAll });
     const { context, page, consoleLines, errors, blocked } = await newPage(w.browser, { off, mode: null, extra });
     const r = {};
     try {
@@ -398,12 +398,22 @@ async function bootChecks(w, app) {
       await sleep(1000);
     },
   });
+  // the same policy on every response (scripts and the model worker too), as many production servers send it
+  await visit("cspAll", {
+    csp: true,
+    cspAll: true,
+    check: async (page, r) => {
+      r.model = await waitModel(page);
+      await sleep(1000);
+    },
+  });
   const clean = (x) => x.errors.length === 0 && x.genclassProblems.length === 0 && x.blocked.length === 0;
   out.boot.pass = !!(out.boot.ready && out.boot.model?.state === "ready" && !out.boot.fetchNative && !out.boot.globalsNative && out.boot.csp.length === 0 && clean(out.boot));
   // the kill switch: nothing installed (WebSocket, EventSource and timers are the browser's own; no model worker)
   out.killswitch.pass = !!(out.killswitch.ready && out.killswitch.globalsNative && (out.killswitch.workers ?? []).length === 0 && out.killswitch.errors.length === 0 && out.killswitch.blocked.length === 0);
   out.devtools.pass = !!(out.devtools.ready && out.devtools.overlay && clean(out.devtools));
   out.csp.pass = !!(out.csp.ready && out.csp.model?.state === "ready" && out.csp.csp.length === 0 && clean(out.csp));
+  out.cspAll.pass = !!(out.cspAll.ready && out.cspAll.model?.state === "ready" && out.cspAll.csp.length === 0 && clean(out.cspAll));
   if (app.ssr) out.ssr = await ssrCheck(w, layer, scen);
   return out;
 }
@@ -475,7 +485,7 @@ async function runApp(name, results) {
       workers.push({ backend, front, browser });
     }
     rec.boot = await bootChecks(workers[0], app);
-    log(`${name}: boot ${["boot", "killswitch", "devtools", "csp", "ssr"].map((k) => `${k}=${rec.boot[k] ? (rec.boot[k].pass ? "ok" : "FAIL") : "-"}`).join(" ")}`);
+    log(`${name}: boot ${["boot", "killswitch", "devtools", "csp", "cspAll", "ssr"].map((k) => `${k}=${rec.boot[k] ? (rec.boot[k].pass ? "ok" : "FAIL") : "-"}`).join(" ")}`);
     if (flag("boot-only")) return;
 
     const queue = [];
