@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GenClass Telemetry and Privacy</title>
+<meta name="description" content="What anonymous diagnostics the GenClass runtime sends during the beta, what it never sends, and every way to turn it off.">
+<link rel="canonical" href="https://genclass.dev/docs/telemetry">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/docs/telemetry">
+<meta property="og:title" content="GenClass Telemetry and Privacy">
+<meta property="og:description" content="What anonymous diagnostics the GenClass runtime sends during the beta, what it never sends, and every way to turn it off.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GenClass Telemetry and Privacy">
+<meta name="twitter:description" content="What anonymous diagnostics the GenClass runtime sends during the beta, what it never sends, and every way to turn it off.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Telemetry", "item": "https://genclass.dev/docs/telemetry"}]}, {"@type": "TechArticle", "headline": "GenClass Runtime telemetry", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs" class="on" aria-current="page">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>Telemetry</span></nav><h1>GenClass Runtime telemetry</h1>
+<p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md"><code>packages/runtime/TELEMETRY.md</code></a> in the GenClass repository.</p></div></div>
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><b>On this page</b><a href="#when-it-is-on">When it is on</a><a href="#what-is-sent">What is sent</a><a href="#where-it-goes">Where it goes</a><a href="#options">Options</a><a href="#opting-out">Opting out</a><a href="#if-you-ship-genclass-in-your-app">If you ship GenClass in your app</a></nav><article class="prose"><p>Since <strong><code>0.1.0-beta.3</code></strong>, <code>GenClass.init()</code> in a browser sends <strong>anonymous diagnostics</strong> about GenClass's own
+decisions to the GenClass maintainers (Daybot Solutions Inc.). We use them to measure and improve the GenClass
+model (accuracy, false interventions, latency, which situations it sees in real apps). This page lists exactly what
+is sent, where it goes, and how to turn it off.</p>
+<p><strong>Turn it off:</strong> <code>GenClass.init({ telemetry: false })</code>, <code>?genclass=no-telemetry</code> in the URL, or
+<code>localStorage.setItem("genclass.telemetry", "off")</code>. Browsers that send Global Privacy Control are never collected.
+Details under <a href="#opting-out">Opting out</a>.</p>
+<h2 id="when-it-is-on">When it is on</h2>
+<table>
+<thead>
+<tr>
+<th>how GenClass starts</th>
+<th>default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GenClass.init()</code>, <code>import "@genclass/runtime/auto"</code> (and <code>/auto/*</code>), the CDN script tag, <code>npx @genclass/runtime init</code> setups</td>
+<td><strong>on</strong> in a browser</td>
+</tr>
+<tr>
+<td><code>GenClass.init()</code> outside a browser (Node, SSR, workers)</td>
+<td>off unless <code>telemetry: true</code> / <code>{ ... }</code></td>
+</tr>
+<tr>
+<td><code>createRuntime()</code> (headless, tests, the simulator)</td>
+<td>off unless <code>telemetry: true</code> / <code>{ ... }</code></td>
+</tr>
+</tbody>
+</table>
+<p>When it is on, the console shows one notice per page:</p>
+<pre><code>[GenClass] Sends anonymous diagnostics (decisions, redacted situation text) to improve the model. Opt out: GenClass.init({ telemetry: false }) or ?genclass=no-telemetry.
+</code></pre>
+<p><code>runtime.telemetry</code> reports <code>{ enabled, reason?, endpoint?, sessionId?, flush() }</code>; <code>reason</code> says why it is off
+(<code>option</code>, <code>headless</code>, <code>url</code>, <code>localStorage</code>, <code>gpc</code>, <code>sampled-out</code>, <code>no-crypto</code>, <code>no-transport</code>, <code>kill-switch</code>,
+<code>disabled</code>).</p>
+<h2 id="what-is-sent">What is sent</h2>
+<p>Only data the runtime already computes for its own decisions, after redaction:</p>
+<ul>
+<li><strong>The situation text the model read</strong>, exactly as built for the model, after the redactor
+  (<code>InitOptions.redact</code>, default: secret-named fields such as passwords, tokens, card numbers, API keys are replaced
+  by <code>[redacted]</code>; see the README's <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#privacy-and-telemetry">Privacy</a> section for the rules and their known
+  gaps). Situation text describes operations (e.g. <code>GET /api/items/:id</code>), store fields and short value summaries,
+  timing and the facts GenClass computed. It can contain app data that the redactor does not recognise as secret
+  (for example a product name or a search term). <code>include: { situation: false }</code> leaves it out.</li>
+<li><strong>Never:</strong> typed values of password, payment (<code>cc-*</code>), one-time-code or secret-named inputs (the runtime never
+  records them in the first place), cookies, request or response headers, request or response bodies, storage
+  contents, the page's query string or fragment, the full URL, error messages or stack traces of your app, the
+  sentences GenClass prints about what it changed, IP addresses or user agents (the collector does not store them).</li>
+</ul>
+<h3 id="batch-envelope-schema-genclass-telemetry1">Batch envelope (schema <code>genclass-telemetry/1</code>)</h3>
+<p><code>POST &lt;endpoint&gt;</code> with <code>content-type: text/plain;charset=UTF-8</code> (JSON body), no credentials, no referrer:</p>
+<pre><code class="language-jsonc">{
+  &quot;schema&quot;: &quot;genclass-telemetry/1&quot;,
+  &quot;sid&quot;: &quot;3f9c…&quot;,            // 24 hex chars from crypto.getRandomValues, new on every page load, never stored
+  &quot;sent&quot;: 12034,             // ms since this page's GenClass started (no wall-clock time is sent)
+  &quot;runtime&quot;: &quot;0.1.0-beta.3&quot;, // @genclass/runtime version
+  &quot;model&quot;: &quot;2.0.0-rc4t&quot;,     // model card version, or null without a model
+  &quot;events&quot;: [ /* ≤ 100 events, ≤ 60 KB per request */ ]
+}
+</code></pre>
+<p>Every event has <code>t</code> (type), <code>seq</code> (0, 1, 2, … per page) and <code>at</code> (ms since start). Event types:</p>
+<table>
+<thead>
+<tr>
+<th><code>t</code></th>
+<th>when</th>
+<th>fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>session</code></td>
+<td>once, at init</td>
+<td><code>runtime</code>, <code>host</code> (the page's hostname, which identifies the app using GenClass), <code>route</code> (the page path with id-like segments replaced by <code>:id</code>, no query or fragment), <code>mode</code>, <code>effectiveMode</code>, <code>aggressiveness</code>, <code>sampled</code>, <code>model</code> (<code>local</code> / <code>custom</code> / <code>off</code>), <code>modelState</code>, <code>modelVersion</code>, <code>triage</code>, <code>shadow</code>, <code>holdWrites</code>, <code>device</code> (<code>webgpu</code> available, <code>cores</code>, <code>memoryGB</code> (the browser's coarse deviceMemory), <code>crossOriginIsolated</code>, <code>effectiveType</code>, <code>saveData</code>), <code>sample</code>, <code>situation</code> (whether situation text is included)</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td>model state changes</td>
+<td><code>state</code>, <code>version</code>, <code>model</code>, <code>variant</code>, <code>device</code> (webgpu/wasm), <code>threads</code>, <code>worker</code>, <code>workerError</code>, <code>gpu</code> (WebGPU probe summary), <code>ort</code>, <code>loadMs</code>, <code>warmupMs</code>, <code>fromCache</code>, <code>bytes</code>, <code>phase</code>, <code>reason</code>, <code>error</code> (GenClass model-host error text, ≤ 200 chars), <code>attempts</code></td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>mode, aggressiveness or breaker changes</td>
+<td><code>mode</code>, <code>effectiveMode</code>, <code>aggressiveness</code>, <code>breaker</code></td>
+</tr>
+<tr>
+<td><code>decision</code></td>
+<td>every model decision</td>
+<td><code>id</code>, <code>trigger</code>, <code>route</code>, <code>model</code>, <code>latencyMs</code>, <code>held</code> (the subject waited for the answer; false = decided in the background), <code>situation</code> (text, see above), <code>budget</code>, <code>compact</code>, <code>questions</code> (question ids), <code>answers</code> (per question: calibrated <code>probabilities</code> per label, <code>choice</code>, <code>confidence</code>; or <code>p</code> / <code>score</code>), <code>diagnosis</code>, <code>diagnosisConfidence</code>, <code>action</code> (chosen), <code>confidence</code>, <code>tier</code>, <code>candidate</code>, <code>ran</code>, <code>executed</code>, <code>acted</code>, <code>reason</code> (why the passive action ran), <code>mass</code>, <code>gateKind</code>, <code>threshold</code> / <code>gain</code> / <code>margin</code>, <code>thresholdSource</code>, <code>gates</code> (report/guard/heal thresholds, aggressiveness, level and sources), <code>effectiveMode</code>, <code>shadow</code></td>
+</tr>
+<tr>
+<td><code>detect</code></td>
+<td>a decision reported as a detection</td>
+<td><code>decision</code>, <code>trigger</code>, <code>diagnosis</code>, <code>p</code></td>
+</tr>
+<tr>
+<td><code>action</code></td>
+<td>an action ran, failed or was undone</td>
+<td><code>id</code>, <code>decision</code>, <code>action</code>, <code>tier</code>, <code>trigger</code>, <code>outcome</code> (<code>applied</code> / <code>failed</code> / <code>undone</code>), <code>late</code> (a late revert), <code>reversible</code>, <code>droppedFields</code> (count)</td>
+</tr>
+<tr>
+<td><code>veto</code></td>
+<td><code>onBeforeAction</code> vetoed an action</td>
+<td><code>decision</code>, <code>action</code>, <code>enforced</code></td>
+</tr>
+<tr>
+<td><code>breaker</code></td>
+<td>the breaker tripped or reset</td>
+<td><code>tripped</code>, <code>reason</code>, <code>undos</code>, <code>errors</code>, <code>decisions</code> (ids)</td>
+</tr>
+<tr>
+<td><code>model-error</code></td>
+<td>model errors (first 20 per page; all are counted)</td>
+<td><code>code</code>, <code>message</code> (≤ 200 chars)</td>
+</tr>
+<tr>
+<td><code>summary</code></td>
+<td>every ≥ 60 s with activity, when the tab is hidden, on pagehide and on destroy</td>
+<td><code>reason</code>, <code>counts</code> (decisions, acted, detections, actions applied/failed, late reverts, undos, vetoes, breaker trips, per trigger / diagnosis / action ran, detections per diagnosis, action limits hit, model errors per code, fail-opens per reason and trigger), <code>runtime</code> (model p50/p95 latency, decisions, dropped, hidden-tab skips, held time, denied and shadow counts, error count), <code>telemetry</code> (queued, dropped, send failures, events sent)</td>
+</tr>
+</tbody>
+</table>
+<p>Numbers are rounded to 4 decimals. The source of truth is <code>packages/runtime/src/telemetry/client.ts</code>.</p>
+<h3 id="transport">Transport</h3>
+<ul>
+<li>Batches every 10 s (<code>flushMs</code>) of activity, and on <code>pagehide</code> / when the tab becomes hidden via
+  <code>navigator.sendBeacon</code> (falling back to <code>fetch</code> with <code>keepalive</code>).</li>
+<li>The <code>fetch</code> and <code>sendBeacon</code> captured when <code>@genclass/runtime</code> loaded, so GenClass never observes, holds or decides
+  about its own requests.</li>
+<li>At most 1,000 queued events; beyond that new events are dropped and counted. A failed request is dropped, never
+  retried. Telemetry never throws into your app, never changes what the model sees, and never delays a decision.</li>
+</ul>
+<h2 id="where-it-goes">Where it goes</h2>
+<ul>
+<li><strong>Endpoint:</strong> <code>https://genclass-telemetry.mehar-144.workers.dev/v1/events</code> (<code>DEFAULT_TELEMETRY_ENDPOINT</code>), a
+  Cloudflare Worker operated by the GenClass maintainers (source: <code>telemetry-worker/</code> in the repository).</li>
+<li><strong>Storage:</strong> a private Cloudflare R2 bucket (<code>genclass-telemetry</code>), gzip JSON Lines, one object per batch,
+  partitioned by UTC date, runtime version and model version. The collector adds only the time it received the
+  batch and the visitor's coarse <strong>country</strong> (two letters, from Cloudflare). It does not store IP addresses, user
+  agents, cookies or any request header, and it drops unknown fields.</li>
+<li><strong>Use:</strong> model evaluation and training by the GenClass maintainers. Not sold, not used for advertising.</li>
+<li><strong>Retention:</strong> 90 days. An R2 lifecycle rule (<code>expire-90d</code>, prefix <code>events/</code>) deletes every stored batch 90 days after it
+  was written. The maintainers may change this later; changes are recorded in the CHANGELOG.</li>
+<li><strong>Your own endpoint:</strong> <code>telemetry: { endpoint: "https://…" }</code> sends the same batches to a collector you run
+  instead (the worker in <code>telemetry-worker/</code> deploys to any Cloudflare account).</li>
+</ul>
+<h2 id="options">Options</h2>
+<pre><code class="language-ts">GenClass.init({
+  telemetry: {
+    endpoint: &quot;https://…&quot;,          // default DEFAULT_TELEMETRY_ENDPOINT
+    sample: 0.25,                    // fraction of page loads that send (default 1)
+    flushMs: 10_000,                 // batch interval
+    maxBatch: 100,                   // events per request
+    include: { situation: false },   // leave the situation text out
+  },
+});
+</code></pre>
+<p><code>telemetry: true</code> is the defaults; <code>telemetry: false</code> turns it off.</p>
+<h2 id="opting-out">Opting out</h2>
+<p>Any one of these turns telemetry off for the page:</p>
+<table>
+<thead>
+<tr>
+<th>how</th>
+<th>who</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GenClass.init({ telemetry: false })</code> (or <code>window.GENCLASS_CONFIG = { telemetry: false }</code>, <code>&lt;meta name="genclass" content="telemetry=off"&gt;</code>, <code>data-telemetry="off"</code> on the script tag)</td>
+<td>the app developer</td>
+</tr>
+<tr>
+<td><code>?genclass=no-telemetry</code> in the page URL (<code>?genclass=off</code> turns GenClass off entirely)</td>
+<td>anyone, for one page load</td>
+</tr>
+<tr>
+<td><code>localStorage.setItem("genclass.telemetry", "off")</code></td>
+<td>a user or tester, persistent per origin</td>
+</tr>
+<tr>
+<td><strong>Global Privacy Control</strong>: <code>navigator.globalPrivacyControl === true</code></td>
+<td>the user's browser setting</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Global Privacy Control (GPC).</strong> California law (CCPA as amended by the CPRA, and its regulations) requires
+businesses to treat a GPC signal as a valid request to opt out of the sale or sharing of personal information, and
+other US state laws (e.g. Colorado, Connecticut) recognise universal opt-out signals. GenClass honours GPC for every
+visitor, wherever they are: when the browser sends it, nothing is collected.</p>
+<h2 id="if-you-ship-genclass-in-your-app">If you ship GenClass in your app</h2>
+<p>The data is collected from <strong>your</strong> users' browsers. Even though it is designed to be anonymous (random per-page
+session id, no IP or user agent stored, redacted text), situation text can contain fragments of your app's data and
+the session event names your hostname. Depending on your users and jurisdiction you may need to:</p>
+<ul>
+<li>mention GenClass diagnostics in your privacy policy / cookie or tracking disclosures (GDPR transparency,
+  Articles 13 and 14; CCPA notice at collection);</li>
+<li>decide whether it needs consent where you require consent for analytics (GDPR / ePrivacy), and if so start
+  GenClass with <code>telemetry: false</code> until consent is given (<code>GenClass.init()</code> reads the option once; to switch it on
+  later, create the runtime after consent);</li>
+<li>turn it off (<code>telemetry: false</code>) in apps that handle regulated data (health, finance, children's services): a
+  custom <code>redact</code> lowers what reaches situation text but does not guarantee that nothing sensitive does.</li>
+</ul>
+<p>Privacy policy for this collection: <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md">PRIVACY.md</a>. Data processing terms are not published yet
+(<code>OPEN_TASKS.md</code>); if you cannot disclose a third-party diagnostics recipient, set <code>telemetry: false</code>.</p></article></div></section>
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

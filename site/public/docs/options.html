@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GenClass Options Reference</title>
+<meta name="description" content="Every GenClass init option: activation, route scopes, protected endpoints, breaker, shadow mode, veto, action limits, hold budgets and sinks.">
+<link rel="canonical" href="https://genclass.dev/docs/options">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/docs/options">
+<meta property="og:title" content="GenClass Options Reference">
+<meta property="og:description" content="Every GenClass init option: activation, route scopes, protected endpoints, breaker, shadow mode, veto, action limits, hold budgets and sinks.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GenClass Options Reference">
+<meta name="twitter:description" content="Every GenClass init option: activation, route scopes, protected endpoints, breaker, shadow mode, veto, action limits, hold budgets and sinks.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Options Reference", "item": "https://genclass.dev/docs/options"}]}, {"@type": "TechArticle", "headline": "@genclass/runtime: configuration extensions spec (v0.3 options), final", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/OPTIONS-SPEC.md"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs" class="on" aria-current="page">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>Options Reference</span></nav><h1>@genclass/runtime: configuration extensions spec (v0.3 options), final</h1>
+<p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/OPTIONS-SPEC.md"><code>docs/runtime/OPTIONS-SPEC.md</code></a> in the GenClass repository.</p></div></div>
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><b>On this page</b><a href="#0-design-rules">0. Design rules</a><a href="#1-option-summary">1. Option summary</a><a href="#2-types-add-to-typests">2. Types (add to types.ts)</a><a href="#3-shared-infrastructure">3. Shared infrastructure</a><a href="#4-options">4. Options</a><a href="#5-built-in-behaviours-no-option">5. Built-in behaviours (no option)</a><a href="#6-precedence-cheat-sheet">6. Precedence cheat-sheet</a><a href="#7-readme-apimd-text">7. README / API.md text</a><a href="#8-migration-and-compatibility">8. Migration and compatibility</a><a href="#dropped-proposals">Dropped proposals</a></nav><article class="prose"><p>Status: ready for implementation. Branch <code>runtime</code>, package <code>packages/runtime</code>. I read only <code>types.ts</code>, <code>API.md</code>, README and the CONTRACT sections. Nothing was run. <code>aggressiveness</code> is already in flight, so it is not proposed here. Today's documented default is <code>"balanced"</code>, and this spec does not change it.</p>
+<h2 id="0-design-rules">0. Design rules</h2>
+<ol>
+<li><strong>Every new option narrows behaviour or exports data. None of them widens it.</strong> A few defaults differ from today, and every difference makes things safer. They are all listed in §8: the breaker is on, per-subject and per-session limits exist, <code>holdBudgetMs</code> is a hard ceiling, model loading is lazy on Save-Data, hidden tabs skip background evaluation, and query values are redacted in what the model sees.</li>
+<li><strong>There is no bug knowledge in config.</strong> Options control where the runtime watches or acts, how much it may do, and where findings go. The model alone decides what is wrong. Labels go to reports only by default (§4.4). Tags and correlation ids never reach the model or the gate.</li>
+<li><strong>One effective-mode function, and every term can only demote:</strong></li>
+</ol>
+<pre><code>effectiveMode(op) = state ∈ {disabled} ? off
+                  : min( globalMode        // InitOptions.mode / rt.setMode / URL param (URL may only demote unless debug:true)
+                       , sample cap        // 'observe' if sampled out
+                       , breaker cap       // breaker.downgradeTo once tripped
+                       , route rule.mode ) // first matching routes[] rule
+order: off &lt; observe &lt; guard &lt; heal
+</code></pre>
+<p><code>effectiveAggressiveness</code> is the min of the global value (including <code>?genclass-aggr</code>, which may only demote unless <code>debug:true</code>) and the route value. Explicit <code>policy.thresholds</code> still win. The scope is <strong>snapshotted when an op or mutation is created</strong> (<code>OpRec.scope</code>) and is never re-classified later. <code>status.mode</code> keeps reporting the <em>requested</em> mode. <code>status.effectiveMode</code>, <code>Report.mode</code> and <code>SinkRecord.mode</code> report the effective mode.
+4. <strong>Gate order per decision</strong> (<code>decide/policy.ts gate()</code>). The first step that stops the action wins, and its reason goes into <code>Decision.reason</code> and <code>explain()</code>:
+   1. the subject, or the action's target op, is <code>protected</code> → passive, <code>protected</code>
+   2. the subject is cross-origin → passive, <code>cross-origin</code> (not configurable)
+   3. the target op's snapshotted scope is <code>off</code>/<code>observe</code> → not offered (<code>notOffered</code>), reason <code>scope</code>
+   4. <code>modeAllows(effectiveMode, tier)</code>, then the existing allow/deny (<code>restriction</code>) and requireDiagnosis
+   5. thresholds (aggressiveness profile; explicit <code>policy.thresholds</code> win)
+   6. <code>policy.actionLimits</code> → <code>limit:perMinute|perSubject|perSession</code>
+   7. <code>onBeforeAction</code> veto → <code>vetoed</code>; if the hook's time pushes a held item past its hold budget → released unchanged, <code>limit:hold</code>
+   8. execute</p>
+<p><code>shadow</code> runs steps <strong>1–6</strong> at the shadow mode, with a dry-run limit check, against the same model answer. It skips steps 7 and 8.</p>
+<h2 id="1-option-summary">1. Option summary</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Option</th>
+<th>Group</th>
+<th>Default</th>
+<th>New / extended</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>enabled</code> (+ <code>rt.disable()</code>)</td>
+<td>activation</td>
+<td><code>true</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>sample</code></td>
+<td>activation</td>
+<td><code>1</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>routes</code></td>
+<td>scope</td>
+<td><code>[]</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>requests</code> <code>{ignore, protect, crossOrigin, labels, labelsToModel, correlate}</code></td>
+<td>scope / safety</td>
+<td><code>{ignore:[], protect:[], crossOrigin:"observe", labels:[], labelsToModel:false}</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>breaker</code> (+ <code>rt.breaker.reset()</code>)</td>
+<td>safety</td>
+<td>on</td>
+<td>new</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>shadow</code></td>
+<td>safety</td>
+<td><code>false</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>onBeforeAction</code>, <code>vetoMode</code></td>
+<td>safety</td>
+<td>unset, <code>"enforce"</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>policy.actionLimits</code> (<code>maxActionsPerMinute</code> = deprecated alias)</td>
+<td>safety</td>
+<td><code>{perMinute:60, perSubject:10, perSession:200}</code></td>
+<td>new / extended</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>policy.holdBudgetMs</code></td>
+<td>safety</td>
+<td><code>"auto"</code></td>
+<td>semantics tightened</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>redact</code></td>
+<td>privacy</td>
+<td>built-in</td>
+<td>extended (<code>kind</code> arg)</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>sinks</code> + <code>rt.summary()</code></td>
+<td>telemetry</td>
+<td><code>[]</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>session</code> + <code>rt.setSession()</code></td>
+<td>telemetry</td>
+<td>random id, <code>{}</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>report</code></td>
+<td>telemetry</td>
+<td><code>"console"</code></td>
+<td>extended (<code>"interventions"</code>)</td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>learn</code> (+ <code>rt.learn.clear()</code>)</td>
+<td>persistence</td>
+<td><code>{persist:false}</code></td>
+<td>extended</td>
+</tr>
+<tr>
+<td>15</td>
+<td><code>model.loadIf</code>, <code>model.inlineFallback</code></td>
+<td>load</td>
+<td><code>{saveData:"lazy"}</code>, <code>true</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>16</td>
+<td><code>model.threads</code>, <code>model.timeoutMs</code></td>
+<td>load</td>
+<td><code>"auto"</code>, <code>10000</code></td>
+<td>promoted from internal</td>
+</tr>
+<tr>
+<td>17</td>
+<td><code>model.maxDecisionsPerMinute</code></td>
+<td>load</td>
+<td><code>30</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>18</td>
+<td><code>model.unloadAfterIdleMs</code></td>
+<td>load</td>
+<td><code>false</code></td>
+<td>new</td>
+</tr>
+<tr>
+<td>19</td>
+<td><code>rt.on()</code> typed events: <code>shadow</code>, <code>breaker</code>, <code>limit</code>, <code>modelBudget</code></td>
+<td>API</td>
+<td>—</td>
+<td>extended</td>
+</tr>
+</tbody>
+</table>
+<p>Built in, with no option: hidden-tab background skipping (§5.1).</p>
+<h2 id="2-types-add-to-typests">2. Types (add to <code>types.ts</code>)</h2>
+<pre><code class="language-ts">export type ModeOrOff = Mode | &quot;off&quot;;
+
+export type RequestMatcher =
+  | string   // URL prefix or glob (&quot;*/v1/orders*&quot;); strings starting with &quot;/&quot; also match the path
+  | RegExp
+  | ((r: { url: string; method: string; channel: &quot;fetch&quot; | &quot;xhr&quot; | &quot;ws&quot; | &quot;sse&quot; }) =&gt; boolean);
+
+export interface RouteRule {
+  match: string | RegExp | ((route: string) =&gt; boolean);  // string = exact path or glob (&quot;/admin/*&quot;)
+  mode?: ModeOrOff;                // demote only
+  aggressiveness?: Aggressiveness; // demote only
+}
+
+export interface RequestScope {
+  ignore?: RequestMatcher[];                    // pass-through, no OpRec
+  protect?: RequestMatcher[];                   // never held/retried/replayed/cached/discarded
+  crossOrigin?: &quot;observe&quot; | &quot;ignore&quot;;           // default &quot;observe&quot;; always passive
+  labels?: Array&lt;{ match: RequestMatcher; label: string }&gt;; // names only: [A-Za-z0-9 _-], ≤ 5 words, ≤ 40 chars
+  labelsToModel?: boolean;                      // default false (labels only in reports/sinks)
+  correlate?: (r: { url: string; method: string; headers: Record&lt;string,string&gt; }) =&gt; string | undefined;
+}
+
+export interface EnabledSource { get(): boolean; subscribe(cb: (on: boolean) =&gt; void): () =&gt; void; }
+
+export interface BreakerOptions {
+  undos?: number;              // default 2
+  errorsAfterAction?: number;  // default 3
+  attributionMs?: number;      // default 5000: window after an action in which subject errors count
+  windowMs?: number;           // default 600_000
+  downgradeTo?: &quot;observe&quot; | &quot;guard&quot;; // default &quot;observe&quot;
+  persist?: &quot;session&quot; | false; // default &quot;session&quot;
+}
+
+export interface ActionLimits { perMinute?: number; perSubject?: number; perSession?: number; }
+
+export interface ActionRequest {
+  action: string; tier: &quot;guard&quot; | &quot;heal&quot;; trigger: TriggerKind;
+  subject: string; diagnosis: string; p: number; decisionId: string;
+  route?: string; label?: string;
+}
+
+export type SinkKind = &quot;detection&quot; | &quot;intervention&quot; | &quot;undo&quot; | &quot;breaker&quot; | &quot;summary&quot; | &quot;error&quot;;
+
+export interface SinkRecord {
+  schema: 1;
+  kind: SinkKind;
+  id: string; ts: number;
+  sessionId: string;
+  tags: Record&lt;string, string | number | boolean&gt;;
+  correlationId?: string;      // from requests.correlate; never model-visible
+  mode: ModeOrOff;             // effective mode at decision
+  sampled: boolean;
+  diagnosis?: string; p?: number;
+  action?: string; tier?: Tier;
+  changed?: string[];          // paths only
+  undone?: boolean;
+  shadow?: { action: string; tier: Tier; wouldPass: boolean; reason?: string };
+  reason?: string;             // protected | cross-origin | scope | vetoed | would-veto | limit:* | ...
+  summary?: SessionSummary;
+  evidence?: { message?: string; trigger?: TriggerKind; subject?: string; timeline?: string[] };
+}
+
+export type SinkFn = (r: SinkRecord) =&gt; void | Promise&lt;void&gt;;
+export interface SinkObject {
+  send: SinkFn;
+  kinds?: SinkKind[];
+  sampleRate?: number;   // session-deterministic; never drops intervention/undo/breaker
+  evidence?: boolean;    // default false
+  flush?(): Promise&lt;void&gt;;
+}
+export type Sink = SinkFn | SinkObject;
+
+export interface SessionSummary {
+  startedAt: number; durationMs: number;
+  detections: Record&lt;string, number&gt;;
+  interventions: Record&lt;string, number&gt;;
+  undos: number; lateReverts: number;
+  denied: Record&lt;string, number&gt;;          // by reason
+  shadow: Record&lt;string, number&gt;;
+  model: { state: ModelStatus[&quot;state&quot;]; p50Ms?: number; p95Ms?: number; decisions: number; dropped: number; hiddenSkipped: number };
+  heldMs: { total: number; max: number };
+  errors: number;
+}
+
+export interface DeviceEnv { deviceMemoryGB?: number; saveData?: boolean; effectiveType?: string; cores?: number; webgpu: boolean; }
+
+export interface RuntimeEvents {
+  detect: Detection; decide: Decision; act: ActionRecord;            // existing
+  shadow: { decisionId: string; action: string; tier: Tier; wouldPass: boolean; reason?: string };
+  breaker: { tripped: boolean; reason: &quot;undos&quot; | &quot;errors&quot; | &quot;reset&quot;; decisionIds: string[]; counts: { undos: number; errors: number } };
+  limit: { kind: &quot;perMinute&quot; | &quot;perSubject&quot; | &quot;perSession&quot;; subject: string };
+  modelBudget: { decisionsLastMinute: number; dropped: number };
+}
+</code></pre>
+<p>Additions to existing interfaces:</p>
+<pre><code class="language-ts">export interface ModelOptions {
+  // existing: baseUrl, device, worker, preload, ortWasmPaths, cacheName
+  loadIf?: { minDeviceMemoryGB?: number; saveData?: &quot;skip&quot; | &quot;lazy&quot; | &quot;ignore&quot; }
+         | ((env: DeviceEnv) =&gt; boolean | &quot;lazy&quot;);
+  inlineFallback?: boolean;           // default true
+  threads?: number | &quot;auto&quot;;          // default min(4, max(1, cores-1))
+  timeoutMs?: number;                 // default 10000
+  maxDecisionsPerMinute?: number;     // default 30
+  unloadAfterIdleMs?: number | false; // default false
+}
+
+export interface PolicyOptions {
+  // existing ...
+  actionLimits?: ActionLimits;
+  /** @deprecated use actionLimits.perMinute */
+  maxActionsPerMinute?: number;
+}
+
+export interface InitOptions {
+  // existing ...
+  enabled?: boolean | (() =&gt; boolean | Promise&lt;boolean&gt;) | EnabledSource;
+  sample?: number;
+  routes?: RouteRule[];
+  requests?: RequestScope;
+  breaker?: BreakerOptions | false;
+  shadow?: &quot;guard&quot; | &quot;heal&quot; | false;
+  onBeforeAction?: (a: ActionRequest) =&gt; boolean | void;
+  vetoMode?: &quot;enforce&quot; | &quot;report&quot;;    // default &quot;enforce&quot;
+  report?: &quot;console&quot; | &quot;interventions&quot; | &quot;silent&quot; | ((r: Report) =&gt; void);
+  redact?: (path: string, value: unknown, kind?: &quot;state&quot; | &quot;url&quot; | &quot;header&quot; | &quot;input&quot;) =&gt; unknown;
+  sinks?: Sink[];
+  session?: { id?: string; tags?: Record&lt;string, string | number | boolean&gt; };
+  learn?: { persist?: boolean | &quot;local&quot; | &quot;session&quot;; key?: string; version?: string };
+}
+</code></pre>
+<p>Runtime API:
+- New methods: <code>rt.on&lt;K extends keyof RuntimeEvents&gt;(k, cb): () =&gt; void</code>, <code>rt.summary()</code>, <code>rt.setSession(p)</code>, <code>rt.disable({ undo?: boolean })</code>, <code>rt.breaker.reset()</code>, <code>rt.learn.clear()</code>.
+- New <code>status</code> fields: <code>state: …|"disabled"</code>, <code>effectiveMode</code>, <code>sampled</code>, <code>breaker: {tripped, at?, reason?}</code>, <code>scope: {route?, rule?, mode, aggressiveness}</code>, <code>model.state: …|"skipped"|"unloaded"</code> (+<code>reason</code>), <code>modelBudget: {decisionsLastMinute, dropped}</code>.</p>
+<h2 id="3-shared-infrastructure">3. Shared infrastructure</h2>
+<ul>
+<li><strong><code>util/match.ts</code></strong> (new): <code>compileMatchers(list, onThrow: "match" | "nomatch")</code>.</li>
+<li>A string containing <code>*</code> is a glob. Any other string is a prefix, matched against the absolute URL and also against the path when it starts with <code>/</code>. A RegExp is used as given.</li>
+<li>Predicates run inside try/catch. <code>protect</code> treats a throw as a match, while <code>ignore</code>, <code>labels</code> and routes treat it as no match.</li>
+<li>Results go in an LRU cache keyed by <code>method+" "+url</code>, 256 entries. Matchers are compiled once, in the <code>runtime.ts</code> constructor.</li>
+<li><strong><code>OpRec.scope</code></strong>: <code>{ mode, aggressiveness, protected, crossOrigin, label?, route?, correlationId? }</code>, set in <code>NetHost.startOp</code>.</li>
+<li><strong><code>runtime.ts computeScope()</code></strong> runs on init, on nav, on <code>setMode</code>/<code>setAggressiveness</code>, on a breaker trip or reset, and when <code>enabled</code> changes. It stores <code>this.scope</code>, which is snapshotted per op or mutation.</li>
+<li><strong>URL overrides</strong> (<code>?genclass-mode</code>, <code>?genclass-aggr</code>, <code>?genclass-sample=0|1</code>) may only demote. With <code>debug:true</code> they may also raise the value, for QA. <code>?genclass-sample=1</code> under debug forces the session into the act cohort.</li>
+</ul>
+<h2 id="4-options">4. Options</h2>
+<h3 id="41-enabled-and-rtdisable">4.1 <code>enabled</code> and <code>rt.disable()</code></h3>
+<p><strong>Type</strong> <code>boolean | (() =&gt; boolean|Promise&lt;boolean&gt;) | EnabledSource</code>. <strong>Default</strong> <code>true</code>.</p>
+<p><strong>Semantics.</strong>
+- A <code>false</code> value means the model is not downloaded, observers are not installed, and <code>status.state="disabled"</code>. All methods become no-ops that return empty values.
+- While a Promise is pending, the runtime runs in pure pass-through: OpRecs are recorded, but nothing is held, decided or acted on. A rejection or a throw counts as <code>false</code>.
+- An <code>EnabledSource</code> is read at init and then followed through <code>subscribe</code>. Flipping it to false behaves like <code>rt.disable({ undo:false })</code>. Flipping it back to true re-enables the runtime and loads the model lazily.
+- <code>rt.disable({ undo })</code> releases every hold unchanged and uninstalls observers. With <code>undo:true</code> it also calls <code>undo()</code> on every ActionRecord still inside its undo window, newest first, and emits one <code>undo</code> record per action. The model is disposed.
+- <code>pause()</code>/<code>resume()</code> keep their existing meaning.</p>
+<p><strong>Precedence.</strong> It beats every other control, including the URL overrides.</p>
+<p><strong>Hooks.</strong> <code>auto.ts</code>, the <code>runtime.ts</code> constructor, and <code>exec.ts gated(op)</code>.</p>
+<p><strong>Tests.</strong>
+- <code>false</code> → no model fetch, and app fetches are identical.
+- An async <code>true</code> after 200 ms → nothing is held in the first 200 ms.
+- A rejecting or throwing predicate → disabled, with a warning.
+- An EnabledSource flipped to false mid-session → holds released, mode <code>off</code>.
+- <code>disable({undo:true})</code> reverts in-window actions and leaves expired ones alone.</p>
+<h3 id="42-sample">4.2 <code>sample</code></h3>
+<p><strong>Type</strong> <code>number</code> in [0,1], clamped with a warning. <strong>Default</strong> <code>1</code>.</p>
+<p><strong>Semantics.</strong> Sessions outside the fraction get an <code>observe</code> cap. The model still loads, so they form the comparison group. The bucket is <strong>decided once at init</strong> as <code>hash(session.id)/2^32 &lt; sample</code>, then frozen and stored in <code>sessionStorage["genclass:bucket"]</code> (wrapped in try/catch). A later <code>setSession({id})</code> does not change it. An app that passes a stable user id gets the same bucket in every tab, which is the intended behaviour. <code>?genclass-sample=0</code> always forces observe, and <code>=1</code> only works under debug.</p>
+<p><strong>Precedence.</strong> It is one term of the min. <code>setMode</code> cannot lift it.</p>
+<p><strong>Tests.</strong>
+- <code>sample:0</code> → no actions, and detections are still reported.
+- 10k ids at 0.05 → 5% ± 0.5%.
+- Reload → same bucket.
+- Storage throws → deterministic within the page.
+- <code>setSession({id})</code> → bucket unchanged.</p>
+<h3 id="43-routes">4.3 <code>routes</code></h3>
+<p><strong>Type</strong> <code>RouteRule[]</code>. <strong>Default</strong> <code>[]</code>.</p>
+<p><strong>Semantics.</strong>
+- Rules are evaluated at init and on every <code>installNav</code> callback. The first match wins. A rule can only demote, and a rule that asks for a higher mode is clamped, with one warning.
+- <code>mode:"off"</code> means ops created on that route are pass-through, though they are still recorded in the timeline.
+- Ops created under <code>off</code> or <code>observe</code> scope <strong>are never the target of an action</strong> later, even from another route (gate step 3).
+- The scope is snapshotted per op, so a write held under heal on route A is decided under heal after navigating to route B.
+- Per-route allow/deny is out of scope.</p>
+<p><strong>Hooks.</strong> <code>observe/nav.ts</code> → <code>computeScope()</code>. <code>exec.ts startOp</code>. <code>policy.ts gate()</code> reads <code>g.scope</code>. <code>effectiveGates(c, raw, trigger, level)</code>.</p>
+<p><strong>Tests.</strong>
+- A <code>/checkout</code> observe rule under global heal → no actions on checkout ops.
+- A rule above the global mode is clamped and warns.
+- An op held on route A is decided with A's scope.
+- An op from an <code>off</code> route is not offered as a target from route B.
+- RegExp, glob and predicate rules all work, and a throwing predicate is skipped.</p>
+<h3 id="44-requests">4.4 <code>requests</code></h3>
+<p><strong>Type</strong> <code>RequestScope</code>. <strong>Default</strong> <code>{ ignore:[], protect:[], crossOrigin:"observe", labels:[], labelsToModel:false }</code>.</p>
+<p><strong>Semantics.</strong>
+- <strong><code>ignore</code></strong>: the request is pure pass-through. There is no OpRec, no hold, no budget count, and no added microtask before the native call. The docs must warn that an ignored request can no longer be seen as a cause.
+- <strong><code>protect</code></strong>: the request is observed and reported but, in every mode, it is <strong>never held, delayed, retried, replayed, hedged, coalesced, answered from cache or discarded</strong>. Its hold is skipped at the network boundary, so it adds zero latency. Any action that targets it goes in <code>notOffered</code>, and the gate reason is <code>protected</code>. A throwing predicate counts as protected. <code>onBeforeAction</code> is never called for it. Writes to the store caused by delivering its response are gated normally.
+- <strong><code>crossOrigin</code></strong>: cross-origin requests are always passive, and this is not configurable. <code>"ignore"</code> treats all of them as <code>ignore</code>d.
+- <strong><code>labels</code></strong>: the first match is attached as <code>scope.label</code>. Labels are sanitised to <code>[A-Za-z0-9 _-]</code>, at most 5 words and 40 chars. Anything else is stripped, with one warning. They appear in reports and sinks. They reach the model as <code>label (METHOD /path)</code> <strong>only when <code>labelsToModel:true</code></strong>. Labels are names only. Only <code>policy.idempotencyHeaders</code> affects whether <code>retry</code> is offered, and no label text has any policy meaning.
+- <strong><code>correlate</code></strong>: it is called once per op. Its result is redacted with <code>kind:"header"</code>, capped at 128 chars, and stored on <code>SinkRecord.correlationId</code> and <code>Report.correlationId</code>. <strong>It never reaches the model or the gate.</strong> A throw gives <code>undefined</code>.</p>
+<p><strong>Precedence.</strong> <code>ignore</code> comes first, then <code>protect</code>, then cross-origin. <code>protect</code> beats allow, heal, <code>eager</code>, thresholds and shadow (shadow records <code>wouldPass:false</code>). The hardcoded tracing-header skip list in <code>fetch.ts</code> stays.</p>
+<p><strong>Hooks.</strong>
+- <code>observe/fetch.ts</code> (<code>parseRequest</code>, <code>installFetch</code>), <code>xhr.ts</code>, <code>websocket.ts</code>, <code>eventsource.ts</code>: call <code>host.scopeOf(req)</code> before <code>startOp</code>, then skip the hold when the op is protected.
+- The situation op-label builder.
+- <code>policy.ts</code> gate steps 1–3 and <code>permittedActions</code>.</p>
+<p><strong>Tests.</strong>
+- An ignored URL → no OpRec and no added microtask.
+- A protected POST in heal with <code>retry</code>@0.99 → passive with <code>protected</code>, and timing equal to baseline ±1 ms.
+- A protected WS message is never discarded.
+- A throwing protect predicate → protected.
+- Cross-origin under heal → passive with <code>cross-origin</code>.
+- A label with a newline, punctuation or 8 words is sanitised.
+- With the default <code>labelsToModel:false</code>, the label is absent from the situation text.
+- <code>correlate</code> output is on sink records and never in the situation.
+- Same-origin relative URLs match <code>/api/*</code>.
+- The match cache is hit on the second call.</p>
+<h3 id="45-breaker-and-rtbreakerreset">4.5 <code>breaker</code> and <code>rt.breaker.reset()</code></h3>
+<p><strong>Type</strong> <code>BreakerOptions | false</code>. <strong>Default</strong> <code>{ undos:2, errorsAfterAction:3, attributionMs:5000, windowMs:600000, downgradeTo:"observe", persist:"session" }</code>. <strong>It is on by default.</strong></p>
+<p><strong>Semantics.</strong> The breaker trips when either count is reached within <code>windowMs</code>:
+- <strong><code>undos</code></strong> counts app or user calls to <code>ActionRecord.undo()</code>, plus late reverts the runtime flags itself. Undos from <code>rt.disable({undo:true})</code> and from the sim harness do not count.
+- <strong><code>errorsAfterAction</code></strong> counts uncaught errors, unhandled rejections and failed requests (≥500 or a network error) on the <strong>same subject</strong> within <code>attributionMs</code> after a non-passive action on it. It correlates by subject and time only, which is a demotion signal and not a bug rule.</p>
+<p>On a trip:
+- The mode is capped at <code>downgradeTo</code>, and holds are released unchanged.
+- A <code>breaker</code> event and a <code>breaker</code> record are emitted, with the decision ids and counts, plus one console warning.
+- With <code>persist:"session"</code>, the trip survives a reload (try/catch).</p>
+<p>Only <code>rt.breaker.reset()</code> clears a trip. <code>setMode</code> does not.</p>
+<p><strong>Hooks.</strong> New <code>decide/breaker.ts</code>. The <code>exec.ts</code> undo wrapper, <code>observe/errors.ts</code>, and <code>endOp</code> for errors. <code>computeScope()</code>.</p>
+<p><strong>Tests.</strong>
+- 2 undos → capped at observe, the event fires, and the cap survives a reload.
+- Errors on an unrelated subject → no trip.
+- An error at 6 s with the default attributionMs → not counted.
+- <code>attributionMs:10000</code> → counted.
+- <code>false</code> → never trips.
+- <code>reset()</code> restores the mode.
+- <code>downgradeTo:"guard"</code> under heal → guard.
+- Storage throws → the trip is kept in memory only.</p>
+<h3 id="46-shadow">4.6 <code>shadow</code></h3>
+<p><strong>Type</strong> <code>"guard" | "heal" | false</code>. <strong>Default</strong> <code>false</code>.</p>
+<p><strong>Semantics.</strong>
+- For each decision, the gate re-runs <strong>steps 1–6</strong> at the shadow mode on the same model answer, with no extra inference and a dry-run limit check. Step 7 (veto) and step 8 (execute) are skipped.
+- The result is stored on <code>Decision.shadow</code> and the <code>SinkRecord.shadow</code> field, and a <code>shadow</code> event fires.
+- It is a no-op when the shadow mode is not above the effective mode.
+- It ignores the sample, route and breaker caps on purpose, because it measures what the higher mode would do. It respects protect, cross-origin, op scope (step 3), allow/deny and thresholds.
+- It prints to the console only under <code>debug</code>.</p>
+<p><strong>Hooks.</strong> <code>policy.ts gate(c, rate, g, { dryRun:true })</code>, <code>report.ts</code>, <code>summary.ts</code>.</p>
+<p><strong>Tests.</strong>
+- guard + shadow heal → a would-act is recorded, nothing executes, and the limit counters are unchanged.
+- A protected subject → <code>wouldPass:false, reason:"protected"</code>.
+- Model call count is identical with and without shadow.
+- shadow equal to the mode → no field.</p>
+<h3 id="47-onbeforeaction-and-vetomode">4.7 <code>onBeforeAction</code> and <code>vetoMode</code></h3>
+<p><strong>Type</strong> <code>(a: ActionRequest) =&gt; boolean | void</code>, plus <code>vetoMode: "enforce" | "report"</code>. <strong>Default</strong> unset, <code>"enforce"</code>.</p>
+<p><strong>Semantics.</strong>
+- The hook is called synchronously at gate step 7. Returning <code>false</code> or throwing vetoes the action: the passive action runs, with reason <code>vetoed</code>. <code>true</code> or <code>undefined</code> lets it proceed. Any other return value, including a Promise, also proceeds, with one warning.
+- With <code>vetoMode:"report"</code>, the hook is called and its result recorded (reason <code>would-veto</code> on the decision and the sink record), but the action proceeds. Use this to try out a veto in staging.
+- The call is timed. A warning is logged when it takes more than 5 ms (at most once a minute). Its time counts against the hold budget. If it pushes a held item past the budget, the item is released unchanged with reason <code>limit:hold</code>.
+- It is not called for protected or cross-origin subjects, passive actions, observe mode, or shadow. It can only narrow.</p>
+<p><strong>Hooks.</strong> <code>decide/exec.ts</code>, just before <code>ctl.run(action)</code>.</p>
+<p><strong>Tests.</strong>
+- false → <code>vetoed</code>.
+- A throw → vetoed and logged.
+- A Promise → proceeds and warns once.
+- <code>report</code> mode with false → proceeds and records <code>would-veto</code>.
+- A 10 ms hook → warning.
+- A hook that exceeds the remaining budget → <code>limit:hold</code>.
+- Not called for protected subjects.
+- The decision id matches <code>explain()</code>.</p>
+<h3 id="48-policyactionlimits-and-deprecated-maxactionsperminute">4.8 <code>policy.actionLimits</code> (and deprecated <code>maxActionsPerMinute</code>)</h3>
+<p><strong>Type</strong> <code>{ perMinute?, perSubject?, perSession? }</code>. <strong>Default</strong> <code>{ perMinute:60, perSubject:10, perSession:200 }</code>. (beta.1: perSubject raised from 5 to 10 per rolling minute after INSTALL e2e showed a typeahead hitting 5.)</p>
+<p><strong>Semantics.</strong>
+- <code>maxActionsPerMinute: n</code> still works and maps to <code>actionLimits.perMinute</code>. If both are set, <code>actionLimits.perMinute</code> wins and a deprecation warning is logged once.
+- <code>perSubject</code> counts non-passive actions per op signature or store path over a sliding 60 s.
+- <code>perSession</code> counts actions over the page lifetime.
+- When a limit is exceeded, the passive action runs with reason <code>limit:&lt;kind&gt;</code>, a <code>limit</code> event fires, and a warning is logged once per kind per minute.
+- A coalesce or delay burst that answers one decision counts as one action.
+- The docs note that a polling endpoint retried often may hit <code>perSubject:10</code>. Raise it for that subject class, or set it to <code>Infinity</code>.</p>
+<p><strong>Hooks.</strong> <code>policy.ts policyConfig</code> and <code>RateLimiter</code> (per-subject map plus a session counter), at gate step 6.</p>
+<p><strong>Tests.</strong>
+- The alias keeps today's per-minute behaviour.
+- An 11th action on the same subject within 60 s (and the 11th after the window slides is allowed) → <code>limit:perSubject</code>.
+- The 201st action → <code>limit:perSession</code>.
+- Shadow does not consume the limits.
+- Window expiry restores the count.</p>
+<h3 id="49-policyholdbudgetms-semantics-tightened">4.9 <code>policy.holdBudgetMs</code> (semantics tightened)</h3>
+<p><strong>Type</strong> unchanged: <code>number | "auto"</code>.</p>
+<p><strong>Semantics.</strong>
+- The value is a <strong>hard ceiling on total added latency per held item</strong>, including deferred re-decisions and the time spent in <code>onBeforeAction</code>.
+- The defer path computes <code>remaining = budget - elapsedHeld</code>. When <code>remaining ≤ 0</code>, the item is released unchanged with reason <code>limit:hold</code>.
+- <code>"auto"</code> keeps its 150–800 ms clamp, and 800 ms becomes an absolute ceiling.
+- A held item is released at <code>min(remaining, model.timeoutMs)</code>.</p>
+<p><strong>Hooks.</strong> The <code>exec.ts</code> defer path, <code>policy.ts holdBudget()</code>, and the observe hold release.</p>
+<p><strong>Tests.</strong>
+- A model that always defers → total delay ≤ budget + 5 ms.
+- Auto with slow latencies → ≤ 800 ms.
+- Release is unchanged, with <code>limit:hold</code>.</p>
+<h3 id="410-redact-extended">4.10 <code>redact</code> (extended)</h3>
+<p><strong>Type</strong> <code>(path, value, kind?) =&gt; unknown</code>.</p>
+<p><strong>Semantics.</strong>
+- Built-in secret-name redaction always runs first. A custom function can only redact further, because it receives the already-redacted value.
+- <strong><code>"url"</code></strong>: the default replaces query and fragment values with <code>…</code> and keeps the keys (<code>/search?q=…&amp;page=…</code>). This applies <strong>only to what the runtime records, labels, reports or shows the model. The URL actually sent is never modified.</strong>
+- <strong><code>"header"</code></strong>: header values, which have already had name-based redaction.
+- <strong><code>"input"</code></strong>: DOM input values.
+- <code>undefined</code> means <code>"state"</code>, so existing two-argument functions keep working.
+- A throw replaces the value with <code>[redacted]</code>.</p>
+<p><strong>Hooks.</strong> The observe URL paths, <code>observe/dom-user.ts</code>, <code>trace/ops.ts</code>, <code>exec.ts host.redact()</code>.</p>
+<p><strong>Tests.</strong>
+- A custom function cannot un-redact <code>auth.token</code>.
+- <code>?token=abc&amp;q=x</code> → neither <code>abc</code> nor <code>x</code> appears in situations, reports or sinks.
+- The network request still carries <code>?token=abc&amp;q=x</code>.
+- A legacy two-argument function works.</p>
+<h3 id="411-sinks-and-rtsummary">4.11 <code>sinks</code> and <code>rt.summary()</code></h3>
+<p><strong>Type</strong> <code>Sink[]</code>. <strong>Default</strong> <code>[]</code>.</p>
+<p><strong>Semantics.</strong>
+- Sinks are independent of <code>report</code>.
+- Each <code>Report</code> maps to a <code>SinkRecord</code> (schema 1). By default the record is minimal: no situation text, no URLs, no values, and only paths in <code>changed</code>. <code>evidence:true</code> adds redacted <code>message</code>, <code>trigger</code>, subject label and the <code>explain()</code> timeline.
+- <code>kinds</code> filters records. <code>sampleRate</code> is deterministic per session (<code>hash(sessionId+index)</code>) and never drops <code>intervention</code>, <code>undo</code> or <code>breaker</code>.
+- Dispatch is queued (a microtask batch, then <code>requestIdleCallback</code>) and never runs on the decision or hold path.
+- Errors from a sink are swallowed, with at most one status event per sink per minute.
+- On <code>pagehide</code>, or once on <code>visibilitychange→hidden</code> as a fallback, one <code>summary</code> record is emitted and each sink's <code>flush()</code> is called.
+- <code>rt.summary()</code> is always available. Vendor adapters are left to separate packages.</p>
+<p><strong>Hooks.</strong> <code>report.ts</code> (<code>toSinkRecord</code>, <code>SinkDispatcher</code>), the new <code>decide/summary.ts</code>, and a pagehide listener in <code>runtime.ts</code>.</p>
+<p><strong>Tests.</strong>
+- Three sinks and the console all receive records.
+- A throwing sink, or one whose Promise takes 2 s, does not delay a hold release.
+- Snapshot of the default record: no URL and no situation text.
+- <code>evidence:true</code> adds fields that are still redacted.
+- <code>sampleRate:0</code> still delivers interventions.
+- pagehide → exactly one summary and <code>flush</code> called.
+- Schema field-presence snapshot.</p>
+<h3 id="412-session-and-rtsetsession">4.12 <code>session</code> and <code>rt.setSession()</code></h3>
+<p><strong>Type</strong> <code>{ id?, tags? }</code>. <strong>Default</strong> a random UUID and <code>{}</code>.</p>
+<p><strong>Semantics.</strong>
+- The id and tags are stamped on every SinkRecord, on <code>Report.session</code> and in <code>explain()</code>.
+- <code>setSession</code> merges tags and replaces the id. The change applies to later records only, and the sample bucket stays frozen.
+- Tags pass through <code>redact("session.tags.&lt;k&gt;", v, "state")</code>. They are capped at 20 keys and 64 chars per key and value. <strong>Tags never enter the situation or the gate.</strong>
+- The docs warn against putting PII in tags.</p>
+<p><strong>Tests.</strong>
+- Tags appear on records.
+- A tag named <code>apiKey</code> is redacted.
+- Situation text never contains a tag value.
+- The caps are enforced.</p>
+<h3 id="413-report-extended">4.13 <code>report</code> (extended)</h3>
+<p><strong>Type</strong> <code>"console" | "interventions" | "silent" | fn</code>. <strong>Default</strong> <code>"console"</code>.</p>
+<p><strong>Semantics.</strong> <code>"interventions"</code> prints only actions, undos, breaker trips and runtime errors. <strong>The filter applies to the console printer only.</strong> <code>report: fn</code> and sinks always receive every record. <code>debug:true</code> adds every decision. There is no environment sniffing.</p>
+<p><strong>Tests.</strong>
+- A detection is not printed under <code>"interventions"</code>, but sinks still receive it.
+- An intervention is printed.</p>
+<h3 id="414-learn-extended-and-rtlearnclear">4.14 <code>learn</code> (extended) and <code>rt.learn.clear()</code></h3>
+<p><strong>Type</strong> <code>{ persist?: boolean|"local"|"session"; key?; version? }</code>. <strong>Defaults</strong> <code>persist:false</code>, <code>key:"genclass:learn"</code>, and <code>version</code> equal to <code>session.tags.release</code> <strong>as read once at init</strong>.</p>
+<p><strong>Semantics.</strong>
+- <code>true</code> means <code>"local"</code>, which matches today's behaviour.
+- If the stored version differs from the configured one, the stored state is discarded at load. A later <code>setSession</code> change does not reload it.
+- <code>rt.learn.clear()</code> clears both storage and memory.
+- All storage access is wrapped in try/catch.</p>
+<p><strong>Hooks.</strong> A new <code>learn/store.ts</code>, used by profiles, baselines and cadence.</p>
+<p><strong>Tests.</strong>
+- A version mismatch → baselines empty.
+- <code>clear()</code> empties storage and memory.
+- Two runtimes with different keys do not collide.
+- Storage throws → in-memory only.
+- Changing the release tag after init → no reload.</p>
+<h3 id="415-modelloadif-and-modelinlinefallback">4.15 <code>model.loadIf</code> and <code>model.inlineFallback</code></h3>
+<p><strong>Defaults</strong> <code>loadIf: { saveData:"lazy" }</code>, <code>inlineFallback: true</code>.</p>
+<p><strong>Semantics.</strong>
+- <code>loadIf</code> is evaluated before the ModelHost is constructed. Unknown device values count as allowed, and a throwing predicate counts as allowed, with a warning.
+- <code>false</code> or <code>"skip"</code> → no download, <code>status.model.state="skipped"</code> with a reason, and the runtime behaves as if <code>model:false</code>.
+- <code>"lazy"</code> → <code>preload</code> is forced to <code>"lazy"</code>.
+- <code>inlineFallback:false</code> → if the worker fails, ORT does not run on the main thread, and the state is <code>skipped</code> with reason <code>worker-unavailable</code>.
+- <code>loadIf</code> never affects decisions.</p>
+<p><strong>Tests.</strong>
+- Save-Data with the default → lazy.
+- <code>minDeviceMemoryGB:4</code> with a 2 GB device → skipped, with zero model fetches.
+- Unknown device memory → loads.
+- A worker failure with <code>inlineFallback:false</code> → no ORT on the main thread.</p>
+<h3 id="416-modelthreads-and-modeltimeoutms">4.16 <code>model.threads</code> and <code>model.timeoutMs</code></h3>
+<p><strong>Defaults</strong> <code>"auto"</code> = <code>min(4, max(1, cores-1))</code>, and <code>10000</code>.</p>
+<p><strong>Semantics.</strong>
+- Both are the internal host options, now public.
+- On a timeout, held items are released unchanged and background items are dropped.
+- <code>situation.budget:"auto"</code> follows the thread count.
+- <code>decider.ts MAX_QUEUE</code> imports the host's constant.</p>
+<p><strong>Tests.</strong>
+- <code>threads:1</code> → ORT gets 1 thread and the auto budget is 1000.
+- <code>timeoutMs:50</code> with a slow mock → released unchanged and no action.</p>
+<h3 id="417-modelmaxdecisionsperminute">4.17 <code>model.maxDecisionsPerMinute</code></h3>
+<p><strong>Default</strong> <code>30</code>. <code>Infinity</code> disables it.</p>
+<p><strong>Semantics.</strong>
+- The limit is a sliding window over model evaluations.
+- Over the limit, background situations are dropped, and held items (including writes held under <code>holdWrites</code>) are <strong>released unchanged at once without evaluation</strong>, so writes never wait on the limit.
+- Cache hits are free.
+- A <code>modelBudget</code> event fires at most once a minute, and <code>status.modelBudget</code> and <code>summary.model.dropped</code> are updated.</p>
+<p><strong>Hooks.</strong> A check in <code>decider.ts submit()</code>.</p>
+<p><strong>Tests.</strong>
+- 100 salient situations a minute → ≤ 30 model calls.
+- A held item over the limit is released in about 0 ms.
+- The event is rate-limited.</p>
+<h3 id="418-modelunloadafteridlems">4.18 <code>model.unloadAfterIdleMs</code></h3>
+<p><strong>Default</strong> <code>false</code>.</p>
+<p><strong>Semantics.</strong>
+- The idle timer resets on every evaluation, and time with the tab hidden counts as idle.
+- When the timer fires, the worker and session are torn down and the state becomes <code>"unloaded"</code>.
+- The next situation reloads the model from <code>cacheName</code>. During the reload, held items are released unchanged.</p>
+<p><strong>Tests.</strong>
+- Idle → worker terminated, and the reload comes from the cache with no network.
+- A held item during the reload is released unchanged.</p>
+<h2 id="5-built-in-behaviours-no-option">5. Built-in behaviours (no option)</h2>
+<ol>
+<li><strong>Hidden tabs.</strong> While the tab is hidden:
+   - background situations are neither built nor evaluated, and <code>summary.model.hiddenSkipped</code> counts them;
+   - <strong>held items are released unchanged at once, without evaluation</strong>, so nothing waits behind a throttled worker;
+   - observers keep recording.</li>
+</ol>
+<p>Test: hidden polling → zero model calls, holds released in about 0 ms, timeline still recorded.
+2. Internal buffers stay bounded by <code>historySize</code>.</p>
+<h2 id="6-precedence-cheat-sheet">6. Precedence cheat-sheet</h2>
+<pre><code>requests.ignore         → not observed at all
+enabled false/pending   → off / pass-through; beats URL overrides; rt.disable({undo}) rolls back
+requests.protect        → passive always, never held, not a target, no onBeforeAction
+cross-origin            → passive always
+op scope off/observe    → never an action target (notOffered)
+effectiveMode           = min(mode|setMode|URL*, sample cap, breaker cap, route rule)  (snapshot per op)
+effectiveAggressiveness = min(global|setAggressiveness|URL*, route rule); explicit policy.thresholds win
+                          *URL overrides (mode, aggr, sample) demote only unless debug:true
+policy.allow/deny       → unchanged, at effective mode
+policy.actionLimits     → limit:perMinute / perSubject / perSession
+onBeforeAction          → final sync veto (vetoMode &quot;report&quot; = record only); over hold budget → limit:hold
+holdBudgetMs            → hard ceiling incl. defers + hook; release at min(remaining, timeoutMs)
+shadow                  → gate steps 1–6 at higher mode, dry-run; ignores sample/route/breaker caps
+model.loadIf / maxDecisionsPerMinute / timeoutMs / unload / hidden tab → availability only; held items release unchanged
+status.mode = requested; status.effectiveMode / Report.mode / SinkRecord.mode = effective
+</code></pre>
+<h2 id="7-readme-apimd-text">7. README / API.md text</h2>
+<blockquote>
+<h3 id="configuration">Configuration</h3>
+<p>GenClass runs with safe defaults (<code>mode: "observe"</code>, a <code>"balanced"</code> gate that applies once you opt into guard or heal, circuit breaker on). The options below narrow where it acts, cap how much it does, and send findings to your tools. None of them tell the model what a bug looks like. They only scope and limit it.</p>
+<ul>
+<li><strong>Activation</strong>: <code>enabled</code> (a boolean, a predicate, or a subscribable feature flag; while it is false the model is never downloaded), <code>rt.disable({ undo: true })</code> (remote kill that also rolls back recent actions), <code>sample</code> (the fraction of sessions allowed to act; the rest only observe).</li>
+<li><strong>Scope</strong>: <code>routes</code> (per-route mode and aggressiveness, which can only be lowered), <code>requests.ignore</code> (analytics traffic), <code>requests.protect</code> (endpoints that are never held, retried, cached or discarded), <code>requests.labels</code> (endpoint names for reports), <code>requests.correlate</code> (attach your trace id to records).</li>
+<li><strong>Safety</strong>: <code>breaker</code> (automatic downgrade after undos, or after errors that follow an action), <code>shadow</code> (records what a higher mode would have done), <code>onBeforeAction</code> + <code>vetoMode</code> (a synchronous veto, or a report-only trial of one), <code>policy.actionLimits</code> (per-minute, per-subject and per-session caps), <code>policy.holdBudgetMs</code> (a hard ceiling on added latency).</li>
+<li><strong>Telemetry</strong>: <code>sinks</code> (structured, redacted records), <code>session</code> (id and tags, never shown to the model), <code>report: "interventions"</code> (a quiet production console), <code>rt.summary()</code>, <code>rt.on("shadow" | "breaker" | "limit" | "modelBudget", cb)</code>.</li>
+<li><strong>Loading and cost</strong>: <code>model.loadIf</code>, <code>model.threads</code>, <code>model.timeoutMs</code>, <code>model.maxDecisionsPerMinute</code>, <code>model.unloadAfterIdleMs</code>.</li>
+</ul>
+<p>URL overrides (<code>?genclass-mode</code>, <code>?genclass-aggr</code>, <code>?genclass-sample</code>) can only lower settings, unless <code>debug: true</code> is set.</p>
+<p>```ts
+import { init } from "@genclass/runtime";</p>
+<p>const rt = init({
+  mode: "guard",
+  aggressiveness: "cautious",
+  enabled: {                                         // live feature flag; flipping off disables mid-session
+    get: () =&gt; flags.isEnabled("genclass") &amp;&amp; consent.analytics,
+    subscribe: (cb) =&gt; flags.onChange("genclass", cb),
+  },
+  sample: 0.1,                                       // 10% of sessions act, 90% observe
+  routes: [
+    { match: "/checkout/<em>", mode: "observe" },
+    { match: /^\/admin/,    mode: "off" },
+  ],
+  requests: {
+    ignore:  ["https://www.google-analytics.com/", /sentry.io/, "</em>/rum/*"],
+    protect: ["/api/auth/", "/api/payments/", (r) =&gt; r.method !== "GET" &amp;&amp; r.url.includes("/billing")],
+    crossOrigin: "observe",
+    labels: [{ match: "/api/orders", label: "place order" }],   // reports only by default
+    correlate: (r) =&gt; r.headers["x-request-id"],
+  },
+  breaker: { undos: 2, errorsAfterAction: 3, attributionMs: 5000, downgradeTo: "observe" },
+  shadow: "heal",
+  onBeforeAction: (a) =&gt; !(cart.isSubmitting &amp;&amp; a.tier === "heal"),
+  vetoMode: "enforce",
+  policy: { actionLimits: { perMinute: 30, perSubject: 3, perSession: 100 }, holdBudgetMs: "auto" },
+  report: import.meta.env.PROD ? "interventions" : "console",
+  sinks: [
+    { send: (r) =&gt; navigator.sendBeacon("/genclass", JSON.stringify(r)),
+      kinds: ["intervention", "undo", "breaker", "summary"] },
+    { send: (r) =&gt; Sentry.addBreadcrumb({ category: "genclass", data: r }), sampleRate: 0.2 },
+  ],
+  session: { tags: { release: <strong>RELEASE</strong>, tenant: tenantTier } },
+  learn: { persist: "local", key: "genclass:shop" },  // version = session.tags.release at init
+  model: {
+    preload: "idle",
+    loadIf: { minDeviceMemoryGB: 2, saveData: "lazy" },
+    threads: 2,
+    timeoutMs: 10_000,
+    maxDecisionsPerMinute: 30,
+    unloadAfterIdleMs: 300_000,
+  },
+});</p>
+<p>rt.on("breaker", (e) =&gt; log.warn("genclass downgraded", e));
+onLogin((u) =&gt; rt.setSession({ tags: { plan: u.plan } }));
+onLogout(() =&gt; rt.learn.clear());
+onIncident(() =&gt; rt.disable({ undo: true }));
+```</p>
+<p><strong>Recommended <code>requests.protect</code> starter</strong> (it is not built in; adapt it to your endpoints):
+<code>[/\/(auth|login|logout|oauth|token|session)\b/, /\/(payment|checkout|billing)\b/]</code></p>
+<p><strong>Rollout recipe:</strong> start with <code>mode: "observe", shadow: "guard"</code>, and compare the shadow records with your undo and complaint rates. Then switch to <code>mode: "guard", sample: 0.05</code>. Watch <code>rt.summary().undos</code> and <code>breaker</code> events, and widen <code>sample</code> as they stay quiet. For QA, <code>?genclass-sample=1</code> together with <code>debug: true</code> forces a session into the acting group.</p>
+</blockquote>
+<h2 id="8-migration-and-compatibility">8. Migration and compatibility</h2>
+<ul>
+<li><strong>Nothing breaks.</strong> <code>report</code> widens, and <code>redact</code> gains an optional third argument. <code>maxActionsPerMinute</code> stays as a deprecated alias of <code>actionLimits.perMinute</code>.</li>
+<li><strong>Behaviour changes, all toward safety (changelog):</strong>
+  1. <code>breaker</code> is on by default. Opt out with <code>breaker:false</code>.
+  2. New <code>perSubject:10</code> (per rolling minute) and <code>perSession:200</code> limits. Opt out with <code>Infinity</code>. This may suppress frequent retries on polling endpoints.
+  3. <code>holdBudgetMs</code> is now a hard ceiling that includes defers and <code>onBeforeAction</code> time.
+  4. <code>model.loadIf.saveData:"lazy"</code> forces lazy preload on Save-Data connections.
+  5. Hidden tabs skip background evaluation and release held items immediately (counted in <code>summary.model.hiddenSkipped</code>).
+  6. Query and fragment values in recorded URLs are now <code>…</code> in situation text. <strong>Model input changes, so add this to the eval plan and re-measure accuracy before release.</strong> Sent URLs are unchanged.
+  7. URL overrides can no longer raise mode or aggressiveness without <code>debug:true</code>.
+  8. Ops created under <code>off</code>/<code>observe</code> route scope can no longer be action targets.</li>
+<li><strong>Renames from the earlier draft:</strong></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Earlier draft</th>
+<th>Final</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>protect</code> (top level)</td>
+<td><code>requests.protect</code></td>
+</tr>
+<tr>
+<td><code>model.when</code></td>
+<td><code>model.loadIf</code></td>
+</tr>
+<tr>
+<td><code>budget:*</code> reasons</td>
+<td><code>limit:*</code></td>
+</tr>
+<tr>
+<td><code>hold-cap</code> reason</td>
+<td><code>limit:hold</code></td>
+</tr>
+<tr>
+<td><code>budget</code> event and status (model)</td>
+<td><code>modelBudget</code></td>
+</tr>
+<tr>
+<td>sink kinds <code>detect</code>/<code>intervene</code></td>
+<td><code>detection</code>/<code>intervention</code></td>
+</tr>
+<tr>
+<td><code>rt.resetBreaker()</code></td>
+<td><code>rt.breaker.reset()</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>CONTRACT.md:</strong> §2 gets the options, §7 the gate order from §0.4, and §8 the SinkRecord schema 1 and <code>RuntimeEvents</code>.</li>
+<li><strong>Files:</strong></li>
+<li><strong>Hook points:</strong> <code>types.ts</code>, <code>runtime.ts</code>, <code>auto.ts</code>, <code>decide/{policy,exec,report,decider}.ts</code>, <code>observe/{fetch,xhr,websocket,eventsource,nav,errors,dom-user}.ts</code>, <code>model/{host,backend}.ts</code>, <code>learn/*</code>.</li>
+<li><strong>New files:</strong> <code>util/match.ts</code>, <code>decide/breaker.ts</code>, <code>decide/summary.ts</code>, <code>learn/store.ts</code>.</li>
+</ul>
+<p>Nothing was run. This spec comes from reading <code>/Users/meharkhanna/jev/GenClass-lib/packages/runtime/src/types.ts</code>, <code>/Users/meharkhanna/jev/GenClass-lib/docs/runtime/API.md</code>, the README and the CONTRACT sections. <code>types.ts</code> gives <code>"balanced"</code> as the default aggressiveness, so the README text now says "balanced". <code>API.md</code> already has <code>rt.on</code>, and the new events extend it.</p>
+<h2 id="dropped-proposals">Dropped proposals</h2>
+<ul>
+<li>[dx] env / preset: Auto-detecting the environment from hostname or NODE_ENV is magic that will silently go wrong (tunnels, staging), and production behaviour would change on upgrade. The defaults are already the safe production profile (guard, cautious), and dev is just mode:'observe', debug:true. A docs snippet works better than another layer of option resolution. A ?genclass-mode URL override is a production safety risk.</li>
+<li>[safety] policy.rules: This is a second policy language with ordering semantics, and a misordered rule can quietly widen permissions. protect already covers the main safety need, and per-scope mode/allow is rarely needed. If scoping is ever needed it should be narrow-only (deny-only), but leave it out for now to keep the library simple.</li>
+<li>[safety] rollout: Developers can hand-roll this in two lines around init (mode: inCohort ? 'guard' : 'observe'), and a key() hook adds a PII risk. It is better as docs, or a plugin that tags reports with the cohort.</li>
+<li>[integrations] devtools: mountDevtools already exists; an auto-mount with URL/localStorage flags exposes internals to end users in production and adds dev-build detection heuristics. A one-line conditional import is not burdensome. Better kept as the explicit opt-in subpath export (could document an <code>if (import.meta.env.DEV)</code> snippet).</li>
+<li>[perf] historySize (extend to per-buffer limits): Per-buffer limits and a byte cap are internals that almost no developer would tune. Bound the ops, store-version and report buffers internally in proportion to historySize, and show memory use in status. The existing number is enough.</li>
+<li>[perf] observe.sample: Body-size and rate limits on recording should be built-in safe defaults (a body cap and per-socket rate limiting, with a 'sampled' marker), not public options. timers 'long-only' starts to look like a heuristic rule. Developers who need more control can still turn individual observers off with observe.*.</li>
+</ul></article></div></section>
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

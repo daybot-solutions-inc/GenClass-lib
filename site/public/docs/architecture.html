@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GenClass Runtime Architecture</title>
+<meta name="description" content="How the GenClass runtime is built: observers, causality, stores, facts, triage, the policy gate, actions and the on-device model host.">
+<link rel="canonical" href="https://genclass.dev/docs/architecture">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/docs/architecture">
+<meta property="og:title" content="GenClass Runtime Architecture">
+<meta property="og:description" content="How the GenClass runtime is built: observers, causality, stores, facts, triage, the policy gate, actions and the on-device model host.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GenClass Runtime Architecture">
+<meta name="twitter:description" content="How the GenClass runtime is built: observers, causality, stores, facts, triage, the policy gate, actions and the on-device model host.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Architecture", "item": "https://genclass.dev/docs/architecture"}]}, {"@type": "TechArticle", "headline": "GenClass Runtime: architecture", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/ARCHITECTURE.md"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs" class="on" aria-current="page">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>Architecture</span></nav><h1>GenClass Runtime: architecture</h1>
+<p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/ARCHITECTURE.md"><code>docs/runtime/ARCHITECTURE.md</code></a> in the GenClass repository.</p></div></div>
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><b>On this page</b><a href="#design-principles">Design principles</a><a href="#data-flow">Data flow</a><a href="#the-model-and-how-it-is-trained">The model and how it is trained</a><a href="#evaluation">Evaluation</a></nav><article class="prose"><p>GenClass Runtime is a client-side intelligence layer. It runs inside the page, watches what the application does,
+and uses a small local model to decide, in real time, whether something is going wrong and whether to step in.
+This document explains how the parts fit together and why they are built this way. The binding spec is
+<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/CONTRACT.md">CONTRACT.md</a> and the API is in <a href="/docs/api">API.md</a>.</p>
+<h2 id="design-principles">Design principles</h2>
+<ol>
+<li><strong>No hardcoded bugs.</strong> The runtime contains no rule like "if a stale response arrives, drop it". It computes
+   generic facts and asks the model. All runtimes compute the same facts: happens-before order, versions,
+   repetition, failure streaks, latency against learned baselines, learned invariants and transition profiles.
+   The diagnosis and the action come from the model.</li>
+<li><strong>Precision first.</strong> A false intervention costs more than a missed bug. The default <code>observe</code> mode only
+   reports. The opt-in <code>guard</code> mode takes only minimal actions, and only when the model is very confident and its
+   own diagnosis says something is wrong. <code>heal</code> is experimental.</li>
+<li><strong>Observable.</strong> Every detection and intervention is reported in plain English with its evidence, can be
+   explained after the fact, and can be undone where possible. A kill switch rules GenClass out in one step.</li>
+<li><strong>Cheap by default.</strong> Facts are cheap and always on. The model runs only for salient situations, off the main
+   thread, sized to the device.</li>
+<li><strong>Train what you run.</strong> The training data comes from the real runtime code, so the model sees exactly the text
+   it will see in production.</li>
+</ol>
+<h2 id="data-flow">Data flow</h2>
+<pre><code> app code ──► observers ──► trace (events, ops, causality) ──► stores (versions, holds)
+                                   │                                │
+                                   ▼                                ▼
+                        learned baselines, invariants, transition profiles
+                                   │
+          trigger (write about to apply, request about to be sent, failure, stall,
+                   broken invariant, unusual transition, error, developer question)
+                                   │
+                                   ▼
+                        facts ──► triage ──(salient)──► situation + questions
+                                   │                                │
+                             (not salient)                          ▼
+                                   │                 model host (Web Worker, ONNX on WebGPU/WASM)
+                                   ▼                                │
+                            passive action                          ▼
+                                                    answers: diagnosis + action probabilities
+                                                                    │
+                                                                    ▼
+                                         policy gate (mode, tier, confidence, diagnosis, rate)
+                                                                    │
+                                                                    ▼
+                                    action (or passive) ──► report / explain / undo / events
+</code></pre>
+<h3 id="observers-and-the-trace-srcobserve-srctrace">Observers and the trace (<code>src/observe</code>, <code>src/trace</code>)</h3>
+<ul>
+<li><strong>Instrumented sources:</strong> <code>fetch</code>, <code>XMLHttpRequest</code>, <code>WebSocket</code>, DOM user events (capture phase, trusted
+  events only), errors and unhandled rejections, history navigation, storage, and long tasks.</li>
+<li><strong>Operations:</strong> every asynchronous operation becomes an <em>op</em> with a signature (<code>GET /api/items/:id</code>), a cause and
+  a root. User actions are instantaneous ops, so they can be causes.</li>
+<li><strong>Causality across <code>await</code>:</strong> an "ambient op" is set during user handlers and <code>rt.op</code>, re-established when a
+  wrapped request or its body settles, and cleared after the task. State writes record the ambient op as their
+  cause. This is best effort, and it is enough to say "this write comes from the response to the request the user
+  started by typing <em>rea</em>".</li>
+</ul>
+<h3 id="stores-and-the-mutation-pipeline-srcstate">Stores and the mutation pipeline (<code>src/state</code>)</h3>
+<ul>
+<li><strong>Field versions:</strong> state registered through atoms, <code>guard</code> or the Redux/Zustand/React adapters gets per-field
+  versions with writer history.</li>
+<li><strong>Proposals and holds:</strong> each write is first a proposal. A salient proposal from asynchronous code is <em>held</em>
+  until the model answers or the hold budget runs out, then applied, dropped or deferred. Writes made
+  synchronously by a user handler are never held.</li>
+<li><strong>Invariant miner:</strong> at settled points it learns relations that keep holding, such as <code>total == sum(price·qty)</code>,
+  <code>count == len(items)</code> and membership. A learned relation that breaks raises an <code>inconsistency</code>.</li>
+<li><strong>Transition profiles:</strong> these learn which fields each operation usually writes. A deviation such as "wrote only
+  <code>cart.items</code>, unlike the last 317 times" raises a <code>transition</code>.</li>
+</ul>
+<h3 id="situations-and-triage-srcsituation">Situations and triage (<code>src/situation</code>)</h3>
+<ul>
+<li><strong>Situation:</strong> a Jev-style state object with <code>app</code>, <code>trigger</code>, <code>facts</code>, <code>in_flight</code>, <code>timeline</code>, <code>state</code> and
+  <code>stats</code>, plus two standing questions:</li>
+<li><code>diagnosis</code>: expected, stale, conflict, duplicate, inconsistent, failing, transient, slow, overload or unusual;</li>
+<li><code>action</code>: one option per applicable generic action, with its description.</li>
+<li><strong>Facts:</strong> short sentences with explicit relations and numbers, for example "written once by other operations
+  since this write's cause started (v0 → v1), last 0.69 s ago by GET …?q=reac, which started 0.09 s after it,
+  from a later user action".</li>
+<li><strong>Triage:</strong> the model is asked only when some fact is non-neutral (concurrency, repetition, failure, an anomaly
+  against a baseline, a broken relation, an error). Plain traffic never reaches it.</li>
+<li><strong>Device-sized budget:</strong> 3,200 characters on WebGPU, 2,000 with WASM threads, 1,000 on single-thread WASM. Small
+  budgets also use compact questions (bare labels).</li>
+</ul>
+<h3 id="decisions-and-actions-srcdecide-srcruntimets">Decisions and actions (<code>src/decide</code>, <code>src/runtime.ts</code>)</h3>
+<ul>
+<li><strong>Actions are capabilities, not rules.</strong></li>
+<li>Guard tier: <code>discard</code>, <code>defer</code>, <code>coalesce</code>, <code>delay</code>.</li>
+<li>Heal tier: <code>block</code>, <code>serve_cached</code>, <code>retry</code>, <code>hedge</code>, <code>rollback</code>, <code>resync</code>.</li>
+<li>Passive: <code>apply</code>, <code>send</code>, <code>deliver</code>, <code>wait</code>, <code>ignore</code>.</li>
+<li>Plugins can add their own; the model reads each action's description.</li>
+<li><strong>Gate:</strong> let <em>A</em> be the permitted non-passive actions. GenClass acts only if three things hold:</li>
+<li>the model's summed probability over <em>A</em> reaches the tier threshold (guard 0.9, heal 0.8);</li>
+<li>its top diagnosis is not <code>expected</code>;</li>
+<li>the decision is within the rate limit and the hold budget.</li>
+</ul>
+<p>The chosen action is the most likely action in <em>A</em>.
+- <strong>Late revert:</strong> a decision that arrives after a held write already applied can revert exactly that write. That
+  is allowed only within 2 s, if nothing has touched the write since, and if no other write from the same chain
+  happened.</p>
+<h3 id="model-host-srcmodel">Model host (<code>src/model</code>)</h3>
+<ul>
+<li><strong>Engine:</strong> a TypeScript port of the GenClass engine (byte-level BPE tokenizer, packer, calibration). It is
+  bit-exact with the Python packer.</li>
+<li><strong>Inference:</strong> runs in a module Web Worker with an inline fallback. WebGPU (fp16 when the GPU has <code>shader-f16</code>,
+  int8 otherwise) is preferred; WASM is the fallback. The WASM-only ONNX Runtime build is used when WebGPU is
+  unavailable.</li>
+<li><strong>Loading:</strong> the model loads at idle and is verified with sha256 and cached in Cache Storage. While it loads,
+  every decision fails open at once.</li>
+</ul>
+<h2 id="the-model-and-how-it-is-trained">The model and how it is trained</h2>
+<p>GenClass is a Jev-style typed-decision encoder: one forward pass reads the state and answers several typed
+questions (choice, yes/no, score). Each option attends only to the state and its own question, so option order
+cannot change the answer. The runtime model is a specialist fine-tuned from the GenClass base. There are two
+sizes, R17 (17M parameters) and R32 (32M), both with a pruned 16k vocabulary and int8 weights.</p>
+<p>Training data (<code>sim/</code>, <code>training/</code>):</p>
+<ol>
+<li><strong>Simulator.</strong> Thousands of random apps across 55 domains are built from 15 feature combinators: search,
+   lists, forms, carts, boards, chat, autosave, polling, uploads and more. They mix correct guards with realistic
+   defects, and run real <code>async</code> code against the <strong>real runtime</strong> in a deterministic virtual world (clock,
+   network with latency, failures and outages, push channels, users who type, double-click and change their
+   minds).</li>
+<li><strong>Labels from outcomes, not rules.</strong> At a sampled decision point, the sim re-runs the scenario with each
+   applicable action forced there, scored over several sampled futures. The cost of each run is how far the app
+   drifts from what the user intended, which is the same session in an ideal serial, zero-latency, exactly-once
+   world. It also counts persistent server damage, user-visible errors, wasted requests and added latency. The
+   action label is a soft distribution over those costs: ties go to doing nothing, and labels are sharp only when
+   outcomes agree across futures. The diagnosis label comes from the simulator's knowledge of user intents.</li>
+<li><strong>Curriculum.</strong> Programmatic error-detection-and-fixing exercises: ordering, causality, versions, duplicates,
+   streaks, baselines, invariants, and HTTP/JS error semantics.</li>
+<li><strong>Held out for testing.</strong> Domains and program families that never appear in training. The demos are written
+   independently of the simulator and act as an external test.</li>
+</ol>
+<h2 id="evaluation">Evaluation</h2>
+<ul>
+<li><strong>Simulator test split:</strong> action and diagnosis accuracy, plus the false-intervention rate and precision of the
+  guard and heal gates, per trigger and per device budget.</li>
+<li><strong>Demos:</strong> six real small apps covering typeahead, autosave, checkout, a flaky dashboard, a live kanban board,
+  and real-time decisions. Each is driven by Playwright under chaos and on clean runs with GenClass off, in guard
+  and in heal. Reports cover bug rate, false interventions on clean runs, and added latency.</li>
+</ul></article></div></section>
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

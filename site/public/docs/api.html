@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GenClass Runtime API Reference</title>
+<meta name="description" content="Complete API reference for @genclass/runtime: init and modes, options, state, operations, asking the model, events, policy, explain, undo, plugins and adapters.">
+<link rel="canonical" href="https://genclass.dev/docs/api">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/docs/api">
+<meta property="og:title" content="GenClass Runtime API Reference">
+<meta property="og:description" content="Complete API reference for @genclass/runtime: init and modes, options, state, operations, asking the model, events, policy, explain, undo, plugins and adapters.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GenClass Runtime API Reference">
+<meta name="twitter:description" content="Complete API reference for @genclass/runtime: init and modes, options, state, operations, asking the model, events, policy, explain, undo, plugins and adapters.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "API Reference", "item": "https://genclass.dev/docs/api"}]}, {"@type": "TechArticle", "headline": "@genclass/runtime API reference", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs" class="on" aria-current="page">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>API Reference</span></nav><h1>@genclass/runtime API reference</h1>
+<p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md"><code>docs/runtime/API.md</code></a> in the GenClass repository.</p></div></div>
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><b>On this page</b><a href="#init-and-modes">Init and modes</a><a href="#options">Options</a><a href="#state">State</a><a href="#operations-and-user-actions">Operations and user actions</a><a href="#asking-the-model">Asking the model</a><a href="#events">Events</a><a href="#introspection-and-control">Introspection and control</a><a href="#triggers-and-actions">Triggers and actions</a><a href="#policy">Policy</a><a href="#reports-explain-and-undo">Reports, explain and undo</a><a href="#plugins">Plugins</a><a href="#headless-use-tests-ssr-simulation">Headless use (tests, SSR, simulation)</a><a href="#adapters-and-devtools">Adapters and devtools</a><a href="#types">Types</a></nav><article class="prose"><p>GenClass Runtime watches a web app from the inside (user actions, async operations, network, state changes,
+errors, timing and causality) and asks a small local model, running in the browser, about situations that look
+risky. Depending on the mode it reports what it saw, or prevents the failure with a minimal, reversible action.</p>
+<pre><code class="language-ts">import { GenClass } from &quot;@genclass/runtime&quot;;
+
+const rt = GenClass.init();                          // observe mode, local model, console reports
+const cart = rt.atom(&quot;cart&quot;, { items: [], total: 0 }); // state GenClass can protect
+</code></pre>
+<p>Contents: <a href="#init-and-modes">init and modes</a> · <a href="#options">options</a> · <a href="#state">state</a> ·
+<a href="#operations-and-user-actions">operations and user actions</a> · <a href="#asking-the-model">questions</a> ·
+<a href="#events">events</a> · <a href="#introspection-and-control">introspection</a> · <a href="#triggers-and-actions">triggers and actions</a> ·
+<a href="#policy">policy</a> · <a href="#reports-explain-and-undo">reports</a> · <a href="#plugins">plugins</a> · <a href="#headless-use-tests-ssr-simulation">headless use</a> ·
+<a href="#adapters-and-devtools">adapters and devtools</a> · <a href="#types">types</a></p>
+<h2 id="init-and-modes">Init and modes</h2>
+<pre><code class="language-ts">GenClass.init(options?: InitOptions): Runtime   // idempotent: a second call returns the same runtime
+GenClass.runtime: Runtime | null
+GenClass.destroy(): void                        // uninstall observers, restore globals, terminate the model worker
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>mode</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observe</code> (default)</td>
+<td>Watches and reports detections. Never changes execution: nothing is held, no action runs.</td>
+</tr>
+<tr>
+<td><code>guard</code> (opt-in)</td>
+<td>Also takes <em>guard-tier</em> actions at very high confidence: <code>discard</code>, <code>defer</code>, <code>coalesce</code>, <code>delay</code>. These withhold, deduplicate or slow something down; they never invent data or fail a request.</td>
+</tr>
+<tr>
+<td><code>heal</code> (experimental)</td>
+<td>Also takes <em>heal-tier</em> actions: <code>block</code>, <code>serve_cached</code>, <code>retry</code>, <code>hedge</code>, <code>rollback</code>, <code>resync</code>, plugin actions.</td>
+</tr>
+</tbody>
+</table>
+<p>Kill switch, for "is my app broken or did GenClass change something?":</p>
+<ul>
+<li><code>?genclass=off</code> in the page URL, or <code>localStorage.genclass = "off"</code>: <code>init</code> installs nothing and logs one line.</li>
+<li><code>?genclass=observe|guard|heal</code>: overrides the mode.</li>
+</ul>
+<p>Outside a browser (no <code>window</code>/<code>document</code>, e.g. SSR), <code>GenClass.init()</code> returns an inert runtime: no observers,
+no model. Use <a href="#headless-use-tests-ssr-simulation"><code>createRuntime</code></a> for headless work.</p>
+<p><strong>Telemetry (since 0.1.0-beta.3; privacy-relevant).</strong> In a browser <code>GenClass.init()</code> sends anonymous diagnostics
+(decisions with the redacted situation text, action outcomes, detections, model status and counts) to
+<code>DEFAULT_TELEMETRY_ENDPOINT</code> and prints one console notice per page. Off with <code>telemetry: false</code>,
+<code>?genclass=no-telemetry</code> (or <code>?genclass=off</code>), <code>localStorage["genclass.telemetry"] = "off"</code>, or Global Privacy
+Control; off by default outside a browser and in <code>createRuntime()</code>. Schema and details:
+<a href="/docs/telemetry">packages/runtime/TELEMETRY.md</a>.</p>
+<h2 id="options">Options</h2>
+<pre><code class="language-ts">interface InitOptions {
+  mode?: &quot;observe&quot; | &quot;guard&quot; | &quot;heal&quot;;                 // default &quot;observe&quot;; &quot;guard&quot; is opt-in, &quot;heal&quot; experimental
+  model?: {                                             // or false: no model (observe only)
+    baseUrl?: string;                                   // directory with model.json (default: jsDelivr CDN)
+    device?: &quot;auto&quot; | &quot;webgpu&quot; | &quot;wasm&quot;;                // default &quot;auto&quot;
+    worker?: boolean;                                   // default true
+    preload?: &quot;eager&quot; | &quot;idle&quot; | &quot;lazy&quot;;                // default &quot;idle&quot;
+  } | false;
+  decider?: DecisionProvider | null;                   // bring your own decision provider instead of the model
+  report?: &quot;console&quot; | &quot;silent&quot; | ((r: Report) =&gt; void); // default &quot;console&quot;
+  observe?: Partial&lt;Record&lt;&quot;fetch&quot;|&quot;xhr&quot;|&quot;user&quot;|&quot;errors&quot;|&quot;nav&quot;|&quot;storage&quot;|&quot;perf&quot;|&quot;websocket&quot;|&quot;eventsource&quot;|&quot;timers&quot;|&quot;untrustedEvents&quot;, boolean&gt;&gt;;
+                                                        // untrustedEvents (default false): record synthetic DOM events (isTrusted false) as user actions (test harnesses)
+  triage?: &quot;salient&quot; | &quot;always&quot;;                        // default &quot;salient&quot;
+  policy?: PolicyOptions;                               // see Policy
+  redact?: (path: string, value: unknown) =&gt; unknown;   // default: values whose leaf field names a secret (password, token, card number, cvv, ssn, iban, ...); never a whole store by its name
+  plugins?: Plugin[];
+  historySize?: number;                                 // events kept, default 500
+  debug?: boolean;                                      // console.debug every decision
+  learn?: { persist?: boolean };                        // keep transition profiles in localStorage
+  aggressiveness?: &quot;cautious&quot; | &quot;balanced&quot; | &quot;eager&quot; | number; // how eagerly to act (default &quot;balanced&quot;; see Policy)
+  vocabulary?: { diagnoses?: Record&lt;string, string&gt;; actions?: Record&lt;string, string&gt; };
+  settleMs?: number;                                    // quiet time that makes a settled point, default 60
+  situation?: { budget?: number | &quot;auto&quot; };             // size of what the model reads, in characters (default &quot;auto&quot;)
+  telemetry?: boolean | {                               // anonymous diagnostics (TELEMETRY.md); default: on in GenClass.init in a browser, else off
+    endpoint?: string;                                  // [DEFAULT_TELEMETRY_ENDPOINT]
+    sample?: number;                                    // [1] fraction of page loads that send
+    flushMs?: number;                                   // [10000] batch interval; also sent on pagehide / hidden tab (sendBeacon)
+    maxBatch?: number;                                  // [100] events per request (requests also ≤ 60 KB)
+    include?: { situation?: boolean };                  // [true] include the redacted situation text
+    transport?: { send(url: string, body: string, o: { beacon: boolean }): void | Promise&lt;unknown&gt; }; // tests / custom pipelines
+  };
+
+  // batch 12 (docs/runtime/OPTIONS-SPEC.md); defaults in brackets
+  enabled?: boolean | (() =&gt; boolean | Promise&lt;boolean&gt;) | { get(): boolean | Promise&lt;boolean&gt;; subscribe?(cb: () =&gt; void): () =&gt; void };
+                                                        // [true]; false: nothing installed, model never downloaded; a predicate/source forces preload &quot;lazy&quot;
+  sample?: number;                                      // [1] fraction of sessions that act (stable per session); the rest observe
+  routes?: { match: string | RegExp | ((route: string) =&gt; boolean); mode?: Mode | &quot;off&quot;; aggressiveness?: Aggressiveness }[];
+                                                        // first match wins; demote only
+  requests?: {
+    ignore?: RequestMatcher[];                          // not observed at all (native pass-through)
+    protect?: RequestMatcher[];                         // observed, never held/retried/cached/discarded; a throwing predicate = protected
+    crossOrigin?: &quot;observe&quot; | &quot;ignore&quot;;                 // [&quot;observe&quot;]; cross-origin is always passive
+    labels?: { match: RequestMatcher; label: string }[];// names for reports/sinks ([A-Za-z0-9 _-], ≤ 5 words, ≤ 40 chars)
+    labelsToModel?: boolean;                            // [false] labels appear in situation text only when true
+    correlate?: (r: { url: string; method: string; headers: Record&lt;string, string&gt; }) =&gt; string | undefined; // redacted, ≤ 128 chars
+  };
+  breaker?: { undos?: number; errorsAfterAction?: number; attributionMs?: number; windowMs?: number; downgradeTo?: &quot;observe&quot; | &quot;guard&quot;; persist?: &quot;session&quot; | false } | false;
+                                                        // [{2, 3, 5000, 600000, &quot;observe&quot;, &quot;session&quot;}]
+  shadow?: &quot;guard&quot; | &quot;heal&quot; | false;                    // [false] dry-run gate at a higher mode; Decision.shadow, &quot;shadow&quot; event
+  onBeforeAction?: (a: ActionRequest) =&gt; boolean | void;// final sync veto (false or throw); counts against the hold budget
+  vetoMode?: &quot;enforce&quot; | &quot;report&quot;;                      // [&quot;enforce&quot;]; &quot;report&quot; records would-veto and runs the action
+  sinks?: (SinkFn | { send: SinkFn; kinds?: SinkKind[]; sampleRate?: number; evidence?: boolean; flush?(): Promise&lt;void&gt; })[];
+  session?: { id?: string; tags?: Record&lt;string, string | number | boolean&gt; }; // never shown to the model
+  redact?: (path: string, value: unknown, kind?: &quot;state&quot; | &quot;url&quot; | &quot;header&quot; | &quot;input&quot;) =&gt; unknown; // runs after built-in redaction; a throw → &quot;[redacted]&quot;
+  report?: &quot;console&quot; | &quot;interventions&quot; | &quot;silent&quot; | ((r: Report) =&gt; void);    // &quot;interventions&quot;: console prints interventions, undos, breaker only
+  learn?: { persist?: boolean | &quot;local&quot; | &quot;session&quot;; key?: string; version?: string }; // version defaults to session.tags.release; mismatch discards
+  // model: also loadIf [{ saveData: &quot;lazy&quot; }], inlineFallback [true], threads [&quot;auto&quot;], timeoutMs [10000],
+  //        maxDecisionsPerMinute [30], unloadAfterIdleMs [false]
+}
+</code></pre>
+<p>Runtime additions: <code>rt.disable({ undo? })</code> (permanent; <code>undo: true</code> rolls back the last minute's actions),
+<code>rt.summary(): SessionSummary</code>, <code>rt.setSession({ id?, tags? })</code>, <code>rt.breaker.{tripped, reset()}</code>, <code>rt.learn.clear()</code>,
+events <code>shadow</code>, <code>breaker</code>, <code>limit</code>, <code>modelBudget</code>. <code>status</code> adds <code>effectiveMode</code>, <code>sampled</code>, <code>breaker</code>, <code>scope</code>,
+<code>modelBudget</code>, and states <code>"disabled" | "skipped" | "unloaded"</code>. <code>status.scope</code> is what is in force on the current
+route: <code>mode</code> is the effective mode there (equal to <code>effectiveMode</code>: the requested mode demoted by sampling, the breaker
+and the matching <code>routes[]</code> rule) and <code>aggressiveness</code> the effective level; with a matching rule it also has <code>rule</code>
+(its index) and <code>ceiling</code> (the mode that rule caps the route at; rules only lower the mode). Before 0.1.0-beta.4,
+<code>scope.mode</code> was that ceiling ("heal" when no rule matched). <code>rt.gates()</code> carries <code>mode</code> (the same effective mode).
+<code>status.blocked</code> (state "error"): <code>{ url, origin, csp, directive? }</code> when the browser blocked a model or ORT download.</p>
+<p>Gate order (each request/decision): protected → cross-origin → op scope (created under off/observe) →
+mode/allow/deny/requireDiagnosis (at the effective mode) → thresholds → <code>policy.actionLimits</code>
+(<code>limit:perMinute|perSubject|perSession</code>; defaults 60/min global, 10/min per subject, 200 per session) → <code>onBeforeAction</code> (<code>vetoed</code>, <code>would-veto</code>, or
+<code>limit:hold</code> past the budget) → execute. effectiveMode = min(mode, sample cap, breaker cap, route rule); URL overrides
+(<code>?genclass</code>, <code>?genclass-mode</code>, <code>?genclass-aggr</code>, <code>?genclass-sample</code>) only demote unless <code>debug: true</code>.
+<code>policy.holdBudgetMs</code> is a hard ceiling that includes defers and the veto hook. Hidden tabs skip background
+evaluation and release held items unevaluated.</p>
+<p>Performance: GenClass computes cheap facts for every write and request, and asks the model only about salient ones.
+The situation the model reads is sized to the device (<code>situation.budget: "auto"</code>): 2,400 characters (about 1,000
+tokens) on WebGPU, 2,000 on 4-thread WASM (crossOriginIsolated pages), 1,000 on single-thread WASM; at 1,400
+characters or less the questions are compact (bare diagnosis labels and action names). State writes are never held
+by default. Held responses, messages and requests wait at most the hold budget (<code>policy.holdBudgetMs: "auto"</code>: 1.5 ×
+the model's recent median latency, 150 to 800 ms), then proceed unchanged; nothing is held when the model is not
+expected to answer within that budget. Serving your page with <code>Cross-Origin-Opener-Policy: same-origin</code> and
+<code>Cross-Origin-Embedder-Policy: require-corp</code> enables WASM threads (about 3× faster without WebGPU).</p>
+<p>Self-hosting the model: <code>npx @genclass/runtime fetch-model public/genclass-model</code> then
+<code>GenClass.init({ model: { baseUrl: "/genclass-model/" } })</code>.</p>
+<h2 id="state">State</h2>
+<p>GenClass protects state it can see. Register stores with <code>atom</code> (owned by GenClass), <code>guard</code> (owned by you) or an
+adapter (Redux, Zustand, React hooks).</p>
+<pre><code class="language-ts">rt.atom&lt;T&gt;(name: string, initial: T, opts?: StoreOptions&lt;T&gt;): Atom&lt;T&gt;
+rt.guard&lt;T&gt;(name: string, io: { get(): T; set(v: T): void; subscribe?(fn: () =&gt; void): () =&gt; void }, opts?): Guarded&lt;T&gt;
+rt.expect(name: string, predicate: () =&gt; boolean): () =&gt; void   // developer invariant, checked at settled points
+
+interface Atom&lt;T&gt; {
+  readonly name: string;
+  get(): T;
+  set(next: T | ((prev: T) =&gt; T)): void;
+  update(fn: (prev: T) =&gt; T): void;
+  subscribe(fn: (v: T) =&gt; void): () =&gt; void;
+}
+interface StoreOptions&lt;T&gt; {
+  resync?: () =&gt; Promise&lt;unknown&gt; | unknown;   // &quot;reload this store from its source&quot;: enables the resync action
+  hold?: boolean;                              // default true; false: writes are never held
+  describe?: (v: T) =&gt; string;                 // one-line description used in situations
+}
+</code></pre>
+<pre><code class="language-ts">const search = rt.atom(&quot;search&quot;, { query: &quot;&quot;, results: [] as Item[] }, {
+  resync: async () =&gt; search.set({ ...search.get(), results: await api.search(search.get().query) }),
+});
+input.oninput = () =&gt; search.set((s) =&gt; ({ ...s, query: input.value }));   // user write: applied at once
+const res = await fetch(`/api/search?q=${q}`);                          // a stale response may be held briefly
+search.set((s) =&gt; ({ ...s, results: data }));                           // applied at once (stale fields may be dropped)
+</code></pre>
+<p>How writes flow: GenClass decides at the network boundary and enforces synchronously at the store. A response
+(fetch or XHR) or a pushed message (WebSocket, EventSource) is checked before the app sees it: GenClass predicts
+which fields it will write (from what the same operation wrote before) and consults the model only when it would
+overwrite newer data (an operation that started later already wrote it, and no newer request of the same kind is
+still on its way), put back the value of an unconfirmed local change (a user action's optimistic write whose own
+request is still in flight), or replace text the user typed meanwhile. The model may let it through (<code>deliver</code>), let it
+through but drop the writes it makes over newer data (<code>discard</code>: each later <code>set()</code> of that response's chain applies
+its other fields and skips those), or hold it until the related requests finish and decide again (<code>defer</code>). Holding
+only adds latency; messages of one socket or stream keep their order. Before asking, it reads the response (a
+clone, ≤ 256 KB of JSON) and compares it with the store: a response that equals the current values changes nothing and is let through without
+a model call. The situation then says what the response would do: put back a value a newer operation replaced (per
+field, or per item cell of a list joined by id), replace text the user typed since the request started (with a
+preview centred on the difference), or reload a list without the item a recent create returned.</p>
+<p><code>set()</code> always applies at once (<code>set(x); get()</code> returns x) and notifies subscribers; writes to one store apply in the
+order they were made. A write that looks wrong on its own (not covered by a delivery decision) is decided in the
+background: if the model answers <code>discard</code> within 2 s after the write applied, nothing has overwritten it and the
+same operation made no other write since, GenClass reverts exactly that write (a "late revert", reported as such and
+undoable).</p>
+<p><code>policy.holdWrites: true</code> (opt-in) holds salient writes until the model answers (at most the hold budget): a later
+write to the same store first applies the earlier held ones in order, and <code>get()</code> inside the writing operation
+returns the pending value. An updater that changes the stored value in place never changes live state before the
+decision (GenClass works on a detached copy, or applies at once when it cannot restore the live value exactly); a
+functional update runs again on the value at apply time; a held value write is re-applied as a patch of the fields
+it changed. Reads that bypass GenClass (a Redux middleware's <code>store.getState()</code>) do not see held writes: keep
+<code>holdWrites</code> off for such stores or pass <code>hold: false</code>.</p>
+<p>GenClass also learns, at <em>settled</em> points (no requests in flight, <code>settleMs</code> of quiet), generic relations between
+your fields (<code>a == b</code> for fields with related names, <code>a == len(B)</code>, <code>a == sum(B[*].f)</code>, <code>a == sum(B[*].f * B[*].g)</code>,
+<code>a == count(B[*].k == v)</code>, <code>a &gt;= 0</code>, <code>a ∈ B[*].k</code>, <code>B[*].id unique</code>, stable types, non-null) and each operation's usual
+effects on state. When a learned relation breaks, or an operation changes state unlike it normally does, the model is
+consulted. To avoid false alarms on correct apps: a selection holding 0, -1, "" or null means nothing is selected;
+uniqueness is only learned for id columns; pagination metadata (page, offset, limit, cursor, and a total next to them)
+never enters a relation; stores you are typing into are checked once typing pauses for a second; counters that change
+on nearly every write are left out unless they are a learned sum or count of a list.</p>
+<h2 id="operations-and-user-actions">Operations and user actions</h2>
+<p>The DOM, fetch, XHR, WebSocket and timers are observed automatically. These entry points cover anything else:</p>
+<pre><code class="language-ts">rt.op&lt;T&gt;(name: string, fn: () =&gt; Promise&lt;T&gt; | T, meta?: Record&lt;string, unknown&gt;): Promise&lt;T&gt;   // a named async task
+rt.user&lt;T&gt;(action: UserAction, handler?: () =&gt; T): T | undefined   // a user action (cause of what follows)
+rt.emit(name: string, data?: Record&lt;string, unknown&gt;): void        // a custom event in the timeline
+rt.reportError(error: unknown, info?: { source?: string }): void   // a handled error worth knowing about
+
+interface UserAction { kind: &quot;click&quot;|&quot;type&quot;|&quot;change&quot;|&quot;submit&quot;|&quot;key&quot;|&quot;nav&quot;|string; target?: string; value?: string; key?: string; sensitive?: boolean; clicks?: number /* MouseEvent.detail */ }
+</code></pre>
+<pre><code class="language-ts">await rt.op(&quot;loadProfile&quot;, async () =&gt; profile.set(await (await fetch(&quot;/api/me&quot;)).json()));
+rt.user({ kind: &quot;click&quot;, target: 'button &quot;Sync&quot;' }, () =&gt; startSync());
+</code></pre>
+<p>The DOM observer describes the element the user actually interacted with, also inside open shadow roots (Lit,
+custom elements): <code>button "Send reply"</code>, <code>select "Status"</code>. Names come from <code>aria-label</code>, <code>aria-labelledby</code>, the
+label (its own text, without the options or values of controls nested in it), rendered text (following slots),
+placeholder, title, name, or the custom element host's <code>label</code>/<code>aria-label</code>.</p>
+<p>Causality is tracked through <code>await</code> on a best-effort basis: the operation that is running is "ambient" while a
+user handler or <code>rt.op</code> body runs, after a fetch/XHR settles and when its body (<code>json()</code>, <code>text()</code>, ...) is read,
+and inside timers scheduled during an operation; it is cleared at the end of the task. Writes record the ambient
+operation as their cause; operations started while another is ambient get it as their parent.</p>
+<h2 id="asking-the-model">Asking the model</h2>
+<pre><code class="language-ts">rt.ask&lt;Q extends Question&gt;(q: Q, opts?: { about?: &quot;now&quot; | number /* op id */ | string /* store */; timeoutMs?: number }): Promise&lt;AnswerOf&lt;Q&gt;&gt;
+rt.decide&lt;L extends string&gt;(question: string, options: Record&lt;L, string&gt;, opts?): Promise&lt;L&gt;
+</code></pre>
+<p>The question is answered against the current situation (what the app is doing now, or about one op or store).</p>
+<pre><code class="language-ts">const mode = await rt.decide(&quot;How should the editor save right now?&quot;, {
+  now: &quot;save immediately, the user paused&quot;,
+  later: &quot;wait, the user is still typing quickly&quot;,
+});
+const busy = await rt.ask({ type: &quot;score&quot;, instructions: &quot;How busy is the app right now?&quot;, criteria: [&quot;idle&quot;, &quot;light&quot;, &quot;busy&quot;] });
+const risky = await rt.ask({ type: &quot;noul&quot;, instructions: &quot;Did the last checkout request fail?&quot; });   // risky.noul = P(true)
+</code></pre>
+<p><code>ask</code>/<code>decide</code> wait for the model to load (bounded by <code>timeoutMs</code>) and reject with <code>GenClassUnavailableError</code>
+(<code>reason</code>: <code>"off" | "error" | "timeout" | "destroyed"</code>) when no model can answer.</p>
+<p>Question shapes (Jev wire format):</p>
+<pre><code class="language-ts">type Question =
+  | { type: &quot;noul&quot;; instructions: string; criteria?: { true?: string; false?: string } }
+  | { type: &quot;choice&quot;; instructions: string; criteria: Record&lt;string, string | null&gt; }
+  | { type: &quot;score&quot;; instructions: string; criteria: string[] };
+// AnswerOf: noul -&gt; { noul }, choice -&gt; { choice, confidence, probabilities }, score -&gt; { score, confidence, probabilities }
+</code></pre>
+<h2 id="events">Events</h2>
+<pre><code class="language-ts">rt.on(&quot;detect&quot;, (d: Detection) =&gt; void)      // the model diagnosed a problem (diagnosis != expected, p &gt;= thresholds.report)
+rt.on(&quot;decide&quot;, (d: Decision) =&gt; void)       // every model decision
+rt.on(&quot;act&quot;, (a: ActionRecord) =&gt; void)      // every non-passive action that ran
+rt.on(&quot;event&quot;, (e: RtEvent) =&gt; void)         // every traced event
+rt.on(&quot;status&quot;, (s: ModelStatus) =&gt; void)    // model loading progress and state
+rt.on(&quot;report&quot;, (r: Report) =&gt; void)         // every report line (even with report: &quot;silent&quot;)
+// each returns an unsubscribe function
+</code></pre>
+<h2 id="introspection-and-control">Introspection and control</h2>
+<pre><code class="language-ts">rt.status: ModelStatus             // { state: &quot;off&quot;|&quot;loading&quot;|&quot;ready&quot;|&quot;error&quot;, progress?, device?, variant?, threads?, phase?, error?, ... }
+rt.ready: Promise&lt;void&gt;            // resolves when the model is ready (immediately with no model); reading it starts a lazy load
+rt.mode: &quot;observe&quot; | &quot;guard&quot; | &quot;heal&quot;
+rt.situation(trigger?): Situation  // what the model would see: { trigger, subject, state, questions, actions, salient, facts }
+rt.explain(id): Explanation | null // a decision (&quot;d3&quot;) or action (&quot;a1&quot;) id -&gt; { message, decision, situationText, facts, timeline, answers, action?, changed? }
+rt.holdBudgetMs(): number          // the current hold budget
+rt.situationBudget(): number       // the current situation size in characters
+rt.gates(trigger?): EffectiveGates // the gate thresholds in force (see Policy)
+rt.history(n?): RtEvent[]          // recent events, oldest first
+rt.decisions(n?): Decision[]       // last 200 decisions
+rt.interventions(n?): ActionRecord[]
+rt.inflight(): Op[]
+rt.setMode(mode); rt.pause(); rt.resume(); rt.destroy()
+rt.telemetry?: { enabled; reason?; endpoint?; sessionId?; flush(): Promise&lt;void&gt; } // reason when off: option, headless, url, localStorage, gpc, sampled-out, kill-switch, disabled, ...
+</code></pre>
+<p><code>pause()</code> stops consulting the model (everything proceeds unchanged, tracing continues); <code>destroy()</code> uninstalls
+every observer and restores the globals it wrapped.</p>
+<h2 id="triggers-and-actions">Triggers and actions</h2>
+<table>
+<thead>
+<tr>
+<th>trigger</th>
+<th>when</th>
+<th>actions (passive first)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>delivery</code></td>
+<td>a response (fetch/XHR) or a WebSocket/EventSource message is about to reach the app and, judged from its body (read from a clone), would change newer data already applied (no newer request of the same signature in flight), put back the value of an unconfirmed local change, or replace text the user typed since the request started</td>
+<td><code>deliver</code>, <code>discard</code>, <code>defer</code></td>
+</tr>
+<tr>
+<td><code>mutation</code></td>
+<td>a salient state write not covered by a delivery decision (decided in the background unless <code>holdWrites</code>)</td>
+<td><code>apply</code>, <code>discard</code>, <code>defer</code></td>
+</tr>
+<tr>
+<td><code>request</code></td>
+<td>a fetch/XHR is about to be sent</td>
+<td><code>send</code>, <code>coalesce</code>, <code>delay</code>, <code>block</code>, <code>serve_cached</code></td>
+</tr>
+<tr>
+<td><code>failure</code></td>
+<td>a request failed (network, timeout, 5xx, 429, 408) before the app sees it</td>
+<td><code>deliver</code>, <code>retry</code>, <code>serve_cached</code></td>
+</tr>
+<tr>
+<td><code>stall</code></td>
+<td>a request is far past its usual latency, or has been in flight 10 s without a latency baseline yet</td>
+<td><code>wait</code>, <code>hedge</code>, <code>serve_cached</code></td>
+</tr>
+<tr>
+<td><code>inconsistency</code></td>
+<td>a learned relation between fields broke</td>
+<td><code>ignore</code>, <code>rollback</code>, <code>resync</code></td>
+</tr>
+<tr>
+<td><code>transition</code></td>
+<td>an operation changed state unlike it usually does</td>
+<td><code>ignore</code>, <code>rollback</code>, <code>resync</code></td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>an uncaught error or unhandled rejection</td>
+<td><code>ignore</code>, <code>rollback</code></td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>action</th>
+<th>tier</th>
+<th>effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>discard</code></td>
+<td>guard</td>
+<td>delivery: deliver it, but drop the state changes its operation makes over newer data (<code>ActionRecord.dropped</code> lists them; undo: apply them now). mutation: revert exactly that write if decided ≤ 2 s after it applied, nothing overwrote it and its operation wrote nothing else since (undo: re-apply); with <code>holdWrites</code>, drop the held write</td>
+</tr>
+<tr>
+<td><code>defer</code></td>
+<td>guard</td>
+<td>hold the response/message (or held write) until related requests finish, then decide again (twice at most)</td>
+</tr>
+<tr>
+<td><code>coalesce</code></td>
+<td>guard</td>
+<td>do not send; reuse the response of the identical request in flight or just finished (<code>x-genclass: coalesced</code>)</td>
+</tr>
+<tr>
+<td><code>delay</code></td>
+<td>guard</td>
+<td>wait min(250 ms · 2^failure streak, 8 s), then send</td>
+</tr>
+<tr>
+<td><code>block</code></td>
+<td>heal</td>
+<td>do not send; answer 503 (<code>x-genclass: blocked</code>)</td>
+</tr>
+<tr>
+<td><code>serve_cached</code></td>
+<td>heal</td>
+<td>answer with the last good response for this GET (<code>x-genclass: cached</code>; ≤ 256 KB, ≤ 64 entries, memory only)</td>
+</tr>
+<tr>
+<td><code>retry</code></td>
+<td>heal</td>
+<td>re-send after min(200 ms · 2^(attempt-1), 5 s) when the body can be replayed and repeating is safe by HTTP semantics: GET, HEAD, OPTIONS, PUT, DELETE, or another method (POST, PATCH, ...) only when the request carries an idempotency key header (<code>policy.idempotencyHeaders</code>; request ids and tracing headers are not keys) or, opt-in, a JSON body field named in <code>policy.idempotencyBodyFields</code></td>
+</tr>
+<tr>
+<td><code>hedge</code></td>
+<td>heal</td>
+<td>send a second identical GET and use whichever answers first</td>
+</tr>
+<tr>
+<td><code>rollback</code></td>
+<td>heal</td>
+<td>inconsistency: restore the involved stores to their last consistent snapshot; error/transition: restore only the fields the operation's own chain wrote to their earlier values (undo: restore the replaced values)</td>
+</tr>
+<tr>
+<td><code>resync</code></td>
+<td>heal</td>
+<td>call the store's <code>resync</code> handler</td>
+</tr>
+</tbody>
+</table>
+<p>Diagnoses the model chooses from (<code>vocabulary.diagnoses</code> replaces them; plugins add labels): <code>expected</code> (normal
+behaviour), <code>stale</code> (outdated data about to replace newer state), <code>conflict</code> (concurrent operations competing),
+<code>duplicate</code> (the same change or request again without a new intent), <code>inconsistent</code> (state contradicts itself),
+<code>failing</code> (keeps failing), <code>slow</code> (far slower than usual), <code>overload</code> (triggered far more often than usual),
+<code>unusual</code> (unlike how the same operation normally behaves), <code>transient</code> (a one-off failure likely to succeed if
+tried again).</p>
+<p>Actions are offered only when they apply (<code>situation().notOffered</code> lists the built-in actions left out and why;
+an identical request exists, a cached response exists, the body can be
+replayed, a consistent snapshot exists, a <code>resync</code> handler exists, the failing operation wrote state). Responses
+are always cloned before the app reads them. GenClass's own requests and writes are never gated; <code>keepalive</code>
+requests and synchronous XHRs are never held; nothing is held when the mode and policy permit no action for it or
+when the model is not expected to answer within the hold budget. A queued decision whose subject was superseded (the
+response was released, the write overwritten, the request aborted) is dropped before the model computes it. XHR:
+the app's completion listeners (<code>readystatechange</code>, <code>progress</code>, <code>load</code>, <code>loadend</code>, and the matching <code>on*</code>
+handlers) are wrapped so a held response reaches them, in order, once delivered; <code>on*</code> getters return that wrapper.</p>
+<p>Two requests are "identical" when method, URL, headers (tracing ids such as <code>traceparent</code> or <code>x-request-id</code>
+excluded) and body content match. Bodies GenClass cannot read cheaply (streams, files, bodies over 64 KB) never
+match anything.</p>
+<h2 id="policy">Policy</h2>
+<pre><code class="language-ts">interface PolicyOptions {
+  thresholds?: { report?: number; guard?: number; heal?: number };  // overrides; else the model's own gate, else 0.6 / 0.9 / 0.8
+  allow?: string[];                 // only these non-passive actions may run
+  deny?: string[];                  // these never run
+  holdBudgetMs?: number | &quot;auto&quot;;   // default &quot;auto&quot;: clamp(1.5 × median recent model latency, 150, 800) ms
+  holdUserWrites?: boolean;         // default false
+  idempotencyHeaders?: string[];    // default [&quot;Idempotency-Key&quot;, &quot;X-Idempotency-Key&quot;]: a POST/PATCH carrying one may be retried
+  idempotencyBodyFields?: string[]; // opt-in, default []: top-level JSON body fields (e.g. &quot;request_id&quot;) the server dedupes on
+  holdWrites?: boolean;             // default false: state writes apply at once (decided at the network boundary)
+  maxActionsPerMinute?: number;     // default 60
+  requireDiagnosis?: boolean;       // default true
+}
+</code></pre>
+<p>Thresholds: the model's action probabilities are calibrated against the gate it ships with (<code>gate</code> in its
+meta.json, visible as <code>runtime.status.gate</code>). Two gate kinds exist:
+- <code>kind: "mass"</code> (the default, also when meta.json has no kind): the most probable permitted action runs when the
+  summed probability of the permitted actions reaches its tier's threshold (<code>{ report?, guard: { default,
+  byTrigger? }, heal: {...} }</code>, probabilities; defaults 0.9 / 0.8).
+- <code>kind: "gain"</code> (<code>{ kind: "gain", tauGain, guard: { default, byTrigger? }, heal: {...}, report? }</code>): for the most
+  probable permitted action a, ĝ(a) = tauGain · ln(p(a) / p(passive)) estimates its gain over the passive action in
+  cost units; a runs when ĝ(a) is above its tier's margin (defaults 2 / 2; tauGain default 1). Probabilities are
+  clamped to ≥ 1e-6; when the model gives no probability for the passive action, the mass it left over is used.
+Aggressiveness (<code>InitOptions.aggressiveness</code>: "cautious" | "balanced" | "eager" | 0–1, default "balanced";
+<code>runtime.setAggressiveness(x)</code>; URL <code>?genclass-aggr=…</code>) selects the gate: when meta.json has <code>gate.profiles: {
+cautious, balanced, eager }</code> (each a gate of either kind, report included), a named level uses its profile and a
+number interpolates thresholds/margins, report and tauGain linearly between the neighbouring profiles (the nearer
+profile's kind when they differ). Without profiles the single gate (or the defaults) is shifted: cautious +0.05 on
+thresholds / +1 on margins, eager −0.05 / −1 (linear in between, clamped). <code>runtime.aggressiveness</code>,
+<code>runtime.status.aggressiveness</code> and <code>runtime.gates()</code> (<code>aggressiveness</code>, <code>level</code>, <code>levelSource</code>) show the level.
+For each trigger kind the effective value is your <code>policy.thresholds</code> value when set, read in the active kind
+(probabilities for "mass", margins for "gain"; <code>report</code> is always a probability), else the model's value for that
+trigger kind, else its tier default, else the defaults. <code>runtime.gates(trigger?)</code> returns the kind, values and where
+each comes from (<code>policy</code>, <code>model</code>, <code>default</code>); every decision records <code>gateKind</code>, and <code>threshold</code> (mass) or <code>gain</code>
+and <code>margin</code> (gain), with <code>thresholdSource</code>; <code>explain(id).gates</code> has the full set.</p>
+<p>The permitted actions are the applicable non-passive actions the mode allows (observe: none; guard: guard tier;
+heal: both), minus denied ones (only allowed ones when <code>allow</code> is set). GenClass runs the most probable permitted
+action only if all of these hold, otherwise the passive action runs and the decision's <code>reason</code> says why: the
+summed probability of the permitted actions reaches that action's tier threshold; the model's top diagnosis is not
+<code>expected</code> (unless <code>requireDiagnosis: false</code>); fewer than <code>maxActionsPerMinute</code> actions ran in the last minute; the
+decision arrived within the hold budget (a late <code>discard</code> may still revert the write, see State). While the model is
+loading, everything proceeds unchanged.</p>
+<h2 id="reports-explain-and-undo">Reports, explain and undo</h2>
+<p>With <code>report: "console"</code> every detection and intervention prints one line, followed by a collapsed group with the
+evidence: the facts, the timeline, the exact situation text sent to the model, the answer probabilities, what
+changed, how to undo it and how to deny that action. Identical repeats within a minute are folded into one line
+printed when the minute ends ("×N more in the last minute"). A detection that did not act says what GenClass would
+have done and why not.</p>
+<pre><code>[GenClass] Prevented a stale response: search.results was written twice by other operations since its operation (#6) started (version 1 → 3), last 0.69s ago by GET /api/search?q=reac (#8), which started 0.09s after #6, from a later user action (#7). Delivered the response to GET /api/search?q=rea (#6) and dropped the state changes it makes over newer data (search.results). (stale, 0.97; discard 0.97)
+</code></pre>
+<pre><code class="language-ts">const a = rt.interventions().at(-1)!;
+a.changed;          // &quot;Delivered the response to GET /api/search?q=rea (#6) and dropped the state changes it makes over newer data (search.results).&quot;
+a.dropped;          // [&quot;search.results&quot;]
+a.undo?.();         // discard: applies the dropped values now; late revert: re-applies the write; rollback: restores the values it replaced
+rt.explain(a.id);   // { decision, situationText, facts, timeline, answers, action, changed }
+</code></pre>
+<p>A custom <code>report</code> function receives <code>{ kind: "detect" | "intervene" | "status", message, decision?, action? }</code>.
+<code>explain(id).message</code> is the same line for any decision or action, also when it was not printed.</p>
+<p>Your own debug UI: GenClass ignores user events from inside any element marked <code>data-genclass-ignore</code> (the devtools
+overlay uses it), so debugging tools never become causes in situations.</p>
+<h2 id="plugins">Plugins</h2>
+<pre><code class="language-ts">rt.use(plugin: Plugin): () =&gt; void
+rt.action(def: ActionDef): () =&gt; void
+rt.question(def: StandingQuestion): () =&gt; void
+
+interface Plugin {
+  name: string;
+  setup?(api: PluginApi): void | (() =&gt; void);   // api: emit, recordOp/endOp, runInOp, user, reportError, on, clock, stores, runtime
+  facts?(sit: SituationDraft): string[];          // extra facts about your domain, added to every situation
+  actions?: ActionDef[];
+  questions?: StandingQuestion[];
+  diagnoses?: Record&lt;string, string&gt;;             // extra diagnosis labels
+}
+interface ActionDef {
+  name: string; description: string; on: TriggerKind[];
+  tier?: &quot;guard&quot; | &quot;heal&quot;;                        // default &quot;heal&quot;
+  applicable?(sit: SituationDraft): boolean;
+  run(ctx: ActionContext): void | Promise&lt;void&gt;;
+}
+interface ActionContext {
+  trigger; decision; situation; runtime;
+  builtin(name: string): Promise&lt;boolean&gt;;        // run a built-in action, e.g. &quot;discard&quot; or &quot;retry&quot;
+  describe(changed: string): void;                // what this action altered (shown in reports)
+  onUndo(fn: () =&gt; void): void;
+}
+interface StandingQuestion { id: string; on: TriggerKind[]; question: Question; always?: boolean; onAnswer?(a: Answer, ctx): void }
+</code></pre>
+<pre><code class="language-ts">rt.use({
+  name: &quot;presence&quot;,
+  setup(api) {
+    const ws = new WebSocket(&quot;/presence&quot;);
+    ws.onmessage = (e) =&gt; api.emit(&quot;presence&quot;, { users: JSON.parse(e.data).length });
+    return () =&gt; ws.close();
+  },
+  facts: (s) =&gt; (s.trigger === &quot;mutation&quot; ? [`${onlineUsers()} other users are editing this document.`] : []),
+  actions: [{
+    name: &quot;ask_to_reload&quot;, description: &quot;keep the write and ask the user to reload the document&quot;, on: [&quot;inconsistency&quot;], tier: &quot;heal&quot;,
+    run: (ctx) =&gt; { showReloadBanner(); ctx.describe(&quot;Showed the reload banner.&quot;); },
+  }],
+});
+</code></pre>
+<p>If a custom action does not call <code>ctx.builtin(...)</code>, the passive action runs after it (the held write applies,
+the request is sent).</p>
+<h2 id="headless-use-tests-ssr-simulation">Headless use (tests, SSR, simulation)</h2>
+<pre><code class="language-ts">import { createRuntime } from &quot;@genclass/runtime&quot;;
+const rt = createRuntime({
+  clock,      // { now(), setTimeout(fn, ms), clearTimeout(h), afterTask(fn) }; default: the real clock
+  global,     // the object whose fetch / XMLHttpRequest / WebSocket / addEventListener / ... are instrumented; default globalThis
+  decider,    // any DecisionProvider; default none (createRuntime never loads the model unless model: {...} is given)
+              // telemetry is off in createRuntime unless telemetry: true / {...} is given
+  app: () =&gt; ({ title: &quot;Shop&quot;, route: &quot;/cart&quot; }),   // default: global.document.title and global.location.pathname
+  hooks: { opCreated(op) {}, mutationProposed(m) {} },
+});
+
+interface DecisionProvider {
+  readonly status: ModelStatus;
+  ready(): Promise&lt;void&gt;;
+  evaluate(req: { trigger; state; questions; priority?; subject?; notOffered?; timeoutMs? }): Promise&lt;Record&lt;string, Answer&gt;&gt;;
+  onStatus?(fn): () =&gt; void;
+  dispose?(): void;
+}
+</code></pre>
+<p>The runtime only uses the injected clock (no <code>Date.now</code>, <code>Math.random</code> or global timers), so a virtual clock makes
+runs deterministic: the same inputs give byte-identical situations. Pass <code>situation: { budget }</code> to fix the
+situation size.</p>
+<p>The local model host is exported for direct use: <code>createModelHost(options)</code> (a <code>DecisionProvider</code> with <code>measure()</code>,
+<code>evaluateDetailed()</code>, <code>stats</code>), <code>DEFAULT_MODEL_BASE_URL</code>, and the model errors (<code>ModelNotReadyError</code>,
+<code>MaxTokensExceededError</code>, <code>ModelTimeoutError</code>, <code>ModelBusyError</code>, <code>ModelLoadError</code>, ...; each has a <code>code</code>). Any
+provider error makes the runtime fail open.</p>
+<h2 id="adapters-and-devtools">Adapters and devtools</h2>
+<p>Subpath exports: <code>@genclass/runtime/react</code> (<code>useGenClassState(name, initial, opts?)</code>, <code>useAtom(atom)</code>,
+<code>useGenClass()</code>), <code>@genclass/runtime/redux</code> (<code>genclassEnhancer(runtime, { name })</code>), <code>@genclass/runtime/zustand</code>
+(<code>genclass(runtime, name)(stateCreator)</code>), <code>@genclass/runtime/devtools</code> (<code>mountDevtools(runtime, opts?)</code>). They are
+documented with their source. To integrate another state library use:</p>
+<pre><code class="language-ts">rt.adapter&lt;T&gt;(name: string, io: { get(): T; set?(v: T): void; subscribe?(fn: () =&gt; void): () =&gt; void }, opts?): {
+  propose(w: { fn?: (prev: T) =&gt; T; value?: T; commit: (next: T) =&gt; void }): void;   // commit runs when (and if) the write applies
+  dispose(): void;
+}
+</code></pre>
+<h2 id="types">Types</h2>
+<pre><code class="language-ts">interface Decision {
+  id: string; trigger: TriggerKind; subject: string; at: number; latencyMs: number; model: string;
+  diagnosis: string; diagnosisConfidence: number; diagnosisProbabilities: Record&lt;string, number&gt;;
+  action: string /* the action that ran, else the model's choice */; confidence: number /* probabilities[action] */;
+  probabilities: Record&lt;string, number&gt;; executed: boolean; reason?: string; facts: string[];
+  tier: &quot;passive&quot; | &quot;guard&quot; | &quot;heal&quot;; ran: string; answers: Record&lt;string, Answer&gt;; subjectRef?: SubjectRef;
+  candidate?: string /* most probable permitted action */; mass?: number /* summed probability of the permitted actions */;
+  gateKind?: &quot;mass&quot; | &quot;gain&quot;; threshold?: number /* mass gate: what mass was compared with */;
+  gain?: number; margin?: number /* gain gate: ĝ of the candidate and its tier margin */; thresholdSource?: &quot;policy&quot; | &quot;model&quot; | &quot;default&quot;;
+}
+type Detection = Decision;
+interface ActionRecord { id: string; decisionId: string; action: string; tier; trigger; subject: string; at: number; ok: boolean; error?: string; changed: string; undo?: () =&gt; void; late?: boolean; dropped?: string[] /* delivery discard: fields dropped */ }
+type SubjectRef = { kind: &quot;delivery&quot;; op: number; paths?: string[]; store?: string } | { kind: &quot;mutation&quot;; ... } | ...
+interface Explanation { message: string; decision: Decision; situationText: string; facts: string[]; timeline: string[]; answers: Record&lt;string, Answer&gt;; action?: ActionRecord; changed?: string; gates?: EffectiveGates }
+interface EffectiveGates { kind: &quot;mass&quot; | &quot;gain&quot;; tauGain?: number; trigger?: TriggerKind; report: number; guard: number; heal: number; source: { report: &quot;policy&quot; | &quot;model&quot; | &quot;default&quot;; guard: …; heal: … } }
+interface RtEvent { seq: number; t: number; kind: &quot;user&quot;|&quot;op.start&quot;|&quot;op.end&quot;|&quot;state&quot;|&quot;error&quot;|&quot;nav&quot;|&quot;perf&quot;|&quot;storage&quot;|&quot;custom&quot;|&quot;decision&quot;|&quot;action&quot;; name: string; op?: number; cause?: number; data?: Record&lt;string, unknown&gt; }
+interface Op { id: number; kind: &quot;user&quot;|&quot;fetch&quot;|&quot;xhr&quot;|&quot;ws&quot;|&quot;task&quot;|&quot;timer&quot;|&quot;genclass&quot;; name: string /* e.g. &quot;GET /api/x&quot;, &quot;WS message /live&quot;, &quot;SSE update /stream&quot; */; detail?: string; start: number; end?: number; status?: &quot;ok&quot;|&quot;error&quot;|&quot;aborted&quot;|&quot;blocked&quot;; code?: number | string; cause?: number; root?: number; attempt: number; reads: Map&lt;string, number&gt;; identity?: string }
+</code></pre>
+<p>Privacy: values are summarised and redacted before they reach a situation. A value is redacted when its leaf field
+names a secret (password, passcode, pin, token, secret, cvv/cvc, ssn, iban, otp, cookie, authorization, card number,
+credit card, api key, session id, ...; <code>payment.card.number</code> counts), never because of the store's name: in an <code>auth</code>
+store, <code>auth.token</code> is redacted and <code>auth.loading</code> or <code>auth.user.name</code> are not. Under a container that names a secret
+(<code>credentials.password.value</code>) strings are redacted too, and under <code>auth</code>/<code>session</code>/<code>cookie</code> only opaque
+credential-like strings (JWTs, API keys). Query parameters and body keys follow the same rule; password inputs and
+inputs with <code>autocomplete</code> cc-* / one-time-code are never recorded. Element text such as a kanban "card" is not a
+secret. Response bodies are read only from a clone the runtime already keeps (≤ 256 KB) and only to compare them with
+the store. Decisions are made in the browser by the local model; the only data GenClass sends is its anonymous
+telemetry (on by default with <code>GenClass.init()</code> in a browser; <a href="/docs/telemetry">TELEMETRY.md</a>),
+which includes the redacted situation text.</p></article></div></section>
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

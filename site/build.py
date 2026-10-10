@@ -40,7 +40,7 @@ FOOTER = f'''<footer class="end">
     </div>
     <div class="foot-cols">
       <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
-      <div><b>Developers</b><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="{GH}">GitHub</a><a href="{NPM}">npm</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="{GH}">GitHub</a><a href="{NPM}">npm</a></div>
       <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
       <div><b>Company</b><a href="/privacy">Privacy</a><a href="{GH}/blob/main/LICENSE">License (Apache-2.0)</a><a href="{GH}/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
     </div>
@@ -249,6 +249,74 @@ for f in sorted((SRC / "pages").glob("**/*.html")):
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page(meta, body))
     if not meta.get("noindex"): urls.append((meta["path"], meta.get("priority", "0.7")))
+
+# ---------- reference docs rendered from the repo's markdown (source of truth stays in the repo) ----------
+REPO = ROOT.parent
+MD_DOCS = [
+    ("docs/runtime/API.md", "/docs/api", "API Reference", "GenClass Runtime API Reference",
+     "Complete API reference for @genclass/runtime: init and modes, options, state, operations, asking the model, events, policy, explain, undo, plugins and adapters."),
+    ("docs/runtime/OPTIONS-SPEC.md", "/docs/options", "Options Reference", "GenClass Options Reference",
+     "Every GenClass init option: activation, route scopes, protected endpoints, breaker, shadow mode, veto, action limits, hold budgets and sinks."),
+    ("docs/runtime/ARCHITECTURE.md", "/docs/architecture", "Architecture", "GenClass Runtime Architecture",
+     "How the GenClass runtime is built: observers, causality, stores, facts, triage, the policy gate, actions and the on-device model host."),
+    ("packages/runtime/TELEMETRY.md", "/docs/telemetry", "Telemetry", "GenClass Telemetry and Privacy",
+     "What anonymous diagnostics the GenClass runtime sends during the beta, what it never sends, and every way to turn it off."),
+    ("packages/runtime/INTERCEPTION.md", "/docs/interception", "Interception surface", "GenClass Interception Surface",
+     "Every browser API GenClass wraps or observes, what each mode may change, what it never does, and how it restores the originals."),
+    ("docs/runtime/THREAT-MODEL.md", "/docs/threat-model", "Threat model", "GenClass Threat Model",
+     "The GenClass security threat model: model supply chain, crafted responses, page scripts, telemetry and denial of service, with mitigations."),
+    ("SECURITY.md", "/security", "Security", "GenClass Security Policy",
+     "How to report a vulnerability in GenClass, supported versions and the security design of the runtime."),
+    ("bench/perf/RESULTS.md", "/benchmarks/performance", "Performance", "GenClass Browser Performance Benchmarks",
+     "Reproducible browser performance results for GenClass: bytes, model load, inference latency, main-thread cost, memory and emulated mobile."),
+    ("compat/RESULTS.md", "/docs/compatibility", "Compatibility", "GenClass Framework Compatibility Matrix",
+     "GenClass tested across React, Next.js, Vue, SvelteKit, Angular and Solid with TanStack Query, SWR, Redux, Zustand, Apollo and more."),
+]
+try:
+    import markdown as _md
+except ImportError:
+    _md = None
+
+def gh_link(src_dir, target):
+    if re.match(r"^(https?:|mailto:|#)", target): return target
+    path, _, frag = target.partition("#")
+    full = (pathlib.PurePosixPath(src_dir) / path).as_posix()
+    parts = []
+    for seg in full.split("/"):
+        if seg == "..": parts and parts.pop()
+        elif seg not in (".", ""): parts.append(seg)
+    full = "/".join(parts)
+    for s_, p_, *_ in MD_DOCS:
+        if full == s_ and (REPO / s_).exists(): return p_ + (("#" + frag) if frag else "")
+    return f"{GH}/blob/main/{full}" + (("#" + frag) if frag else "")
+
+doc_links = [(p_, nav_t) for s_, p_, nav_t, *_ in MD_DOCS if (REPO / s_).exists()]
+for src, path, nav_t, title, desc in MD_DOCS:
+    f = REPO / src
+    if not f.exists() or _md is None: continue
+    text = f.read_text()
+    h1 = re.search(r"^# (.+)$", text, re.M)
+    heading = h1.group(1).strip() if h1 else nav_t
+    if h1: text = text[:h1.start()] + text[h1.end():]
+    src_dir = str(pathlib.PurePosixPath(src).parent)
+    text = re.sub(r"\]\(([^)\s]+)\)", lambda m: "](" + gh_link(src_dir, m.group(1)) + ")", text)
+    md = _md.Markdown(extensions=["tables", "fenced_code", "toc", "sane_lists"], extension_configs={"toc": {"toc_depth": "2"}})
+    html_body = md.convert(text)
+    toc = "".join(f'<a href="#{t["id"]}">{t["name"]}</a>' for t in md.toc_tokens[:24] if t["level"] <= 2) if hasattr(md, "toc_tokens") else ""
+    if not toc:
+        toc = "".join(f'<a href="#{i}">{n}</a>' for i, n in re.findall(r'<h2 id="([^"]+)">(.*?)</h2>', html_body))
+    side = "<b>Reference</b>" + "".join(f'<a href="{p_}">{t_}</a>' for p_, t_ in doc_links) + (f"<b>On this page</b>{toc}" if toc else "")
+    crumbs = [("Docs", "/docs"), (nav_t, path)] if path.startswith("/docs/") else ([("Benchmarks", "/benchmarks"), (nav_t, path)] if path.startswith("/benchmarks/") else [(nav_t, path)])
+    meta = {"path": path, "nav": "docs" if path.startswith("/docs") else ("benchmarks" if path.startswith("/benchmarks") else ""), "priority": "0.6",
+            "crumbs": crumbs, "title": title, "description": desc,
+            "jsonld": [{"@type": "TechArticle", "headline": heading, "author": {"@id": f"{SITE}/#org"}, "publisher": {"@id": f"{SITE}/#org"},
+                        "dateModified": TODAY, "isBasedOn": f"{GH}/blob/main/{src}"}]}
+    body = f"""<div class="page-hero"><div class="wrap"><!--@crumbs--><h1>{heading}</h1>
+<p class="lede">Rendered from <a href="{GH}/blob/main/{src}"><code>{src}</code></a> in the GenClass repository.</p></div></div>
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference">{side}</nav><article class="prose">{html_body}</article></div></section>"""
+    out = PUB / (path.strip("/") + ".html"); out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(page(meta, body)); urls.append((path, "0.6"))
+
 sm = ['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
 for p, pr in sorted(urls, key=lambda x: -float(x[1])):
     sm.append(f"  <url><loc>{SITE}{p}</loc><lastmod>{TODAY}</lastmod><priority>{pr}</priority></url>")
