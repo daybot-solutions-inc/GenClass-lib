@@ -27,8 +27,9 @@
 | function names | `decision` events gain optional `fn` (outermost protected function in the subject op's cause chain, ≤ 80 chars) | shown as "top functions" |
 | retention | n/a | dashboard data deleted after 90 days |
 
-Note: the collector on this branch (`telemetry-worker/src/index.ts` at 126026f) keeps only known top-level fields, so
-it drops `token` until the server-side work lands. Do not edit `telemetry-worker/` from this workstream.
+Server side: `telemetry-worker/src/collector.ts` (ingest, projects API, routing), `src/dashboard.ts` (D1 aggregation,
+stats, retention), `src/pages.ts` (/start and /dashboard HTML), `migrations/` (D1 `genclass-dashboard`). Deployed on
+genclass.dev routes `/start*`, `/dashboard*`, `/api/*`; see [telemetry-worker/README.md](../../telemetry-worker/README.md).
 
 ## Files
 

@@ -44,7 +44,7 @@
 | `packages/runtime/src/cdn/config.ts` | `telemetry=off` page-config key (meta tag, `data-telemetry`) |
 | `packages/runtime/test/telemetry.test.ts` | 13 tests: defaults, every opt-out incl. GPC, batching / bounded queue, pagehide + hidden beacon, event shapes, situation text == `stateText(req.state)` of the model input, secrets absent, transport errors, model input unchanged, native fetch not observed |
 | `packages/runtime/TELEMETRY.md` | public disclosure and schema (ships in the npm package) |
-| `telemetry-worker/{wrangler.toml,src/index.ts,test/index.test.ts,README.md}` | collector (6 tests: `../node_modules/.bin/vitest run --root .` in `telemetry-worker/`) |
+| `telemetry-worker/{wrangler.toml,src/index.ts,src/collector.ts,src/dashboard.ts,src/pages.ts,migrations/,test/,README.md}` | collector, projects API and dashboards (`index.ts` exports only the handler; 21 tests: `../node_modules/.bin/vitest run --root .` in `telemetry-worker/`) |
 
 ## Behaviour
 
