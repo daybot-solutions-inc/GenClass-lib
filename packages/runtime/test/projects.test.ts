@@ -205,6 +205,25 @@ describe("protect(): same function, tracked", () => {
   });
 });
 
+describe("protect(): attribution after await", () => {
+  it("a request started after awaiting the function's own request is still attributed (fn and scope)", async () => {
+    const s = setup({ triage: "always", scope: "functions", script: defaultScript({ failure: { diagnosis: "transient" } }) });
+    setProtectResolver(() => s.rt);
+    s.server.on("GET", "/api/cart", { status: 200, body: { id: 1 }, latency: 20 });
+    s.server.on("POST", "/api/orders", { status: 500, body: {}, latency: 20 });
+    const submit = protect("checkout submit", async () => {
+      const cart = await (await s.fetch("/api/cart")).json();
+      return s.fetch("/api/orders", { method: "POST", body: JSON.stringify(cart) });
+    });
+    void submit().catch(() => undefined);
+    await s.clock.advance(2000);
+    const d = s.rt.decisions().find((x) => x.trigger === "failure");
+    expect(d?.subject).toContain("/api/orders");
+    expect(d?.fn).toBe("checkout submit");
+    s.rt.destroy();
+  });
+});
+
 describe("scope: \"functions\"", () => {
   async function run(scope: "app" | "functions" | undefined) {
     const s = setup({ triage: "always", ...(scope ? { scope } : {}), script: defaultScript({ failure: { diagnosis: "transient" } }) });
