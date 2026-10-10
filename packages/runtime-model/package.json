@@ -8,7 +8,7 @@
     "url": "git+https://github.com/daybot-solutions-inc/GenClass-lib.git",
     "directory": "packages/runtime-model"
   },
-  "homepage": "https://github.com/daybot-solutions-inc/GenClass-lib/tree/main/packages/runtime-model#readme",
+  "homepage": "https://genclass.dev/benchmarks",
   "bugs": {
     "url": "https://github.com/daybot-solutions-inc/GenClass-lib/issues"
   },

@@ -3,6 +3,9 @@
 [![npm](https://img.shields.io/npm/v/@genclass/runtime/latest?label=%40genclass%2Fruntime)](https://www.npmjs.com/package/@genclass/runtime)
 [![CI](https://github.com/daybot-solutions-inc/GenClass-lib/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![website](https://img.shields.io/badge/web-genclass.dev-14B86A)](https://genclass.dev)
+
+**Website and docs: [genclass.dev](https://genclass.dev)** · [Docs](https://genclass.dev/docs) · [Benchmarks](https://genclass.dev/benchmarks) · [Cloud](https://genclass.dev/cloud) · [Pricing](https://genclass.dev/pricing)
 
 **A runtime for web apps. It watches the app from the inside and uses a small local model to flag, and optionally
 prevent, stale responses, races, duplicate requests, inconsistent state and failure storms.**

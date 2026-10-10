@@ -9,7 +9,7 @@
     "url": "git+https://github.com/daybot-solutions-inc/GenClass-lib.git",
     "directory": "packages/runtime"
   },
-  "homepage": "https://github.com/daybot-solutions-inc/GenClass-lib#readme",
+  "homepage": "https://genclass.dev",
   "keywords": [
     "ai",
     "runtime",
@@ -20,7 +20,15 @@
     "wasm",
     "onnx",
     "local-first",
-    "genclass"
+    "genclass",
+    "stale-response",
+    "duplicate-request",
+    "react",
+    "frontend-reliability",
+    "observability",
+    "error-detection",
+    "browser-ai",
+    "on-device-ai"
   ],
   "sideEffects": [
     "./dist/auto.js",
@@ -36,14 +44,30 @@
   "types": "./dist/index.d.ts",
   "typesVersions": {
     "*": {
-      "auto": ["./dist/auto.d.ts"],
-      "auto/observe": ["./dist/auto/observe.d.ts"],
-      "auto/guard": ["./dist/auto/guard.d.ts"],
-      "auto/heal": ["./dist/auto/heal.d.ts"],
-      "react": ["./dist/adapters/react.d.ts"],
-      "redux": ["./dist/adapters/redux.d.ts"],
-      "zustand": ["./dist/adapters/zustand.d.ts"],
-      "devtools": ["./dist/devtools/index.d.ts"]
+      "auto": [
+        "./dist/auto.d.ts"
+      ],
+      "auto/observe": [
+        "./dist/auto/observe.d.ts"
+      ],
+      "auto/guard": [
+        "./dist/auto/guard.d.ts"
+      ],
+      "auto/heal": [
+        "./dist/auto/heal.d.ts"
+      ],
+      "react": [
+        "./dist/adapters/react.d.ts"
+      ],
+      "redux": [
+        "./dist/adapters/redux.d.ts"
+      ],
+      "zustand": [
+        "./dist/adapters/zustand.d.ts"
+      ],
+      "devtools": [
+        "./dist/devtools/index.d.ts"
+      ]
     }
   },
   "unpkg": "./dist/genclass.global.min.js",
@@ -142,5 +166,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "bugs": {
+    "url": "https://github.com/daybot-solutions-inc/GenClass-lib/issues"
   }
 }

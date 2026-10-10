@@ -4,10 +4,24 @@
   "description": "Short alias for the @genclass/runtime CLI: npx genclass-runtime init sets up GenClass Runtime in your app.",
   "type": "module",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "git+https://github.com/daybot-solutions-inc/GenClass-lib.git", "directory": "packages/genclass-runtime" },
-  "homepage": "https://www.npmjs.com/package/@genclass/runtime",
-  "bin": { "genclass-runtime": "./cli.mjs" },
-  "files": ["cli.mjs", "README.md", "LICENSE"],
-  "dependencies": { "@genclass/runtime": "0.1.0-beta.4" },
-  "engines": { "node": ">=20" }
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/daybot-solutions-inc/GenClass-lib.git",
+    "directory": "packages/genclass-runtime"
+  },
+  "homepage": "https://genclass.dev",
+  "bin": {
+    "genclass-runtime": "./cli.mjs"
+  },
+  "files": [
+    "cli.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@genclass/runtime": "0.1.0-beta.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }
