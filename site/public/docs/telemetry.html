@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GenClass Telemetry and Privacy</title>
-<meta name="description" content="What anonymous diagnostics the GenClass runtime sends during the beta, what it never sends, and every way to turn it off.">
+<meta name="description" content="What anonymous diagnostics the GenClass runtime sends by default, what it never sends, and every way to turn it off.">
 <link rel="canonical" href="https://genclass.dev/docs/telemetry">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="theme-color" content="#FFFFFF">
@@ -13,7 +13,7 @@
 <meta property="og:site_name" content="GenClass">
 <meta property="og:url" content="https://genclass.dev/docs/telemetry">
 <meta property="og:title" content="GenClass Telemetry and Privacy">
-<meta property="og:description" content="What anonymous diagnostics the GenClass runtime sends during the beta, what it never sends, and every way to turn it off.">
+<meta property="og:description" content="What anonymous diagnostics the GenClass runtime sends by default, what it never sends, and every way to turn it off.">
 <meta property="og:image" content="https://genclass.dev/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -21,7 +21,7 @@
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="GenClass Telemetry and Privacy">
-<meta name="twitter:description" content="What anonymous diagnostics the GenClass runtime sends during the beta, what it never sends, and every way to turn it off.">
+<meta name="twitter:description" content="What anonymous diagnostics the GenClass runtime sends by default, what it never sends, and every way to turn it off.">
 <meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
 <link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
 <link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
@@ -48,7 +48,7 @@
 <main id="main">
 <div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>Telemetry</span></nav><h1>GenClass Runtime telemetry</h1>
 <p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md"><code>packages/runtime/TELEMETRY.md</code></a> in the GenClass repository.</p></div></div>
-<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><a href="/docs/interception">Interception surface</a><a href="/docs/threat-model">Threat model</a><a href="/security">Security</a><b>On this page</b><a href="#when-it-is-on">When it is on</a><a href="#what-is-sent">What is sent</a><a href="#where-it-goes">Where it goes</a><a href="#options">Options</a><a href="#opting-out">Opting out</a><a href="#if-you-ship-genclass-in-your-app">If you ship GenClass in your app</a></nav><article class="prose"><p>Since <strong><code>0.1.0-beta.3</code></strong>, <code>GenClass.init()</code> in a browser sends <strong>anonymous diagnostics</strong> about GenClass's own
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><a href="/docs/interception">Interception surface</a><a href="/docs/threat-model">Threat model</a><a href="/security">Security</a><a href="/docs/compatibility">Compatibility</a><b>On this page</b><a href="#when-it-is-on">When it is on</a><a href="#what-is-sent">What is sent</a><a href="#where-it-goes">Where it goes</a><a href="#options">Options</a><a href="#opting-out">Opting out</a><a href="#if-you-ship-genclass-in-your-app">If you ship GenClass in your app</a></nav><article class="prose"><p>Since <strong><code>0.1.0-beta.3</code></strong>, <code>GenClass.init()</code> in a browser sends <strong>anonymous diagnostics</strong> about GenClass's own
 decisions to the GenClass maintainers (Daybot Solutions Inc.). We use them to measure and improve the GenClass
 model (accuracy, false interventions, latency, which situations it sees in real apps). This page lists exactly what
 is sent, where it goes, and how to turn it off.</p>
@@ -92,7 +92,7 @@ Details under <a href="#opting-out">Opting out</a>.</p>
   by <code>[redacted]</code>; see the README's <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#privacy-and-telemetry">Privacy</a> section for the rules and their known
   gaps). Situation text describes operations (e.g. <code>GET /api/items/:id</code>), store fields and short value summaries,
   timing and the facts GenClass computed. It can contain app data that the redactor does not recognise as secret
-  (for example a product name or a search term). <code>include: { situation: false }</code> leaves it out. Since <code>0.1.0-beta.4</code> it
+  (for example a product name or a search term). <code>include: { situation: false }</code> leaves it out. Since <code>0.2.0</code> it
   also covers state the runtime discovered on its own (<code>autoState</code>: React, Redux or Zustand state the app never
   registered), redacted the same way; those decisions carry <code>autoState: true</code>.</li>
 <li><strong>Never:</strong> typed values of password, payment (<code>cc-*</code>), one-time-code or secret-named inputs (the runtime never

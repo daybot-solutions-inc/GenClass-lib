@@ -1,0 +1,1017 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GenClass Framework Compatibility Matrix</title>
+<meta name="description" content="GenClass tested across React, Next.js, Vue, SvelteKit, Angular and Solid with TanStack Query, SWR, Redux, Zustand, Apollo and more.">
+<link rel="canonical" href="https://genclass.dev/docs/compatibility">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="author" content="GenClass">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GenClass">
+<meta property="og:url" content="https://genclass.dev/docs/compatibility">
+<meta property="og:title" content="GenClass Framework Compatibility Matrix">
+<meta property="og:description" content="GenClass tested across React, Next.js, Vue, SvelteKit, Angular and Solid with TanStack Query, SWR, Redux, Zustand, Apollo and more.">
+<meta property="og:image" content="https://genclass.dev/og.png?v=4">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GenClass Framework Compatibility Matrix">
+<meta name="twitter:description" content="GenClass tested across React, Next.js, Vue, SvelteKit, Angular and Solid with TanStack Query, SWR, Redux, Zustand, Apollo and more.">
+<meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
+<link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=956a015a">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Compatibility", "item": "https://genclass.dev/docs/compatibility"}]}, {"@type": "TechArticle", "headline": "Compatibility", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs" class="on" aria-current="page">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
+    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="btn" href="/docs">Get started</a>
+  </div>
+</header>
+<main id="main">
+<div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>Compatibility</span></nav><h1>Compatibility</h1>
+<p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md"><code>compat/RESULTS.md</code></a> in the GenClass repository.</p></div></div>
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><a href="/docs/interception">Interception surface</a><a href="/docs/threat-model">Threat model</a><a href="/security">Security</a><a href="/docs/compatibility">Compatibility</a><b>On this page</b><a href="#frameworks">Frameworks</a><a href="#never-worse-matrix">Never-worse matrix</a><a href="#automatic-state-discovery">Automatic state discovery</a><a href="#what-genclass-reported-and-did">What GenClass reported and did</a><a href="#determinism-control">Determinism control</a><a href="#details-for-every">Details for every ✗</a><a href="#method">Method</a><a href="#reproduce">Reproduce</a></nav><article class="prose"><p>Does adding GenClass break your app? This page answers that for 7 small, idiomatic apps (React 19 + Vite 8; Next.js 16 App Router (SSR); Vue 3 + Vite 8; SvelteKit 3 (Svelte 5, SSR, adapter-node); Angular 22 (SSR + hydration, zoneless); Solid 1.9 + Vite 8; Plain HTML, CDN script tag) and 15 data layers, each installed with the one line from the README and driven through the same eight scenarios in headless Chromium, 10 seeds each, in every mode. It is generated by a script from a run on 2026-10-10; nothing here is edited by hand except the notes marked <em>Analysis</em>, and every ✗ is listed with its details below.</p>
+<p><strong>Summary</strong></p>
+<ul>
+<li><strong>350 of 351</strong> (app × data layer × scenario × mode) cells are ✓: GenClass in that mode left the app as correct as it was without GenClass, on every seed. Observe mode (the default) must leave the final page and server state <em>identical</em> to a run without GenClass.</li>
+<li><strong>Bugs introduced: 0</strong> across 3510 mode runs. Non-passive actions on correct apps (scenarios c to h, guard + heal): <strong>0</strong> in 1760 runs.</li>
+<li><strong>Bugs fixed by an action: 10 (10 × heal, HttpClient withXhr() (XMLHttpRequest) + signals (Angular 22 (SSR + hydration, zoneless)), scenario b, request:block).</strong> The two scenarios with a latent bug (a stale typeahead, a double submit) showed it in 250 of 290 runs without GenClass; guard left 249 and heal 240 of the same runs buggy. GenClass acts only when its model is confident, and with the shipped model that is rare: it reports far more than it fixes (see <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#model-quality">Model quality</a>). In 4 more runs a bug of the app did not show with GenClass although GenClass took no action: GenClass changed the timing of a race in the app (listed at the end of the page).</li>
+<li><strong>Observe-mode findings on correct apps: 319</strong> in 880 runs (scenarios c to h). 270 of them report the failure a scenario injects on purpose (the HTTP 500 in d, going offline in e), which the app handles correctly; <strong>49 are false findings</strong> (request:overload in g ×45, request:duplicate in g ×4). Findings change nothing in observe mode; they are listed per cell in <a href="#what-genclass-reported-and-did">What GenClass reported and did</a>.</li>
+</ul>
+<p>Versions: <code>@genclass/runtime</code> packed from this repository at commit <code>d04eff3</code> (version string 0.1.0-beta.4: the code released as 0.2.0 plus the "Model ready" log fix), model <code>genclass-runtime-r17</code> 2.0.0-rc4t (the default model, WASM, balanced profile), headless Chromium 153.0.8010.12, Node v24.21.0. Framework versions are in the first table.</p>
+<h2 id="frameworks">Frameworks</h2>
+<p>Each app is built for production and served the way it would be in production (static files, <code>next start</code>, the SvelteKit Node adapter, Angular's SSR server). <em>Boots clean</em>: the model loads, fetch is instrumented, no console errors or GenClass warnings, no request leaves the machine. <em>Kill switch</em>: with <code>?genclass=off</code> nothing is installed (WebSocket, EventSource and timers are the browser's own, no model worker) and the app works. <em>Devtools</em>: the overlay mounts. <em>CSP</em>: the app still boots clean (model ready, no violation) under a Content-Security-Policy that adds only what the README asks for, sent with the HTML page (<em>page</em>) or with every response, scripts and the model worker included, as many production servers do (<em>every response</em>). <em>SSR</em>: the page is rendered on the server with GenClass installed, and importing the one line on the server returns an inert runtime (server <code>fetch</code> untouched, no globals added).</p>
+<table>
+<thead>
+<tr>
+<th>app</th>
+<th>where the one line goes</th>
+<th>versions</th>
+<th>builds</th>
+<th>boots clean</th>
+<th>kill switch</th>
+<th>devtools</th>
+<th>CSP (page)</th>
+<th>CSP (every response)</th>
+<th>SSR inert</th>
+<th>hydration errors</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>the one import in src/main.tsx</td>
+<td>@genclass/runtime 0.1.0-beta.4, react 19.3.0, react-dom 19.3.0, vite 8.3.4, @tanstack/react-query 5.104.1, zustand 5.0.15, @reduxjs/toolkit 2.13.0, react-redux 9.3.0, @apollo/client 4.3.3, graphql 17.0.2</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>–</td>
+<td>–</td>
+</tr>
+<tr>
+<td>Next.js 16 App Router (SSR)</td>
+<td>instrumentation-client.ts</td>
+<td>@genclass/runtime 0.1.0-beta.4, next 16.4.0, react 19.3.0, react-dom 19.3.0, swr 2.5.1</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Vue 3 + Vite 8</td>
+<td>the one import in src/main.ts</td>
+<td>@genclass/runtime 0.1.0-beta.4, vue 3.5.43, pinia 4.0.3, vite 8.3.4</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>–</td>
+<td>–</td>
+</tr>
+<tr>
+<td>SvelteKit 3 (Svelte 5, SSR, adapter-node)</td>
+<td>src/hooks.client.ts</td>
+<td>@genclass/runtime 0.1.0-beta.4, svelte 5.57.2, @sveltejs/kit 3.0.1, @sveltejs/adapter-node 6.0.0, vite 8.3.4</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Angular 22 (SSR + hydration, zoneless)</td>
+<td>the one import in src/main.ts</td>
+<td>@genclass/runtime 0.1.0-beta.4, @angular/core 22.2.2, @angular/ssr 22.2.2, rxjs 7.8.2</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Solid 1.9 + Vite 8</td>
+<td>the one import in src/index.tsx</td>
+<td>@genclass/runtime 0.1.0-beta.4, solid-js 1.9.17, vite 8.3.4, vite-plugin-solid 2.11.14</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>–</td>
+<td>–</td>
+</tr>
+<tr>
+<td>Plain HTML, CDN script tag</td>
+<td>the script tag, first in <head></td>
+<td>@genclass/runtime 0.1.0-beta.4</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>–</td>
+<td>–</td>
+</tr>
+</tbody>
+</table>
+<p>CSP used (bundled apps): <code>default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' ws: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:</code>. Script-tag app: <code>default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' ws: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:</code>.</p>
+<h2 id="never-worse-matrix">Never-worse matrix</h2>
+<p>Each cell shows <strong>observe · guard · heal</strong> for one data layer and one scenario. ✓ means: on every seed, that mode left the app at least as correct as the same run without GenClass (observe: identical final DOM and server state; guard and heal: no bug introduced, and identical wherever the run without GenClass was correct; a seed runs twice without GenClass, and either run counts), with no new console errors and the model loaded. Click a ✗ for the details.</p>
+<table>
+<thead>
+<tr>
+<th>app</th>
+<th>data layer</th>
+<th>a</th>
+<th>b</th>
+<th>c</th>
+<th>d</th>
+<th>e</th>
+<th>f</th>
+<th>g</th>
+<th>h</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>fetch + useState / useEffect</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>TanStack Query 5</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>Zustand 5 (devtools middleware)</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>Zustand 5 (devtools middleware, <code>enabled: true</code>)</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>Redux Toolkit 2 + RTK Query</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>Apollo Client 4 (mock GraphQL)</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>Next.js 16 App Router (SSR)</td>
+<td>fetch + useState / useEffect (client components)</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>Next.js 16 App Router (SSR)</td>
+<td>SWR 2</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td><a href="#next-app-swr-d-observe">✗</a> · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>Vue 3 + Vite 8</td>
+<td>Pinia (setup stores)</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>SvelteKit 3 (Svelte 5, SSR, adapter-node)</td>
+<td>Svelte stores (writable)</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>Angular 22 (SSR + hydration, zoneless)</td>
+<td>HttpClient (default FetchBackend) + signals</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>Angular 22 (SSR + hydration, zoneless)</td>
+<td>HttpClient withXhr() (XMLHttpRequest) + signals</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>Solid 1.9 + Vite 8</td>
+<td>signals + createResource</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>Plain HTML, CDN script tag</td>
+<td>fetch + DOM</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+<tr>
+<td>Plain HTML, CDN script tag</td>
+<td>WebSocket + EventSource + DOM</td>
+<td>✓ · ✓ · ✓</td>
+<td>–</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+<td>–</td>
+<td>–</td>
+<td>✓ · ✓ · ✓</td>
+<td>✓ · ✓ · ✓</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scenarios">Scenarios</h3>
+<p>Every app implements the same eight screens against the same seeded mock backend. Latency is drawn from the seed per request, so every mode of a seed sees the same network.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>scenario</th>
+<th>what the runner does</th>
+<th>the app is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a</td>
+<td>typeahead, out-of-order responses</td>
+<td>type a 5-letter prefix at 70 ms/key; shorter prefixes answer later than the full one</td>
+<td>written the common, naive way: it can show the bug</td>
+</tr>
+<tr>
+<td>b</td>
+<td>double submit of a create</td>
+<td>double-click the submit button of a create form (POST takes 350-650 ms)</td>
+<td>written the common, naive way: it can show the bug</td>
+</tr>
+<tr>
+<td>c</td>
+<td>two concurrent requests, different parts of the UI</td>
+<td>one click loads two panels concurrently (80-600 ms each, random order)</td>
+<td>correct: GenClass must not change the outcome</td>
+</tr>
+<tr>
+<td>d</td>
+<td>optimistic update, confirmation, rollback on failure</td>
+<td>toggle todo 1 (server confirms) and 120 ms later todo 2 (server answers 500: must roll back)</td>
+<td>correct: GenClass must not change the outcome</td>
+</tr>
+<tr>
+<td>e</td>
+<td>offline, then reconnect and sync</td>
+<td>go offline, add two notes (queued), go online: the app syncs its outbox</td>
+<td>correct: GenClass must not change the outcome</td>
+</tr>
+<tr>
+<td>f</td>
+<td>repeated deliberate actions (+1 five times)</td>
+<td>click +1 five times, 180 ms apart; each POST takes 150-500 ms (identical requests overlap)</td>
+<td>correct: GenClass must not change the outcome</td>
+</tr>
+<tr>
+<td>g</td>
+<td>polling and fan-out</td>
+<td>click Start: six detail GETs at once (50-400 ms) and a status poll every 250 ms until tick 8</td>
+<td>correct: GenClass must not change the outcome</td>
+</tr>
+<tr>
+<td>h</td>
+<td>clean traffic</td>
+<td>list loads, type a 3-letter search at 250 ms/key, create one item with one click (20-80 ms)</td>
+<td>correct: GenClass must not change the outcome</td>
+</tr>
+</tbody>
+</table>
+<h2 id="automatic-state-discovery">Automatic state discovery</h2>
+<p>With the one line, GenClass looks for the app's state on its own (React, Redux, Zustand through the Redux DevTools API). Found state lets it compare a late response with newer data already on screen. Per data layer: what <code>runtime.stores()</code> reported at the end of each GenClass run.</p>
+<table>
+<thead>
+<tr>
+<th>app</th>
+<th>data layer</th>
+<th>the layer's state</th>
+<th>found</th>
+<th>stores seen (source)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>fetch + useState / useEffect</td>
+<td>React state</td>
+<td>✓ React state (240/240 runs)</td>
+<td>compat (react), compat_2 (react), tick (react)</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>TanStack Query 5</td>
+<td>TanStack Query cache</td>
+<td>not covered (React component state found in 240/240 runs)</td>
+<td>compat (react), compat_2 (react), tick (react)</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>Zustand 5 (devtools middleware)</td>
+<td>the Zustand stores (devtools <code>connect</code>)</td>
+<td>✗ the Zustand stores (devtools <code>connect</code>) in 0/240 runs (<a href="#discovery-react-vite-zustand">why</a>)</td>
+<td>compat (react), compat_2 (react), tick (react)</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>Zustand 5 (devtools middleware, <code>enabled: true</code>)</td>
+<td>the Zustand stores (devtools <code>connect</code>)</td>
+<td>✓ the Zustand stores (devtools <code>connect</code>) (240/240 runs)</td>
+<td>search (devtools), items (devtools), panels (devtools), todos (devtools), notes (devtools), counter (devtools), … (10)</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>Redux Toolkit 2 + RTK Query</td>
+<td>the Redux store</td>
+<td>✓ the Redux store (240/240 runs)</td>
+<td>redux (redux, adapter), compat (react), compat_2 (react), tick (react), Ta (react), Ta_2 (react), … (7)</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>Apollo Client 4 (mock GraphQL)</td>
+<td>Apollo cache</td>
+<td>not covered (React component state found in 240/240 runs)</td>
+<td>compat (react), compat_2 (react), gd (react), tick (react), gd_2 (react), gd_3 (react)</td>
+</tr>
+<tr>
+<td>Next.js 16 App Router (SSR)</td>
+<td>fetch + useState / useEffect (client components)</td>
+<td>React state</td>
+<td>✓ React state (240/240 runs)</td>
+<td>compat (react), compat_2 (react), tick (react)</td>
+</tr>
+<tr>
+<td>Next.js 16 App Router (SSR)</td>
+<td>SWR 2</td>
+<td>SWR cache</td>
+<td>not covered (React component state found in 240/240 runs)</td>
+<td>compat (react), compat_2 (react), eM (react), tick (react), eM_2 (react), eM_3 (react)</td>
+</tr>
+<tr>
+<td>Vue 3 + Vite 8</td>
+<td>Pinia (setup stores)</td>
+<td>Pinia stores</td>
+<td>not covered</td>
+<td>none</td>
+</tr>
+<tr>
+<td>SvelteKit 3 (Svelte 5, SSR, adapter-node)</td>
+<td>Svelte stores (writable)</td>
+<td>Svelte stores</td>
+<td>not covered</td>
+<td>none</td>
+</tr>
+<tr>
+<td>Angular 22 (SSR + hydration, zoneless)</td>
+<td>HttpClient (default FetchBackend) + signals</td>
+<td>Angular signals</td>
+<td>not covered</td>
+<td>none</td>
+</tr>
+<tr>
+<td>Angular 22 (SSR + hydration, zoneless)</td>
+<td>HttpClient withXhr() (XMLHttpRequest) + signals</td>
+<td>Angular signals</td>
+<td>not covered</td>
+<td>none</td>
+</tr>
+<tr>
+<td>Solid 1.9 + Vite 8</td>
+<td>signals + createResource</td>
+<td>Solid signals</td>
+<td>not covered</td>
+<td>none</td>
+</tr>
+<tr>
+<td>Plain HTML, CDN script tag</td>
+<td>fetch + DOM</td>
+<td>plain objects / the DOM</td>
+<td>not covered</td>
+<td>none</td>
+</tr>
+<tr>
+<td>Plain HTML, CDN script tag</td>
+<td>WebSocket + EventSource + DOM</td>
+<td>plain objects / the DOM</td>
+<td>not covered</td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p><em>Not covered</em> means the README does not claim discovery for that kind of state: GenClass then sees the network and user input, and decisions that depend on the app's state are not made. With TanStack Query, SWR and Apollo the cache itself is not a store, but the React component state GenClass finds includes what each component reads from it (the <code>useQuery</code> / <code>useSWR</code> result: data and status), observed only. Production builds minify component names, so React stores are named after an element the component renders (<code>compat</code> is the page root's <code>id</code>).</p>
+<h2 id="what-genclass-reported-and-did">What GenClass reported and did</h2>
+<p>Per cell: user-visible bugs without GenClass (<code>off</code>, out of the seeds run) and in each mode, then observe detections / guard actions / heal actions summed over seeds. A bug is what a user would see (stale results, a duplicate on the server, a lost note); oracles read only the page and the mock server's state, never GenClass. <em>Fixed</em>: buggy without GenClass, correct in the mode (same seed). <em>Introduced</em>: correct without GenClass, buggy in the mode. In guard and heal GenClass may hold a response for a moment while its model decides (observe never does); on a seed that was already buggy this can change which stale answer ends up on screen without fixing it (listed at the end of the page).</p>
+<table>
+<thead>
+<tr>
+<th>app</th>
+<th>data layer</th>
+<th>a</th>
+<th>b</th>
+<th>c</th>
+<th>d</th>
+<th>e</th>
+<th>f</th>
+<th>g</th>
+<th>h</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>state</td>
+<td>bugs off 10/10, g 10, h 10<br>2 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>tanstack</td>
+<td>bugs off 0/10, g 0, h 0<br>0 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>zustand</td>
+<td>bugs off 10/10, g 10, h 10<br>0 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>zustand-on</td>
+<td>bugs off 10/10, g 10, h 10<br>5 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>8 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>redux</td>
+<td>bugs off 10/10, g 9 (fixed 1), h 10<br>1 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>React 19 + Vite 8</td>
+<td>apollo</td>
+<td>bugs off 0/10, g 0, h 0<br>0 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>4 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>Next.js 16 App Router (SSR)</td>
+<td>state</td>
+<td>bugs off 10/10, g 10, h 10<br>2 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>Next.js 16 App Router (SSR)</td>
+<td>swr</td>
+<td>bugs off 0/10, g 0, h 0<br>0 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>bugs off 1/10, g 0 (fixed 1), h 0 (fixed 1)<br>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>1 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>Vue 3 + Vite 8</td>
+<td>pinia</td>
+<td>bugs off 10/10, g 10, h 10<br>0 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>2 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>SvelteKit 3 (Svelte 5, SSR, adapter-node)</td>
+<td>stores</td>
+<td>bugs off 10/10, g 10, h 10<br>0 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>Angular 22 (SSR + hydration, zoneless)</td>
+<td>fetch</td>
+<td>bugs off 10/10, g 10, h 10<br>0 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>Angular 22 (SSR + hydration, zoneless)</td>
+<td>xhr</td>
+<td>bugs off 10/10, g 10, h 10<br>0 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 0 (fixed 10)<br>10 / 0 / 10</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>Solid 1.9 + Vite 8</td>
+<td>signals</td>
+<td>bugs off 0/10, g 0, h 0<br>0 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>2 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>Plain HTML, CDN script tag</td>
+<td>fetch</td>
+<td>bugs off 10/10, g 10, h 10<br>0 / 0 / 0</td>
+<td>bugs off 10/10, g 10, h 10<br>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+<td>2 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+<tr>
+<td>Plain HTML, CDN script tag</td>
+<td>push</td>
+<td>bugs off 10/10, g 10, h 10<br>0 / 0 / 0</td>
+<td>–</td>
+<td>0 / 0 / 0</td>
+<td>10 / 0 / 0</td>
+<td>–</td>
+<td>–</td>
+<td>0 / 0 / 0</td>
+<td>0 / 0 / 0</td>
+</tr>
+</tbody>
+</table>
+<details><summary>Every detection and action (trigger:diagnosis, trigger:action)</summary>
+
+- react-vite / state / a / observe: detections delivery:stale ×2
+- react-vite / state / b / observe: detections request:duplicate ×10
+- react-vite / state / b / guard: detections request:duplicate ×10
+- react-vite / state / b / heal: detections request:duplicate ×10
+- react-vite / state / d / observe: detections failure:transient ×10
+- react-vite / state / d / guard: detections failure:transient ×10
+- react-vite / state / d / heal: detections failure:transient ×10
+- react-vite / state / e / observe: detections failure:failing ×10
+- react-vite / state / e / guard: detections failure:failing ×10
+- react-vite / state / e / heal: detections failure:failing ×10
+- react-vite / state / g / observe: detections request:overload ×10
+- react-vite / state / g / guard: detections request:overload ×10
+- react-vite / state / g / heal: detections request:overload ×10
+- react-vite / tanstack / b / observe: detections request:duplicate ×10
+- react-vite / tanstack / b / guard: detections request:duplicate ×10
+- react-vite / tanstack / b / heal: detections request:duplicate ×10
+- react-vite / tanstack / d / observe: detections failure:transient ×10
+- react-vite / tanstack / d / guard: detections failure:transient ×10
+- react-vite / tanstack / d / heal: detections failure:transient ×10
+- react-vite / zustand / b / observe: detections request:duplicate ×10
+- react-vite / zustand / b / guard: detections request:duplicate ×10
+- react-vite / zustand / b / heal: detections request:duplicate ×10
+- react-vite / zustand / d / observe: detections failure:transient ×10
+- react-vite / zustand / d / guard: detections failure:transient ×10
+- react-vite / zustand / d / heal: detections failure:transient ×10
+- react-vite / zustand / e / observe: detections failure:failing ×10
+- react-vite / zustand / e / guard: detections failure:failing ×10
+- react-vite / zustand / e / heal: detections failure:failing ×10
+- react-vite / zustand / g / observe: detections request:overload ×10
+- react-vite / zustand / g / guard: detections request:overload ×8
+- react-vite / zustand / g / heal: detections request:overload ×7
+- react-vite / zustand-on / a / observe: detections delivery:stale ×5
+- react-vite / zustand-on / a / guard: detections delivery:stale ×3
+- react-vite / zustand-on / a / heal: detections delivery:stale ×3
+- react-vite / zustand-on / b / observe: detections request:duplicate ×10
+- react-vite / zustand-on / b / guard: detections request:duplicate ×10
+- react-vite / zustand-on / b / heal: detections request:duplicate ×10
+- react-vite / zustand-on / d / observe: detections failure:transient ×10
+- react-vite / zustand-on / d / guard: detections failure:transient ×10
+- react-vite / zustand-on / d / heal: detections failure:transient ×10
+- react-vite / zustand-on / e / observe: detections failure:failing ×10
+- react-vite / zustand-on / e / guard: detections failure:failing ×10
+- react-vite / zustand-on / e / heal: detections failure:failing ×10
+- react-vite / zustand-on / g / observe: detections request:overload ×8
+- react-vite / zustand-on / g / guard: detections request:overload ×3
+- react-vite / zustand-on / g / heal: detections request:overload ×3
+- react-vite / redux / a / observe: detections delivery:stale ×1
+- react-vite / redux / a / guard: detections mutation:stale ×11
+- react-vite / redux / a / heal: detections mutation:stale ×12
+- react-vite / redux / b / observe: detections request:duplicate ×10
+- react-vite / redux / b / guard: detections request:duplicate ×10
+- react-vite / redux / b / heal: detections request:duplicate ×10
+- react-vite / redux / d / observe: detections failure:transient ×10
+- react-vite / redux / d / guard: detections failure:transient ×10
+- react-vite / redux / d / heal: detections failure:transient ×10
+- react-vite / redux / e / observe: detections failure:failing ×10
+- react-vite / redux / e / guard: detections failure:failing ×10
+- react-vite / redux / e / heal: detections failure:failing ×10
+- react-vite / apollo / b / observe: detections request:duplicate ×10
+- react-vite / apollo / b / guard: detections request:duplicate ×10
+- react-vite / apollo / b / heal: detections request:duplicate ×10
+- react-vite / apollo / e / observe: detections failure:failing ×10
+- react-vite / apollo / e / guard: detections failure:failing ×10
+- react-vite / apollo / e / heal: detections failure:failing ×10
+- react-vite / apollo / g / observe: detections request:duplicate ×4
+- react-vite / apollo / g / guard: detections request:duplicate ×5
+- react-vite / apollo / g / heal: detections request:duplicate ×5
+- next-app / state / a / observe: detections delivery:stale ×2
+- next-app / state / b / observe: detections request:duplicate ×10
+- next-app / state / b / guard: detections request:duplicate ×10
+- next-app / state / b / heal: detections request:duplicate ×10
+- next-app / state / d / observe: detections failure:transient ×10
+- next-app / state / d / guard: detections failure:transient ×10
+- next-app / state / d / heal: detections failure:transient ×10
+- next-app / state / e / observe: detections failure:failing ×10
+- next-app / state / e / guard: detections failure:failing ×10
+- next-app / state / e / heal: detections failure:failing ×10
+- next-app / state / g / observe: detections request:overload ×10
+- next-app / state / g / guard: detections request:overload ×10
+- next-app / state / g / heal: detections request:overload ×10
+- next-app / swr / b / observe: detections request:duplicate ×10
+- next-app / swr / b / guard: detections request:duplicate ×10
+- next-app / swr / b / heal: detections request:duplicate ×10
+- next-app / swr / d / observe: detections failure:transient ×10
+- next-app / swr / d / guard: detections failure:transient ×10
+- next-app / swr / d / heal: detections failure:transient ×10
+- next-app / swr / e / observe: detections failure:failing ×10
+- next-app / swr / e / guard: detections failure:failing ×10
+- next-app / swr / e / heal: detections failure:failing ×10
+- next-app / swr / g / observe: detections request:overload ×1
+- next-app / swr / g / heal: detections request:overload ×1
+- vue-vite / pinia / b / observe: detections request:duplicate ×10
+- vue-vite / pinia / b / guard: detections request:duplicate ×10
+- vue-vite / pinia / b / heal: detections request:duplicate ×10
+- vue-vite / pinia / d / observe: detections failure:transient ×10
+- vue-vite / pinia / d / guard: detections failure:transient ×10
+- vue-vite / pinia / d / heal: detections failure:transient ×10
+- vue-vite / pinia / e / observe: detections failure:failing ×10
+- vue-vite / pinia / e / guard: detections failure:failing ×10
+- vue-vite / pinia / e / heal: detections failure:failing ×10
+- vue-vite / pinia / g / observe: detections request:overload ×2
+- sveltekit / stores / b / observe: detections request:duplicate ×10
+- sveltekit / stores / b / guard: detections request:duplicate ×10
+- sveltekit / stores / b / heal: detections request:duplicate ×10
+- sveltekit / stores / d / observe: detections failure:transient ×10
+- sveltekit / stores / d / guard: detections failure:transient ×10
+- sveltekit / stores / d / heal: detections failure:transient ×10
+- sveltekit / stores / e / observe: detections failure:failing ×10
+- sveltekit / stores / e / guard: detections failure:failing ×10
+- sveltekit / stores / e / heal: detections failure:failing ×10
+- angular / fetch / b / observe: detections request:duplicate ×10
+- angular / fetch / b / guard: detections request:duplicate ×10
+- angular / fetch / b / heal: detections request:duplicate ×10
+- angular / fetch / d / observe: detections failure:transient ×10
+- angular / fetch / d / guard: detections failure:transient ×10
+- angular / fetch / d / heal: detections failure:transient ×10
+- angular / fetch / e / observe: detections failure:failing ×10
+- angular / fetch / e / guard: detections failure:failing ×10
+- angular / fetch / e / heal: detections failure:failing ×10
+- angular / xhr / b / observe: detections request:duplicate ×10
+- angular / xhr / b / guard: detections request:duplicate ×10
+- angular / xhr / b / heal: detections request:duplicate ×10; actions request:block ×10
+- angular / xhr / d / observe: detections failure:transient ×10
+- angular / xhr / d / guard: detections failure:transient ×10
+- angular / xhr / d / heal: detections failure:transient ×10
+- angular / xhr / e / observe: detections failure:failing ×10
+- angular / xhr / e / guard: detections failure:failing ×10
+- angular / xhr / e / heal: detections failure:failing ×10
+- solid-vite / signals / b / observe: detections request:duplicate ×10
+- solid-vite / signals / b / guard: detections request:duplicate ×10
+- solid-vite / signals / b / heal: detections request:duplicate ×10
+- solid-vite / signals / d / observe: detections failure:transient ×10
+- solid-vite / signals / d / guard: detections failure:transient ×10
+- solid-vite / signals / d / heal: detections failure:transient ×10
+- solid-vite / signals / e / observe: detections failure:failing ×10
+- solid-vite / signals / e / guard: detections failure:failing ×10
+- solid-vite / signals / e / heal: detections failure:failing ×10
+- solid-vite / signals / g / observe: detections request:overload ×2
+- plain-html / fetch / b / observe: detections request:duplicate ×10
+- plain-html / fetch / b / guard: detections request:duplicate ×10
+- plain-html / fetch / b / heal: detections request:duplicate ×10
+- plain-html / fetch / d / observe: detections failure:transient ×10
+- plain-html / fetch / d / guard: detections failure:transient ×10
+- plain-html / fetch / d / heal: detections failure:transient ×10
+- plain-html / fetch / e / observe: detections failure:failing ×10
+- plain-html / fetch / e / guard: detections failure:failing ×10
+- plain-html / fetch / e / heal: detections failure:failing ×10
+- plain-html / fetch / g / observe: detections request:overload ×2
+- plain-html / push / d / observe: detections failure:transient ×10
+- plain-html / push / d / guard: detections failure:transient ×10
+- plain-html / push / d / heal: detections failure:transient ×10
+
+</details>
+
+<h2 id="determinism-control">Determinism control</h2>
+<p>Every seed also ran twice without GenClass. 1170 of 1170 pairs (100%) ended identical (final DOM and server state), so a difference between a mode and <code>off</code> is almost always a real difference.</p>
+<h2 id="details-for-every">Details for every ✗</h2>
+<h3 id="discovery-react-vite-zustand">discovery-react-vite-zustand</h3>
+<p>React 19 + Vite 8 / Zustand 5 (devtools middleware): the Zustand stores (devtools <code>connect</code>) was found in 0 of 240 runs. Stores seen: compat (react), compat_2 (react), tick (react).</p>
+<p><em>Analysis (written after the run):</em> Zustand turns its <code>devtools</code> middleware off in production builds (it connects only when <code>enabled ?? import.meta.env.MODE !== "production"</code>), so a production build never calls the Redux DevTools API that GenClass listens on, and its stores are not found. The same app with <code>devtools(..., { enabled: true })</code> (the <code>enabled: true</code> row) is found in every run. Nothing changes for the app either way (every scenario cell is ✓); GenClass then sees the network only. The README now says so; alternatively wrap the store with <code>genclass</code> from <code>@genclass/runtime/zustand</code>.</p>
+<h3 id="next-app-swr-d-observe">next-app-swr-d-observe</h3>
+<p>Next.js 16 App Router (SSR) / SWR 2 / scenario d (optimistic update, confirmation, rollback on failure) / observe: 10 runs, 0 incomplete, 0 model not ready, 0 bugs introduced, 1 not identical to the runs without GenClass, 0 with new console errors.</p>
+<ul>
+<li>seed 7: differs from off: DOM todo: off ["Write tests: open","Ship release: open","Fix flaky CI: done"] vs ["Write tests: done","Ship release: open","Fix flaky CI: done"]; actions: none</li>
+</ul>
+<p><em>Analysis (written after the run):</em> A race in the app, not an action: SWR's <code>rollbackOnError</code> with two overlapping optimistic mutations (toggle 1 succeeds, toggle 2 fails 120 ms later) sometimes leaves toggle 1 unchecked on screen although the server has it checked. On seed 7 that happened in both runs without GenClass (and in 1 of 2 in an earlier full run the same day), and in none of the 3 runs with GenClass (observe, guard, heal; 6 of 6 across both full runs). GenClass took no action in any of them (one <code>transient</code> failure detection, passive decisions only); most likely its own main-thread work (observing the requests, deciding about the HTTP 500 in the background) shifts the timing of SWR's rollback against its revalidation (not traced further). So observe mode is not byte-identical to no GenClass on a racy app: it can change which side of an app's own race wins, here towards the correct outcome. No other observe cell differed in this run.</p>
+<details><summary>Fixes and changed outcomes on buggy seeds</summary>
+
+- react-vite / state / a / guard: seed 5: still buggy, but differs from off: stale results: shows [Lima, Lisbon, Liverpool] (3) for "lisbo", want 1
+- react-vite / state / a / guard: seed 9: still buggy, but differs from off: stale results: shows [Bangkok, Barcelona] (2) for "barce", want 1
+- react-vite / state / a / guard: seed 10: still buggy, but differs from off: stale results: shows [Seattle, Seoul, Seville] (3) for "seatt", want 1
+- react-vite / state / a / heal: seed 5: still buggy, but differs from off: stale results: shows [Lima, Lisbon, Liverpool] (3) for "lisbo", want 1
+- react-vite / state / a / heal: seed 9: still buggy, but differs from off: stale results: shows [Bangkok, Barcelona] (2) for "barce", want 1
+- react-vite / state / a / heal: seed 10: still buggy, but differs from off: stale results: shows [Seattle, Seoul, Seville] (3) for "seatt", want 1
+- react-vite / zustand / a / guard: seed 3: still buggy, but differs from off: stale results: shows [Manchester, Manila] (2) for "manch", want 1
+- react-vite / zustand / a / guard: seed 5: still buggy, but differs from off: stale results: shows [Lima, Lisbon, Liverpool] (3) for "lisbo", want 1
+- react-vite / zustand / a / guard: seed 9: still buggy, but differs from off: stale results: shows [Bangkok, Barcelona] (2) for "barce", want 1
+- react-vite / zustand / a / guard: seed 10: still buggy, but differs from off: stale results: shows [Seattle, Seoul, Seville] (3) for "seatt", want 1
+- react-vite / zustand / a / heal: seed 5: still buggy, but differs from off: stale results: shows [Lima, Lisbon, Liverpool] (3) for "lisbo", want 1
+- react-vite / zustand / a / heal: seed 9: still buggy, but differs from off: stale results: shows [Bangkok, Barcelona] (2) for "barce", want 1
+- react-vite / zustand / a / heal: seed 10: still buggy, but differs from off: stale results: shows [Seattle, Seoul, Seville] (3) for "seatt", want 1
+- react-vite / zustand-on / a / guard: seed 5: still buggy, but differs from off: stale results: shows [Lima, Lisbon, Liverpool] (3) for "lisbo", want 1
+- react-vite / zustand-on / a / guard: seed 9: still buggy, but differs from off: stale results: shows [Bangkok, Barcelona] (2) for "barce", want 1
+- react-vite / zustand-on / a / guard: seed 10: still buggy, but differs from off: stale results: shows [Seattle, Seoul, Seville] (3) for "seatt", want 1
+- react-vite / zustand-on / a / heal: seed 5: still buggy, but differs from off: stale results: shows [Lima, Lisbon, Liverpool] (3) for "lisbo", want 1
+- react-vite / zustand-on / a / heal: seed 9: still buggy, but differs from off: stale results: shows [Bangkok, Barcelona] (2) for "barce", want 1
+- react-vite / zustand-on / a / heal: seed 10: still buggy, but differs from off: stale results: shows [Seattle, Seoul, Seville] (3) for "seatt", want 1
+- react-vite / redux / a / guard: seed 3: still buggy, but differs from off: stale results: shows [Manchester, Manila] (2) for "manch", want 1
+- react-vite / redux / a / guard: seed 5: still buggy, but differs from off: stale results: shows [Lima, Lisbon, Liverpool] (3) for "lisbo", want 1
+- react-vite / redux / a / guard: seed 9: fixed (no action recorded); off: stale results: shows [Bangkok, Barcelona, Beijing, ...] (8) for "barce", want 1
+- react-vite / redux / a / guard: seed 10: still buggy, but differs from off: stale results: shows [Seattle, Seoul, Seville] (3) for "seatt", want 1
+- react-vite / redux / a / heal: seed 5: still buggy, but differs from off: stale results: shows [Lima, Lisbon, Liverpool] (3) for "lisbo", want 1
+- react-vite / redux / a / heal: seed 9: still buggy, but differs from off: stale results: shows [Bangkok, Barcelona] (2) for "barce", want 1
+- react-vite / redux / a / heal: seed 10: still buggy, but differs from off: stale results: shows [Seattle, Seoul, Seville] (3) for "seatt", want 1
+- next-app / state / a / guard: seed 2: still buggy, but differs from off: stale results: shows [Beijing, Belgrade, Berlin, ...] (4) for "berli", want 1
+- next-app / state / a / guard: seed 5: still buggy, but differs from off: stale results: shows [Lima, Lisbon, Liverpool] (3) for "lisbo", want 1
+- next-app / state / a / guard: seed 9: still buggy, but differs from off: stale results: shows [Bangkok, Barcelona] (2) for "barce", want 1
+- next-app / state / a / guard: seed 10: still buggy, but differs from off: stale results: shows [Seattle, Seoul, Seville] (3) for "seatt", want 1
+- next-app / state / a / heal: seed 5: still buggy, but differs from off: stale results: shows [Lima, Lisbon, Liverpool] (3) for "lisbo", want 1
+- next-app / state / a / heal: seed 9: still buggy, but differs from off: stale results: shows [Bangkok, Barcelona] (2) for "barce", want 1
+- next-app / state / a / heal: seed 10: still buggy, but differs from off: stale results: shows [Seattle, Seoul, Seville] (3) for "seatt", want 1
+- next-app / swr / b / guard: seed 1: still buggy, but differs from off: server has 2 "Report 1"
+- next-app / swr / b / guard: seed 2: still buggy, but differs from off: server has 2 "Report 2"
+- next-app / swr / b / guard: seed 7: still buggy, but differs from off: server has 2 "Report 7"
+- next-app / swr / b / heal: seed 1: still buggy, but differs from off: server has 2 "Report 1"
+- next-app / swr / b / heal: seed 2: still buggy, but differs from off: server has 2 "Report 2"
+- next-app / swr / b / heal: seed 7: still buggy, but differs from off: server has 2 "Report 7"
+- next-app / swr / d / observe: seed 7: fixed (no action recorded); off: shows [Write tests: open; Ship release: open; Fix flaky CI: done], server [Write tests: done; Ship release: open; Fix flaky CI: done]
+- next-app / swr / d / guard: seed 7: fixed (no action recorded); off: shows [Write tests: open; Ship release: open; Fix flaky CI: done], server [Write tests: done; Ship release: open; Fix flaky CI: done]
+- next-app / swr / d / heal: seed 7: fixed (no action recorded); off: shows [Write tests: open; Ship release: open; Fix flaky CI: done], server [Write tests: done; Ship release: open; Fix flaky CI: done]
+- angular / xhr / b / heal: seed 1: fixed (request:block); off: server has 2 "Report 1"
+- angular / xhr / b / heal: seed 2: fixed (request:block); off: server has 2 "Report 2"
+- angular / xhr / b / heal: seed 3: fixed (request:block); off: server has 2 "Report 3"
+- angular / xhr / b / heal: seed 4: fixed (request:block); off: server has 2 "Report 4"
+- angular / xhr / b / heal: seed 5: fixed (request:block); off: server has 2 "Report 5"
+- angular / xhr / b / heal: seed 6: fixed (request:block); off: server has 2 "Report 6"
+
+</details>
+
+<h2 id="method">Method</h2>
+<ul>
+<li><strong>Apps.</strong> One small app per framework under <a href="https://github.com/daybot-solutions-inc/GenClass-lib/tree/main/compat/apps"><code>compat/apps/</code></a>, written idiomatically for each data layer (no GenClass API anywhere: only the one line). They install <code>@genclass/runtime</code> from a tarball packed from this repository (<code>npm pack</code>), so the matrix tests the code as it would be published.</li>
+<li><strong>Backend.</strong> One seeded mock server for every app (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/harness/backend.mjs"><code>compat/harness/backend.mjs</code></a>): REST, a GraphQL endpoint, a WebSocket and EventSource streams on the app's own origin. It injects latency and failures per scenario; nothing in it knows about GenClass.</li>
+<li><strong>A trial.</strong> A fresh browser context loads the page (<code>?genclass=off</code> for the run without GenClass; otherwise the mode through <code>window.GENCLASS_CONFIG</code>, telemetry off), waits until the model is ready, drives the scenario with real (trusted) keyboard and mouse input, waits until nothing is in flight and the page has been quiet for 0.9 s, then reads the page and the server's state.</li>
+<li><strong>Pairing.</strong> Every mode run is compared with the run without GenClass on the same seed. 10 seeds per cell, plus a second run without GenClass per seed as a determinism control.</li>
+<li><strong>Isolation.</strong> Every request to another host is blocked and counted; the model files and ONNX Runtime are served from a local copy of the files the runtime would fetch from jsDelivr, and the script-tag app gets the packed tarball in place of the CDN.</li>
+<li><strong>Not tuned.</strong> The runtime and the model are not changed or tuned for these apps, and the apps are not used for training.</li>
+<li><strong>Limits.</strong> Small apps, one machine, headless Chromium only (no Firefox or Safari), WASM inference (no GPU), production builds only. Each cell has few seeds; read single differences as signals to investigate, not rates.</li>
+</ul>
+<h2 id="reproduce">Reproduce</h2>
+<p>On Linux with Node ≥ 22.22.3 (Angular 22's minimum) and about 4 GB free:</p>
+<pre><code class="language-bash">git clone https://github.com/daybot-solutions-inc/GenClass-lib &amp;&amp; cd GenClass-lib
+npm ci &amp;&amp; (cd compat &amp;&amp; npm install &amp;&amp; npx playwright install --with-deps chromium)
+node packages/runtime/bin/genclass-runtime.mjs fetch-model .cache-model/runtime-model-0.2.0 --variant q8 --ort wasm
+COMPAT_MODEL_DIR=$PWD/.cache-model/runtime-model-0.2.0 npm --prefix compat run compat -- --seeds 10
+</code></pre>
+<p>This rebuilds the runtime, packs it, installs it into every app, builds and serves each app, runs every trial and writes <code>compat/results/&lt;date&gt;.json</code> and this page. <code>--apps</code>, <code>--layers</code>, <code>--scenarios</code>, <code>--modes</code> and <code>--workers</code> narrow a run. This page was generated from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/results/2026-10-10.json"><code>2026-10-10.json</code></a> (5850 trials, 0 did not complete; 16 parallel browsers).</p></article></div></section>
+</main>
+<footer class="end">
+  <div class="wrap">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <h2>Free to run. Built to scale.</h2>
+    <div class="row">
+      <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
+      <a class="btn green" href="/cloud#early-access">Join Cloud early access</a>
+    </div>
+    <div class="foot-cols">
+      <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+    </div>
+    <div class="foot">
+      <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js?v=dab3e9fe" defer></script>
+</body>
+</html>

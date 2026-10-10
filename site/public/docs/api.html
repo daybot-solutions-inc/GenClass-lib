@@ -48,7 +48,7 @@
 <main id="main">
 <div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>API Reference</span></nav><h1>@genclass/runtime API reference</h1>
 <p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md"><code>docs/runtime/API.md</code></a> in the GenClass repository.</p></div></div>
-<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><a href="/docs/interception">Interception surface</a><a href="/docs/threat-model">Threat model</a><a href="/security">Security</a><b>On this page</b><a href="#init-and-modes">Init and modes</a><a href="#options">Options</a><a href="#state">State</a><a href="#operations-and-user-actions">Operations and user actions</a><a href="#asking-the-model">Asking the model</a><a href="#events">Events</a><a href="#introspection-and-control">Introspection and control</a><a href="#triggers-and-actions">Triggers and actions</a><a href="#policy">Policy</a><a href="#reports-explain-and-undo">Reports, explain and undo</a><a href="#plugins">Plugins</a><a href="#headless-use-tests-ssr-simulation">Headless use (tests, SSR, simulation)</a><a href="#adapters-and-devtools">Adapters and devtools</a><a href="#types">Types</a></nav><article class="prose"><p>GenClass Runtime watches a web app from the inside (user actions, async operations, network, state changes,
+<section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><a href="/docs/interception">Interception surface</a><a href="/docs/threat-model">Threat model</a><a href="/security">Security</a><a href="/docs/compatibility">Compatibility</a><b>On this page</b><a href="#init-and-modes">Init and modes</a><a href="#options">Options</a><a href="#state">State</a><a href="#operations-and-user-actions">Operations and user actions</a><a href="#asking-the-model">Asking the model</a><a href="#events">Events</a><a href="#introspection-and-control">Introspection and control</a><a href="#triggers-and-actions">Triggers and actions</a><a href="#policy">Policy</a><a href="#reports-explain-and-undo">Reports, explain and undo</a><a href="#plugins">Plugins</a><a href="#headless-use-tests-ssr-simulation">Headless use (tests, SSR, simulation)</a><a href="#adapters-and-devtools">Adapters and devtools</a><a href="#types">Types</a></nav><article class="prose"><p>GenClass Runtime watches a web app from the inside (user actions, async operations, network, state changes,
 errors, timing and causality) and asks a small local model, running in the browser, about situations that look
 risky. Depending on the mode it reports what it saw, or prevents the failure with a minimal, reversible action.</p>
 <pre><code class="language-ts">import { GenClass } from &quot;@genclass/runtime&quot;;
@@ -91,7 +91,10 @@ GenClass.destroy(): void                        // uninstall observers, restore 
 <p>Kill switch, for "is my app broken or did GenClass change something?":</p>
 <ul>
 <li><code>?genclass=off</code> in the page URL, or <code>localStorage.genclass = "off"</code>: <code>init</code> installs nothing and logs one line.</li>
-<li><code>?genclass=observe|guard|heal</code>: overrides the mode.</li>
+<li><code>?genclass=observe|guard|heal</code>: overrides the mode, within limits (<code>src/index.ts</code> -&gt; <code>initUnsafe</code>; a missing
+  <code>mode</code> counts as <code>guard</code> there): <code>observe</code> always; <code>guard</code> when no mode, <code>guard</code> or <code>heal</code> is configured (the
+  default <code>/auto</code> and script tag included, not <code>/auto/observe</code>); <code>heal</code> only when <code>heal</code> is configured, or with
+  <code>debug: true</code>.</li>
 </ul>
 <p>Outside a browser (no <code>window</code>/<code>document</code>, e.g. SSR), <code>GenClass.init()</code> returns an inert runtime: no observers,
 no model. Use <a href="#headless-use-tests-ssr-simulation"><code>createRuntime</code></a> for headless work.</p>
@@ -173,7 +176,7 @@ events <code>shadow</code>, <code>breaker</code>, <code>limit</code>, <code>mode
 <code>modelBudget</code>, and states <code>"disabled" | "skipped" | "unloaded"</code>. <code>status.scope</code> is what is in force on the current
 route: <code>mode</code> is the effective mode there (equal to <code>effectiveMode</code>: the requested mode demoted by sampling, the breaker
 and the matching <code>routes[]</code> rule) and <code>aggressiveness</code> the effective level; with a matching rule it also has <code>rule</code>
-(its index) and <code>ceiling</code> (the mode that rule caps the route at; rules only lower the mode). Before 0.1.0-beta.4,
+(its index) and <code>ceiling</code> (the mode that rule caps the route at; rules only lower the mode). Before 0.2.0,
 <code>scope.mode</code> was that ceiling ("heal" when no rule matched). <code>rt.gates()</code> carries <code>mode</code> (the same effective mode).
 <code>status.blocked</code> (state "error"): <code>{ url, origin, csp, directive? }</code> when the browser blocked a model or ORT download.
 <code>status.sha256</code> (state "ready"): the sha256 from <code>model.json</code> that the loaded variant was verified against.</p>
@@ -210,7 +213,8 @@ adapter (Redux, Zustand, React hooks).</p>
 <p><strong>Automatic state discovery</strong> (<code>autoState</code>, on with the one line: <code>import "@genclass/runtime/auto"</code> or the script tag)
 finds React component state (<code>useState</code>, <code>useReducer</code>, <code>useSyncExternalStore</code>, class state; through the React
 DevTools hook), Redux / Redux Toolkit stores (through the Redux DevTools compose and enhancer globals) and Zustand
-<code>devtools</code> stores (through the Redux DevTools <code>connect</code> API). Each write is recorded with the operation that made it.
+<code>devtools</code> stores (through the Redux DevTools <code>connect</code> API; Zustand disables <code>devtools</code> in production builds unless
+<code>enabled: true</code> is passed, so such builds are not discovered). Each write is recorded with the operation that made it.
 Discovered Redux stores get the Redux adapter (controllable, kind <code>adapter</code>). Discovered React and Zustand state is
 <strong>observed only</strong> (kind <code>observed</code>): it feeds facts, triage, detections and delivery decisions (<code>deliver</code> / <code>defer</code>),
 but GenClass never holds, drops, reverts or rolls back its writes, so <code>discard</code> and <code>rollback</code> are not offered for it.
