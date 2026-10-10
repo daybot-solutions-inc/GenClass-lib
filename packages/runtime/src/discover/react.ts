@@ -102,6 +102,56 @@ const INTERNAL = new Set([
 
 type AnyObj = Record<string, unknown>;
 
+/** A bundler-minified identifier: 1–2 characters, or 3 with a digit, `$` or `_`. */
+export function isMinified(name: string): boolean {
+  return name.length <= 2 || (name.length === 3 && /[0-9$_]/.test(name));
+}
+
+/** Generic data attributes of UI kits (state, layout), not names. */
+const GENERIC_DATA = /^data-(state|slot|side|align|orientation|disabled|highlighted|selected|active|open|placeholder|theme|size|variant|testid-skip|radix-.*|headlessui-.*|rk|reactroot|nextjs-.*|sentry-.*)$/;
+
+/** camelCase of a label: "order-chip" -> "orderChip", "Add to order" -> "addToOrder". */
+function camel(s: string): string {
+  const ws = s.trim().split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 4);
+  return ws.map((w, i) => (i === 0 ? w.charAt(0).toLowerCase() + w.slice(1) : w.charAt(0).toUpperCase() + w.slice(1))).join("");
+}
+
+/** What a component instance renders, as a name: its first element's id, data-testid, first data-* attribute, aria-label or name. */
+export function labelOf(el: Element): string {
+  const id = el.getAttribute("id");
+  if (id && !/\d{3,}|^:r|^«|^_r_/i.test(id)) return camel(id); // not React's useId ids
+  const t = el.getAttribute("data-testid") ?? el.getAttribute("data-test");
+  if (t) return camel(t);
+  const attrs = el.attributes;
+  for (let i = 0; attrs && i < attrs.length && i < 24; i++) {
+    const n = attrs[i].name;
+    if (n.startsWith("data-") && !GENERIC_DATA.test(n)) return camel(n.slice(5));
+  }
+  const a = el.getAttribute("aria-label") ?? el.getAttribute("name");
+  if (a && a.length <= 40) return camel(a);
+  return "";
+}
+
+const HOST_COMPONENT = 5;
+
+/** The label of the first element a fiber renders (depth-first, bounded). */
+function hostLabel(f: Fiber): string {
+  try {
+    let c: Fiber | null = f.child;
+    for (let n = 0; c && n < 48; n++) {
+      if (c.tag === HOST_COMPONENT) {
+        const el = c.stateNode as Element | null;
+        if (el && typeof el.getAttribute === "function") return labelOf(el);
+        return "";
+      }
+      c = c.child ?? c.sibling;
+    }
+  } catch {
+    /* no label */
+  }
+  return "";
+}
+
 interface Fiber {
   tag: number;
   type: unknown;
@@ -121,6 +171,8 @@ interface Hook {
 
 interface TypeRec {
   base: string;
+  /** The name looks minified (production build): stores are named after the instance's first element instead. */
+  minified: boolean;
   /** Store of each instance slot (kept when its instance unmounts, so a remount writes to the same store). */
   stores: (ObservedStore | null)[];
   owners: (InstRec | null)[];
@@ -311,8 +363,11 @@ export function installReactDiscovery(host: DiscoveryHost): ReactDiscovery | nul
     let tr = typeRecs.get(key);
     if (tr !== undefined) return tr.base ? tr : null;
     const name = nameOf(f);
-    const base = INTERNAL.has(name) || name === "default" || name === "Anonymous" ? "" : storeBase(name);
-    tr = { base, stores: [], owners: [] };
+    // error boundaries hold errors, not app data (Next.js and React Router boundaries are classes like this)
+    const t = f.type as AnyObj | null;
+    const boundary = f.tag === CLASS && !!t && (typeof t.getDerivedStateFromError === "function" || typeof (t.prototype as AnyObj | undefined)?.componentDidCatch === "function");
+    const base = boundary || INTERNAL.has(name) || name === "default" || name === "Anonymous" ? "" : storeBase(name);
+    tr = { base, minified: isMinified(base), stores: [], owners: [] };
     typeRecs.set(key, tr);
     return base ? tr : null;
   };
@@ -456,13 +511,19 @@ export function installReactDiscovery(host: DiscoveryHost): ReactDiscovery | nul
     return rec;
   };
 
-  const storeOf = (rec: InstRec, initial: AnyObj): ObservedStore | null => {
+  const storeOf = (rec: InstRec, initial: AnyObj, f: Fiber): ObservedStore | null => {
     const tr = rec.type;
     const have = tr.stores[rec.slot];
     if (have) return have;
     if (componentStores >= MAX_COMPONENT_STORES) return null;
+    // a minified name ("e", "Xt") says nothing: name the store after what the instance renders (data-*, id, aria-label)
+    let b = tr.base;
+    if (tr.minified) {
+      const l = storeBase(hostLabel(f));
+      if (l) b = l;
+    }
     // instance slots: Name, Name_2, Name_3 (a second component type with the same name is deduplicated by the host)
-    const base = rec.slot > 0 ? `${tr.base}_${rec.slot + 1}` : tr.base;
+    const base = rec.slot > 0 ? `${b}_${rec.slot + 1}` : b;
     const st = host.observed(base, initial, "react");
     if (!st) return null;
     componentStores++;
@@ -486,6 +547,7 @@ export function installReactDiscovery(host: DiscoveryHost): ReactDiscovery | nul
 
   interface Pending {
     rec: InstRec;
+    fiber: Fiber;
     prev: AnyObj;
     next: AnyObj;
     /** field -> captured writer */
@@ -507,7 +569,7 @@ export function installReactDiscovery(host: DiscoveryHost): ReactDiscovery | nul
       const writers = new Map<string, Captured | null>();
       for (const k in next) if (!Object.is(next[k], prev[k])) writers.set(k, w);
       for (const k in prev) if (!(k in next)) writers.set(k, w);
-      if (writers.size) out.push({ rec, prev, next, writers });
+      if (writers.size) out.push({ rec, fiber: f, prev, next, writers });
       return;
     }
     if (tag !== FUNCTION && tag !== FORWARD_REF && tag !== SIMPLE_MEMO && tag !== INDETERMINATE) return;
@@ -537,7 +599,7 @@ export function installReactDiscovery(host: DiscoveryHost): ReactDiscovery | nul
     }
     if (!writers) return;
     const rec = instOf(f, p, false);
-    if (rec) out.push({ rec, prev: hookFields(p.memoizedState), next: hookFields(f.memoizedState), writers });
+    if (rec) out.push({ rec, fiber: f, prev: hookFields(p.memoizedState), next: hookFields(f.memoizedState), writers });
   };
 
   const record = (list: Pending[]): void => {
@@ -551,7 +613,7 @@ export function installReactDiscovery(host: DiscoveryHost): ReactDiscovery | nul
         rec.started = true;
         rec.values = prevF;
       }
-      const st = storeOf(rec, rec.values);
+      const st = storeOf(rec, rec.values, u.fiber);
       if (!st) continue;
       // one write per writer, in the order the app made them
       const groups = new Map<Captured | null, string[]>();

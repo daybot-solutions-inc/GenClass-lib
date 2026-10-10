@@ -3,6 +3,7 @@
 // (development build here; discover-react-prod.test.ts runs the production build). React is loaded after the runtime,
 // as with the one line first: the runtime installs the DevTools hook, react-dom injects into it.
 import { afterEach, describe, expect, it } from "vitest";
+import "../src/discover/index.js"; // registers autoState (the zero-code entries do this)
 import { createRuntime } from "../src/index.js";
 import type { RuntimeImpl } from "../src/runtime.js";
 import { defaultScript, drain, FakeClock, FakeServer, ScriptedDecider } from "./helpers.js";
@@ -528,5 +529,46 @@ describe("autoState React: cost bounds", () => {
     expect(typeof set1).toBe("function");
     ref.H = null;
     expect(ref.H).toBeNull();
+  });
+});
+
+describe("autoState React: names in production builds", () => {
+  it("names a minified component's store after the element it renders; skips error boundaries", async () => {
+    const e = start();
+    const { createElement: h, useState, Component } = e.R.React;
+    let setA!: (v: unknown) => void;
+    let setB!: (v: unknown) => void;
+    let boundary!: { setState(s: unknown): void };
+    const t = function () {
+      const [n, s] = useState(0);
+      setA = s as never;
+      return h("a", { "data-state": "open", "data-order-chip": "menu" }, String(n));
+    };
+    Object.defineProperty(t, "name", { value: "t" });
+    const Xe = function () {
+      const [n, s] = useState(0);
+      setB = s as never;
+      return h("section", { "aria-label": "Live cart" }, String(n));
+    };
+    Object.defineProperty(Xe, "name", { value: "Xe" });
+    class Guard extends Component<{ children?: unknown }, { error: unknown; path: string }> {
+      static getDerivedStateFromError(error: unknown) {
+        return { error };
+      }
+      state = { error: null, path: "/" };
+      render() {
+        boundary = this as never;
+        return this.props.children as never;
+      }
+    }
+    e.root.render(h(Guard, null, h(t), h(Xe)));
+    await settle();
+    setA(1);
+    setB(2);
+    boundary.setState({ path: "/menu" });
+    await settle();
+    const names = e.rt.stores().map((s) => s.name).sort();
+    expect(names).toEqual(["liveCart", "orderChip"]);
+    expect(e.rt.internals.hub.valueAt("orderChip.state0")).toBe(1);
   });
 });

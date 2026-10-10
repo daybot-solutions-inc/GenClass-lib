@@ -93,8 +93,9 @@ import { installWebSocket } from "./observe/websocket.js";
 import { installTimers } from "./observe/timers.js";
 import { defaultRedact, normalizeFieldPath, plural, ratio, secs, truncate, type Redactor } from "./util.js";
 import { blockedMessage } from "./model/blocked.js";
-import { installReactDiscovery, type ReactDiscovery } from "./discover/react.js";
-import { installReduxDiscovery, type ReduxDiscovery } from "./discover/redux.js";
+import type { ReactDiscovery } from "./discover/react.js";
+import type { ReduxDiscovery } from "./discover/redux.js";
+import { discoveryRegistry } from "./discover/registry.js";
 import type { Captured, DiscoveryHost, ObservedStore, WalkStats } from "./discover/types.js";
 
 const DECISIONS_KEPT = 200;
@@ -946,6 +947,11 @@ export class RuntimeImpl implements Runtime {
   private installDiscovery(opt: NonNullable<CreateOptions["autoState"]>): void {
     const g = this.global;
     if (typeof g.document !== "object" || g.document === null || typeof g.window !== "object") return;
+    const inst = discoveryRegistry.installers;
+    if (!inst) {
+      this.warn('autoState needs the discovery code: use @genclass/runtime/auto or the script tag, or import "@genclass/runtime/discover" before GenClass.init().');
+      return;
+    }
     const on = (k: "react" | "redux" | "zustand") => (typeof opt === "object" ? opt[k] !== false : true);
     const host: DiscoveryHost & { runtime: Runtime } = {
       global: g,
@@ -965,12 +971,12 @@ export class RuntimeImpl implements Runtime {
     };
     const d: { react: ReactDiscovery | null; redux: ReduxDiscovery | null } = { react: null, redux: null };
     try {
-      if (on("react")) d.react = installReactDiscovery(host);
+      if (on("react")) d.react = inst.react(host);
     } catch (e) {
       this.log("React state discovery could not be installed; skipped", e);
     }
     try {
-      if (on("redux") || on("zustand")) d.redux = installReduxDiscovery(host, { redux: on("redux"), connect: on("zustand") });
+      if (on("redux") || on("zustand")) d.redux = inst.redux(host, { redux: on("redux"), connect: on("zustand") });
     } catch (e) {
       this.log("Redux state discovery could not be installed; skipped", e);
     }

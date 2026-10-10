@@ -209,25 +209,27 @@ function manualHelp(project) {
 
 function recommendations(project, state) {
   const recs = [];
+  // Redux Toolkit (devTools on by default) and createStore + the Redux DevTools compose/enhancer are discovered by the
+  // auto import (autoState) as full adapters: the manual enhancer is for stores created without them
   if (state.redux) {
     const line =
       state.redux.kind === "toolkit"
         ? `configureStore({ reducer, enhancers: (getDefault) => getDefault().concat(genclassEnhancer(GenClass.runtime, { name: "app" })) })`
         : `createStore(reducer, genclassEnhancer(GenClass.runtime, { name: "app" }))`;
     recs.push({
-      title: `Redux store in ${state.redux.file}`,
+      title: `Redux store in ${state.redux.file} (found automatically when created with Redux Toolkit or the Redux DevTools compose; otherwise)`,
       lines: [`import { GenClass } from "${PKG}";`, `import { genclassEnhancer } from "${PKG}/redux";`, line],
     });
   }
   if (state.zustand) {
     recs.push({
-      title: `Zustand store in ${state.zustand.file}`,
+      title: `Zustand store in ${state.zustand.file} (a devtools() store is observed automatically; to let GenClass hold or drop its writes)`,
       lines: [`import { GenClass } from "${PKG}";`, `import { genclass } from "${PKG}/zustand";`, `create(genclass(GenClass.runtime, "store")((set) => ({ /* your store */ })))`],
     });
   }
   if (project.has("react") && state.useState > 0 && !state.redux && !state.zustand) {
     recs.push({
-      title: `React state (${state.useState} useState call${state.useState === 1 ? "" : "s"} in ${state.useStateFiles} file${state.useStateFiles === 1 ? "" : "s"}): for state worth protecting (carts, results, saved forms)`,
+      title: `React state (${state.useState} useState call${state.useState === 1 ? "" : "s"} in ${state.useStateFiles} file${state.useStateFiles === 1 ? "" : "s"}) is observed automatically; for state GenClass should be able to protect (carts, results, saved forms)`,
       lines: [`import { useGenClassState } from "${PKG}/react";`, `const [cart, setCart] = useGenClassState("cart", initialCart); // instead of useState(initialCart)`],
     });
   }
@@ -242,7 +244,7 @@ function recommendations(project, state) {
 
 function printRecommendations(recs) {
   if (!recs.length) return;
-  out(`  ${c.bold("Recommended")} ${c.gray("(not applied: lets GenClass hold, drop or roll back writes to your state)")}`);
+  out(`  ${c.bold("Optional")} ${c.gray("(not applied: the auto import already finds your app state; these let GenClass hold, drop or roll back writes to it)")}`);
   for (const r of recs) {
     out(`    ${sym.dot} ${r.title}:`);
     for (const l of r.lines) out(`        ${c.cyan(l)}`);

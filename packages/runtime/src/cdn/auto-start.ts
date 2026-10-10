@@ -1,5 +1,6 @@
 // The zero-code start shared by @genclass/runtime/auto and /auto/{observe,guard,heal}. Owner: INSTALL.
 
+import { registerDiscovery } from "../discover/index.js";
 import { GenClass } from "../index.js";
 import type { InitOptions, Runtime } from "../types.js";
 import { devtoolsOptions, isKilled, mergeConfig, readMetaConfig, readWindowConfig, splitConfig, whenBody } from "./config.js";
@@ -12,6 +13,8 @@ export const AUTO_DEFAULTS: InitOptions = { autoState: true };
  * devtools overlay when the page config asks for it. Outside a browser: GenClass.init()'s inert runtime.
  */
 export function startAuto(defaults: InitOptions = {}): Runtime {
+  // automatic state discovery (autoState): registered before GenClass.init runs
+  registerDiscovery();
   const g = globalThis as unknown as { window?: unknown; document?: unknown; location?: Location; localStorage?: Storage; console?: Console };
   if (typeof g.window !== "object" || typeof g.document !== "object" || !g.document) return GenClass.init(defaults);
   const doc = g.document as Document;

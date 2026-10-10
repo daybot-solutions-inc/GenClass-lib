@@ -59,7 +59,10 @@ describe.skipIf(!built)("dist as an app bundles it", () => {
     }
   }, 60_000);
 
-  it("first-load cost of /auto and the main entry, minified + gzip: under 92 KB (README: about 89 KB)", async () => {
+  // /auto carries automatic state discovery (autoState, beta.4: about 6.5 KB); the main entry does not (README: about
+  // 96 KB for /auto, 89 KB for GenClass.init)
+  const LIMIT_KB: Record<string, number> = { "auto.js": 98, "index.js": 92 };
+  it("first-load cost of /auto and the main entry, minified + gzip: under 98 KB / 92 KB (README: about 96 / 89 KB)", async () => {
     const { build } = await import("esbuild");
     const uses: Record<string, string> = { "auto.js": "", "index.js": "GenClass.init({});" };
     for (const entry of ["auto.js", "index.js"]) {
@@ -87,11 +90,15 @@ describe.skipIf(!built)("dist as an app bundles it", () => {
       };
       walk(Object.keys(outs).find((k) => outs[k].entryPoint)!);
       const gz = [...first].reduce((n, k) => n + gzipSync(byPath.get(resolve("/", k))!, { level: 9 }).length, 0);
-      expect(gz / 1024, entry).toBeLessThan(92);
+      expect(gz / 1024, entry).toBeLessThan(LIMIT_KB[entry]);
       // the model's tokenizer, packer and engine are not in it (the worker has them; the inline path loads them lazily)
       const code = [...first].map((k) => new TextDecoder().decode(byPath.get(resolve("/", k))!)).join("\n");
       expect(code, entry).not.toContain("BPE dropout is not supported at inference"); // src/model/tokenizer.ts
       expect(code, entry).toContain("new Worker("); // the host itself is there
+      // state discovery survives an app's bundler in /auto (a dropped side-effect import once lost it) and stays out
+      // of the main entry
+      if (entry === "auto.js") expect(code, entry).toContain("__REACT_DEVTOOLS_GLOBAL_HOOK__");
+      else expect(code, entry).not.toContain("__REACT_DEVTOOLS_GLOBAL_HOOK__");
     }
   });
 });

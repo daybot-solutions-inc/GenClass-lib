@@ -2,6 +2,7 @@
 // Automatic React state discovery against React's production build (minified internals, no dev-only hooks):
 // the DevTools hook injection, the dispatcher tap and the commit walk work the same way.
 import { afterEach, describe, expect, it } from "vitest";
+import "../src/discover/index.js"; // registers autoState (the zero-code entries do this)
 import { createRuntime } from "../src/index.js";
 import type { RuntimeImpl } from "../src/runtime.js";
 import { drain, FakeClock } from "./helpers.js";
