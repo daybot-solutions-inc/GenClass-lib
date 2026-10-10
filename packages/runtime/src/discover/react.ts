@@ -134,17 +134,21 @@ export function labelOf(el: Element): string {
 
 const HOST_COMPONENT = 5;
 
-/** The label of the first element a fiber renders (depth-first, bounded). */
+/** The first label among the first elements a fiber renders (depth-first: up to 8 elements, 64 fibers). */
 function hostLabel(f: Fiber): string {
   try {
+    const stack: Fiber[] = [];
     let c: Fiber | null = f.child;
-    for (let n = 0; c && n < 48; n++) {
+    let hosts = 0;
+    for (let n = 0; c && n < 64 && hosts < 8; n++) {
       if (c.tag === HOST_COMPONENT) {
+        hosts++;
         const el = c.stateNode as Element | null;
-        if (el && typeof el.getAttribute === "function") return labelOf(el);
-        return "";
+        const l = el && typeof el.getAttribute === "function" ? labelOf(el) : "";
+        if (l) return l;
       }
-      c = c.child ?? c.sibling;
+      if (c.sibling) stack.push(c.sibling);
+      c = c.child ?? stack.pop() ?? null;
     }
   } catch {
     /* no label */
@@ -609,22 +613,24 @@ export function installReactDiscovery(host: DiscoveryHost): ReactDiscovery | nul
       const prevF = filtered(rec, u.prev);
       const nextF = filtered(rec, u.next);
       // first change of this instance: its previous values are where the store starts (or what a remount overwrites)
+      const base = rec.started ? rec.values : prevF;
+      // one write per writer, in the order the app made them
+      const groups = new Map<Captured | null, string[]>();
+      for (const [k, w] of u.writers) {
+        // a value that is not app data (any more): the field keeps its last data value
+        if (rec.rejected.has(k) || (!(k in nextF) && !(k in base)) || Object.is(nextF[k], base[k])) continue;
+        const ws = w ?? (fallback === undefined ? (fallback = host.capture()) : fallback);
+        const keys = groups.get(ws);
+        if (keys) keys.push(k);
+        else groups.set(ws, [k]);
+      }
+      if (!groups.size) continue; // nothing recordable changed: no store for it (yet)
       if (!rec.started) {
         rec.started = true;
         rec.values = prevF;
       }
       const st = storeOf(rec, rec.values, u.fiber);
       if (!st) continue;
-      // one write per writer, in the order the app made them
-      const groups = new Map<Captured | null, string[]>();
-      for (const [k, w] of u.writers) {
-        // a value that is not app data (any more): the field keeps its last data value
-        if (rec.rejected.has(k) || (!(k in nextF) && !(k in rec.values))) continue;
-        const ws = w ?? (fallback === undefined ? (fallback = host.capture()) : fallback);
-        const keys = groups.get(ws);
-        if (keys) keys.push(k);
-        else groups.set(ws, [k]);
-      }
       const ordered = [...groups.entries()].sort((a, b) => (a[0]?.seq ?? 0) - (b[0]?.seq ?? 0));
       let cur: AnyObj = { ...rec.values };
       // fields that changed without a report (a commit skipped at the budget): brought up to date by the first write
