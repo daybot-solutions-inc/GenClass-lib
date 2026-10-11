@@ -10,15 +10,13 @@ r17-v2dT, gain gate, profiles cautious / balanced / eager). It measures, per mod
 - **false findings**: detections (reported problems) on clean runs;
 - **latency** the user feels (clean runs) and model decision latency.
 
-Everything runs on this machine. Nothing is published, pushed or deployed.
+Everything runs on one machine. Nothing is published, pushed or deployed.
 
 - **Telemetry is off in every run**: the demos pass `telemetry: false` in every mode
-  (`demos/src/shared/genclass.ts`); the Troy harness forces `telemetry: false` through `window.GENCLASS_CONFIG`; and
-  both harnesses abort every request to a host other than `127.0.0.1` and print the blocked origins (expected:
-  none). The model and ONNX Runtime's wasm are served from a local directory.
-- **Small samples.** 10 chaos + 5 clean seeds per demo and mode (demos) and 3 repetitions per scenario and mode
-  (Troy) fit an overnight budget. Wilson intervals on 10 trials are about ±30 points: read single-digit differences
-  as noise unless they repeat across seeds and runs.
+  (`demos/src/shared/genclass.ts`), and the harness aborts every request to a host other than `127.0.0.1` and
+  prints the blocked origins (expected: none). The model and ONNX Runtime's wasm are served from a local directory.
+- **Small samples.** 10 chaos + 5 clean seeds per demo and mode fit an overnight budget. Wilson intervals on 10
+  trials are about ±30 points: read single-digit differences as noise unless they repeat across seeds and runs.
 
 ## Setup
 
@@ -35,7 +33,7 @@ node packages/runtime/bin/genclass-runtime.mjs fetch-model .cache-model/runtime-
 
 `demos/` holds six small apps with deliberate, realistic latent bugs that show under network chaos (search
 typeahead without ordering guard, notes autosave, cart and checkout, status dashboard, kanban board over SSE,
-decisions journal); see [docs/agents/demos.md](../../docs/agents/demos.md). The Playwright harness
+decisions journal); see [demos/README.md](../../demos/README.md). The Playwright harness
 (`demos/e2e/eval.ts`) runs each seeded scenario with real keyboard and mouse input in a fresh page, with common
 random numbers so every mode sees the same network draws.
 
@@ -59,54 +57,22 @@ bench/heal/run-demos.sh <tag> --dist bench/heal/.dist/baseline [--aggr eager] [-
 # N=10 CLEAN=5 WORKERS=5 by default; results: bench/heal/results/demos/results-<tag>.{json,md}
 ```
 
-## 2. Troy (`~/troy-bot-genclass`, branch `dev/genclass`)
+## 2. A pilot app (not in this repository)
 
-The troy.daybot.ca dev copy with GenClass `0.1.0-beta.4` installed. Its order state lives in React `useState`
-(GenClass sees only the network). `troy/troy-bench.mjs` drives the production build in mobile Chromium and injects
-faults with Playwright route interception:
-
-| scenario | kind | what happens | bug when |
-|---|---|---|---|
-| `add-once` | clean | add one dish from the menu | server quantity ≠ 1, chip never updates |
-| `add-two` | clean | add two different dishes | quantities ≠ 1 + 1, chip ≠ 2 |
-| `order-remove` | clean | `/order` with two lines, remove one, ticket polls every 5 s | ticket ≠ server, removed line shown again ≥ 400 ms |
-| `add-lost-commit` | fault | the add commits but the answer is lost (502); the guest taps Add again | **duplicate order** (qty 2), lost order, chip ≠ server |
-| `add-transient-5xx` | fault | the add fails with 503 before the server handles it; the guest taps again | qty ≠ 1 |
-| `add-slow-doubletap` | fault | the add takes 2.5 s; the guest double-taps | qty ≠ 1 |
-| `order-poll-reorder` | fault | a ticket poll is answered 3 s late, after the removal's answer (out of order) | **stale ticket** shown, ticket ≠ server |
-| `order-remove-5xx` | fault | the removal fails once with 503; the guest taps × again | ticket ≠ server, server ≠ 1 line |
-| `slow-all` | fault | every order API answer is 900 ms slow; add two dishes | quantities, chip |
-
-Server truth is read through the browser context's own request API (same visitor cookie, invisible to the page).
-
-```sh
-cd ~/troy-bot-genclass && NEXT_PUBLIC_GENCLASS_DEBUG=1 pnpm --filter web build
-cd apps/web && npx next start -H 127.0.0.1 -p 3000 &
-node bench/heal/troy/troy-bench.mjs --reps 3 --workers 2 --out bench/heal/results/troy/<tag>.json [--aggr eager]
-```
-
-To measure this checkout's runtime in Troy without touching its tracked files: `troy/swap-runtime.sh use` moves
-the installed package's `dist/` aside (`dist.orig`), copies `packages/runtime/dist` in and rebuilds Troy;
-`troy/swap-runtime.sh restore` puts the original back and rebuilds. Restart `next start` after either. The harness
-also takes `--config '<json>'` (extra `GenClass.init` options, e.g. `{"policy":{"idempotencyBodyFields":["request_id"]}}`)
-and `--browse <ms>` (reading time after each page load, default 2500: decisions before the model is loaded fail open).
-`troy/summarize-troy.mjs <results.json>` prints the table.
+The same measurements were taken on a pilot app: a production Next.js ordering site whose order state lives in
+React `useState` (GenClass sees only the network), driven in mobile Chromium with Playwright route interception
+injecting nine fault scenarios (lost commits with a re-tap, transient 5xx, slow double-taps, out-of-order polls).
+The app and its harness are private; the results are summarised in
+[docs/runtime/RESULTS.md](../../docs/runtime/RESULTS.md) §5.
 
 ## Results
 
-See [../../NIGHT-REPORT.md](../../NIGHT-REPORT.md) for the baseline and final tables and what changed.
+`results/demos/` holds the demo runs (`results-<tag>.{json,md}` with a `-summary.json` each); the tables are in
+[docs/runtime/RESULTS.md](../../docs/runtime/RESULTS.md) §5.
 
-## 3. Automatic state discovery (2026-10-10, branch `feat/one-line`)
+## 3. Automatic state discovery (2026-10-10)
 
-- `troy/troy-bench.mjs` records the discovered stores and the React commit-walk samples per trial (`gc.stores`,
-  `gc.walk`) and heap / long tasks (`perf`), and has the scenario `order-poll-reorder-2` (a second device removes a
-  line; the guest removes the other while the next poll is answered 3 s late). `--config '{"autoState":false}'` is
-  the control on the same build. `troy/summarize-oneline.mjs <results.json>...` prints the table.
-- `troy/overhead.mjs` measures first-load JS, heap after GC, long tasks and walk cost with 4× CPU throttling for
-  `off` (`?genclass=off`), `noauto` (`autoState: false`) and `on`.
 - Demos without hand-registered stores: `GENCLASS_DISCOVER=1 DEMOS_OUT_DIR=bench/heal/.dist/discover npm run build`
   in `demos/` (aliases in `demos/vite.config.ts` to `discover/*.ts`; the app code is untouched), then
   `demos/e2e/eval.ts --dist ../bench/heal/.dist/discover/ ...`; `discover/summarize.mjs` compares runs.
-- Results: `results/troy/oneline-*.json`, `reorder2-*.json`, `overhead-*.json`, `results/demos/results-discover-*.json`;
-  summary in `docs/runtime/RESULTS.md` §5.
-
+- Results: `results/demos/results-discover-*.json`; summary in `docs/runtime/RESULTS.md` §5.

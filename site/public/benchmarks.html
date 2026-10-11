@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>GenClass Benchmarks: 96% Precision on Unseen Apps</title>
-<meta name="description" content="Held-out results: 96% detection precision on real apps it never saw, 76% of duplicate submits caught, 396 of 396 correct runs untouched.">
+<title>GenClass Benchmarks: Precision, Recall and Safety on Unseen Apps</title>
+<meta name="description" content="Held-out results: 96% detection precision on unseen real apps (model 0.1.0, report threshold 0.70), 75% of duplicate submits detected by model 0.2.0 at its default setting, 0 non-passive actions on correct apps in 1,760 runs, and where it still misses.">
 <link rel="canonical" href="https://genclass.dev/benchmarks">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="theme-color" content="#FFFFFF">
@@ -13,15 +13,15 @@
 <meta property="og:site_name" content="GenClass">
 <meta property="og:url" content="https://genclass.dev/benchmarks">
 <meta property="og:title" content="GenClass benchmarks: precision, recall and safety on held-out apps">
-<meta property="og:description" content="Held-out results: 96% detection precision on real apps it never saw, 76% of duplicate submits caught, 396 of 396 correct runs untouched.">
+<meta property="og:description" content="Held-out results: 96% detection precision on unseen real apps (model 0.1.0, report threshold 0.70), 75% of duplicate submits detected by model 0.2.0 at its default setting, 0 non-passive actions on correct apps in 1,760 runs, and where it still misses.">
 <meta property="og:image" content="https://genclass.dev/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:image:alt" content="GenClass: catch race conditions and stale data in production">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="GenClass benchmarks: precision, recall and safety on held-out apps">
-<meta name="twitter:description" content="Held-out results: 96% detection precision on real apps it never saw, 76% of duplicate submits caught, 396 of 396 correct runs untouched.">
+<meta name="twitter:description" content="Held-out results: 96% detection precision on unseen real apps (model 0.1.0, report threshold 0.70), 75% of duplicate submits detected by model 0.2.0 at its default setting, 0 non-passive actions on correct apps in 1,760 runs, and where it still misses.">
 <meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
 <link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
 <link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=c4d84874">
+<link rel="stylesheet" href="/styles.css?v=0ca3ba97">
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Benchmarks", "item": "https://genclass.dev/benchmarks"}]}, {"@type": "Dataset", "name": "GenClass real-app evaluation set", "description": "16,600 held-out runtime situations recorded from real web apps in headless Chromium, never used for training, labelled by counterfactual replay.", "creator": {"@id": "https://genclass.dev/#org"}, "license": "https://www.apache.org/licenses/LICENSE-2.0", "url": "https://genclass.dev/benchmarks", "isAccessibleForFree": true}, {"@type": "TechArticle", "headline": "GenClass benchmarks", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10"}]}</script>
 </head>
 <body>
@@ -50,12 +50,12 @@
   <div class="wrap">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span>Benchmarks</span></nav>
     <h1>Measured on apps <em>it never saw.</em></h1>
-    <p class="lede">Every number here comes from held-out test sets: simulated apps it wasn't trained on, and real apps run in Chromium that were kept out of training. Each recall sits next to its false-intervention rate, so you can see exactly what you are trading.</p>
+    <p class="lede">Every number here comes from held-out test sets: simulated apps it wasn't trained on, and real apps run in Chromium that were kept out of training. Each recall sits next to its false-intervention rate, so you can see exactly what you are trading. Each number is labelled with the model it measures, 0.1.0 (r17-v2b) or the shipped 0.2.0 (r17-v2dT), and the report threshold used; the shipped default threshold is 0.90.</p>
     <div class="stats">
-      <div class="stat"><div class="big g">96%</div><p>detection precision on unseen real apps</p></div>
-      <div class="stat"><div class="big">76%</div><p>of duplicate submits caught on unseen real apps</p></div>
-      <div class="stat"><div class="big">91%</div><p>recall on slow calls at 94% precision, simulated test apps</p></div>
-      <div class="stat"><div class="big g">99.1%</div><p>calibrated: confidence within 0.9 points of reality</p></div>
+      <div class="stat"><div class="big g">96%</div><p>detection precision on unseen real apps</p><small>model 0.1.0, report threshold 0.70</small></div>
+      <div class="stat"><div class="big">75%</div><p>of duplicate submits detected on unseen real apps</p><small>model 0.2.0, default setting</small></div>
+      <div class="stat"><div class="big">91%</div><p>recall on slow calls at 94% precision, simulated test apps</p><small>model 0.1.0, report threshold 0.70</small></div>
+      <div class="stat"><div class="big g">0</div><p>non-passive actions on correct apps in 1,760 guard and heal runs</p><small>compatibility matrix, 7 frameworks, 15 data layers</small></div>
     </div>
   </div>
 </div>
@@ -82,13 +82,13 @@
       <figure>
         <div class="frame">
           <div class="ftitle">Detection on real apps it never trained on</div>
-          <div class="fsub">Observe mode, 16,600 held-out situations, precision 0.96</div>
+          <div class="fsub">Model 0.1.0, observe mode, report threshold 0.70, 16,600 held-out situations, precision 0.96</div>
           <div class="hbar"><div class="r"><span>Duplicate submits detected</span><b>76%</b></div><div class="t"><i class="b" style="width: 76%"></i></div></div>
           <div class="hbar"><div class="r"><span>Stale overwrites detected</span><b>43%</b></div><div class="t"><i class="b" style="width: 43%"></i></div></div>
           <div class="hbar"><div class="r"><span>Broken state detected</span><b>27%</b></div><div class="t"><i class="b" style="width: 27%"></i></div></div>
           <div class="hbar"><div class="r"><span>False detections on clean traffic</span><b>0.62%</b></div><div class="t"><i class="o" style="width: 0.62%; min-width: 3px"></i></div></div>
         </div>
-        <figcaption><b>Fig. 2</b> Report threshold 0.70. At the shipped threshold of 0.85: duplicates about 76%, stale 28%, false detections 0.36%.</figcaption>
+        <figcaption><b>Fig. 2</b> Model 0.1.0 at report threshold 0.70. The shipped model 0.2.0 at its default threshold of 0.90 detects 75% of duplicate submits, 21–30% of stale overwrites and 6% of broken state on the same held-out apps, within its 2% false-detection limit on clean real-app traffic.</figcaption>
       </figure>
 
       <figure>
@@ -130,7 +130,7 @@
             </table>
           </div>
         </div>
-        <figcaption><b>Table 1</b> Model r17-v2b on the sim2e test set. Calibration error 0.009; browser and PyTorch outputs agree on 223 of 223 decisions.</figcaption>
+        <figcaption><b>Table 1</b> Model 0.1.0 (r17-v2b) on the sim2e test set, report threshold 0.70. Expected calibration error on the action question 0.021–0.023; browser and PyTorch outputs agree on 223 of 223 decisions.</figcaption>
       </figure>
 
       <figure>
@@ -160,10 +160,10 @@
         <div class="frame">
           <div class="ftitle">Small enough for every device</div>
           <div class="fsub">Model file size, int8</div>
-          <div class="hbar"><div class="r"><span>R17, shipped</span><b>9.6 MB</b></div><div class="t"><i class="b" style="width: 16.8%"></i></div></div>
+          <div class="hbar"><div class="r"><span>R17, shipped (0.2.0 q8)</span><b>10.2 MB</b></div><div class="t"><i class="b" style="width: 17.9%"></i></div></div>
           <div class="hbar"><div class="r"><span>R32</span><b>22.5 MB</b></div><div class="t"><i style="width: 39.5%"></i></div></div>
           <div class="hbar"><div class="r"><span>GenClass 0.1, original</span><b>57 MB</b></div><div class="t"><i class="m" style="width: 100%"></i></div></div>
-          <p class="fsub" style="margin-top: 18px">One WASM thread, 500-token situation: 177 ms for R17, 569 ms for R32. WebGPU and multi-threaded WASM are faster, and normal traffic makes no model calls.</p>
+          <p class="fsub" style="margin-top: 18px">One WASM thread, 500-token situation: about 180 ms for R17 (182 ms for the shipped 0.2.0 export), 569 ms for R32. WebGPU and multi-threaded WASM are faster, and normal traffic makes no model calls.</p>
         </div>
         <figcaption><b>Fig. 5</b> R17 matches R32's accuracy at about a third of the size and latency, so it is the default everywhere.</figcaption>
       </figure>
@@ -172,12 +172,30 @@
     <figure style="margin-top: 56px">
       <div class="frame">
         <div class="ftitle">Never make a correct app worse</div>
-        <div class="fsub">Real apps in headless Chromium: final page text and server state, with and without the runtime acting</div>
+        <div class="fsub">Plumbing test of the runtime with an always-passive model: real apps in headless Chromium, final page text and server state with and without the runtime installed</div>
         <div class="pair">
           <div><div class="big" style="color: #C42A12">194 / 198</div><p>clean runs untouched by the v1 runtime, which held store writes. Not good enough: the React/Redux RealWorld app never rendered its home feed.</p></div>
-          <div><div class="big" style="color: #08794A">396 / 396</div><p>clean runs untouched by the v2 runtime, which decides at the network boundary: 66 real apps × 6 seeds. So v2 shipped.</p></div>
+          <div><div class="big" style="color: #08794A">396 / 396</div><p>clean runs unchanged with the v2 runtime installed, which decides at the network boundary: 66 real apps × 6 seeds, always-passive model. With the real model, the compatibility matrix counts 0 non-passive actions on correct apps in 1,760 guard and heal runs.</p></div>
         </div>
       </div>
+    </figure>
+
+    <figure style="margin-top: 32px" id="misses">
+      <div class="frame">
+        <div class="ftitle">Where it still misses: six demo apps under chaos</div>
+        <div class="fsub">Model 0.2.0 on the 0.2.0 runtime code. Bug rate over the six demos, 60 chaos trials per cell; false interventions (FI) counted on 30 clean trials per mode.</div>
+        <div class="tbl-wrap" style="margin-top: 18px">
+          <table class="prof">
+            <thead><tr><th>Setting</th><th>off</th><th>observe</th><th class="hl">guard</th><th>heal</th><th>actions guard / heal</th><th>FI guard / heal</th></tr></thead>
+            <tbody>
+              <tr><td>balanced (default)</td><td>72%</td><td>70%</td><td class="hl">72%</td><td>73%</td><td>2 / 3</td><td>0 / 0</td></tr>
+              <tr><td>cautious</td><td>–</td><td>–</td><td class="hl">72%</td><td>77%</td><td>0 / 0</td><td>0 / 0</td></tr>
+              <tr><td>eager</td><td>–</td><td>72%</td><td class="hl">73%</td><td>75%</td><td>6 / 12</td><td>2 / 0</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <figcaption><b>Table 2</b> Nothing is healed at the shipped gates: the demos' bug rate is the same with GenClass on or off, and differences under about 5 points are noise. The compatibility matrix says the same: of 250 runs that showed a latent bug without GenClass, guard left 249 and heal 240 buggy. Today the value is in what it reports, not in what it fixes.</figcaption>
     </figure>
 
   </div>
@@ -185,16 +203,16 @@
 <section>
   <div class="wrap">
     <div class="sh"><span class="no">Roadmap</span><h2>Precise today. Catching more every round.</h2></div>
-    <p class="intro">GenClass is tuned to almost never be wrong when it acts. At the default setting guard acts on about 8% of the cases where acting would help; the eager setting reaches 1 in 4 on real apps. Each training round lifts recall at the same safety level.</p>
+    <p class="intro">GenClass is tuned to almost never be wrong when it acts. At the default setting guard acts on about 8% of the cases where acting would help; the eager setting reaches about 1 in 5 on real apps. Each training round so far has lifted recall at the same safety level.</p>
     <div class="tbl-wrap">
       <table class="stat">
         <thead><tr><th>Target</th><th>Now</th></tr></thead>
         <tbody>
           <tr><td>Guard false interventions ≤ 0.1%</td><td class="met">met, cautious</td></tr>
           <tr><td>Heal false interventions ≤ 0.5%</td><td class="met">met, cautious</td></tr>
-          <tr><td>Calibration error ≤ 0.02</td><td class="met">0.009</td></tr>
-          <tr><td>Diagnosis accuracy ≥ 95%</td><td class="nyet">84–90%</td></tr>
-          <tr><td>Recall on clear cases ≥ 80%</td><td class="nyet">7.8%, balanced</td></tr>
+          <tr><td>Calibration error ≤ 0.02</td><td class="nyet">0.021–0.023, model 0.1.0 (not yet published for 0.2.0)</td></tr>
+          <tr><td>Diagnosis accuracy ≥ 95%</td><td class="nyet">84–86%, model 0.2.0</td></tr>
+          <tr><td>Recall on clear cases ≥ 80%</td><td class="nyet">7.8%, guard at balanced, model 0.2.0</td></tr>
         </tbody>
       </table>
     </div>
@@ -206,7 +224,7 @@
 </main>
 <footer class="end">
   <div class="wrap">
-    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass" width="220" height="183" loading="lazy">
     <h2>Free to run. Built to scale.</h2>
     <div class="row">
       <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>

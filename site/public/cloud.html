@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GenClass Cloud: Reliability Dashboard for Web Apps</title>
-<meta name="description" content="See every bug your web app caught and fixed: intervention analytics, release comparisons, alerts and safe rollouts for apps running GenClass.">
+<meta name="description" content="A planned dashboard for apps running GenClass: detections, interventions and undo rates, release comparisons, alerts and safe rollouts. Not available yet; built with design partners.">
 <link rel="canonical" href="https://genclass.dev/cloud">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="theme-color" content="#FFFFFF">
@@ -12,16 +12,16 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="GenClass">
 <meta property="og:url" content="https://genclass.dev/cloud">
-<meta property="og:title" content="GenClass Cloud: see every bug your app fixed in production">
-<meta property="og:description" content="See every bug your web app caught and fixed: intervention analytics, release comparisons, alerts and safe rollouts for apps running GenClass.">
+<meta property="og:title" content="GenClass Cloud: see what GenClass reported and prevented, across every app">
+<meta property="og:description" content="A planned dashboard for apps running GenClass: detections, interventions and undo rates, release comparisons, alerts and safe rollouts. Not available yet; built with design partners.">
 <meta property="og:image" content="https://genclass.dev/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:image:alt" content="GenClass: catch race conditions and stale data in production">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="GenClass Cloud: see every bug your app fixed in production">
-<meta name="twitter:description" content="See every bug your web app caught and fixed: intervention analytics, release comparisons, alerts and safe rollouts for apps running GenClass.">
+<meta name="twitter:title" content="GenClass Cloud: see what GenClass reported and prevented, across every app">
+<meta name="twitter:description" content="A planned dashboard for apps running GenClass: detections, interventions and undo rates, release comparisons, alerts and safe rollouts. Not available yet; built with design partners.">
 <meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
 <link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
 <link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=c4d84874">
+<link rel="stylesheet" href="/styles.css?v=0ca3ba97">
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Cloud", "item": "https://genclass.dev/cloud"}]}, {"@type": "SoftwareApplication", "name": "GenClass Cloud", "applicationCategory": "DeveloperApplication", "applicationSubCategory": "Reliability monitoring", "operatingSystem": "Web", "url": "https://genclass.dev/cloud", "description": "Central dashboard, release comparisons, alerts, rollouts and team controls for apps running the GenClass runtime.", "offers": {"@type": "Offer", "price": "99", "priceCurrency": "USD", "availability": "https://schema.org/PreOrder"}, "publisher": {"@id": "https://genclass.dev/#org"}}]}</script>
 </head>
 <body>
@@ -50,8 +50,9 @@
   <div class="wrap">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span>Cloud</span></nav>
     <span class="badge">Early access</span>
-    <h1 style="margin-top: 18px">See every bug your app <em>fixed itself.</em></h1>
-    <p class="lede">GenClass Cloud is the reliability control plane for every app running GenClass. One dashboard for what was caught, what was fixed and what got worse, with alerts and rollout controls your whole team shares.</p>
+    <p class="notice">GenClass Cloud is not available yet. We are building it with design partners; the open-source runtime is what ships today.</p>
+    <h1 style="margin-top: 18px">See what GenClass reported and prevented, <em>across every app.</em></h1>
+    <p class="lede">GenClass Cloud will be the control plane for every app running GenClass. One dashboard for what was reported, what was prevented and what got worse, with alerts and rollout controls your whole team shares.</p>
     <div class="ctas"><a class="btn green" href="#early-access">Request early access</a><a class="btn ghost" href="/pricing">See pricing</a></div>
 <div class="app" data-app>
   <div class="app-top"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="url">app.genclass.dev / acme / storefront-web</span><span class="badge n sample">Preview · sample data</span></div>
@@ -67,7 +68,7 @@
           <div class="kpi"><div class="k">Anomalies detected</div><div class="v">12,847</div><div class="d mut">across 1.9M sessions</div></div>
           <div class="kpi"><div class="k">Interventions applied</div><div class="v">3,291</div><div class="d up">stale writes, duplicates, retries</div></div>
           <div class="kpi"><div class="k">Undone by users</div><div class="v">14</div><div class="d up">0.43% of interventions</div></div>
-          <div class="kpi"><div class="k">P95 inference</div><div class="v">82 ms</div><div class="d mut">on-device, WebGPU + WASM</div></div>
+          <div class="kpi"><div class="k">P50 decision</div><div class="v">182 ms</div><div class="d mut">WASM, 1 thread · faster on WebGPU</div></div>
         </div>
         <div class="panels">
           <div class="pnl"><h4>Interventions per day <span>30 days</span></h4><div class="spark" aria-hidden="true"><i style="height: 54.8%" title="103"></i><i style="height: 61.2%" title="115"></i><i style="height: 51.6%" title="97"></i><i style="height: 64.9%" title="122"></i><i style="height: 77.7%" title="146"></i><i style="height: 54.8%" title="103"></i><i style="height: 31.9%" title="60"></i><i style="height: 39.9%" title="75"></i><i style="height: 41.5%" title="78"></i><i style="height: 22.3%" title="42"></i><i style="height: 26.6%" title="50"></i><i style="height: 58.0%" title="109"></i><i style="height: 68.1%" title="128"></i><i style="height: 59.0%" title="111"></i><i style="height: 72.3%" title="136"></i><i style="height: 89.4%" title="168"></i><i style="height: 70.7%" title="133"></i><i style="height: 46.3%" title="87"></i><i style="height: 51.6%" title="97"></i><i style="height: 54.3%" title="102"></i><i style="height: 33.0%" title="62"></i><i style="height: 31.9%" title="60"></i><i style="height: 61.2%" title="115"></i><i style="height: 73.9%" title="139"></i><i style="height: 66.0%" title="124"></i><i style="height: 78.7%" title="148"></i><i style="height: 100.0%" title="188"></i><i style="height: 86.2%" title="162"></i><i style="height: 60.6%" title="114"></i><i style="height: 62.2%" title="117"></i></div><div class="axisx"><span>Sep 10</span><span>Sep 25</span><span>Oct 9</span></div></div>
@@ -114,7 +115,7 @@
           <div class="ev"><span class="tm">rule</span><span class="toggle"><i></i>on</span><span class="msg">Failure storm on any /api/checkout route</span><span class="mut" style="font-size: 12px">page</span></div>
           <div class="ev"><span class="tm">rule</span><span class="toggle"><i></i>on</span><span class="msg">Interventions undone above 1% in an hour</span><span class="mut" style="font-size: 12px">email</span></div>
           <div class="ev"><span class="tm">rule</span><span class="toggle"><i></i>on</span><span class="msg">New release raises stale overwrites by 20%</span><span class="mut" style="font-size: 12px">slack</span></div>
-          <div class="ev"><span class="tm">rule</span><span class="toggle off"><i></i>off</span><span class="msg">P95 inference above 150 ms</span><span class="mut" style="font-size: 12px">slack</span></div>
+          <div class="ev"><span class="tm">rule</span><span class="toggle off"><i></i>off</span><span class="msg">P95 decision latency above 600 ms</span><span class="mut" style="font-size: 12px">slack</span></div>
         </div>
       </div>
       <div class="view" data-panel="policies" hidden>
@@ -135,7 +136,7 @@
       </div>
     </div>
   </div>
-  <p class="app-note">Product preview with sample data. GenClass Cloud is in early access; figures here illustrate the dashboard and are not customer results.</p>
+  <p class="app-note">Product preview with sample data. GenClass Cloud is not available yet; figures here illustrate the planned dashboard and are not customer results.</p>
 </div>
     <p class="note">Click the sections on the left to explore the preview.</p>
   </div>
@@ -143,7 +144,7 @@
 
 <section>
   <div class="wrap">
-    <div class="sh"><span class="no">What you get</span><h2>Reliability you can show your boss.</h2></div>
+    <div class="sh"><span class="no">Planned</span><h2>Reliability you can show your boss.</h2></div>
     <div class="fgrid">
       <div class="fcard"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h4v7H3zM10 4h4v16h-4zM17 9h4v11h-4z"/></svg></div><h3>Intervention analytics</h3><p>Anomalies, interventions and undo rates per app, route and category, so you can prove what GenClass did.</p></div>
       <div class="fcard"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9c0 6-12 3-12 6"/></svg></div><h3>Release comparisons</h3><p>Every deploy compared with the last: stale overwrites, duplicates and failure storms per 10k sessions.</p></div>
@@ -162,7 +163,7 @@
     <div class="arch">
       <div class="free"><div class="lvl">Your app · free forever</div><h3>Open-source runtime</h3><p>Local inference and runtime protection in every session. Works offline.</p></div>
       <div class="link"><div class="lvl">Optional · explicitly enabled</div><h3>Publishable project key</h3><p>Aggregate metrics out, policies in. No source code, request bodies or user state.</p></div>
-      <div class="paid"><div class="lvl">GenClass Cloud · paid</div><h3>Control plane</h3><p>Dashboard, release comparisons, alerts, rollouts and team controls.</p></div>
+      <div class="paid"><div class="lvl">GenClass Cloud · paid, planned</div><h3>Control plane</h3><p>Dashboard, release comparisons, alerts, rollouts and team controls.</p></div>
     </div>
 <div class="formcard" id="early-access">
   <div><h2>Get GenClass Cloud early access</h2><p>We are onboarding a small group of teams running GenClass in production. Tell us about your apps and we will reach out.</p><p style="font-size: 14px">The open-source runtime needs no account. This list is only for the paid products and is never shared.</p></div>
@@ -183,7 +184,7 @@
 </main>
 <footer class="end">
   <div class="wrap">
-    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass" width="220" height="183" loading="lazy">
     <h2>Free to run. Built to scale.</h2>
     <div class="row">
       <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>

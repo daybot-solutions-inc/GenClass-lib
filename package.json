@@ -2,7 +2,7 @@
   "name": "genclass-lib",
   "private": true,
   "type": "module",
-  "description": "GenClass Runtime: a client-side AI runtime that watches your web app and fixes races, stale writes, duplicates, inconsistent state and failure patterns in real time, with a local model.",
+  "description": "A runtime for web apps: a small local model flags, and optionally prevents, stale responses, races, duplicate requests, inconsistent state and failure storms.",
   "workspaces": [
     "packages/*",
     "sim",

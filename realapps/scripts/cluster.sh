@@ -14,7 +14,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cmd="${1:?sync|setup|run|status|stop}"; H="${2:?host}"
 IP=$(awk -v h="$H" '$1==h {print $2}' "$HOME/.jev-local/azure_hosts")
 [ -n "$IP" ] || { echo "unknown host $H" >&2; exit 2; }
-KEY="$HOME/.ssh/jev_azure"
+KEY="${AZURE_SSH_KEY:-$HOME/.ssh/id_ed25519}"
 OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6)
 DEST="azureuser@${IP}"
 r() { timeout "${T:-600}" ssh "${OPTS[@]}" "${DEST}" "export PATH=\$HOME/node/bin:\$PATH; $1"; }

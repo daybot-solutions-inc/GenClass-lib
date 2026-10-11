@@ -269,7 +269,7 @@ no accidental clicks, correct guards; any non-passive answer there is a false po
 
 **Cluster** (`sim/scripts/cluster/`):
 1. `DIST=sim/dist bash sim/scripts/cluster/bundle.sh` on the train VM builds `~/xfer-sim/simbundle.tgz` (≈ 100 MB:
-   Node 22, runtime dist, sim dist + model host, needed node_modules) and serves it on `10.0.0.4:8810`.
+   Node 22, runtime dist, sim dist + model host, needed node_modules) and serves it on `<train VM private ip>:8810`.
 2. On the Mac: `orchestrate.sh start data c02 …` (one `az vm start` at a time, with timeouts), then
    `orchestrate.sh run RUN gold|unlabeled|onpolicy:<dir> ROWS_PER_NODE data c02 …`. Each node downloads the bundle,
    runs resumable parts with a disjoint seed range (node cNN: base + NN·10⁸; gold 10⁹, unlabeled 3·10⁹, on-policy
@@ -297,8 +297,7 @@ no accidental clicks, correct guards; any non-passive answer there is a false po
 
    **Node claim protocol (lead, 2026-10-08; all agents).** Before using a node, check for other agents' processes
    and take the on-node lock `~/.gcl-claim/owner` ("<agent> <job> <UTC>"); a node whose lock belongs to another
-   agent is taken only if that agent's processes are gone; remove the lock before deallocating; keep recording
-   claims in `training/NEEDS.md`. `claim.sh` (claim / release / check, run on the node) implements it;
+   agent is taken only if that agent's processes are gone; remove the lock before deallocating. `claim.sh` (claim / release / check, run on the node) implements it;
    `orchestrate.sh run` claims each node and skips busy ones, `orchestrate.sh stop` (and so `drain.sh`) deallocates
    only nodes whose check passes (no other agent's lock or processes; `FORCE=1` overrides) after releasing SIM's lock.
 
@@ -375,7 +374,7 @@ Splits are per trajectory, so all of a scenario's rows share one split (`src/wor
    those passive. Isolated failures are now `transient` (54% of failure rows); retry is best on about 30% of them.
 4. **`defer` is scored as defer-then-apply** (the future policy is passive). A real model re-decides on re-trigger.
 5. **Few conflicts.** The runtime's triage does not yet flag a remote write that conflicts with a pending local
-   change (sim/NEEDS.md f; CORE is adding it), so `conflict` rows come only from the local echo that lands
+   change (requested from CORE), so `conflict` rows come only from the local echo that lands
    later (under 1% of mutation rows).
 6. **Thin classes.** Transitions are about 3% of decision rows (15% of sessions now last 2–5 min). Inconsistency
    triggers are mostly coincidental invariants (about 90% `expected`); genuine relation breaks are about 10% of

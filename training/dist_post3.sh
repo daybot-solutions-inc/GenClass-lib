@@ -10,7 +10,7 @@
 set -euo pipefail
 M="${1:?model}"; NAME="${2:?export name}"; VER="${3:?version}"; R0="${4:?rank0}"; HELPERS="${5:?helper nodes}"
 KIND="${GATE_KIND:-mass}"; T1="${T1_TAU:-}"; MQ="$M-q8"
-HERE="$(cd "$(dirname "$0")" && pwd)"; JEV="$(cd "$HERE/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"; JEV="$(cd "$HERE/.." && pwd)"   # repo root (scripts/azvm.sh)
 ip() { awk -v h="$1" '$1==h {print $3}' "$HOME/.jev-local/azure_hosts"; }
 R0IP=$(ip "$R0")
 SETS="sim2e:test sim2e:dev sim2f:test real2e:test real2e:dev realev:test realev3:test onpae:test onpae:dev sim3e:test sim3e:dev real3e:test real3e:dev sim2g:dev onpbd:dev onpad:dev onpbe:test"

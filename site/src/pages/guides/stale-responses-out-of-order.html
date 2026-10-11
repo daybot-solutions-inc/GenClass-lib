@@ -45,9 +45,9 @@ async function search(q) {
 ).subscribe(render);</code></pre>
 
       <h2 id="prod">Catch the ones you missed in production</h2>
-      <p>Most apps have more than one search box, and filters, tabs and pagination fail the same way. <a href="/">GenClass</a> detects a response that would overwrite newer data across every fetch in your app and, in guard mode, discards it before render. In testing, installed from npm into a fresh app, it fixed an out-of-order typeahead in 6 of 6 trials.</p>
+      <p>Most apps have more than one search box, and filters, tabs and pagination fail the same way. <a href="/">GenClass</a> detects a response that would overwrite newer data across every fetch in your app and, in guard mode, discards it before render. At the default setting it acts rarely; the <a href="/benchmarks">benchmarks</a> show how often.</p>
 <pre><code>npm install @genclass/runtime</code></pre>
-      <div class="callout"><b>See it live:</b> the <a href="/#demo">race demo</a> types into two search boxes on the same simulated network.</div>
+      <div class="callout"><b>See it live:</b> the <a href="/#lab">live demo</a> types into a search box on an out-of-order network, with the real runtime deciding on your device.</div>
       <p>Related: <a href="/guides/race-conditions-react">race conditions in React useEffect</a>.</p>
     </article>
   </div>

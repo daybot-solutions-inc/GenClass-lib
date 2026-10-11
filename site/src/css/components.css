@@ -313,6 +313,9 @@ summary{font-size:16px}
 .trust{display:flex;flex-wrap:wrap;justify-content:center;gap:10px 28px;margin-top:36px;padding:18px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);font-size:14px;color:var(--ink2)}
 .trust b{color:var(--ink);font-weight:600}
 .trust a{color:var(--ink2);text-decoration:none} .trust a:hover{color:var(--ink)}
+.trust-note{font:12.5px var(--mono);color:var(--ink3);margin:10px auto 0;max-width:80ch}
+.trust-note a{color:var(--ink2)}
+.notice{display:block;border:1px solid var(--rule2);border-left:3px solid var(--orange);background:var(--panel);border-radius:10px;padding:12px 16px;font-size:15px;color:var(--ink);margin-top:16px;max-width:70ch}
 .codetabs{margin-top:28px}
 .final{margin-top:96px;background:var(--night);color:var(--ntext);border-radius:20px;padding:56px 32px;text-align:center}
 .final h2{font-size:clamp(26px,3vw,38px);color:#fff;max-width:24ch;margin:0 auto}
@@ -322,6 +325,9 @@ summary{font-size:16px}
 
 /* ---------- lab v2: double-click invoice + problem radar ---------- */
 .lab-title{font:600 14px var(--sans);color:var(--ink);padding:9px 8px}
+.lab-chip{font:500 12px var(--mono);color:var(--orange);background:var(--orange-t);border-radius:999px;padding:4px 9px;white-space:nowrap}
+.lab-chip-link{font:500 12.5px var(--mono);color:var(--ink2);padding:0 6px}
+.lab-intro{font-size:13.5px;color:var(--ink2);padding:12px 24px 0}
 .dup{padding:24px;border-bottom:1px solid var(--rule)}
 .dup-head{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
 .dup-head h3,.radar-app h3{font-size:clamp(20px,2.2vw,26px);line-height:1.15;letter-spacing:-.02em}

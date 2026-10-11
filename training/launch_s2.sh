@@ -2,7 +2,7 @@
 # Stage 2 (SIM r300k + curriculum replay), launched from the Mac. R17 gets more compute (MODEL: latency makes it the
 # likely default). Rank-0 nodes hold the stage-1c trainer states used by --init-from.
 set -euo pipefail
-cd "$(dirname "$0")/../.."   # /Users/meharkhanna/jev (scripts/launch_run.sh)
+cd "$(dirname "$0")/.."   # repo root (scripts/launch_run.sh)
 G=/home/azureuser/gcl-train
 COMMON="--stream $G/data/s2 $G/data/s1b $G/data/s1 --stream-cache $G/cache/s2 --mixture $G/training/configs/mix_s2.json \
 --runs-dir $G/runs --max-len 2048 --batch-tokens 8192 --balance --amp --no-grad-ckpt --device cpu --log-every 10 \

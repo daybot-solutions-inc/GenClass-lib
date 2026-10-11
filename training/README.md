@@ -2,11 +2,11 @@
 
 How the model behind `@genclass/runtime` is built: vocabulary pruning, a synthetic stage-1 curriculum,
 training on the Azure CPU cluster, evaluation with the product metrics, and ONNX export for the browser.
-Owner: TRAIN. Results: `EVAL.md`. Day-by-day record and costs: `LOG.md`. Requests to other workstreams: `NEEDS.md`.
+Owner: TRAIN. Results: `EVAL.md`.
 
 Everything heavy runs on Azure VMs (never on the Mac). `training/node.sh HOST sync|'cmd'|get|put` wraps
-ssh/rsync with timeouts: it pushes `training/` to `~/gcl-train/training/` and the parent repo's `jev_local/`
-and `scripts/` to `~/jev/` on the node, and runs commands in `~/gcl-train` with `PYTHONPATH=~/jev:~/gcl-train/training`
+ssh/rsync with timeouts: it pushes `training/` to `~/gcl-train/training/` and `research/jev_local/`
+and `research/scripts/` to `~/jev/` on the node, and runs commands in `~/gcl-train` with `PYTHONPATH=~/jev:~/gcl-train/training`
 and `$PY` = the node's `~/jev/.venv/bin/python` (torch 2.14 CPU, transformers 5.18, onnx 1.23.1, onnxruntime 1.30.0).
 
 ## Models
@@ -72,8 +72,8 @@ held-out domains/templates, label consistency, passive share, version semantics 
 
 ## 3. Training
 
-Stream mode of `jev_local/train/train.py` (DDP over torchrun/gloo, `--balance` = exact-layout cost dealing) via
-`/Users/meharkhanna/jev/scripts/launch_run.sh`. The curriculum must be sharded (the exact-layout cache is built per
+Stream mode of `research/jev_local/train/train.py` (DDP over torchrun/gloo, `--balance` = exact-layout cost dealing) via
+`scripts/launch_run.sh`. The curriculum must be sharded (the exact-layout cache is built per
 file in parallel). **Use 8 ranks × 10 threads per F80 node** for these small models (per-micro-batch Python
 overhead dominates; 4 × 20 left ranks idle ≈ 45% of each step).
 
@@ -84,9 +84,9 @@ Stage 1 as run (`G=/home/azureuser/gcl-train`):
 COMMON="--stream $G/data/s1b $G/data/s1 --stream-cache $G/cache/s1c --mixture $G/training/configs/mix_s1c.json \
   --runs-dir $G/runs --max-len 1536 --batch-tokens 8192 --balance --amp --no-grad-ckpt --device cpu --log-every 10 \
   --ckpt-every 50 --passes 1 --seed 1"
-scripts/launch_run.sh r32-s1c 10.0.0.7 8 10 "c02 c03 c04 c05 c06 c07 c08" -- $COMMON --grad-accum 3 \
+scripts/launch_run.sh r32-s1c <rank-0 private ip> 8 10 "c02 c03 c04 c05 c06 c07 c08" -- $COMMON --grad-accum 3 \
   --base $G/models/r32-v16k/backbone --init-from $G/runs/r32-s1/ckpt --out $G/models/r32-s1c --lr 1.2e-4 --head-lr 5e-4 --resume
-scripts/launch_run.sh r17-s1c 10.0.0.14 8 10 "c09 c10 c11" -- $COMMON --grad-accum 2 \
+scripts/launch_run.sh r17-s1c <rank-0 private ip> 8 10 "c09 c10 c11" -- $COMMON --grad-accum 2 \
   --base $G/models/base/ettin-17m-v16k --init-from $G/runs/r17-s1/ckpt --out $G/models/r17-s1c --lr 2.5e-4 --head-lr 1.5e-3 --resume
 ```
 Stop a run with `pkill -TERM -f "run-name r32-s1[c] "` on its rank-0 node (bracket trick); every rank agrees to
@@ -101,7 +101,7 @@ coincidental-invariant cases), several passes, `--init-from` the stage-1 checkpo
 
 ```
 training/import_final.sh /home/azureuser/gcl/sim/sim/out/final-a simA   # c01: shards, eval subsets, bundle
-# start c02-c11, node.sh sync each, pull ~/xfer/final_simA.tar from c01 (10.0.0.6:8799) on each node
+# start c02-c11, node.sh sync each, pull ~/xfer/final_simA.tar from c01 (<c01 private ip>:8799) on each node
 training/launch_final1.sh <R32 passes> <R17 passes>                      # R32 c02-c07 (rank 0 c02), R17 c09-c11+c08
 # on each rank-0 node, detached: wait for models/<M>/meta.json "final": true, then training/final_post.sh
 #   (SIM eval with dev-fitted temperatures -> export with them -> serve the export tar on :8801)

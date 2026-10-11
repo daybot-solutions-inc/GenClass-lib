@@ -17,7 +17,7 @@
 <meta property="og:image" content="https://genclass.dev/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:image:alt" content="GenClass: catch race conditions and stale data in production">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="GenClass Options Reference">
@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=c4d84874">
+<link rel="stylesheet" href="/styles.css?v=0ca3ba97">
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Options Reference", "item": "https://genclass.dev/docs/options"}]}, {"@type": "TechArticle", "headline": "@genclass/runtime: configuration extensions spec (v0.3 options), final", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/OPTIONS-SPEC.md"}]}</script>
 </head>
 <body>
@@ -411,7 +411,7 @@ export interface InitOptions {
 <p><strong>Type</strong> <code>RequestScope</code>. <strong>Default</strong> <code>{ ignore:[], protect:[], crossOrigin:"observe", labels:[], labelsToModel:false }</code>.</p>
 <p><strong>Semantics.</strong>
 - <strong><code>ignore</code></strong>: the request is pure pass-through. There is no OpRec, no hold, no budget count, and no added microtask before the native call. The docs must warn that an ignored request can no longer be seen as a cause.
-- <strong><code>protect</code></strong>: the request is observed and reported but, in every mode, it is <strong>never held, delayed, retried, replayed, hedged, coalesced, answered from cache or discarded</strong>. Its hold is skipped at the network boundary, so it adds zero latency. Any action that targets it goes in <code>notOffered</code>, and the gate reason is <code>protected</code>. A throwing predicate counts as protected. <code>onBeforeAction</code> is never called for it. Writes to the store caused by delivering its response are gated normally. <em>(Changed 2026-10-10, SAFETY, pending the owner's confirmation; packages/runtime/STATUS.md "Deviations": ops created while a protected op is ambient inherit the protection, so the writes, timers and follow-up requests its response causes are never acted on either. Presets for money and identity flows: <code>protectPreset("payments", "auth")</code>, or <code>"preset:payments"</code> / <code>"preset:auth"</code> strings; see packages/runtime/INTERCEPTION.md.)</em>
+- <strong><code>protect</code></strong>: the request is observed and reported but, in every mode, it is <strong>never held, delayed, retried, replayed, hedged, coalesced, answered from cache or discarded</strong>. Its hold is skipped at the network boundary, so it adds zero latency. Any action that targets it goes in <code>notOffered</code>, and the gate reason is <code>protected</code>. A throwing predicate counts as protected. <code>onBeforeAction</code> is never called for it. Writes to the store caused by delivering its response are gated normally. <em>(Changed 2026-10-10, SAFETY, pending the owner's confirmation; recorded deviation: ops created while a protected op is ambient inherit the protection, so the writes, timers and follow-up requests its response causes are never acted on either. Presets for money and identity flows: <code>protectPreset("payments", "auth")</code>, or <code>"preset:payments"</code> / <code>"preset:auth"</code> strings; see packages/runtime/INTERCEPTION.md.)</em>
 - <strong><code>crossOrigin</code></strong>: cross-origin requests are always passive, and this is not configurable. <code>"ignore"</code> treats all of them as <code>ignore</code>d.
 - <strong><code>labels</code></strong>: the first match is attached as <code>scope.label</code>. Labels are sanitised to <code>[A-Za-z0-9 _-]</code>, at most 5 words and 40 chars. Anything else is stripped, with one warning. They appear in reports and sinks. They reach the model as <code>label (METHOD /path)</code> <strong>only when <code>labelsToModel:true</code></strong>. Labels are names only. Only <code>policy.idempotencyHeaders</code> affects whether <code>retry</code> is offered, and no label text has any policy meaning.
 - <strong><code>correlate</code></strong>: it is called once per op. Its result is redacted with <code>kind:"header"</code>, capped at 128 chars, and stored on <code>SinkRecord.correlationId</code> and <code>Report.correlationId</code>. <strong>It never reaches the model or the gate.</strong> A throw gives <code>undefined</code>.</p>
@@ -768,7 +768,7 @@ onIncident(() =&gt; rt.disable({ undo: true }));
 <li><strong>Hook points:</strong> <code>types.ts</code>, <code>runtime.ts</code>, <code>auto.ts</code>, <code>decide/{policy,exec,report,decider}.ts</code>, <code>observe/{fetch,xhr,websocket,eventsource,nav,errors,dom-user}.ts</code>, <code>model/{host,backend}.ts</code>, <code>learn/*</code>.</li>
 <li><strong>New files:</strong> <code>util/match.ts</code>, <code>decide/breaker.ts</code>, <code>decide/summary.ts</code>, <code>learn/store.ts</code>.</li>
 </ul>
-<p>Nothing was run. This spec comes from reading <code>/Users/meharkhanna/jev/GenClass-lib/packages/runtime/src/types.ts</code>, <code>/Users/meharkhanna/jev/GenClass-lib/docs/runtime/API.md</code>, the README and the CONTRACT sections. <code>types.ts</code> gives <code>"balanced"</code> as the default aggressiveness, so the README text now says "balanced". <code>API.md</code> already has <code>rt.on</code>, and the new events extend it.</p>
+<p>Nothing was run. This spec comes from reading <code>packages/runtime/src/types.ts</code>, <code>docs/runtime/API.md</code>, the README and the CONTRACT sections. <code>types.ts</code> gives <code>"balanced"</code> as the default aggressiveness, so the README text now says "balanced". <code>API.md</code> already has <code>rt.on</code>, and the new events extend it.</p>
 <h2 id="dropped-proposals">Dropped proposals</h2>
 <ul>
 <li>[dx] env / preset: Auto-detecting the environment from hostname or NODE_ENV is magic that will silently go wrong (tunnels, staging), and production behaviour would change on upgrade. The defaults are already the safe production profile (guard, cautious), and dev is just mode:'observe', debug:true. A docs snippet works better than another layer of option resolution. A ?genclass-mode URL override is a production safety risk.</li>
@@ -781,7 +781,7 @@ onIncident(() =&gt; rt.disable({ undo: true }));
 </main>
 <footer class="end">
   <div class="wrap">
-    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass" width="220" height="183" loading="lazy">
     <h2>Free to run. Built to scale.</h2>
     <div class="row">
       <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>

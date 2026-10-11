@@ -7,7 +7,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-AZVM=/Users/meharkhanna/jev/scripts/azvm.sh
+AZVM="${AZVM:-$ROOT/scripts/azvm.sh}"
 RUN="$1"; OUT="$2"; shift 2
 left=("$@")
 while [ "${#left[@]}" -gt 0 ]; do

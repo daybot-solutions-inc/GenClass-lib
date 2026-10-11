@@ -6,7 +6,7 @@
 set -euo pipefail
 M="${1:?model}"; NODE="${2:?node}"; ROUND="${3:?round dir}"; SUB="${4:?subdir}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-JEV="$(cd "$HERE/../.." && pwd)"
+JEV="$(cd "$HERE/.." && pwd)"   # repo root (scripts/azvm.sh)
 PRIV=$(awk -v h="$NODE" '$1==h {print $3}' "$HOME/.jev-local/azure_hosts")
 TIMEOUT=300 "$HERE/node.sh" "$NODE" "mkdir -p ~/xfer && tar cf ~/xfer/export-$M.tar --exclude=ref -C ~/gcl-train/out export-$M && \
   (ss -ltn | grep -q ':8801 ' || (setsid nohup python3 -m http.server 8801 --bind $PRIV --directory /home/azureuser/xfer \

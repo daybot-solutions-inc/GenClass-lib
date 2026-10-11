@@ -17,7 +17,7 @@
 <meta property="og:image" content="https://genclass.dev/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:image:alt" content="GenClass: catch race conditions and stale data in production">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="GenClass Framework Compatibility Matrix">
@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=c4d84874">
+<link rel="stylesheet" href="/styles.css?v=0ca3ba97">
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Compatibility", "item": "https://genclass.dev/docs/compatibility"}]}, {"@type": "TechArticle", "headline": "Compatibility", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md"}]}</script>
 </head>
 <body>
@@ -56,7 +56,7 @@
 <li><strong>Bugs fixed by an action: 10 (10 × heal, HttpClient withXhr() (XMLHttpRequest) + signals (Angular 22 (SSR + hydration, zoneless)), scenario b, request:block).</strong> The two scenarios with a latent bug (a stale typeahead, a double submit) showed it in 250 of 290 runs without GenClass; guard left 249 and heal 240 of the same runs buggy. GenClass acts only when its model is confident, and with the shipped model that is rare: it reports far more than it fixes (see <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#model-quality">Model quality</a>). In 4 more runs a bug of the app did not show with GenClass although GenClass took no action: GenClass changed the timing of a race in the app (listed at the end of the page).</li>
 <li><strong>Observe-mode findings on correct apps: 319</strong> in 880 runs (scenarios c to h). 270 of them report the failure a scenario injects on purpose (the HTTP 500 in d, going offline in e), which the app handles correctly; <strong>49 are false findings</strong> (request:overload in g ×45, request:duplicate in g ×4). Findings change nothing in observe mode; they are listed per cell in <a href="#what-genclass-reported-and-did">What GenClass reported and did</a>.</li>
 </ul>
-<p>Versions: <code>@genclass/runtime</code> packed from this repository at commit <code>d04eff3</code> (version string 0.1.0-beta.4: the code released as 0.2.0 plus the "Model ready" log fix), model <code>genclass-runtime-r17</code> 2.0.0-rc4t (the default model, WASM, balanced profile), headless Chromium 153.0.8010.12, Node v24.21.0. Framework versions are in the first table.</p>
+<p>Versions: <code>@genclass/runtime</code> packed from this repository at commit <code>d04eff3</code> (version string 0.1.0-beta.4, never published: the code released as 0.2.0 plus the "Model ready" log fix, which shipped together as <strong>0.2.1</strong>), model <code>genclass-runtime-r17</code> 2.0.0-rc4t (the default model, WASM, balanced profile), headless Chromium 153.0.8010.12, Node v24.21.0. Framework versions are in the first table.</p>
 <h2 id="frameworks">Frameworks</h2>
 <p>Each app is built for production and served the way it would be in production (static files, <code>next start</code>, the SvelteKit Node adapter, Angular's SSR server). <em>Boots clean</em>: the model loads, fetch is instrumented, no console errors or GenClass warnings, no request leaves the machine. <em>Kill switch</em>: with <code>?genclass=off</code> nothing is installed (WebSocket, EventSource and timers are the browser's own, no model worker) and the app works. <em>Devtools</em>: the overlay mounts. <em>CSP</em>: the app still boots clean (model ready, no violation) under a Content-Security-Policy that adds only what the README asks for, sent with the HTML page (<em>page</em>) or with every response, scripts and the model worker included, as many production servers do (<em>every response</em>). <em>SSR</em>: the page is rendered on the server with GenClass installed, and importing the one line on the server returns an inert runtime (server <code>fetch</code> untouched, no globals added).</p>
 <table>
@@ -995,7 +995,7 @@ COMPAT_MODEL_DIR=$PWD/.cache-model/runtime-model-0.2.0 npm --prefix compat run c
 </main>
 <footer class="end">
   <div class="wrap">
-    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass" width="220" height="183" loading="lazy">
     <h2>Free to run. Built to scale.</h2>
     <div class="row">
       <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>

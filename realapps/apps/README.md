@@ -1,6 +1,6 @@
 # realapps app-authoring guide (for app-writing agents)
 
-Project: /Users/meharkhanna/jev/GenClass-lib (branch `runtime`; never commit/push). Owner of realapps/: REAL.
+Project: GenClass-lib, directory `realapps/`. Owner: REAL.
 You write small REAL web apps that run in headless Chromium with the real `@genclass/runtime`, driven by a
 scripted user on virtual time against an in-page mock backend with chaos. Rows of training data are produced
 from them. Diversity and realism are the point.

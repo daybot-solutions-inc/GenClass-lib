@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>GenClass: Self-Healing AI Runtime for Web Apps</title>
+<title>GenClass: Catch Race Conditions and Stale Data in Production</title>
 <meta name="description" content="Free, open-source AI runtime that catches race conditions, stale responses and duplicate submits in production, in the browser. Try the live demo.">
 <link rel="canonical" href="https://genclass.dev/">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
@@ -17,7 +17,7 @@
 <meta property="og:image" content="https://genclass.dev/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:image:alt" content="GenClass: catch race conditions and stale data in production">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="GenClass: catch race conditions and stale data in production">
@@ -31,8 +31,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=c4d84874">
-<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "SoftwareApplication", "name": "GenClass Runtime", "alternateName": "@genclass/runtime", "applicationCategory": "DeveloperApplication", "applicationSubCategory": "Application reliability", "operatingSystem": "Web browser", "softwareVersion": "0.2.0", "license": "https://www.apache.org/licenses/LICENSE-2.0", "url": "https://genclass.dev/", "downloadUrl": "https://www.npmjs.com/package/@genclass/runtime", "installUrl": "https://genclass.dev/docs", "codeRepository": "https://github.com/daybot-solutions-inc/GenClass-lib", "programmingLanguage": ["TypeScript", "JavaScript"], "featureList": ["On-device AI inference with WebGPU or WASM", "Stale response and race condition prevention", "Duplicate request detection", "Failure storm detection", "Automatic React, Redux and Zustand state discovery", "Plain-English explanations, audit trail and undo"], "description": "An open-source runtime for web apps that uses a 10 MB on-device model to detect and prevent stale responses, race conditions, duplicate requests, inconsistent state and failure storms.", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Community edition, free forever"}, "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is GenClass free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. The GenClass runtime is open source under Apache-2.0 and free forever, including in commercial apps, with no usage limits. GenClass Cloud and Enterprise are optional paid products for teams that want central dashboards, alerts, rollout controls, SSO and audit logs."}}, {"@type": "Question", "name": "Does GenClass need an account or an API key?", "acceptedAnswer": {"@type": "Answer", "text": "No. One script tag or import \"@genclass/runtime/auto\" is all it takes. An account is only needed for GenClass Cloud."}}, {"@type": "Question", "name": "Where does the AI model run?", "acceptedAnswer": {"@type": "Answer", "text": "In your users' browsers, inside a Web Worker on WebGPU or WASM. Decisions never depend on a server, so there are no per-inference fees and protection keeps working offline."}}, {"@type": "Question", "name": "Will GenClass break my app?", "acceptedAnswer": {"@type": "Answer", "text": "The default mode only observes and changes nothing. Across 7 frameworks and 15 data layers, GenClass introduced no bugs in 3,510 test runs, and in a sweep of 66 real apps 396 of 396 correct runs were left unchanged."}}]}]}</script>
+<link rel="stylesheet" href="/styles.css?v=0ca3ba97">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "SoftwareApplication", "name": "GenClass Runtime", "alternateName": "@genclass/runtime", "applicationCategory": "DeveloperApplication", "applicationSubCategory": "Application reliability", "operatingSystem": "Web browser", "softwareVersion": "0.2.0", "license": "https://www.apache.org/licenses/LICENSE-2.0", "url": "https://genclass.dev/", "downloadUrl": "https://www.npmjs.com/package/@genclass/runtime", "installUrl": "https://genclass.dev/docs", "codeRepository": "https://github.com/daybot-solutions-inc/GenClass-lib", "programmingLanguage": ["TypeScript", "JavaScript"], "featureList": ["On-device AI inference with WebGPU or WASM", "Stale response and race condition prevention", "Duplicate request detection", "Failure storm detection", "Automatic React and Redux state discovery, Zustand with its devtools middleware", "Plain-English explanations, audit trail and undo"], "description": "An open-source runtime for web apps that uses a 10 MB on-device model to detect and prevent stale responses, race conditions, duplicate requests, inconsistent state and failure storms.", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Community edition, free forever"}, "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is GenClass free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. The GenClass runtime is open source under Apache-2.0 and free forever, including in commercial apps, with no usage limits. GenClass Cloud and Enterprise are optional paid products for teams that want central dashboards, alerts, rollout controls, SSO and audit logs."}}, {"@type": "Question", "name": "Does GenClass need an account or an API key?", "acceptedAnswer": {"@type": "Answer", "text": "No. One script tag or import \"@genclass/runtime/auto\" is all it takes. An account is only needed for GenClass Cloud."}}, {"@type": "Question", "name": "Where does the AI model run?", "acceptedAnswer": {"@type": "Answer", "text": "In your users' browsers, inside a Web Worker on WebGPU or WASM. Decisions never depend on a server, so there are no per-inference fees and protection keeps working offline."}}, {"@type": "Question", "name": "Will GenClass break my app?", "acceptedAnswer": {"@type": "Answer", "text": "The default mode only observes and changes nothing. Across 7 frameworks and 15 data layers, GenClass introduced no bugs in 3,510 test runs and took no non-passive action on correct apps in 1,760 guard and heal runs."}}]}]}</script>
 <script>window.__gcRawFetch = window.fetch.bind(window);</script>
 <script src="https://cdn.jsdelivr.net/npm/@genclass/runtime@0.2.0" data-manual></script>
 </head>
@@ -61,11 +61,13 @@
     <div class="fw"><span>Works with</span><b>React</b><b>Next.js</b><b>Vue</b><b>Svelte</b><b>Angular</b><b>Solid</b><b>plain HTML</b></div>
   </div>
   <div class="wrap">
-<div class="lab" id="lab">
+<div class="lab" id="lab" data-rt="0.2.0">
   <div class="lab-tabs">
     <b class="lab-title">Live demo</b>
+    <span class="lab-chip">guard · maximum aggressiveness (demo)</span><a class="lab-chip-link" href="/?lab-thr=default#lab">production defaults</a>
     <span class="lab-live"><i></i><span id="gc-live">Loading GenClass 0.2.0 on your device…</span></span>
   </div>
+  <p class="lab-intro">This demo runs guard at its most aggressive setting so you can see it act; production defaults act far less often.</p>
 
   <div class="dup">
     <div class="dup-head">
@@ -119,9 +121,10 @@
       <span><b>Apache-2.0</b> open source</span>
       <a href="https://www.npmjs.com/package/@genclass/runtime"><b>v0.2.0</b> with npm provenance</a>
       <a href="/docs/compatibility"><b>7 frameworks</b>, 15 data layers tested</a>
-      <a href="/benchmarks"><b>96%</b> precision on unseen apps</a>
+      <a href="/benchmarks"><b>96%</b> precision at threshold 0.70 on unseen apps<sup>*</sup></a>
       <a href="/security"><b>Audited</b> interception surface</a>
     </div>
+    <p class="trust-note">* Detection precision of model 0.1.0 at report threshold 0.70 on 16,600 situations from real apps kept out of training. The shipped default threshold is 0.90. <a href="/benchmarks">All numbers, with their labels</a>.</p>
   </div>
 </div>
 
@@ -144,7 +147,7 @@
   <div class="wrap">
     <div class="sh"><span class="no">How it works</span><h2>A model in the browser, deciding at the network boundary.</h2></div>
     <div class="steps">
-      <div class="step"><span class="n">01</span><h3>Observe</h3><p>One line patches fetch, XHR, WebSocket and EventSource, and finds your React, Redux and Zustand state automatically.</p></div>
+      <div class="step"><span class="n">01</span><h3>Observe</h3><p>One line patches fetch, XHR, WebSocket and EventSource, and finds React and Redux state automatically, and Zustand with its devtools middleware.</p></div>
       <div class="step"><span class="n">02</span><h3>Triage</h3><p>Cheap facts are computed for everything. Only salient situations, like a response landing over newer data, reach the model.</p></div>
       <div class="step"><span class="n">03</span><h3>Decide on-device</h3><p>A 10 MB model in a Web Worker returns a calibrated diagnosis and action. No server, no API key.</p></div>
       <div class="step"><span class="n">04</span><h3>Report or act</h3><p>Observe reports in plain English. Guard can drop a stale write or merge a duplicate, with undo and an audit trail.</p></div>
@@ -187,12 +190,12 @@ npx @genclass/runtime remove   <span class="c"># undo exactly what init added</s
 <section id="proof">
   <div class="wrap">
     <div class="sh"><span class="no">Results</span><h2>Measured on apps it never saw.</h2></div>
-    <p class="intro">Trained on 71 million runtime situations, then tested on held-out apps in real browsers. Every number links to its method.</p>
+    <p class="intro">Trained on about 17 million labeled runtime situations, then tested on held-out apps in real browsers. Every number links to its method.</p>
     <div class="stats">
-      <div class="stat"><div class="big g">96%</div><p>detection precision on real apps it had never seen</p><small>16,600 held-out situations</small></div>
-      <div class="stat"><div class="big">3 in 4</div><p>duplicate submits caught in observe mode</p><small>held-out real apps</small></div>
+      <div class="stat"><div class="big g">96%</div><p>detection precision on real apps it had never seen</p><small>model 0.1.0, report threshold 0.70 · 16,600 held-out situations</small></div>
+      <div class="stat"><div class="big">3 in 4</div><p>duplicate submits detected in observe mode</p><small>model 0.2.0, default setting · held-out real apps</small></div>
       <div class="stat"><div class="big g">0 bugs</div><p>introduced in 3,510 runs across 7 frameworks</p><small>compatibility matrix</small></div>
-      <div class="stat"><div class="big">10 MB</div><p>model, about 177 ms per decision on one CPU thread</p><small>faster on WebGPU</small></div>
+      <div class="stat"><div class="big">10 MB</div><p>model (10.2 MB q8), about 180 ms per decision on one CPU thread</p><small>faster on WebGPU</small></div>
     </div>
     <p class="note"><a href="/benchmarks">All benchmarks</a>, including where it still misses.</p>
   </div>
@@ -200,8 +203,8 @@ npx @genclass/runtime remove   <span class="c"># undo exactly what init added</s
 
 <section id="cloud">
   <div class="wrap">
-    <div class="sh"><span class="no">For teams · early access</span><h2>See what it fixed, across every app.</h2></div>
-    <p class="intro">The runtime is free forever. GenClass Cloud adds one dashboard for interventions and undo rates, release comparisons, alerts and safe rollouts. Inference never leaves the browser.</p>
+    <div class="sh"><span class="no">For teams · early access</span><h2>See what GenClass reported and prevented, across every app.</h2></div>
+    <p class="intro">GenClass Cloud is not available yet; we are building it with design partners. The runtime is free forever. Cloud will add one dashboard for detections, interventions and undo rates, release comparisons, alerts and safe rollouts. Inference never leaves the browser.</p>
 <div class="app" data-app>
   <div class="app-top"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="url">app.genclass.dev / acme / storefront-web</span><span class="badge n sample">Preview · sample data</span></div>
   <div class="app-body">
@@ -216,7 +219,7 @@ npx @genclass/runtime remove   <span class="c"># undo exactly what init added</s
           <div class="kpi"><div class="k">Anomalies detected</div><div class="v">12,847</div><div class="d mut">across 1.9M sessions</div></div>
           <div class="kpi"><div class="k">Interventions applied</div><div class="v">3,291</div><div class="d up">stale writes, duplicates, retries</div></div>
           <div class="kpi"><div class="k">Undone by users</div><div class="v">14</div><div class="d up">0.43% of interventions</div></div>
-          <div class="kpi"><div class="k">P95 inference</div><div class="v">82 ms</div><div class="d mut">on-device, WebGPU + WASM</div></div>
+          <div class="kpi"><div class="k">P50 decision</div><div class="v">182 ms</div><div class="d mut">WASM, 1 thread · faster on WebGPU</div></div>
         </div>
         <div class="panels">
           <div class="pnl"><h4>Interventions per day <span>30 days</span></h4><div class="spark" aria-hidden="true"><i style="height: 54.8%" title="103"></i><i style="height: 61.2%" title="115"></i><i style="height: 51.6%" title="97"></i><i style="height: 64.9%" title="122"></i><i style="height: 77.7%" title="146"></i><i style="height: 54.8%" title="103"></i><i style="height: 31.9%" title="60"></i><i style="height: 39.9%" title="75"></i><i style="height: 41.5%" title="78"></i><i style="height: 22.3%" title="42"></i><i style="height: 26.6%" title="50"></i><i style="height: 58.0%" title="109"></i><i style="height: 68.1%" title="128"></i><i style="height: 59.0%" title="111"></i><i style="height: 72.3%" title="136"></i><i style="height: 89.4%" title="168"></i><i style="height: 70.7%" title="133"></i><i style="height: 46.3%" title="87"></i><i style="height: 51.6%" title="97"></i><i style="height: 54.3%" title="102"></i><i style="height: 33.0%" title="62"></i><i style="height: 31.9%" title="60"></i><i style="height: 61.2%" title="115"></i><i style="height: 73.9%" title="139"></i><i style="height: 66.0%" title="124"></i><i style="height: 78.7%" title="148"></i><i style="height: 100.0%" title="188"></i><i style="height: 86.2%" title="162"></i><i style="height: 60.6%" title="114"></i><i style="height: 62.2%" title="117"></i></div><div class="axisx"><span>Sep 10</span><span>Sep 25</span><span>Oct 9</span></div></div>
@@ -263,7 +266,7 @@ npx @genclass/runtime remove   <span class="c"># undo exactly what init added</s
           <div class="ev"><span class="tm">rule</span><span class="toggle"><i></i>on</span><span class="msg">Failure storm on any /api/checkout route</span><span class="mut" style="font-size: 12px">page</span></div>
           <div class="ev"><span class="tm">rule</span><span class="toggle"><i></i>on</span><span class="msg">Interventions undone above 1% in an hour</span><span class="mut" style="font-size: 12px">email</span></div>
           <div class="ev"><span class="tm">rule</span><span class="toggle"><i></i>on</span><span class="msg">New release raises stale overwrites by 20%</span><span class="mut" style="font-size: 12px">slack</span></div>
-          <div class="ev"><span class="tm">rule</span><span class="toggle off"><i></i>off</span><span class="msg">P95 inference above 150 ms</span><span class="mut" style="font-size: 12px">slack</span></div>
+          <div class="ev"><span class="tm">rule</span><span class="toggle off"><i></i>off</span><span class="msg">P95 decision latency above 600 ms</span><span class="mut" style="font-size: 12px">slack</span></div>
         </div>
       </div>
       <div class="view" data-panel="policies" hidden>
@@ -284,7 +287,7 @@ npx @genclass/runtime remove   <span class="c"># undo exactly what init added</s
       </div>
     </div>
   </div>
-  <p class="app-note">Product preview with sample data. GenClass Cloud is in early access; figures here illustrate the dashboard and are not customer results.</p>
+  <p class="app-note">Product preview with sample data. GenClass Cloud is not available yet; figures here illustrate the planned dashboard and are not customer results.</p>
 </div>
     <div class="ctas" style="margin-top: 24px"><a class="btn green" href="/cloud#early-access">Request Cloud early access</a><a class="btn ghost" href="/pricing">See pricing</a></div>
   </div>
@@ -302,7 +305,7 @@ npx @genclass/runtime remove   <span class="c"># undo exactly what init added</s
       <div>
         <details><summary>Where does the AI model run?</summary><p>In your users' browsers, inside a Web Worker on WebGPU or WASM. No server, no inference fees, and it keeps working offline.</p></details>
         <details><summary>Will it break my app?</summary><p>The default mode only observes. Across 7 frameworks and 15 data layers it introduced no bugs in 3,510 runs. <code>?genclass=off</code> turns it off instantly.</p></details>
-        <details><summary>How often does it act today?</summary><p>Rarely, by design. It is tuned to almost never be wrong when it acts, so at the default setting it acts on a minority of fixable cases. The <a href="/benchmarks">benchmarks</a> show the exact trade-off.</p></details>
+        <details><summary>How often does it act today?</summary><p>Rarely, by design. It is tuned to almost never be wrong when it acts, so at the default setting it acts on about 8% of the cases where acting would help. The <a href="/benchmarks">benchmarks</a> show the exact trade-off.</p></details>
       </div>
     </div>
     <div class="final">
@@ -316,7 +319,7 @@ npx @genclass/runtime remove   <span class="c"># undo exactly what init added</s
 </main>
 <footer class="end">
   <div class="wrap">
-    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass" width="220" height="183" loading="lazy">
     <h2>Free to run. Built to scale.</h2>
     <div class="row">
       <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
@@ -334,6 +337,6 @@ npx @genclass/runtime remove   <span class="c"># undo exactly what init added</s
   </div>
 </footer>
 <script src="/app.js?v=7a4fd5f9" defer></script>
-<script src="/live.js?v=7" defer></script>
+<script src="/live.js?v=8" defer></script>
 </body>
 </html>

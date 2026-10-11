@@ -1,6 +1,6 @@
 <!--meta {"path":"/privacy","nav":"","priority":"0.3","crumbs":[["Privacy","/privacy"]],
 "title":"Privacy | GenClass",
-"description":"How GenClass handles data: on-device inference, what the open-source runtime's optional diagnostics contain, and how we use early-access sign-ups."} -->
+"description":"How GenClass handles data: on-device inference, what the open-source runtime's anonymous diagnostics contain, and how we use early-access sign-ups."} -->
 <div class="page-hero">
   <div class="wrap">
     <!--@crumbs-->
@@ -13,9 +13,9 @@
     <div class="prose">
       <h2>The runtime</h2>
       <p>The GenClass runtime makes every decision in the browser with a local model. It does not need a GenClass account or server to work.</p>
-      <p>The runtime sends anonymous, redacted diagnostics by default to help improve the model: decisions with the redacted situation text the model read, outcomes and counts. It never sends typed password, payment or secret values, cookies, headers, request bodies, storage or query strings, and the collector stores no IP address or user agent. Turn it off with <code>GenClass.init({ telemetry: false })</code>, <code>?genclass=no-telemetry</code>, or Global Privacy Control. Full details are in <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md">TELEMETRY.md</a>.</p>
+      <p>From runtime 0.2.1, the runtime sends anonymous diagnostics by default on public hosts, to help improve the model, and not on local or private hosts (<code>localhost</code>, <code>*.localhost</code>, <code>*.local</code>, <code>*.test</code>, <code>127.0.0.1</code>, <code>::1</code>, private IP ranges). By default they contain no text from the page: only a random per-page session id, versions, mode, device class, the app's hostname and id-normalised path, and for each decision the trigger, diagnosis and confidence, action, gate, outcome, latency and counts. The situation text the model read is sent only when the app opts in with <code>telemetry: { include: { situation: true } }</code>; with that on, the redacted situation can include route names with query strings, short error messages and short field values (see <a href="/docs/telemetry">TELEMETRY.md</a>). In either setting it never sends typed password, payment or secret values, cookies, headers, request or response bodies or storage contents, and the collector stores no IP address or user agent. Turn it off with <code>GenClass.init({ telemetry: false })</code>, <code>?genclass=no-telemetry</code>, <code>localStorage</code> <code>genclass.telemetry=off</code>, or Global Privacy Control. Full details are in <a href="/docs/telemetry">TELEMETRY.md</a>.</p>
       <h2>GenClass Cloud</h2>
-      <p>Cloud is optional and only receives data from apps you connect with a publishable project key: aggregate metrics such as counts, categories and timings.</p>
+      <p>Cloud is not available yet. It is planned to be optional and to receive only data from apps you connect with a publishable project key: aggregate metrics such as counts, categories and timings.</p>
       <h2>Early-access sign-ups</h2>
       <p>When you request early access we store your email, company, number of apps and the plan you picked. We use it only to contact you about GenClass, never sell or share it, and delete it on request.</p>
       <h2>This website</h2>

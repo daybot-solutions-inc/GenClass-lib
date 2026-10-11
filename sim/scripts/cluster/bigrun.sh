@@ -10,7 +10,7 @@
 # Stop nodes with orchestrate.sh stop NODES... as soon as their parts are collected.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-AZVM=/Users/meharkhanna/jev/scripts/azvm.sh
+AZVM="${AZVM:-$(cd "$HERE/../../.." && pwd)/scripts/azvm.sh}"
 cmd="${1:?start|unl|gold|wait|ips}"; shift
 case "$cmd" in
   start)

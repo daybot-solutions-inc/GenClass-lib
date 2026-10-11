@@ -1,0 +1,9 @@
+GenClass Runtime
+Copyright 2026 Daybot Solutions Inc.
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The CDN build of @genclass/runtime (dist/genclass.global*.js) bundles onnxruntime-web
+(MIT License, Copyright (c) Microsoft Corporation).
+
+The default model, @genclass/runtime-model, is initialised from jhu-clsp/ettin-encoder-17m (MIT License).

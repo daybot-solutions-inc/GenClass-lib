@@ -158,7 +158,7 @@ whether a much larger teacher separates these cases (P2) and whether more and on
 
 Size and latency of the delivered exports (`~/gcl/train-out/final1/{r17,r32}` on the train VM; R17 also in
 `packages/runtime-model/files/r17/`): R17 q8 9.58 MB / fp16 13.57 MB; q8 vs PyTorch: argmax 100%, gate agreement
-99.5% @0.8 / 100% @0.9 (233 questions); onnxruntime-web 1.30 WASM 1 thread ≈ 177 / 323 / 589 ms at 500 / 780 / 1,170
+99.5% @0.8 / 100% @0.9 (223 decisions); onnxruntime-web 1.30 WASM 1 thread ≈ 177 / 323 / 589 ms at 500 / 780 / 1,170
 sequence tokens (SIM rows: ≈ 380 / 780 / 1,100 tokens at the 1,000 / 2,000 / 3,200-char budgets).
 
 **Recommendation for v1:** R17 as the default for every device (same accuracy as R32 at a third of the latency and

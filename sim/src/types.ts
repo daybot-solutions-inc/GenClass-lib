@@ -19,7 +19,7 @@ export type TriggerKind =
 
 export interface ModelStatus { state: "off" | "loading" | "ready" | "error"; model?: string; error?: string }
 
-/** Structured subject (requested from CORE in sim/NEEDS.md §1). Every field optional: the sim degrades gracefully. */
+/** Structured subject (requested from CORE). Every field optional: the sim degrades gracefully. */
 export interface SubjectInfo {
   kind?: string;
   op?: number;

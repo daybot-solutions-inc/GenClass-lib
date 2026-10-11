@@ -1,10 +1,10 @@
 <!--meta {"path":"/pricing","nav":"pricing","priority":"0.9","crumbs":[["Pricing","/pricing"]],
 "title":"GenClass Pricing: Free Runtime, Cloud and Enterprise",
 "description":"The GenClass runtime is free and open source forever. Cloud for teams starts at $99/month; Enterprise with SSO, audit logs and SLAs from $15k/year.",
-"jsonld":[{"@type":"Product","name":"GenClass","description":"Self-healing AI runtime for web apps, with an optional cloud control plane for teams.","brand":{"@type":"Brand","name":"GenClass"},"image":"https://genclass.dev/icon-512.png","url":"https://genclass.dev/pricing","offers":[
+"jsonld":[{"@type":"Product","name":"GenClass","description":"A runtime for web apps that flags, and optionally prevents, stale responses, races, duplicate requests, inconsistent state and failure storms, with a planned cloud control plane for teams.","brand":{"@type":"Brand","name":"GenClass"},"image":"https://genclass.dev/icon-512.png","url":"https://genclass.dev/pricing","offers":[
 {"@type":"Offer","name":"Community","price":"0","priceCurrency":"USD","url":"https://genclass.dev/docs","availability":"https://schema.org/InStock","description":"Open-source runtime, free forever, unlimited use."},
-{"@type":"Offer","name":"Cloud Teams","price":"99","priceCurrency":"USD","url":"https://genclass.dev/cloud","availability":"https://schema.org/PreOrder","priceSpecification":{"@type":"UnitPriceSpecification","price":"99","priceCurrency":"USD","unitText":"MONTH"},"description":"Central dashboard, release comparisons, alerts and team controls. Early access."},
-{"@type":"Offer","name":"Enterprise","price":"15000","priceCurrency":"USD","url":"https://genclass.dev/enterprise","availability":"https://schema.org/PreOrder","priceSpecification":{"@type":"UnitPriceSpecification","price":"15000","priceCurrency":"USD","unitText":"YEAR"},"description":"SSO, audit logs, private hosting, security policies, priority support and SLAs."}]},
+{"@type":"Offer","name":"Cloud Teams","price":"99","priceCurrency":"USD","url":"https://genclass.dev/cloud","availability":"https://schema.org/PreOrder","priceSpecification":{"@type":"UnitPriceSpecification","price":"99","priceCurrency":"USD","unitText":"MONTH"},"description":"Central dashboard, release comparisons, alerts and team controls. Planned; not available yet."},
+{"@type":"Offer","name":"Enterprise","price":"15000","priceCurrency":"USD","url":"https://genclass.dev/enterprise","availability":"https://schema.org/PreOrder","priceSpecification":{"@type":"UnitPriceSpecification","price":"15000","priceCurrency":"USD","unitText":"YEAR"},"description":"SSO, audit logs, private hosting, security policies, priority support and SLAs. Planned; not available yet."}]},
 {"@type":"FAQPage","mainEntity":[
 {"@type":"Question","name":"Is the GenClass runtime really free for commercial use?","acceptedAnswer":{"@type":"Answer","text":"Yes. The runtime is Apache-2.0 open source. You can use it in commercial apps with unlimited traffic and no account."}},
 {"@type":"Question","name":"Do you charge per inference or per bug fixed?","acceptedAnswer":{"@type":"Answer","text":"No. Inference runs on your users' devices, so it costs us nothing and costs you nothing. Paid plans charge for the team control plane, not for protection."}},
@@ -14,6 +14,7 @@
     <!--@crumbs-->
     <h1>Free to protect. <em>Paid to manage at scale.</em></h1>
     <p class="lede">The runtime that catches the bugs is free forever, for every app. You pay only when your team wants one place to manage and measure reliability across production.</p>
+    <p class="notice">GenClass Cloud and Enterprise are not available yet. We are building them with design partners; the open-source runtime is what ships today.</p>
   </div>
 </div>
 
@@ -35,7 +36,7 @@
         </ul>
       </div>
       <div class="tier pop">
-        <span class="badge tag2">Early access</span>
+        <span class="badge tag2">Planned · early access</span>
         <h2>Cloud · Teams</h2>
         <div class="price">$99 <span>/ month and up</span></div>
         <p class="who">For teams that run GenClass in production and want proof it is working.</p>
@@ -49,9 +50,10 @@
           <li>Percentage rollouts of guard mode</li>
           <li>Shared policies and team roles</li>
         </ul>
-        <p class="fine2">Up to $299 per month depending on apps and seats.</p>
+        <p class="fine2">Planned features, not available yet. Up to $299 per month depending on apps and seats.</p>
       </div>
       <div class="tier">
+        <span class="badge tag2">Planned</span>
         <h2>Enterprise</h2>
         <div class="price">$15k <span>/ year and up</span></div>
         <p class="who">For organizations running GenClass across many apps with strict requirements.</p>
@@ -76,7 +78,7 @@
     <div class="sh"><span class="no">Compare plans</span><h2>What each plan includes.</h2></div>
     <div class="tbl-wrap">
       <table class="cmp">
-        <thead><tr><th>Feature</th><th>Community</th><th>Cloud</th><th>Enterprise</th></tr></thead>
+        <thead><tr><th>Feature</th><th>Community</th><th>Cloud (planned)</th><th>Enterprise (planned)</th></tr></thead>
         <tbody>
           <tr><td>On-device inference (WebGPU / WASM)</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
           <tr><td>Observe, guard and heal modes</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
@@ -106,7 +108,7 @@
       </div>
       <div>
         <details><summary>What happens if a Cloud subscription ends?</summary><p>Your apps stay protected. The runtime keeps running locally; only the dashboard, alerts and shared controls stop.</p></details>
-        <details><summary>What data does Cloud receive?</summary><p>Aggregate metrics from apps you connect with a publishable key: counts, categories, timings. No source code, no request bodies, no user state.</p></details>
+        <details><summary>What data will Cloud receive?</summary><p>Only aggregate metrics from apps you connect with a publishable key: counts, categories, timings. No source code, no request bodies, no user state. Cloud is not available yet.</p></details>
       </div>
     </div>
 <!--@waitlist cloud "Lock in early-access pricing" "Join the first teams on GenClass Cloud. Early-access teams keep their price and help shape the product."-->

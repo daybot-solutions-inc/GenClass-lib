@@ -65,7 +65,7 @@ async function loadResults(query) {
 GenClass.init({ mode: "guard" });</code></pre>
       <p>It logs what it did in plain English, and the discard can be undone:</p>
 <pre><code>[GenClass] Prevented a stale write: GET /api/search?q=pa landed after q=paris was shown (stale; discard)</code></pre>
-      <div class="callout"><b>Try it:</b> the <a href="/#demo">live demo</a> races two search boxes against the same out-of-order network.</div>
+      <div class="callout"><b>Try it:</b> the <a href="/#lab">live demo</a> races a search box against an out-of-order network, with the real runtime deciding on your device.</div>
 
       <h2 id="checklist">Checklist</h2>
       <ul>

@@ -163,7 +163,7 @@ function summary(): Record<string, unknown> {
   return { ...s, opts, workers, updated: new Date().toISOString() };
 }
 
-/** Batch manifest for TRAIN (training/NEEDS.md item 11). */
+/** Batch manifest for TRAIN. */
 function manifest(): Record<string, unknown> {
   return {
     dir: out,

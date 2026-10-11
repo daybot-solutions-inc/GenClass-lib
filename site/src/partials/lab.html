@@ -1,8 +1,10 @@
-<div class="lab" id="lab">
+<div class="lab" id="lab" data-rt="{{rt}}">
   <div class="lab-tabs">
     <b class="lab-title">Live demo</b>
-    <span class="lab-live"><i></i><span id="gc-live">Loading GenClass 0.2.0 on your device…</span></span>
+    <span class="lab-chip">guard · maximum aggressiveness (demo)</span><a class="lab-chip-link" href="/?lab-thr=default#lab">production defaults</a>
+    <span class="lab-live"><i></i><span id="gc-live">Loading GenClass {{rt}} on your device…</span></span>
   </div>
+  <p class="lab-intro">This demo runs guard at its most aggressive setting so you can see it act; production defaults act far less often.</p>
 
   <div class="dup">
     <div class="dup-head">
@@ -47,5 +49,5 @@
     </div>
   </div>
 
-  <p class="lab-foot">Everything above is the real <code>@genclass/runtime@0.2.0</code> from npm, deciding on your device (<span id="gc-backend">model loading</span>). The demo runs guard mode at maximum aggressiveness (<code>policy: { thresholds: { guard: 0 } }</code>); production defaults act less often and are <a href="/benchmarks">tuned for near-zero false fixes</a> (<a href="/?lab-thr=default#lab">try them here</a>). Telemetry is off on this site. Open DevTools to see the same <code>[GenClass]</code> lines.</p>
+  <p class="lab-foot">Everything above is the real <code>@genclass/runtime@{{rt}}</code> from npm, deciding on your device (<span id="gc-backend">model loading</span>). The demo runs guard mode at maximum aggressiveness (<code>policy: { thresholds: { guard: 0 } }</code>); production defaults act less often and are <a href="/benchmarks">tuned for near-zero false fixes</a> (<a href="/?lab-thr=default#lab">try them here</a>). Telemetry is off on this site. Open DevTools to see the same <code>[GenClass]</code> lines.</p>
 </div>

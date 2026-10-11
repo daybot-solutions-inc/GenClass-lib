@@ -136,8 +136,7 @@ What this says, plainly:
   chaos runs (mostly `block`) and lowered no bug rate. No demo had a false intervention on a clean run.
 - Holding writes makes correct behaviour worse even with zero actions: a held write can land after the user's newer
   write and overwrite it. Traced: board cards snap back (jump-backs 3.1 → 4.8 per session), editor echoes overwrite
-  newer keystrokes (37 times in 30 sessions), checkout confirmations set quantities back (24). See
-  [`NEEDS.md`](NEEDS.md) §1 for the mechanism, traces and a suggested fix.
+  newer keystrokes (37 times in 30 sessions), checkout confirmations set quantities back (24).
 - Holds also cost latency while the model is slow: the "auto" hold budget reaches 800 ms, so on clean runs the search
   list appears 10 → 234 ms later, and the status dashboard reacts 0.3 s later (§2).
 - Developer questions (`ask`/`decide`) are answered in ~0.4 s; accuracy under chaos went from 0.37 (app defaults) to
@@ -176,7 +175,7 @@ detections, interventions with what they changed, decisions that were not execut
   `holdBudgetMs` (300 ms); a decision that arrives later runs the passive action ("arrived after the hold budget").
 
 The v0.1 GenClass model is a general classifier, not trained for runtime situations; with it these demos measure
-the runtime, the integration and the harness. `NEEDS.md` lists what the demos need from the runtime.
+the runtime, the integration and the harness.
 
 ## Honesty rules the demos follow
 
@@ -205,5 +204,4 @@ scripts/vm-eval.sh                full VM pipeline
 screenshots/                      captured by the eval (light, dark, full page, mobile, heal mode, trial runner)
 results.json, results.md          latest measurements (raw trials in results.json)
 results-summary.json              the same without raw trials; shipped with the site for the landing page
-NEEDS.md                          what the demos need from the runtime, with evidence
 ```

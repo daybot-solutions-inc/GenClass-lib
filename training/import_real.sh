@@ -11,7 +11,7 @@ set -euo pipefail
 BATCHES="${1:?batch dirs under /data/real-out}"; EVALDIR="${2:-v2-eval}"
 WB="${WB:-c02}"; PORT=8804
 HERE="$(cd "$(dirname "$0")" && pwd)"
-JEV="$(cd "$HERE/../.." && pwd)"
+JEV="$(cd "$HERE/.." && pwd)"   # repo root (scripts/azvm.sh)
 timeout 120 "$JEV/scripts/azvm.sh" train "ss -ltn | grep -q ':${PORT} ' || \
   (setsid nohup python3 -m http.server ${PORT} --bind 10.0.0.4 --directory /data/real-out > /tmp/xfer${PORT}.log 2>&1 < /dev/null &); \
   sleep 1; for b in $BATCHES; do ls /data/real-out/\$b/done.txt /data/real-out/\$b/train.jsonl; done; ls /data/real-out/$EVALDIR/real_eval.jsonl || true"

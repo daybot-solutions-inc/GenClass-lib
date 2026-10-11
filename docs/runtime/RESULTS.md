@@ -2,7 +2,7 @@
 
 Updated 2026-10-08. All numbers are measured on held-out data. Every recall or fix rate is reported next to its
 false-intervention rate (FIR): the share of cases where doing nothing was best but the gate fired anyway. The raw
-reports are in `training/EVAL.md`, `training/LOG.md`, `sim/SEPARABILITY.md`, `realapps/README.md` and
+reports are in `training/EVAL.md`, `sim/SEPARABILITY.md`, `realapps/README.md` and
 `demos/results.md`.
 
 ## 1. Model stages compared (held-out simulated apps)
@@ -158,7 +158,7 @@ like-for-like. FIR on real apps is 0.00% for every profile.
 Why v2dT: v2d is better in heal mode (gain 8.1% vs 5.7%, real recall 21.8% vs 10.4%), and v2dT is better in guard
 mode (6.7% vs 4.2%). Guard is the default mode, so v2dT ships. Choosing the model per mode is an open item.
 
-Targets: guard FIR ≤ 0.1% (met), heal FIR ≤ 0.5% (met), calibration error ≤ 0.02 (met: 0.009),
+Targets: guard FIR ≤ 0.1% (met), heal FIR ≤ 0.5% (met), calibration error ≤ 0.02 (not yet measured for 0.2.0; r17-v2b: 0.021–0.023),
 diagnosis ≥ 95% (not yet), clear-case recall ≥ 80% (not yet).
 
 The stage-1 row comes from the 200 sim sample rows (`training/EVAL.md`). On its own curriculum test set, stage 1
@@ -173,7 +173,7 @@ scores 98% / 98% with 0% FIR.
 | GenClass 0.1 (original) | 57 MB | ≈ 900 at 780 | not trained for this |
 
 **Decision:** R17 is the default on every device. It matches R32 at about a third of the size and latency. Both
-q8 exports are fp16-free, so they run on WebGPU without `shader-f16`, and agree with PyTorch on 233/233 decisions
+q8 exports are fp16-free, so they run on WebGPU without `shader-f16`, and agree with PyTorch on 223/223 decisions
 in onnxruntime-web.
 
 ## 3. Why round 1 was timid (format v1 vs v2)
@@ -213,7 +213,7 @@ item).
 
 ## 5. Demos
 
-### Model 0.2.0, runtime 0.1.0-beta.4 and heal/overnight (2026-10-09, local, `bench/heal/`, `NIGHT-REPORT.md`)
+### Model 0.2.0, runtime 0.1.0-beta.4 and heal/overnight (2026-10-09, local, `bench/heal/`)
 
 10 chaos + 5 clean seeds per demo and mode, Playwright, telemetry off, model served locally (WASM, 4 threads).
 Chaos bug rate over the six demos (60 trials per cell); FI = false interventions on 30 clean trials.
@@ -229,7 +229,7 @@ Chaos bug rate over the six demos (60 trials per cell); FI = false interventions
 
 Nothing is healed at the shipped gates: candidate gains are rarely above the margins (median ≈ 0; 3–8% of
 discard/retry candidates reach 4). Differences under ~5 points are noise (cautious, with no action at all, differs
-from balanced by 4 points in heal). Troy (real app, 9 fault scenarios): the only bug, a duplicate order after a
+from balanced by 4 points in heal). A pilot app (a production Next.js ordering site, 9 fault scenarios): the only bug, a duplicate order after a
 lost-commit 502 and a re-tap, occurs in every mode; 0 actions, 0 false interventions.
 
 ### Automatic state discovery (2026-10-10, local, `bench/heal/`, branch `feat/one-line`, model 0.2.0, balanced)
@@ -247,9 +247,9 @@ seeds per demo and mode; small samples):
 Delivery decisions with discovery: checkout 2 / 2, board 32 / 33, editor 19 / 13 (manual 2 / 1, 31 / 26, 17 / 17). No
 actions ran in either build (as in the night report at these gates); no clean-run bugs.
 
-**Troy (only the one line, React state):** stores found `orderPage`, `addToOrder` (named after rendered elements:
+**The pilot app (only the one line, React state):** stores found `orderPage`, `addToOrder` (named after rendered elements:
 production names are minified) and `er` (minified `MenuBrowser`). The nine existing scenarios: decisions unchanged
-(12 per mode over 27 trials: failure 9, request 3; detections 9), since each Troy page load sees at most one response
+(12 per mode over 27 trials: failure 9, request 3; detections 9), since each of its page loads sees at most one response
 per request kind that changes state. New scenario `order-poll-reorder-2` (another device removes a line, the guest
 removes the other while the next ticket poll is answered 3 s late): **3 / 3 delivery decisions with discovery, 0 / 3
 with `autoState: false`**, all `expected` (correct: the app drops stale polls; no bug in any mode). Overhead: see the
@@ -293,9 +293,9 @@ trained v2 model once it exists.
 | 10-07 19:00–20:05 | Stage 2 pilot on pre-freeze sim data: precise but timid, because the labels were mushy. |
 | 10-07 23:20 | Runtime frozen as `situation-v1`. Sim phase A: 600k rows in 41 min. |
 | 10-08 00:06–01:30 | Final round 1 on phase A (R32 on 6 nodes, R17 on 4). Results in §1. |
-| 10-08 00:35 | Auto-shutdown disabled with the user's OK. Quota raised to 2,048 vCPU; nodes c12–c23 added. |
+| 10-08 00:35 | Auto-shutdown disabled with the owner's OK. Quota raised to 2,048 vCPU; nodes c12–c23 added. |
 | 10-08 02:00–04:00 | Separability analysis led to the S1/S2 label fixes and the F1–F9 facts. Runtime batches 4–5 (network-boundary decisions). |
 | 10-08 ~04:00 | `situation-v2` frozen. v2 generation launched: ~10M gold + ~50M unlabeled in the sim, ~495k real-browser rows. |
 | next | 150M teacher on v2 gold, teacher labels on unlabeled rows, distil R17/R32, DAgger rounds (SIM `--on-policy`), EVAL. |
 
-Spend to date: about $400 of Azure compute (`training/LOG.md` has the details).
+Compute: Azure CPU nodes (F80 and D64 sizes); the day-by-day record is kept internally.

@@ -338,7 +338,7 @@ describe("read-your-writes", () => {
   });
 });
 
-describe("example situations (STATUS.md)", () => {
+describe("example situations", () => {
   it("prints the F1/F2 delivery situations at the full budget", async () => {
     const s = setup({ script: defaultScript() });
     s.server.on("PUT", "/api/doc", ({ body }) => ({ body: { text: (JSON.parse(body ?? "{}") as { text: string }).text.trim() }, latency: 400 }));

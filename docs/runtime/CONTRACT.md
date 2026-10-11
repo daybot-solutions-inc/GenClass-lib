@@ -36,7 +36,7 @@ This file binds every workstream. If something here is wrong, tell the lead; do 
 6. TypeScript, strict mode, ESM only. Node 22 on the VM. No new runtime dependencies besides
    `onnxruntime-web` without asking the lead.
 
-## 0.5 Product principles (from the user, 2026-10-07; binding)
+## 0.5 Product principles (from the owner, 2026-10-07; binding)
 
 The narrow, real claim: **install one library; find and prevent runtime failures automatically, with low false
 positives.** Three things kill the product, and the design answers each:
@@ -97,7 +97,7 @@ docs/runtime/                CONTRACT.md (lead), ARCHITECTURE.md, API.md
 scripts/vm.sh                VM helper
 ```
 
-Existing GenClass content (jev_local/, extension/, docs/, etc.) stays as is. Do not edit it.
+Existing GenClass content (now under `research/`: jev_local/, extension/, docs/, etc.) stays as is. Do not edit it.
 
 ## 2. Public API (`@genclass/runtime`)
 
@@ -428,8 +428,8 @@ interface StandingQuestion { id: string; on: TriggerKind[]; question: Question; 
 
 ## 10. Model (`src/model/**`, owner MODEL)
 
-Port of the GenClass extension engine (`extension/genclass/src/core/{engine,packer,tokenizer,serialize,pyutil,runtime}.js`
-in the parent jev repo, read-only reference at `/Users/meharkhanna/jev/extension/genclass/src/`) to TypeScript,
+Port of the GenClass extension engine (`research/extension/genclass/src/core/{engine,packer,tokenizer,serialize,pyutil,runtime}.js`,
+read-only reference) to TypeScript,
 bit-for-bit compatible with the PyTorch packer (parity fixtures exist in the GenClass repo export flow).
 - `ModelHost implements DecisionProvider`: worker by default (`new Worker(new URL("./worker.js", import.meta.url), { type: "module" })`),
   inline fallback; one request at a time per session; queue with priority (held writes first).
@@ -446,7 +446,7 @@ bit-for-bit compatible with the PyTorch packer (parity fixtures exist in the Gen
   the tokenizer/packer must work with a pruned `tokenizer.json`, i.e. no hardcoded vocab size or marker ids:
   read them from the files).
 - Until the runtime model exists, develop against the v0.1 GenClass ONNX
-  (`https://github.com/MeharPro/GenClass/releases/download/v0.1.0/`, files listed in `extension/genclass/src/model/model.json`).
+  (`https://github.com/MeharPro/GenClass/releases/download/v0.1.0/`, files listed in `research/extension/genclass/src/model/model.json`).
 
 ## 11. Training data generator (`sim/`, owner SIM)
 
@@ -519,7 +519,7 @@ genuinely different failures or decisions):
 - The runtime model uses a pruned vocabulary (first 16,000 BPE merges; 16,364 tokens incl. markers). Marker and
   special ids are read from `tokenizer.json`/`meta.json`, never hardcoded.
 - Devtools and adapters are owned by UI (`src/devtools/**`, `src/adapters/**`).
-- **Default mode is `observe`** (approved by the user 2026-10-08, MVP): `GenClass.init()` and `createRuntime()` start
+- **Default mode is `observe`** (approved by the owner 2026-10-08, MVP): `GenClass.init()` and `createRuntime()` start
   in `observe` when no `mode` is given, so a fresh install reports findings and never holds, delays or changes
   anything. `guard` is opt-in (`mode: "guard"` or `?genclass=guard`); `heal` is experimental. Situation text,
   facts and questions are unchanged (they do not depend on the mode), so `situation-v1` training data stays valid.

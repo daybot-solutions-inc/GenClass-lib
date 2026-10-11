@@ -5,7 +5,7 @@
 #   training/claim.sh show NODE
 set -u
 MODE="$1"; N="$2"; JOB="${3:-}"
-JEV="$(cd "$(dirname "$0")/../.." && pwd)"
+JEV="$(cd "$(dirname "$0")/.." && pwd)"   # repo root (scripts/azvm.sh)
 case "$MODE" in
   claim)
     timeout 30 "$JEV/scripts/azvm.sh" "$N" "others=\$(pgrep -fa 'sim/dist/ge[n]|realapps.*gen.j[s]' | head -3); \

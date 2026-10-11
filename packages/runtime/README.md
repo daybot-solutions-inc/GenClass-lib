@@ -19,10 +19,10 @@ runtime has no list of known bugs: triage picks the situations, the model decide
 **One line covers the whole app.** First in `<head>`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime"></script>
+<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime@0.2.1"></script>
 ```
 
-or first in your entry file (any bundler; Next.js: `instrumentation-client.ts`):
+(pin the version: the unversioned URL may serve an older release from the CDN cache) or first in your entry file (any bundler; Next.js: `instrumentation-client.ts`):
 
 ```ts
 import "@genclass/runtime/auto";
@@ -34,15 +34,15 @@ stores, and Zustand stores with `devtools` are found automatically, with no stor
 ([Automatic state discovery](#automatic-state-discovery)). It starts in observe mode: it reports, and never changes
 what your app does (see Known limitations). `npx @genclass/runtime init` writes the line for you.
 
-> **Privacy notice: anonymous diagnostics are on by default since `0.1.0-beta.3`.** `GenClass.init()` in a browser
-> sends GenClass's decisions, including the redacted situation text the model read, to the GenClass maintainers to
-> improve the model. Never typed passwords or payment fields, cookies, headers, bodies or IP addresses. Opt out with
+> **Privacy notice: anonymous diagnostics are on by default.** `GenClass.init()` in a browser sends GenClass's
+> decisions and counts, without any text from your page, to the GenClass maintainers to improve the model; it is
+> off on `localhost` and other local hosts, and the situation text is sent only if you opt in. Opt out with
 > `npx @genclass/runtime init --no-telemetry`, `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`, or
 > `localStorage["genclass.telemetry"] = "off"`;
 > browsers sending Global Privacy Control are never collected. Details: [Privacy and telemetry](#privacy-and-telemetry)
 > and [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
 
-> **Status: `0.2.0`, with model `@genclass/runtime-model@0.2.0`.**
+> **Status: `0.2.1`, with model `@genclass/runtime-model@0.2.0`.**
 >
 > - **The model loads by default.** A default `GenClass.init()` loads `@genclass/runtime-model@0.2.0` (10.2 MB q8,
 >   `genclass-runtime-r17` 2.0.0-rc4t, run `r17-v2dT`, with a gain gate and three aggressiveness profiles) from
@@ -65,8 +65,7 @@ what your app does (see Known limitations). `npx @genclass/runtime init` writes 
 >   ships model 0.1.0. `0.1.0-alpha.1` and `0.1.0-alpha.0` (v1 runtime: guard by default, holds store writes, `NaN`
 >   crash) predate the model; do not use them.
 >
-> Progress: [OPEN_TASKS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/OPEN_TASKS.md) ·
-> measured results: [RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md).
+> Measured results: [RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md).
 
 ## Contents
 
@@ -83,7 +82,7 @@ what your app does (see Known limitations). `npx @genclass/runtime init` writes 
 
 Run your app as usual. When the model flags something, the console gets one plain-English line per detection or
 intervention, followed by a collapsed group with the evidence. Here a typeahead's slow response for "rea" lands
-after the response for "reac". This is real output of `0.1.0-beta.0` with model 0.1.0 (q8 on WASM, in Node),
+after the response for "reac". This is real output (format unchanged since `0.1.0-beta.0`; q8 on WASM, in Node),
 in the default observe mode. The response reaches the app at once, exactly as without GenClass, and the decision is
 made in the background, for the report only:
 
@@ -161,10 +160,10 @@ one line in React + Vite, Next.js 16, Vue + Pinia, SvelteKit 3, Angular 22, Soli
 that GenClass never makes those apps worse; starter templates are in
 [templates/](https://github.com/daybot-solutions-inc/GenClass-lib/tree/main/templates).
 Details: [test/install/RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/test/install/RESULTS.md).
-Those runs predate observe becoming the default and the `init` / `remove` fixes in this version (`--mode`, formatter
-handling, server and library detection). The fixes are covered by unit tests; the scaffolds have not been re-run.
+Those scaffold runs predate the `init` / `remove` fixes in this version (`--mode`, formatter handling, server and
+library detection), which are covered by unit tests; the current end-to-end evidence is the compatibility matrix above.
 
-**2. One import** (any bundler), first in your entry file, so it is installed before your framework and stores
+**2. One import** (any bundler; the package is ESM only, there is no `require` build), first in your entry file, so it is installed before your framework and stores
 created at import time see the runtime (automatic state discovery is on):
 
 ```ts
@@ -189,7 +188,7 @@ SSR or in Node, `/auto` installs nothing and returns an inert runtime.
 It exposes `window.GenClass`, discovers the app's state like the import does, and loads the model worker, ONNX
 Runtime Web and the overlay on demand from the same version on the CDN. `data-mode` takes `observe` (the default), `guard` or `heal`; `data-devtools="local"` shows the
 overlay only on localhost; `data-manual` skips the automatic `GenClass.init()`. Pin a version in production
-(`https://cdn.jsdelivr.net/npm/@genclass/runtime@0.2.0`); the plain-HTML path of `init` writes a pinned
+(`https://cdn.jsdelivr.net/npm/@genclass/runtime@0.2.1`); the plain-HTML path of `init` writes a pinned
 jsDelivr URL with SRI.
 
 **4. By hand:**
@@ -208,7 +207,10 @@ const rt = GenClass.init(); // observe; GenClass.init({ mode: "guard" }) to let 
 `GenClass.init()` does not discover state on its own: register stores ([State it can protect](#state-it-can-protect)),
 or import `@genclass/runtime/discover` first and pass `autoState: true`.
 
-The unscoped name `genclass-runtime` is not published; use `npx @genclass/runtime`.
+The unscoped `genclass-runtime` alias is deprecated; use `@genclass/runtime`.
+
+**ESM only.** The package ships ES modules (no `require`). Jest users need a `transformIgnorePatterns` entry that lets
+`@genclass/runtime` be transformed, for example `["/node_modules/(?!@genclass/runtime)"]`.
 
 ## Automatic state discovery
 
@@ -235,9 +237,8 @@ response would overwrite newer data") need those writes: without them, GenClass 
   and values that are not app data: functions, promises, React elements, DOM nodes, class instances and objects
   holding them (router caches, query clients).
 - **Secrets.** Field names are redacted as usual (`form.password`). A hook has no name, so a `useState` whose
-  string equals what a password, card-number or one-time-code input holds is redacted from then on. Telemetry
-  sends discovered state like registered stores (in the redacted situation text; `include: { situation: false }`
-  keeps it out).
+  string equals what a password, card-number or one-time-code input holds is redacted from then on. Discovered
+  state reaches telemetry only if you opt into sending situation text (`telemetry: { include: { situation: true } }`).
 - **Turn it off:** `<meta name="genclass" content="autostate=off">`, `data-autostate="off"` on the script tag,
   `window.GENCLASS_CONFIG = { autoState: false }`, or one source only: `autoState: { react: false }` (also `redux`,
   `zustand`). `?genclass=off` installs nothing at all.
@@ -274,9 +275,9 @@ These hold for the runtime; whether the model's decisions are good is a separate
   holding a 5,000-item array takes about 0.22 ms.
 - **The model runs in the browser.** It runs locally in a Web Worker on WebGPU or WASM and is cached after the
   first load: no inference server, no API key, and decisions never wait on the network. Anonymous diagnostics about
-  its decisions (redacted situation text included) are sent to the GenClass maintainers by default; one option turns
-  that off (see [Privacy and telemetry](#privacy-and-telemetry)). Typed values of password and payment fields are
-  never recorded (other redaction has gaps).
+  its decisions (without page text unless you opt in) are sent to the GenClass maintainers by default, except on
+  local hosts; one option turns that off (see [Privacy and telemetry](#privacy-and-telemetry)). Typed values of
+  password and payment fields are never recorded (other redaction has gaps).
 - **You can see what it did.** Every detection and action gets one plain-English console line with the evidence
   behind it, and `rt.explain(id)` shows exactly what the model read. Discards and rollbacks can be undone; responses
   it changed carry an `x-genclass` header.
@@ -697,19 +698,16 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
   | settled-point check | 0.3 ms |
 
 - **Bundle:** what every page loads is about 98 KB gzip for `@genclass/runtime/auto` with automatic state
-  discovery (89 KB before it) and 91 KB for the main entry with `GenClass.init()`, which does not carry discovery,
-  measured with esbuild (`test/bundle.test.ts` keeps them under 99 KB and 92 KB; the audit trail and protect presets
-  added about 1.6 KB to each). It was
-  97 to 99 KB up to `0.1.0-beta.3`, whose README said 83 KB. The model worker, ONNX Runtime Web's JavaScript (about
-  70 KB gzip for WASM, 115 KB with WebGPU, minified) and the devtools are separate chunks loaded on demand. ONNX
-  Runtime's own `.wasm` (14 MB, 3.1 MB brotli; 27 MB, 5.5 MB brotli with WebGPU) is never part of your build: the
-  runtime fetches it when the model loads (from jsDelivr, or `model.ortWasmPaths`). Up to `0.1.0-beta.3`, bundlers
-  copied both `.wasm` builds (41 MB, one file over 25 MiB) into every app's build output unused. The script-tag file
-  is about 110 KB gzip (with discovery); its model worker and ONNX Runtime glue load on demand.
-- **Model:** the default model is 9.6 MB (q8, pruned 16k vocabulary) on WASM and 13.6 MB (fp16) on WebGPU with
+  discovery and 91 KB for the main entry with `GenClass.init()`, which does not carry discovery, measured with
+  esbuild (`test/bundle.test.ts` keeps them under 99 KB and 92 KB). The model worker, ONNX Runtime Web's JavaScript
+  (about 70 KB gzip for WASM, 115 KB with WebGPU, minified) and the devtools are separate chunks loaded on demand.
+  ONNX Runtime's own `.wasm` (14 MB, 3.1 MB brotli; 27 MB, 5.5 MB brotli with WebGPU) is never part of your build:
+  the runtime fetches it when the model loads (from jsDelivr, or `model.ortWasmPaths`). The script-tag file is about
+  110 KB gzip (with discovery); its model worker and ONNX Runtime glue load on demand.
+- **Model:** the default model is 10.2 MB (q8, pruned 16k vocabulary) on WASM and 13.6 MB (fp16) on WebGPU with
   `shader-f16`. With onnxruntime-web 1.30 on single-thread WASM, measured in Node on the training VM, a forward pass
-  took about 176 / 320 / 583 ms at 500 / 780 / 1,170 tokens (p50 315 ms on runtime-sized requests). Single-thread
-  WASM uses the smallest situation budget (1,000 characters, about 500 tokens with the questions).
+  took about 182 / 330 / 599 ms at 500 / 780 / 1,170 tokens: about 180 ms per decision at the single-thread budget
+  (1,000 characters, about 500 tokens with the questions), which is the budget single-thread WASM uses.
 - **Holds are bounded.** A held response or request waits at most the hold budget, then proceeds unchanged. The
   default `"auto"` budget is 1.5 × the median of the last 20 model latencies, clamped to 150–800 ms; it is 300 ms
   before any latency is known.
@@ -728,26 +726,26 @@ observe mode against running without GenClass. With network chaos, 3 of 198 runs
 
 ## Costs
 
-Measured in a real app (Troy trial, 2026-10-09: a Next.js 16 ordering site, production build, Playwright Chromium,
+Measured in a real app (a pilot app, 2026-10-09: a Next.js 16 ordering site, production build, Playwright Chromium,
 390×844 mobile viewport, 4× CPU throttling, medians of 5 runs, observe mode, `0.1.0-beta.3`), the same build with and
 without `?genclass=off`:
 
 | | with GenClass |
 |---|---|
-| JavaScript on every page (first load, gzip) | +97 KB with `0.1.0-beta.3`; `0.2.0` cuts the runtime itself to about 89 KB (see Performance) |
+| JavaScript on every page (first load, gzip) | about +98 KB (`/auto` with discovery; 91 KB for the main entry, see Performance) |
 | Main thread: load event, LCP, long tasks | no measurable change; main JS heap +0.4 MB |
 | **Memory: renderer process (holds the model worker)** | **+190 to 280 MB RSS** while the model is loaded (cold 448 vs 169 MB, warm 361 vs 171 MB) |
-| **First visit download** | **12.7 MB** after the load event (q8 model 9.45 MB, ONNX Runtime wasm 3.07 MB brotli, tokenizer 207 KB); WebGPU devices: 13.6 MB fp16 model plus the larger ONNX Runtime build |
+| **First visit download** | **about 13 MB** after the load event (q8 model 10.2 MB, ONNX Runtime wasm 3.07 MB brotli, tokenizer 207 KB); WebGPU devices: 13.6 MB fp16 model plus the larger ONNX Runtime build |
 | Later visits | about 1 KB (`model.json` revalidated); the rest comes from Cache Storage, checked with sha256 |
 | Model load | WASM (1 thread): 0.9 to 1.3 s cold, 0.4 s warm. WebGPU (Apple M-series): 12 s cold, 2 s warm |
 | App build output | `0.1.0-beta.3`: +41 MB of unused ONNX Runtime files. `0.2.0`: none |
 
-**Automatic state discovery** (`0.2.0`, Troy with only the one line, 2026-10-10; same build with
+**Automatic state discovery** (`0.2.0`, the pilot app with only the one line, 2026-10-10; same build with
 `autoState: false` as the control; Playwright Chromium, 390×844, observe mode, telemetry off):
 
 | | cost |
 |---|---|
-| JavaScript (first load, bytes on the wire) | +7 KB on `/menu` (`/auto` is about 96 KB gzip instead of 89 KB; `GenClass.init()` setups do not load it) |
+| JavaScript (first load, bytes on the wire) | +7 KB on `/menu` (discovery's share of the 98 KB `/auto` entry; `GenClass.init()` setups do not load it) |
 | React commit walk, 4× CPU throttling | p50 0.2 ms, p95 1.8 ms, max 2.1 ms per commit including recording the change; total about 5 ms over the `/order` visit |
 | React commit walk, no throttling, 54 bench trials (about 2,000 commits) | p50 below 0.1 ms (the timer's resolution), p95 0.8 to 0.9 ms, max 3.8 ms |
 | Main-thread JS heap (after GC, 4× throttling) | 5.7 MB vs 5.2 MB without discovery |
@@ -795,36 +793,13 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
 
 ## Privacy and telemetry
 
-- **The model runs locally.** Situations are built and decided in the browser; no app data is sent anywhere to make
-  a decision. The default configuration downloads the model files (and ONNX Runtime's WASM when the model loads)
-  from cdn.jsdelivr.net. `model.baseUrl` and `model.ortWasmPaths` self-host them (`fetch-model` downloads both);
-  `model: false` loads nothing.
-- **Anonymous diagnostics (telemetry) are on by default** with `GenClass.init()` in a browser (since
-  `0.1.0-beta.3`; off in Node/SSR and with `createRuntime()` unless enabled). They go to the GenClass maintainers'
-  collector (a Cloudflare Worker storing to a private R2 bucket) to measure and improve the model. The console says
-  so once per page. Full list and schema: [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
-  - **Sent:** a random per-page session id (not stored, no cookies), runtime and model versions, mode,
-    aggressiveness, device class (WebGPU, cores, WASM threads, model load time), the page's hostname and its path
-    with ids replaced (no query or fragment); for every decision the trigger, **the redacted situation text the model
-    read**, its calibrated answers, the diagnosis, the gate threshold and its source, what ran, latency and whether
-    the subject waited; action outcomes (applied, failed, undone, late revert, veto), detections, model errors,
-    fail-open counts and periodic counts.
-  - **Never sent:** typed values of password, payment or secret fields, cookies, headers, request or response
-    bodies, storage contents, query strings, your app's error messages. The collector adds the receive time and a
-    two-letter country, and stores no IP address or user agent.
-  - **Situation text can still contain app data** the redactor does not recognise as secret (a product name, a
-    search term). `telemetry: { include: { situation: false } }` keeps the text out; `redact` hides more.
-  - **Automatically discovered state is sent like registered stores** (React, Redux or Zustand state, in the same
-    redacted situation text); those decisions carry `autoState: true`.
-  - **Opt out** (any one): `npx @genclass/runtime init --no-telemetry`, `GenClass.init({ telemetry: false })` (also `telemetry=off` in the meta tag or
-    `data-telemetry="off"` on the script tag), `?genclass=no-telemetry` (or `?genclass=off`) in the URL,
-    `localStorage.setItem("genclass.telemetry", "off")`. Browsers that send **Global Privacy Control**
-    (`navigator.globalPrivacyControl`) are never collected, as California's CCPA/CPRA requires for opt-out signals.
-  - **If you ship GenClass**, the data comes from your users' browsers: you may need to mention it in your privacy
-    policy and, where you need consent for analytics (GDPR/ePrivacy), start with `telemetry: false` until consent.
-    Stored data is deleted after 90 days. Privacy policy: [PRIVACY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md).
-  - `telemetry: { endpoint, sample, flushMs, maxBatch, include }` sends to your own collector, samples page loads,
-    or tunes batching. `runtime.telemetry` tells whether it is on and why not.
+- **Decisions are local.** Situations are built and decided in the browser by the local model; nothing is sent anywhere to make a decision.
+- **Anonymous diagnostics are on by default** with `GenClass.init()` in a browser, except on local and private hosts (`localhost`, `*.localhost`, `*.local`, `*.test`, `127.0.0.1`, `::1`, private IP ranges), in Node/SSR, and in `createRuntime()`. They go to the GenClass maintainers' collector ([`telemetry-worker/`](https://github.com/daybot-solutions-inc/GenClass-lib/tree/main/telemetry-worker), a Cloudflare Worker writing to a private R2 bucket) and are used to improve the model.
+- **By default no text from your page is sent.** Sent: a random per-page session id, versions, mode, device class, the app's hostname and id-normalised path, and for each decision the trigger, the diagnosis and its confidence, the action and gate, the outcome, latency and counts. The collector stores no IP address or user agent. One console notice per page says it is on.
+- **The situation text the model read is sent only if you opt in** with `GenClass.init({ telemetry: { include: { situation: true } } })`. It is redacted by field meaning, but can still contain route names with query strings, short error messages and short field values; read [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md) before enabling it.
+- **Opt out:** `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`, `localStorage.setItem("genclass.telemetry", "off")`; browsers sending Global Privacy Control are never collected.
+- Apps that ship GenClass may need to disclose this to their users (GDPR/CCPA). Full schema, storage and guidance: [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
+- Other telemetry options: `npx @genclass/runtime init --no-telemetry` writes the opt-out into your project (`telemetry=off` in the meta tag or `data-telemetry="off"` on the script tag do the same); `telemetry: { endpoint, sample, flushMs, maxBatch, include }` sends to your own collector, samples page loads, or tunes batching; `runtime.telemetry` tells whether it is on and why not. Privacy policy: [PRIVACY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md).
 - **Inputs:** typed values of password fields, `cc-*` / `one-time-code` / password autocomplete fields, and fields
   whose name or label names a secret are never recorded.
 - **Redaction:** the default redactor (`redact` option) works by the leaf field's meaning, not by substring.
@@ -854,7 +829,8 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
 - **Redaction gaps (all modes with a model).**
   - A container named by a two-word secret (`cardNumber`, `apiKey`, `creditCard`) counts as broad, like `auth`.
     So `payment.cardNumber.value = "4111 1111 1111 1111"`, or the same number, is shown. It reaches the situation
-    text, `explain()`, the console evidence and devtools, though never the network. A leaf with such a name
+    text, `explain()`, the console evidence and devtools, and the telemetry situation text if you opted in. A leaf
+    with such a name
     (`settings.apiKey`) is redacted.
   - The fact "X changed since #N started and is back to V" compares the rendered text, so two different redacted
     values read as "back to [redacted]".
@@ -902,8 +878,8 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
     `GenClass.init(options)` instead of importing `/auto`.
   - **React Router dev server.** On the very first dev start after `init`, Vite discovers the new imports late,
     re-optimizes and reloads the page, logging a few "Outdated Optimize Dep" errors once. Later loads are clean.
-  - **Not re-run end to end.** The end-to-end scaffold runs predate this version's `init` / `remove` changes, which
-    are covered by unit tests only.
+  - **Scaffolds not re-run.** The framework scaffold runs predate this version's `init` / `remove` changes, which
+    are covered by unit tests; the compatibility matrix is the current end-to-end evidence.
 - **The model can be wrong.** It is trained on simulated apps and real apps driven in a headless browser. It is not
   a substitute for tests. That is why the default only observes, guard acts only above thresholds fitted to keep
   false interventions at or below 0.1% on data the model never trained on, and every action is logged.

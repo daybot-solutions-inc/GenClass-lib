@@ -17,7 +17,7 @@
 <meta property="og:image" content="https://genclass.dev/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:image:alt" content="GenClass: catch race conditions and stale data in production">
 <meta property="og:locale" content="en_US">
 <meta property="article:published_time" content="2026-10-10">
 <meta property="article:modified_time" content="2026-10-10">
@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=c4d84874">
+<link rel="stylesheet" href="/styles.css?v=0ca3ba97">
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://genclass.dev/guides"}, {"@type": "ListItem", "position": 3, "name": "Duplicate submissions", "item": "https://genclass.dev/guides/prevent-duplicate-submissions"}]}, {"@type": "TechArticle", "headline": "How to prevent duplicate form submissions", "datePublished": "2026-10-10", "dateModified": "2026-10-10", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "proficiencyLevel": "Intermediate", "about": ["Idempotency", "Duplicate requests", "Form submission"], "mainEntityOfPage": "https://genclass.dev/guides/prevent-duplicate-submissions"}]}</script>
 </head>
 <body>
@@ -99,7 +99,7 @@ await fetch("/api/orders", {
       <h2 id="runtime">Fix 4: coalesce duplicates at runtime</h2>
       <p>Even with all of the above, some endpoints ship without a key. <a href="/">GenClass</a> watches every request with its causal chain. When it sees the same mutation repeated with the same body moments later, it can coalesce the repeat into the original request in guard mode, so one order is placed. It only retries a failed write when the request is idempotent or carries an idempotency key.</p>
 <pre><code>[GenClass] Coalesced POST /api/orders with #212, so one order is placed</code></pre>
-      <p>On real apps it had never seen, GenClass detected <strong>3 in 4 duplicate submits</strong> in observe mode. See the <a href="/benchmarks">benchmarks</a>.</p>
+      <p>On real apps it had never seen, model 0.2.0 at its default setting detected <strong>3 in 4 duplicate submits</strong> in observe mode. See the <a href="/benchmarks">benchmarks</a>.</p>
 
       <h2 id="checklist">Checklist</h2>
       <ul>
@@ -117,7 +117,7 @@ await fetch("/api/orders", {
 </main>
 <footer class="end">
   <div class="wrap">
-    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass" width="220" height="183" loading="lazy">
     <h2>Free to run. Built to scale.</h2>
     <div class="row">
       <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>

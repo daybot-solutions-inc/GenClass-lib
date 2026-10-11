@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Privacy | GenClass</title>
-<meta name="description" content="How GenClass handles data: on-device inference, what the open-source runtime's optional diagnostics contain, and how we use early-access sign-ups.">
+<meta name="description" content="How GenClass handles data: on-device inference, what the open-source runtime's anonymous diagnostics contain, and how we use early-access sign-ups.">
 <link rel="canonical" href="https://genclass.dev/privacy">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="theme-color" content="#FFFFFF">
@@ -13,15 +13,15 @@
 <meta property="og:site_name" content="GenClass">
 <meta property="og:url" content="https://genclass.dev/privacy">
 <meta property="og:title" content="Privacy | GenClass">
-<meta property="og:description" content="How GenClass handles data: on-device inference, what the open-source runtime's optional diagnostics contain, and how we use early-access sign-ups.">
+<meta property="og:description" content="How GenClass handles data: on-device inference, what the open-source runtime's anonymous diagnostics contain, and how we use early-access sign-ups.">
 <meta property="og:image" content="https://genclass.dev/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:image:alt" content="GenClass: catch race conditions and stale data in production">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Privacy | GenClass">
-<meta name="twitter:description" content="How GenClass handles data: on-device inference, what the open-source runtime's optional diagnostics contain, and how we use early-access sign-ups.">
+<meta name="twitter:description" content="How GenClass handles data: on-device inference, what the open-source runtime's anonymous diagnostics contain, and how we use early-access sign-ups.">
 <meta name="twitter:image" content="https://genclass.dev/og.png?v=4">
 <link rel="icon" href="/brand/mark-32.png?v=2" sizes="32x32" type="image/png">
 <link rel="icon" href="/brand/mark-64.png?v=2" sizes="64x64" type="image/png">
@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=c4d84874">
+<link rel="stylesheet" href="/styles.css?v=0ca3ba97">
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Privacy", "item": "https://genclass.dev/privacy"}]}]}</script>
 </head>
 <body>
@@ -58,9 +58,9 @@
     <div class="prose">
       <h2>The runtime</h2>
       <p>The GenClass runtime makes every decision in the browser with a local model. It does not need a GenClass account or server to work.</p>
-      <p>The runtime sends anonymous, redacted diagnostics by default to help improve the model: decisions with the redacted situation text the model read, outcomes and counts. It never sends typed password, payment or secret values, cookies, headers, request bodies, storage or query strings, and the collector stores no IP address or user agent. Turn it off with <code>GenClass.init({ telemetry: false })</code>, <code>?genclass=no-telemetry</code>, or Global Privacy Control. Full details are in <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md">TELEMETRY.md</a>.</p>
+      <p>From runtime 0.2.1, the runtime sends anonymous diagnostics by default on public hosts, to help improve the model, and not on local or private hosts (<code>localhost</code>, <code>*.localhost</code>, <code>*.local</code>, <code>*.test</code>, <code>127.0.0.1</code>, <code>::1</code>, private IP ranges). By default they contain no text from the page: only a random per-page session id, versions, mode, device class, the app's hostname and id-normalised path, and for each decision the trigger, diagnosis and confidence, action, gate, outcome, latency and counts. The situation text the model read is sent only when the app opts in with <code>telemetry: { include: { situation: true } }</code>; with that on, the redacted situation can include route names with query strings, short error messages and short field values (see <a href="/docs/telemetry">TELEMETRY.md</a>). In either setting it never sends typed password, payment or secret values, cookies, headers, request or response bodies or storage contents, and the collector stores no IP address or user agent. Turn it off with <code>GenClass.init({ telemetry: false })</code>, <code>?genclass=no-telemetry</code>, <code>localStorage</code> <code>genclass.telemetry=off</code>, or Global Privacy Control. Full details are in <a href="/docs/telemetry">TELEMETRY.md</a>.</p>
       <h2>GenClass Cloud</h2>
-      <p>Cloud is optional and only receives data from apps you connect with a publishable project key: aggregate metrics such as counts, categories and timings.</p>
+      <p>Cloud is not available yet. It is planned to be optional and to receive only data from apps you connect with a publishable project key: aggregate metrics such as counts, categories and timings.</p>
       <h2>Early-access sign-ups</h2>
       <p>When you request early access we store your email, company, number of apps and the plan you picked. We use it only to contact you about GenClass, never sell or share it, and delete it on request.</p>
       <h2>This website</h2>
@@ -72,7 +72,7 @@
 </main>
 <footer class="end">
   <div class="wrap">
-    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass" width="220" height="183" loading="lazy">
     <h2>Free to run. Built to scale.</h2>
     <div class="row">
       <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>

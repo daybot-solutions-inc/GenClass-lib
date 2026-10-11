@@ -12,7 +12,7 @@ WBIP=$(awk -v h="$WB" '$1==h {print $3}' "$HOME/.jev-local/azure_hosts")
 FILES="${FILES:-train dev test}"
 PORT="${PORT:-8802}"                                                 # train-VM http port (one per source dir)
 HERE="$(cd "$(dirname "$0")" && pwd)"
-JEV="$(cd "$HERE/../.." && pwd)"
+JEV="$(cd "$HERE/.." && pwd)"   # repo root (scripts/azvm.sh)
 # serve SRC from the train VM (no pkill here: the remote shell's own command line contains the pattern)
 timeout 120 "$JEV/scripts/azvm.sh" train "ls -la $SRC/*.jsonl; ss -ltn | grep -q ':${PORT} ' || \
   (setsid nohup python3 -m http.server ${PORT} --bind 10.0.0.4 --directory $SRC > /tmp/xfer${PORT}.log 2>&1 < /dev/null &); \

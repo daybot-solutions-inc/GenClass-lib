@@ -2,19 +2,20 @@
       <table class="data">
         <thead><tr><th>Source</th><th>Rows, log scale</th><th style="text-align: right">Rows</th></tr></thead>
         <tbody>
-          <tr><td>Simulated, unlabeled (teacher-labelled)</td><td class="bar"><div><i style="width: 98.2%"></i></div></td><td class="n">51,272,078</td></tr>
+          <tr><td>Simulated, unlabeled: generated for teacher labelling, not used for training yet</td><td class="bar"><div><i style="width: 98.2%"></i></div></td><td class="n">51,272,078</td></tr>
           <tr><td>Simulated gold, format v2, 115 app domains</td><td class="bar"><div><i style="width: 79.9%"></i></div></td><td class="n">10,423,855</td></tr>
           <tr><td>On-policy rounds: the model acting in the simulator</td><td class="bar"><div><i style="width: 62.7%"></i></div></td><td class="n">2,343,084</td></tr>
           <tr><td>Simulated gold, v2.3 top-up</td><td class="bar"><div><i style="width: 61.5%"></i></div></td><td class="n">2,107,824</td></tr>
-          <tr><td>Simulated, format v1</td><td class="bar"><div><i style="width: 60.9%"></i></div></td><td class="n">2,000,000</td></tr>
+          <tr><td>Simulated, format v1 (superseded; trained earlier rounds only)</td><td class="bar"><div><i style="width: 60.9%"></i></div></td><td class="n">2,000,000</td></tr>
           <tr><td>Curriculum, exact labels</td><td class="bar"><div><i style="width: 60.3%"></i></div></td><td class="n">~1,900,000</td></tr>
           <tr class="rl"><td>Real browsers, gold: 158 apps, 40+ stacks</td><td class="bar"><div><i style="width: 50.9%"></i></div></td><td class="n">837,623</td></tr>
-          <tr class="rl"><td>Real browsers, unlabeled</td><td class="bar"><div><i style="width: 45.5%"></i></div></td><td class="n">~523,000</td></tr>
-          <tr class="rl"><td>Real-app certification set, for gate fitting</td><td class="bar"><div><i style="width: 43.2%"></i></div></td><td class="n">427,576</td></tr>
+          <tr class="rl"><td>Real browsers, unlabeled: not used for training yet</td><td class="bar"><div><i style="width: 45.5%"></i></div></td><td class="n">~523,000</td></tr>
+          <tr class="rl"><td>Real-app certification set: fits the action gates, not the weights</td><td class="bar"><div><i style="width: 43.2%"></i></div></td><td class="n">427,576</td></tr>
           <tr class="ev"><td>Real-app eval set, never trained on</td><td class="bar"><div><i style="width: 5.8%"></i></div></td><td class="n">16,600</td></tr>
         </tbody>
       </table>
     </div>
+    <p class="note">About 17.6 million labeled rows (simulated gold, on-policy rounds, curriculum and real-browser gold) are what the shipped model trained on. The 51.8 million unlabeled rows were generated for a teacher-labelling step that was skipped because the 150M teacher did not beat the student; they are not used for training yet. The eval set is never trained on.</p>
     <div class="split">
       <div>
         <div class="ftitle">How a label is made</div>
@@ -30,7 +31,7 @@
       <div>
         <div class="ftitle">28 hours, from pruning to model 0.2.0</div>
         <ol class="tl">
-          <li><b>Day 1, 13:00</b>Vocabulary pruned to 16k tokens; the model shrinks to 9.6 MB</li>
+          <li><b>Day 1, 13:00</b>Vocabulary pruned to 16k tokens; the model shrinks to about 10 MB</li>
           <li><b>Day 1, 18:00</b>Curriculum stage on 10 nodes: 1.2M exact-label rows</li>
           <li><b>Day 1, 23:20</b>Situation format frozen; 600k simulated rows in 41 minutes</li>
           <li><b>Day 2, 04:00</b>Format v2: 10.4M gold rows on 20 nodes in about 31 minutes</li>

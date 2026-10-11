@@ -17,7 +17,7 @@
 <meta property="og:image" content="https://genclass.dev/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:image:alt" content="GenClass: catch race conditions and stale data in production">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="GenClass Telemetry and Privacy">
@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=c4d84874">
+<link rel="stylesheet" href="/styles.css?v=0ca3ba97">
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Telemetry", "item": "https://genclass.dev/docs/telemetry"}]}, {"@type": "TechArticle", "headline": "GenClass Runtime telemetry", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md"}]}</script>
 </head>
 <body>
@@ -66,7 +66,11 @@ Details under <a href="#opting-out">Opting out</a>.</p>
 <tbody>
 <tr>
 <td><code>GenClass.init()</code>, <code>import "@genclass/runtime/auto"</code> (and <code>/auto/*</code>), the CDN script tag, <code>npx @genclass/runtime init</code> setups</td>
-<td><strong>on</strong> in a browser</td>
+<td><strong>on</strong> in a browser on a public host</td>
+</tr>
+<tr>
+<td>the same, on a local or private host (<code>localhost</code>, <code>*.localhost</code>, <code>*.local</code>, <code>*.test</code>, <code>*.internal</code>, <code>127.0.0.1</code>, <code>::1</code>, <code>10/8</code>, <code>172.16/12</code>, <code>192.168/16</code>, link-local, <code>file:</code>)</td>
+<td>off unless <code>telemetry: true</code> / <code>{ ... }</code></td>
 </tr>
 <tr>
 <td><code>GenClass.init()</code> outside a browser (Node, SSR, workers)</td>
@@ -79,26 +83,32 @@ Details under <a href="#opting-out">Opting out</a>.</p>
 </tbody>
 </table>
 <p>When it is on, the console shows one notice per page:</p>
-<pre><code>[GenClass] Sends anonymous diagnostics (decisions, redacted situation text) to improve the model. Opt out: GenClass.init({ telemetry: false }) or ?genclass=no-telemetry.
+<pre><code>[GenClass] Sends anonymous diagnostics (decisions and counts, no page text) to improve the model. Opt out: GenClass.init({ telemetry: false }) or ?genclass=no-telemetry.
 </code></pre>
 <p><code>runtime.telemetry</code> reports <code>{ enabled, reason?, endpoint?, sessionId?, flush() }</code>; <code>reason</code> says why it is off
-(<code>option</code>, <code>headless</code>, <code>url</code>, <code>localStorage</code>, <code>gpc</code>, <code>sampled-out</code>, <code>no-crypto</code>, <code>no-transport</code>, <code>kill-switch</code>,
-<code>disabled</code>).</p>
+(<code>option</code>, <code>headless</code>, <code>local</code>, <code>url</code>, <code>localStorage</code>, <code>gpc</code>, <code>sampled-out</code>, <code>no-crypto</code>, <code>no-transport</code>,
+<code>kill-switch</code>, <code>disabled</code>).</p>
 <h2 id="what-is-sent">What is sent</h2>
-<p>Only data the runtime already computes for its own decisions, after redaction:</p>
+<p>Only data the runtime already computes for its own decisions. <strong>By default, no text from the page is sent:</strong>
+decision events carry the trigger kind, the diagnosis and its confidence, the chosen action, the gate, the outcome,
+latency and counts, plus the app's hostname and the id-normalised route (no query or fragment).</p>
 <ul>
-<li><strong>The situation text the model read</strong>, exactly as built for the model, after the redactor
-  (<code>InitOptions.redact</code>, default: secret-named fields such as passwords, tokens, card numbers, API keys are replaced
-  by <code>[redacted]</code>; see the README's <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#privacy-and-telemetry">Privacy</a> section for the rules and their known
-  gaps). Situation text describes operations (e.g. <code>GET /api/items/:id</code>), store fields and short value summaries,
-  timing and the facts GenClass computed. It can contain app data that the redactor does not recognise as secret
-  (for example a product name or a search term). <code>include: { situation: false }</code> leaves it out. Since <code>0.2.0</code> it
-  also covers state the runtime discovered on its own (<code>autoState</code>: React, Redux or Zustand state the app never
-  registered), redacted the same way; those decisions carry <code>autoState: true</code>.</li>
-<li><strong>Never:</strong> typed values of password, payment (<code>cc-*</code>), one-time-code or secret-named inputs (the runtime never
-  records them in the first place), cookies, request or response headers, request or response bodies, storage
-  contents, the page's query string or fragment, the full URL, error messages or stack traces of your app, the
-  sentences GenClass prints about what it changed, IP addresses or user agents (the collector does not store them).</li>
+<li><strong>The situation text the model read is sent only with <code>include: { situation: true }</code></strong> (default off since
+  <code>0.2.1</code>). It is the text exactly as built for the model, after the redactor (<code>InitOptions.redact</code>, default:
+  secret-named fields such as passwords, tokens, card numbers, API keys are replaced by <code>[redacted]</code>; see the
+  README's <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#privacy-and-telemetry">Privacy</a> section for the rules and their known gaps). It describes
+  operations (e.g. <code>GET /api/items/:id</code>), store fields and short value summaries, timing and the facts GenClass
+  computed. <strong>Before enabling it, know what it can contain:</strong> request names with their query strings (parameter
+  values are redacted only when the parameter name looks secret), route changes with query string and fragment,
+  the page title, the first 100 characters of your app's error messages, the first 40 characters typed into
+  ordinary inputs (a name or an email typed into a field called "Email"), fragments of WebSocket / SSE messages
+  (up to 60 characters) and store leaf values up to 48 characters, including state the runtime discovered on its
+  own (<code>autoState</code>: React, Redux or Zustand state the app never registered; those decisions carry
+  <code>autoState: true</code>). Add a <code>redact</code> function for fields with ordinary names and personal values.</li>
+<li><strong>Never, in either setting:</strong> typed values of password, payment (<code>cc-*</code>), one-time-code or secret-named inputs
+  (the runtime never records them in the first place), cookies, request or response headers, request or response
+  bodies, storage contents, the sentences GenClass prints about what it changed, IP addresses or user agents (the
+  collector does not store them).</li>
 </ul>
 <h3 id="batch-envelope-schema-genclass-telemetry1">Batch envelope (schema <code>genclass-telemetry/1</code>)</h3>
 <p><code>POST &lt;endpoint&gt;</code> with <code>content-type: text/plain;charset=UTF-8</code> (JSON body), no credentials, no referrer:</p>
@@ -106,7 +116,7 @@ Details under <a href="#opting-out">Opting out</a>.</p>
   &quot;schema&quot;: &quot;genclass-telemetry/1&quot;,
   &quot;sid&quot;: &quot;3f9c…&quot;,            // 24 hex chars from crypto.getRandomValues, new on every page load, never stored
   &quot;sent&quot;: 12034,             // ms since this page's GenClass started (no wall-clock time is sent)
-  &quot;runtime&quot;: &quot;0.1.0-beta.3&quot;, // @genclass/runtime version
+  &quot;runtime&quot;: &quot;0.2.1&quot;, // @genclass/runtime version
   &quot;model&quot;: &quot;2.0.0-rc4t&quot;,     // model card version, or null without a model
   &quot;events&quot;: [ /* ≤ 100 events, ≤ 60 KB per request */ ]
 }
@@ -204,7 +214,7 @@ Details under <a href="#opting-out">Opting out</a>.</p>
     sample: 0.25,                    // fraction of page loads that send (default 1)
     flushMs: 10_000,                 // batch interval
     maxBatch: 100,                   // events per request
-    include: { situation: false },   // leave the situation text out
+    include: { situation: true },    // also send the redacted situation text (default: off)
   },
 });
 </code></pre>
@@ -255,11 +265,11 @@ the session event names your hostname. Depending on your users and jurisdiction 
   custom <code>redact</code> lowers what reaches situation text but does not guarantee that nothing sensitive does.</li>
 </ul>
 <p>Privacy policy for this collection: <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md">PRIVACY.md</a>. Data processing terms are not published yet
-(<code>OPEN_TASKS.md</code>); if you cannot disclose a third-party diagnostics recipient, set <code>telemetry: false</code>.</p></article></div></section>
+(planned); if you cannot disclose a third-party diagnostics recipient, set <code>telemetry: false</code>.</p></article></div></section>
 </main>
 <footer class="end">
   <div class="wrap">
-    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass" width="220" height="183" loading="lazy">
     <h2>Free to run. Built to scale.</h2>
     <div class="row">
       <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>

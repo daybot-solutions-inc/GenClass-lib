@@ -5,7 +5,7 @@
 #   training/launch_final1.sh R32_PASSES R17_PASSES
 set -euo pipefail
 P32="${1:?r32 passes}"; P17="${2:?r17 passes}"
-cd "$(dirname "$0")/../.."   # /Users/meharkhanna/jev (scripts/launch_run.sh)
+cd "$(dirname "$0")/.."   # repo root (scripts/launch_run.sh)
 G=/home/azureuser/gcl-train
 COMMON="--stream $G/data/s3 $G/data/s1 --stream-cache $G/cache/final1 --mixture $G/training/configs/mix_final1.json \
 --runs-dir $G/runs --max-len 2048 --batch-tokens 8192 --balance --amp --no-grad-ckpt --device cpu --log-every 10 \

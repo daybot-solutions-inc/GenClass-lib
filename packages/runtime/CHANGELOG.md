@@ -69,7 +69,7 @@ work below and everything listed under `0.1.0-beta.4`, which was never published
 
 `<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime"></script>` or `import "@genclass/runtime/auto"` now
 also finds the app's state, so delivery decisions (a response that would overwrite newer data) work in apps that
-register no store. In the Troy trial (Next.js 16, React state) GenClass had made no state-based decision at all,
+register no store. In a pilot app (Next.js 16, React state) GenClass had made no state-based decision at all,
 because it saw only the network. No situation text or other model-visible text format changes (discovered fields
 are ordinary data); telemetry now includes discovered state (below).
 
@@ -98,9 +98,9 @@ are ordinary data); telemetry now includes discovered state (below).
 - **Telemetry:** discovered state is sent like registered stores, in the redacted situation text; decisions made
   after discovered state was recorded carry `autoState: true`. PRIVACY.md says so.
 - **Cost:** `/auto` first load about 96 KB gzip (was 89 KB; the main entry is unchanged at 89 KB); the script-tag
-  file about 110 KB gzip. Commit-walk and Troy measurements: README "Costs".
+  file about 110 KB gzip. Commit-walk and pilot-app measurements: README "Costs".
 
-### Fixes from the local healing benchmark (`bench/heal/`, `NIGHT-REPORT.md`)
+### Fixes from the local healing benchmark (`bench/heal/`)
 
 No situation text or other
 model-visible text changes; no telemetry change.
@@ -117,7 +117,7 @@ model-visible text changes; no telemetry change.
 
 ### Fixes from the first real-app trial
 
-Found in the Troy trial ( a Next.js 16 site with a strict Content-Security-Policy, observe mode,
+Found in the pilot trial ( a Next.js 16 site with a strict Content-Security-Policy, observe mode,
 `0.1.0-beta.3`). No change to what the model sees (no situation or model-visible text change) and none to the
 telemetry payload.
 

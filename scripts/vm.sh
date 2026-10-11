@@ -14,7 +14,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOSTS="$HOME/.jev-local/azure_hosts"
 IP=$(awk '$1=="train" {print $2}' "$HOSTS")
 [ -n "$IP" ] || { echo "train host missing from $HOSTS" >&2; exit 2; }
-KEY="$HOME/.ssh/jev_azure"
+KEY="${AZURE_SSH_KEY:-$HOME/.ssh/id_ed25519}"
 SSH_OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6)
 T="${TIMEOUT:-1800}"
 DEST="azureuser@${IP}"

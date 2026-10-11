@@ -7,7 +7,7 @@
 # and an h2h summary (training/h2h.py) per model into $SCRATCH/h2h-cert-M.json.
 set -euo pipefail
 SPECS="${1:?model:r0:kind ...}"; HELPERS="${2:?helper nodes}"
-HERE="$(cd "$(dirname "$0")" && pwd)"; JEV="$(cd "$HERE/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"; JEV="$(cd "$HERE/.." && pwd)"   # repo root (scripts/azvm.sh)
 SCR="${SCRATCH:-/tmp}"
 ip() { awk -v h="$1" '$1==h {print $3}' "$HOME/.jev-local/azure_hosts"; }
 # 1. cert set on the workbench → data/certd/dev.jsonl (+ tar)

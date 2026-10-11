@@ -53,7 +53,7 @@ await fetch("/api/orders", {
       <h2 id="runtime">Fix 4: coalesce duplicates at runtime</h2>
       <p>Even with all of the above, some endpoints ship without a key. <a href="/">GenClass</a> watches every request with its causal chain. When it sees the same mutation repeated with the same body moments later, it can coalesce the repeat into the original request in guard mode, so one order is placed. It only retries a failed write when the request is idempotent or carries an idempotency key.</p>
 <pre><code>[GenClass] Coalesced POST /api/orders with #212, so one order is placed</code></pre>
-      <p>On real apps it had never seen, GenClass detected <strong>3 in 4 duplicate submits</strong> in observe mode. See the <a href="/benchmarks">benchmarks</a>.</p>
+      <p>On real apps it had never seen, model 0.2.0 at its default setting detected <strong>3 in 4 duplicate submits</strong> in observe mode. See the <a href="/benchmarks">benchmarks</a>.</p>
 
       <h2 id="checklist">Checklist</h2>
       <ul>

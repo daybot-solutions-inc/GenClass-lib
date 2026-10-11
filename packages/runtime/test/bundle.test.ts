@@ -1,4 +1,4 @@
-// What an app's bundler makes of the published dist/ (Troy trial, 2026-10-09: Next/Turbopack emitted 41 MB of
+// What an app's bundler makes of the published dist/ (pilot trial, 2026-10-09: Next/Turbopack emitted 41 MB of
 // onnxruntime-web .wasm/.mjs that the runtime never requests, and the first-load cost was ~97 KB gzip, not 83).
 // Needs a build (`npx tsup`): skipped without dist/.
 import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";

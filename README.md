@@ -13,12 +13,14 @@ prevent, stale responses, races, duplicate requests, inconsistent state and fail
 One line, first in `<head>` or first in your entry file:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime"></script>
+<script src="https://cdn.jsdelivr.net/npm/@genclass/runtime@0.2.1"></script>
 ```
 
 ```ts
 import "@genclass/runtime/auto"; // after npm install @genclass/runtime
 ```
+
+Pin the version in the script tag, as above: the unversioned URL may serve an older release from the CDN cache.
 
 That covers the whole app: network, user actions, errors, timing, and the app's state (React component state,
 Redux / Redux Toolkit and Zustand `devtools` stores are discovered automatically; discovered React and Zustand state
@@ -31,43 +33,37 @@ generic facts about each write, request and response, and asks a small GenClass 
 The model runs in the browser (WebGPU or WASM, in a Web Worker). It answers two questions: what is happening, and
 which available action is best. There is no list of known bugs in the code.
 
-> **Status: `@genclass/runtime@0.2.0` with the model `@genclass/runtime-model@0.2.0`.**
->
-> - **Runtime:** works and is unit-tested (situation format tag `situation-v2.3`). Install with
->   `npx @genclass/runtime init`, one import (`@genclass/runtime/auto`) or one script tag.
-> - **Default mode** is `observe`: the model diagnoses salient situations and the runtime reports likely problems,
->   without changing what the app does (it never holds or delays a response). `guard` is opt-in; `heal` is
->   experimental.
-> - **How eager it acts** once you opt in: `aggressiveness: "cautious" | "balanced" (default) | "eager"`.
-> - **Model:** `genclass-runtime-r17` 2.0.0-rc4t (`r17-v2dT`, gain gate, 10 MB, WASM or WebGPU), loaded from jsDelivr
->   at idle and cached. On held-out data ([RESULTS.md](docs/runtime/RESULTS.md) §1):
->
->   | profile | guard FIR | guard recall (clear / real) | heal FIR | heal recall (clear / real) | report threshold |
->   |---|---|---|---|---|---|
->   | `cautious` | 0.005% | 2.4% / 1.4% | 0.26% | 3.7% / 3.8% | 0.95 |
->   | `balanced` (default) | 0.13% | 7.8% / 7.5% | 0.59% | 7.1% / 10.4% | 0.90 |
->   | `eager` | 0.54% | 14.2% / 21.0% | 1.84% | 17.1% / 24.2% | 0.70 |
->
->   Our targets are guard FIR ≤ 0.1% and heal FIR ≤ 0.5%. `cautious` stays under both; `balanced` is slightly over
->   both (0.13% and 0.59% on simulated apps); `eager` is well over. FIR on held-out real apps was 0.00% for every
->   profile. Recall is still low: at `balanced`, guard acts on under 8% of the cases where acting would help.
->   Installed from the registry into a fresh app, guard mode fixed an out-of-order typeahead in 6 of 6 trials, and
->   clean typing made 0 model calls. See the [model card](packages/runtime-model/MODEL_CARD.md).
-> - **Options** (activation, route scopes, protected endpoints, breaker, shadow, veto, action limits, sinks):
->   [OPTIONS-SPEC.md](docs/runtime/OPTIONS-SPEC.md).
-> - **Older versions on npm:** `0.1.0-beta.1` (model 0.2.0 and the options, but `guard` by default and without the
->   observe-delivery, redaction and install fixes), `0.1.0-beta.0` (model 0.1.0), `0.1.0-alpha.1` and
->   `0.1.0-alpha.0` (no model). `0.1.0-beta.2` is `0.1.0-beta.3` without telemetry. `0.1.0-beta.3` lacks the
->   `0.2.0` fixes from the Troy trial (no ONNX Runtime wasm in app builds, one clear warning for a CSP-blocked
->   model, `init --no-telemetry`, a smaller main entry). Use `0.2.0`.
->
-> - **Privacy notice (since `0.1.0-beta.3`): anonymous diagnostics are on by default** in browsers. GenClass sends
->   its decisions, including the redacted situation text the model read, to the GenClass maintainers to improve the
->   model. Opt out with `GenClass.init({ telemetry: false })` or `?genclass=no-telemetry`; Global Privacy Control is
->   honoured. See [Privacy and telemetry](#privacy-and-telemetry).
->
-> What's next: [OPEN_TASKS.md](OPEN_TASKS.md). Picking up the work: [HANDOFF.md](HANDOFF.md). AI coding agents:
-> start at [AGENTS.md](AGENTS.md).
+**Status: `@genclass/runtime@0.2.1` with model `@genclass/runtime-model@0.2.0`.** Observe by default; `guard` is
+opt-in; `heal` is experimental. Measured false-intervention and recall rates are under
+[Measured behaviour](#measured-behaviour). AI coding agents: start at [AGENTS.md](AGENTS.md).
+
+## Install
+
+Pick one; all of them start the same runtime in observe mode unless you choose otherwise. Full install guide, with
+`init` flags, page configuration and the script-tag attributes: [package README](packages/runtime/README.md#install).
+
+```bash
+npx @genclass/runtime init          # finds the framework, adds the import, shows the diff first
+npm install @genclass/runtime       # then: import "@genclass/runtime/auto" (or GenClass.init())
+```
+
+The package is **ESM only** (no `require`). Jest users need `transformIgnorePatterns` that lets
+`@genclass/runtime` be transformed.
+
+### What you will see in the first two minutes
+
+- One console line saying anonymous diagnostics are on (`[GenClass] Sends anonymous diagnostics (decisions and
+  counts, no page text) to improve the model. Opt out: …`); it does not appear on `localhost` or other local hosts.
+- `[GenClass] Model ready (genclass-runtime-r17, wasm, q8, 0.4s). Mode: observe.` once the model has loaded at idle.
+- Then possibly nothing for a while. Observe mode reports only salient situations (a response landing over newer
+  data, a repeat, a failure streak, a broken relation, an error), and the first response of each kind after a page
+  load is never a delivery decision: the runtime first has to see what that request writes.
+- The devtools overlay: `Alt+Shift+G` on localhost (the `init` command loads it in development only).
+- The first-visit cost: about 13 MB downloaded from jsDelivr on WASM (model 10 MB plus ONNX Runtime's wasm) or
+  18 MB on WebGPU, cached afterwards, and 190–280 MB of memory in a Web Worker while the model is loaded. For
+  phones and strict Content-Security-Policies see
+  [self-hosting](packages/runtime/README.md#content-security-policy-and-self-hosting) and
+  [`loadIf`](packages/runtime/README.md#costs) in the package README.
 
 ## How it works
 
@@ -102,22 +98,45 @@ which available action is best. There is no list of known bugs in the code.
    - Reversible actions can be undone.
    - `?genclass=off` installs nothing.
 
+## Measured behaviour
+
+> **`@genclass/runtime@0.2.1` with the model `@genclass/runtime-model@0.2.0`.**
+>
+> - **Runtime:** works and is unit-tested (situation format tag `situation-v2.3`). Install with
+>   `npx @genclass/runtime init`, one import (`@genclass/runtime/auto`) or one script tag.
+> - **Default mode** is `observe`: the model diagnoses salient situations and the runtime reports likely problems,
+>   without changing what the app does (it never holds or delays a response). `guard` is opt-in; `heal` is
+>   experimental.
+> - **How eager it acts** once you opt in: `aggressiveness: "cautious" | "balanced" (default) | "eager"`.
+> - **Model:** `genclass-runtime-r17` 2.0.0-rc4t (`r17-v2dT`, gain gate, 10 MB (10.2 MB q8), about 180 ms per
+>   decision on one WASM thread; WASM or WebGPU), loaded from jsDelivr at idle and cached. On held-out data
+>   ([RESULTS.md](docs/runtime/RESULTS.md) §1):
+>
+>   | profile | guard FIR | guard recall (clear / real) | heal FIR | heal recall (clear / real) | report threshold |
+>   |---|---|---|---|---|---|
+>   | `cautious` | 0.005% | 2.4% / 1.4% | 0.26% | 3.7% / 3.8% | 0.95 |
+>   | `balanced` (default) | 0.13% | 7.8% / 7.5% | 0.59% | 7.1% / 10.4% | 0.90 |
+>   | `eager` | 0.54% | 14.2% / 21.0% | 1.84% | 17.1% / 24.2% | 0.70 |
+>
+>   Our targets are guard FIR ≤ 0.1% and heal FIR ≤ 0.5%. `cautious` stays under both; `balanced` is slightly over
+>   both (0.13% and 0.59% on simulated apps); `eager` is well over. FIR on held-out real apps was 0.00% for every
+>   profile. Recall is still low: at `balanced`, guard acts on under 8% of the cases where acting would help.
+>   Installed from the registry into a fresh app, guard mode fixed an out-of-order typeahead in 6 of 6 trials, and
+>   clean typing made 0 model calls. See the [model card](packages/runtime-model/MODEL_CARD.md).
+> - **Options** (activation, route scopes, protected endpoints, breaker, shadow, veto, action limits, sinks):
+>   [OPTIONS-SPEC.md](docs/runtime/OPTIONS-SPEC.md).
+> - **Privacy notice:** anonymous diagnostics are on by default, without page text, and off on localhost; opt out
+>   with `GenClass.init({ telemetry: false })` or `?genclass=no-telemetry`. See
+>   [Privacy and telemetry](#privacy-and-telemetry).
+
 ## Privacy and telemetry
 
-- **Decisions are local.** Situations are built and decided in the browser by the local model; nothing is sent
-  anywhere to make a decision.
-- **Anonymous diagnostics are on by default** with `GenClass.init()` in a browser (since `0.1.0-beta.3`; off in
-  Node/SSR and in `createRuntime()` unless enabled). They go to the GenClass maintainers' collector
-  ([`telemetry-worker/`](telemetry-worker), a Cloudflare Worker writing to a private R2 bucket) and are used to
-  improve the model. Sent: a random per-page session id, versions, mode, device class, the app's hostname and
-  id-normalised path, and for each decision the trigger, **the redacted situation text the model read**, its
-  calibrated answers, the diagnosis, gate and outcome, plus action outcomes, detections, model errors and counts.
-  Never sent: typed password/payment/secret values, cookies, headers, bodies, storage, query strings; the collector
-  stores no IP address or user agent. One console notice per page says it is on.
-- **Opt out:** `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`,
-  `localStorage.setItem("genclass.telemetry", "off")`; browsers sending Global Privacy Control are never collected.
-- Apps that ship GenClass may need to disclose this to their users (GDPR/CCPA). Full schema, storage and guidance:
-  [packages/runtime/TELEMETRY.md](packages/runtime/TELEMETRY.md).
+- **Decisions are local.** Situations are built and decided in the browser by the local model; nothing is sent anywhere to make a decision.
+- **Anonymous diagnostics are on by default** with `GenClass.init()` in a browser, except on local and private hosts (`localhost`, `*.localhost`, `*.local`, `*.test`, `127.0.0.1`, `::1`, private IP ranges), in Node/SSR, and in `createRuntime()`. They go to the GenClass maintainers' collector ([`telemetry-worker/`](telemetry-worker), a Cloudflare Worker writing to a private R2 bucket) and are used to improve the model.
+- **By default no text from your page is sent.** Sent: a random per-page session id, versions, mode, device class, the app's hostname and id-normalised path, and for each decision the trigger, the diagnosis and its confidence, the action and gate, the outcome, latency and counts. The collector stores no IP address or user agent. One console notice per page says it is on.
+- **The situation text the model read is sent only if you opt in** with `GenClass.init({ telemetry: { include: { situation: true } } })`. It is redacted by field meaning, but can still contain route names with query strings, short error messages and short field values; read [TELEMETRY.md](packages/runtime/TELEMETRY.md) before enabling it.
+- **Opt out:** `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`, `localStorage.setItem("genclass.telemetry", "off")`; browsers sending Global Privacy Control are never collected.
+- Apps that ship GenClass may need to disclose this to their users (GDPR/CCPA). Full schema, storage and guidance: [TELEMETRY.md](packages/runtime/TELEMETRY.md).
 
 ## Security
 
@@ -142,26 +161,28 @@ All numbers are on held-out data, with each recall reported next to its false-in
 |---|---|
 | Round 1 model, R17 (9.6 MB int8; **previous format** `situation-v1`), simulated apps | diagnosis 90.5%, action 81.9%, guard FIR 0.05%, heal FIR 0.24%, calibration error 0.009. Recall on clear stale/duplicate cases is only 7.7% (precise but timid). |
 | Why round 1 was timid ([sim/SEPARABILITY.md](sim/SEPARABILITY.md)) | Many clear cases had benign twins with identical visible facts; 24% of clear rows were mislabelled `expected`; labels assumed knowledge a runtime cannot have. v2 adds measured facts and fixes the labels. |
-| **r17-v2dT** (`situation-v2`; shipped as `@genclass/runtime-model@0.2.0`, default since `0.1.0-beta.1`) | Gain gate with three profiles (table above). `balanced`: guard FIR 0.13%, heal FIR 0.59% on simulated apps (slightly over the 0.1% / 0.5% targets); `cautious`: 0.005% / 0.26% (under). 0.00% on held-out real apps for every profile. Calibration error 0.009. |
-| r17-v2b (shipped as `@genclass/runtime-model@0.1.0`) | Simulated apps: diagnosis 84.2%, action 77.8%. Real apps: diagnosis 83.6%, action 80.0%. Guard FIR 0.01%, heal FIR 0.07%; heal acts on 2.9% of clear simulated cases and 5.7% of actionable real-app cases; guard on 0.7%. |
+| **r17-v2dT** (`situation-v2`; shipped as `@genclass/runtime-model@0.2.0`) | Gain gate with three profiles (table above). `balanced`: guard FIR 0.13%, heal FIR 0.59% on simulated apps (slightly over the 0.1% / 0.5% targets); `cautious`: 0.005% / 0.26% (under). 0.00% on held-out real apps for every profile. Calibration error not yet measured for this model (r17-v2b: 0.021–0.023). |
+| r17-v2b (shipped as `@genclass/runtime-model@0.1.0`) | Simulated apps: diagnosis 84.2%, action 77.8%. Real apps: diagnosis 83.6%, action 80.0%. Guard FIR 0.01%, heal FIR 0.07%; heal acts on 5.9% of clear simulated cases and 5.7% of actionable real-app cases; guard on 0.6%. |
 | Training continues | teacher model, distillation, DAgger rounds; ~10M simulated gold rows, ~50M unlabeled rows, ~0.6M real-app rows |
 | Never make a correct app worse (always-passive model, heal vs observe, 66 real apps × 6 seeds) | 0/396 clean runs changed: final page text (inputs and alerts excluded) and server state. Request timing and store contents are not compared, nor is observe mode against no runtime. With chaos: 3/198 changed. |
 | Same check on the v1 runtime (store-write holds) | 4/198 clean runs changed; the React/Redux RealWorld app never rendered its home feed |
-| Demos | Baseline only, with the untrained GenClass 0.1 model: guard took 0 actions. Not yet re-run with model 0.2.0. |
+| Demos (model 0.2.0, `balanced`, 10 chaos + 5 clean seeds per demo and mode) | The chaos bug rate over the six demos was 72% off, 70% observe, 72% guard and 73% heal (differences under 5 points are noise): nothing is healed at the shipped gates, because candidate gains rarely clear the margins; 0 false interventions on clean runs. |
 
 ## What's in this repo
 
 | path | what |
 |---|---|
-| [`packages/runtime`](packages/runtime) | `@genclass/runtime`, the library. Observers, causality, stores and adapters, learned baselines/relations/profiles, facts, triage, policy gate, actions, model host (Web Worker, ONNX Runtime Web on WebGPU/WASM), devtools overlay. [README](packages/runtime/README.md) · [STATUS](packages/runtime/STATUS.md) |
+| [`packages/runtime`](packages/runtime) | `@genclass/runtime`, the library. Observers, causality, stores and adapters, learned baselines/relations/profiles, facts, triage, policy gate, actions, model host (Web Worker, ONNX Runtime Web on WebGPU/WASM), devtools overlay. [README](packages/runtime/README.md) · [CHANGELOG](packages/runtime/CHANGELOG.md) |
 | [`packages/runtime-model`](packages/runtime-model) | `@genclass/runtime-model`, the default model package (data only; `files/` is gitignored and filled at release time) and its [model card](packages/runtime-model/MODEL_CARD.md) |
 | [`sim`](sim) | Training-data simulator: random apps run on the real runtime in a deterministic virtual world, labelled by counterfactual outcomes |
 | [`realapps`](realapps) | 128 real apps (written for the corpus, plus open-source ones) run with the real runtime in headless Chromium, labelled the same way; the never-worse sweep covered the first 66. [README](realapps/README.md) |
-| [`training`](training) | Vocabulary pruning, curriculum (`curriculum/rt.py` mirrors the runtime's renderer), multi-node CPU training on Azure, int8 ONNX export, evaluation |
-| [`demos`](demos) | Six demo apps (typeahead, autosave, checkout, flaky dashboard, live kanban, real-time decisions) with a Service Worker chaos backend and Playwright trials |
-| [`docs/runtime`](docs/runtime) | [Results](docs/runtime/RESULTS.md) · [Architecture](docs/runtime/ARCHITECTURE.md) · [Build contract](docs/runtime/CONTRACT.md) · [API](docs/runtime/API.md) |
-| [`docs/agents`](docs/agents/README.md), [`AGENTS.md`](AGENTS.md) | Docs for AI coding agents: subsystem guides with code pointers (runtime, sim, [realapps](docs/agents/realapps.md), training, model I/O contract, demos) and the rules for working here |
-| `jev_local`, `extension`, `bench`, … | The GenClass model, Jev-compatible server, voice harness, Chrome extension and benchmarks this runtime builds on ([details](docs/GENCLASS.md)) |
+| [`training`](training) | Vocabulary pruning, curriculum (`curriculum/rt.py` mirrors the runtime's renderer), multi-node CPU training on Azure, int8 ONNX export, evaluation ([EVAL.md](training/EVAL.md)) |
+| [`demos`](demos) | Six demo apps (typeahead, autosave, checkout, flaky dashboard, live kanban, real-time decisions) with a Service Worker chaos backend and Playwright trials; [`bench/heal`](bench/heal) runs them per mode |
+| [`compat`](compat), [`templates`](templates) | Framework compatibility matrix (7 apps, 15 data layers, every mode; [RESULTS.md](compat/RESULTS.md)) and starter templates with the one line |
+| [`docs/runtime`](docs/runtime) | [Results](docs/runtime/RESULTS.md) · [Architecture](docs/runtime/ARCHITECTURE.md) · [Build contract](docs/runtime/CONTRACT.md) · [API](docs/runtime/API.md) · [Threat model](docs/runtime/THREAT-MODEL.md) |
+| [`telemetry-worker`](telemetry-worker), [`site`](site) | The diagnostics collector (Cloudflare Worker) and the genclass.dev site |
+| [`research`](research) | Earlier GenClass/Jev research (voice-control Chrome extension, the `jev_local` encoder and server, classifier benchmarks); the training scripts still use `jev_local` ([README](research/README.md)) |
+| [`AGENTS.md`](AGENTS.md), [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to work in this repository |
 
 ## Development
 
@@ -177,13 +198,12 @@ NODE_OPTIONS=--expose-gc npx vitest run test/review-perf.test.ts --retry=2   # t
 ```
 
 The same steps run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml), Node 22) on pushes to `main`,
-`runtime`, `mvp` and `mvp-v2`, on pull requests, and on manual dispatch.
+`runtime`, `mvp` and `mvp-v2`, on pull requests, and on manual dispatch. 667 unit tests pass in CI (14 skipped: the
+model-parity tests, which need `GENCLASS_MODEL_DIR`), plus the 4 perf tests, which time a 5,000-item store and run
+in their own step because they can fail under parallel load.
 
-Last full local run (2026-10-09, branch `mvp-v2-b6`, version `0.2.0`): 514 tests passed and 14 skipped, plus
-the 4 perf tests run alone. The skips are model-parity tests, which need `GENCLASS_MODEL_DIR`. The perf tests time a
-5,000-item store and can fail under parallel load.
-
-Releasing: [RELEASE.md](RELEASE.md).
+Releases are published by [.github/workflows/release.yml](.github/workflows/release.yml) from a `v*` tag, with npm
+provenance.
 
 Not covered by CI:
 
@@ -195,9 +215,9 @@ These are heavier or need Azure; see [AGENTS.md](AGENTS.md) before running them.
 
 **The training format is tagged.** The current tag is `situation-v2.3`; the shipped model was trained on data from
 `situation-v2`. Any change to `packages/runtime/src/situation/*` (or other text the model reads) changes the model's
-input and means a new tag and regenerated data. See
-[docs/agents/model-io-contract.md](docs/agents/model-io-contract.md).
+input and means a new tag and regenerated data (`training/curriculum/rt.py` mirrors the renderer and must change
+with it).
 
 ## License
 
-Apache-2.0.
+Apache-2.0. See [NOTICE](NOTICE).

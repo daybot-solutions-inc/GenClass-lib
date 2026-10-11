@@ -363,7 +363,7 @@ Harness determinism fixes found at scale:
   and replaces a worker silent for 15 minutes.
 
 The pre-fix batches `v2b1..3` (≈ 380k gold, 66 apps, stopped) are kept on `train:/data/real-out/` with valid action
-labels but pre-fix diagnosis labels; see `training/NEEDS.md`.
+labels but pre-fix diagnosis labels.
 
 ## Certification dev set `v23-cert` (`situation-v2.3`)
 
@@ -392,8 +392,7 @@ Result: 427,576 dev rows. Passive-best rows per trigger:
 | error | 3.1k |
 
 `error` is the one trigger that is too rare: almost all of its rows come from one app. Counts per trigger × mode ×
-category are in `train:/data/real-out/v23-cert/cert_report.md` (`scripts/cert_report.py`), and the summary is in
-`training/NEEDS.md` item 19.
+category are in `train:/data/real-out/v23-cert/cert_report.md` (`scripts/cert_report.py`).
 
 ## Throughput (pilot, train VM)
 
@@ -427,7 +426,7 @@ per node-hour.
    - ≥ 500k gold rows ≈ 4 node-hours, e.g. 4 F80 nodes for 1 hour, plus about 650k unlabeled rows.
    - Every run is resumable (`done.txt`). Deallocate each node as soon as its batch ends.
    - Batches land in `/data/real-out/<batch>` on the generating VM, or are pulled to `train:/data`. Locations are
-     listed in `training/NEEDS.md`.
+     recorded internally.
 
 ## Known limitations
 

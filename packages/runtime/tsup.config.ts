@@ -45,7 +45,7 @@ const cdnOrt = {
 // build (and the 27 MB file is over the 25 MiB per-file limit of some static hosts). Reading import.meta.url through a
 // variable hides the pattern from every bundler; the value at runtime is the same. Not a plain alias
 // (`const u = import.meta.url`): Turbopack propagates that constant and still resolves `new URL("<file>", u)`
-// (found with Next 16.3 in the Troy trial); an array element read is opaque to it, webpack and Rollup/Vite.
+// (found with Next 16.3 in a pilot app); an array element read is opaque to it, webpack and Rollup/Vite.
 export const ORT_URL_VAR = "__genclassOrtUrl";
 const ortNoAssets = {
   name: "genclass-ort-no-assets",

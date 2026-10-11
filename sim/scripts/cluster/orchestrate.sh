@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mac-side orchestration of distributed SIM generation (ssh via /Users/meharkhanna/jev/scripts/azvm.sh).
+# Mac-side orchestration of distributed SIM generation (ssh via scripts/azvm.sh).
 # Strictly ONE az call at a time, each wrapped in a timeout (each az process takes ~1 GB on the Mac).
 #   orchestrate.sh start  c01 c02 ...                 az vm start, one at a time (waits for each)
 #   orchestrate.sh start-nowait c01 c02 ...           az vm start --no-wait, one call at a time (returns fast)
@@ -13,8 +13,8 @@
 # (situation v1). Situation-v2 runs pass SEED_BASE (gold 11e9, unlabeled 16e9, onpolicy 22e9; checks 19e9) so ranges never
 # meet v1 seeds. REFRESH=1 makes nodes re-fetch the bundle (needed after every rebuild).
 set -euo pipefail
-AZVM=/Users/meharkhanna/jev/scripts/azvm.sh
 HERE="$(cd "$(dirname "$0")" && pwd)"
+AZVM="${AZVM:-$(cd "$HERE/../../.." && pwd)/scripts/azvm.sh}"
 idx() { case "$1" in data) echo 12 ;; c*) echo $((10#${1#c})) ;; *) echo "bad host $1" >&2; exit 2 ;; esac; }
 vmname() { case "$1" in data) echo vm-jev-data ;; *) echo "vm-jev-$1" ;; esac; }
 cmd="${1:?start|run|status|kill|stop}"; shift

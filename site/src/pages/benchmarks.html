@@ -1,19 +1,19 @@
 <!--meta {"path":"/benchmarks","nav":"benchmarks","priority":"0.8","crumbs":[["Benchmarks","/benchmarks"]],
-"title":"GenClass Benchmarks: 96% Precision on Unseen Apps",
+"title":"GenClass Benchmarks: Precision, Recall and Safety on Unseen Apps",
 "og_title":"GenClass benchmarks: precision, recall and safety on held-out apps",
-"description":"Held-out results: 96% detection precision on real apps it never saw, 76% of duplicate submits caught, 396 of 396 correct runs untouched.",
+"description":"Held-out results: 96% detection precision on unseen real apps (model 0.1.0, report threshold 0.70), 75% of duplicate submits detected by model 0.2.0 at its default setting, 0 non-passive actions on correct apps in 1,760 runs, and where it still misses.",
 "jsonld":[{"@type":"Dataset","name":"GenClass real-app evaluation set","description":"16,600 held-out runtime situations recorded from real web apps in headless Chromium, never used for training, labelled by counterfactual replay.","creator":{"@id":"https://genclass.dev/#org"},"license":"https://www.apache.org/licenses/LICENSE-2.0","url":"https://genclass.dev/benchmarks","isAccessibleForFree":true},
 {"@type":"TechArticle","headline":"GenClass benchmarks","author":{"@id":"https://genclass.dev/#org"},"publisher":{"@id":"https://genclass.dev/#org"},"dateModified":"2026-10-10"}]} -->
 <div class="page-hero">
   <div class="wrap">
     <!--@crumbs-->
     <h1>Measured on apps <em>it never saw.</em></h1>
-    <p class="lede">Every number here comes from held-out test sets: simulated apps it wasn't trained on, and real apps run in Chromium that were kept out of training. Each recall sits next to its false-intervention rate, so you can see exactly what you are trading.</p>
+    <p class="lede">Every number here comes from held-out test sets: simulated apps it wasn't trained on, and real apps run in Chromium that were kept out of training. Each recall sits next to its false-intervention rate, so you can see exactly what you are trading. Each number is labelled with the model it measures, 0.1.0 (r17-v2b) or the shipped 0.2.0 (r17-v2dT), and the report threshold used; the shipped default threshold is 0.90.</p>
     <div class="stats">
-      <div class="stat"><div class="big g">96%</div><p>detection precision on unseen real apps</p></div>
-      <div class="stat"><div class="big">76%</div><p>of duplicate submits caught on unseen real apps</p></div>
-      <div class="stat"><div class="big">91%</div><p>recall on slow calls at 94% precision, simulated test apps</p></div>
-      <div class="stat"><div class="big g">99.1%</div><p>calibrated: confidence within 0.9 points of reality</p></div>
+      <div class="stat"><div class="big g">96%</div><p>detection precision on unseen real apps</p><small>model 0.1.0, report threshold 0.70</small></div>
+      <div class="stat"><div class="big">75%</div><p>of duplicate submits detected on unseen real apps</p><small>model 0.2.0, default setting</small></div>
+      <div class="stat"><div class="big">91%</div><p>recall on slow calls at 94% precision, simulated test apps</p><small>model 0.1.0, report threshold 0.70</small></div>
+      <div class="stat"><div class="big g">0</div><p>non-passive actions on correct apps in 1,760 guard and heal runs</p><small>compatibility matrix, 7 frameworks, 15 data layers</small></div>
     </div>
   </div>
 </div>
@@ -26,7 +26,7 @@
 <section>
   <div class="wrap">
     <div class="sh"><span class="no">Roadmap</span><h2>Precise today. Catching more every round.</h2></div>
-    <p class="intro">GenClass is tuned to almost never be wrong when it acts. At the default setting guard acts on about 8% of the cases where acting would help; the eager setting reaches 1 in 4 on real apps. Each training round lifts recall at the same safety level.</p>
+    <p class="intro">GenClass is tuned to almost never be wrong when it acts. At the default setting guard acts on about 8% of the cases where acting would help; the eager setting reaches about 1 in 5 on real apps. Each training round so far has lifted recall at the same safety level.</p>
 <!--@status-->
     <p class="note" style="margin-top: 24px">Raw tables: <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md">RESULTS.md</a> and the <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">model card</a>.</p>
   </div>

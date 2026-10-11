@@ -7,7 +7,7 @@
 set -euo pipefail
 SRC="${1:?sim out dir on the train VM}"; NAME="${2:?name}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-JEV="$(cd "$HERE/../.." && pwd)"
+JEV="$(cd "$HERE/.." && pwd)"   # repo root (scripts/azvm.sh)
 # serve the SIM dir from the train VM on its private address (read-only http.server, port 8802)
 TIMEOUT=120 "$JEV/scripts/azvm.sh" train "ls -la $SRC && (ss -ltn | grep -q ':8802 ' && pkill -f 'http.server 880[2]' || true); \
   (setsid nohup python3 -m http.server 8802 --bind 10.0.0.4 --directory $SRC > /tmp/xfer8802.log 2>&1 < /dev/null &); sleep 1; ss -ltn | grep 8802"

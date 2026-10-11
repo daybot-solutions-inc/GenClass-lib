@@ -9,7 +9,7 @@
 set -uo pipefail
 TAG="$1"; PLAN="$2"; GO="${3:-}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-AZ=/Users/meharkhanna/jev/scripts/azvm.sh
+AZ="${AZVM:-$ROOT/scripts/azvm.sh}"
 DEST=/data/real-out/v23-cert
 LOG=${CERT_LOG:-/tmp}
 BUSY='sim/dist/ge[n]|realapps.*gen[.]js|jev_local[.]train[.]trai[n]'

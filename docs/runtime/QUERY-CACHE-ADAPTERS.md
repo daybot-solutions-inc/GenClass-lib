@@ -1,7 +1,7 @@
 # Design note: TanStack Query / SWR adapters (not built)
 
 Status: proposal, 2026-10-10 (COMPAT workstream). Nothing here is implemented. Evidence: `compat/RESULTS.md`
-(run of 2026-10-10), NIGHT-REPORT.md §6 item 4.
+(run of 2026-10-10).
 
 ## Question
 

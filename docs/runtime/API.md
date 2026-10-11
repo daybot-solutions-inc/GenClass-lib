@@ -42,11 +42,12 @@ Kill switch, for "is my app broken or did GenClass change something?":
 Outside a browser (no `window`/`document`, e.g. SSR), `GenClass.init()` returns an inert runtime: no observers,
 no model. Use [`createRuntime`](#headless-use-tests-ssr-simulation) for headless work.
 
-**Telemetry (since 0.1.0-beta.3; privacy-relevant).** In a browser `GenClass.init()` sends anonymous diagnostics
-(decisions with the redacted situation text, action outcomes, detections, model status and counts) to
-`DEFAULT_TELEMETRY_ENDPOINT` and prints one console notice per page. Off with `telemetry: false`,
-`?genclass=no-telemetry` (or `?genclass=off`), `localStorage["genclass.telemetry"] = "off"`, or Global Privacy
-Control; off by default outside a browser and in `createRuntime()`. Schema and details:
+**Telemetry (privacy-relevant).** In a browser on a public host, `GenClass.init()` sends anonymous diagnostics
+(decisions, action outcomes, detections, model status and counts; no page text unless
+`telemetry: { include: { situation: true } }`) to `DEFAULT_TELEMETRY_ENDPOINT` and prints one console notice per
+page. Off with `telemetry: false`, `?genclass=no-telemetry` (or `?genclass=off`),
+`localStorage["genclass.telemetry"] = "off"`, or Global Privacy Control; off by default on localhost and private
+hosts, outside a browser and in `createRuntime()`. Schema and details:
 [packages/runtime/TELEMETRY.md](../../packages/runtime/TELEMETRY.md).
 
 ## Options

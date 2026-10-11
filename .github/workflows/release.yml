@@ -5,7 +5,7 @@ name: Release
 #
 # Trigger: push a tag `v<version>` whose version equals packages/runtime/package.json (e.g. v0.1.0-beta.5).
 # Authentication: npm trusted publishing (OIDC, `id-token: write`); no npm token is stored in the repository.
-# Owner setup before the first run (RELEASE.md, "Publishing from CI with provenance"): on npmjs.com, package
+# Owner setup before the first run: on npmjs.com, package
 # @genclass/runtime → Settings → Trusted publishing → GitHub Actions: organization daybot-solutions-inc, repository
 # GenClass-lib, workflow filename release.yml, environment npm-publish; and a GitHub environment `npm-publish`
 # (Settings → Environments), ideally with required reviewers.
@@ -90,7 +90,7 @@ jobs:
           if-no-files-found: error
 
       # prereleases go to the dist-tag named after them (0.1.0-beta.5 -> beta); the owner moves `latest`
-      # (`npm dist-tag add @genclass/runtime@<version> latest`) after checking the release (RELEASE.md)
+      # (`npm dist-tag add @genclass/runtime@<version> latest`) after checking the release
       - name: Publish with provenance
         working-directory: packages/runtime
         run: |

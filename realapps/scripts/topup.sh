@@ -8,7 +8,7 @@
 set -uo pipefail
 TAG="$1"; BATCH="$2"; SEED0="$3"; N="$4"; NODES="$5"; APPS="$6"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-AZ=/Users/meharkhanna/jev/scripts/azvm.sh
+AZ="${AZVM:-$ROOT/scripts/azvm.sh}"
 i=0
 for h in $NODES; do
   timeout 300 az vm start -g rg-jev-train -n vm-jev-$h -o none && echo "$h started"

@@ -153,4 +153,4 @@ the session event names your hostname. Depending on your users and jurisdiction 
   custom `redact` lowers what reaches situation text but does not guarantee that nothing sensitive does.
 
 Privacy policy for this collection: [PRIVACY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md). Data processing terms are not published yet
-(`OPEN_TASKS.md`); if you cannot disclose a third-party diagnostics recipient, set `telemetry: false`.
+(planned); if you cannot disclose a third-party diagnostics recipient, set `telemetry: false`.

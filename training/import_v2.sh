@@ -9,7 +9,7 @@ SRC="${1:?collected sim dir on the train VM}"; NAME="${2:?bucket name}"
 WB="${WB:-c02}"; PORT="${PORT:-8803}"
 WBIP=$(awk -v h="$WB" '$1==h {print $3}' "$HOME/.jev-local/azure_hosts")
 HERE="$(cd "$(dirname "$0")" && pwd)"
-JEV="$(cd "$HERE/../.." && pwd)"
+JEV="$(cd "$HERE/.." && pwd)"   # repo root (scripts/azvm.sh)
 timeout 120 "$JEV/scripts/azvm.sh" train "ss -ltn | grep -q ':${PORT} ' || \
   (setsid nohup python3 -m http.server ${PORT} --bind 10.0.0.4 --directory $SRC > /tmp/xfer${PORT}.log 2>&1 < /dev/null &); \
   sleep 2; ss -ltn | grep ':${PORT} ' || true; ls $SRC | grep -c gz"

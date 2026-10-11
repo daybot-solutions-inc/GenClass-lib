@@ -1,7 +1,7 @@
 <!--meta {"path":"/docs","nav":"docs","priority":"0.9","crumbs":[["Docs","/docs"]],
 "title":"GenClass Docs: Install the Runtime in Two Lines",
 "description":"Install @genclass/runtime from npm, a script tag or the CLI. Choose observe, guard or heal mode, tune aggressiveness, explain and undo decisions.",
-"jsonld":[{"@type":"HowTo","name":"Install GenClass in a web app","description":"Add the GenClass self-healing runtime to any web app.","totalTime":"PT2M","tool":[{"@type":"HowToTool","name":"npm"}],"step":[
+"jsonld":[{"@type":"HowTo","name":"Install GenClass in a web app","description":"Add the GenClass runtime to any web app.","totalTime":"PT2M","tool":[{"@type":"HowToTool","name":"npm"}],"step":[
 {"@type":"HowToStep","name":"Install the package","text":"Run npm install @genclass/runtime.","url":"https://genclass.dev/docs#install"},
 {"@type":"HowToStep","name":"Initialize the runtime","text":"Import GenClass from @genclass/runtime and call GenClass.init() at the top of your entry file.","url":"https://genclass.dev/docs#init"},
 {"@type":"HowToStep","name":"Choose a mode","text":"Start in observe mode, then pass { mode: 'guard' } to let GenClass act.","url":"https://genclass.dev/docs#modes"}]},
@@ -18,7 +18,7 @@
     <nav class="toc" aria-label="On this page">
       <b>Start</b><a href="#install">Install</a><a href="#init">Initialize</a><a href="#modes">Modes</a><a href="#profiles">Aggressiveness</a>
       <b>Operate</b><a href="#explain">Explain and undo</a><a href="#off">Kill switch</a><a href="#selfhost">Self-host the model</a><a href="#privacy">Privacy</a>
-      <b>Cloud</b><a href="#cloud">Connect Cloud</a><b>Reference</b><a href="/docs/api">API</a><a href="/docs/options">Options</a><a href="/docs/architecture">Architecture</a>
+      <b>Cloud</b><a href="#cloud">Cloud (planned)</a><b>Reference</b><a href="/docs/api">API</a><a href="/docs/options">Options</a><a href="/docs/architecture">Architecture</a>
     </nav>
     <div class="prose">
       <h2 id="install">Install</h2>
@@ -68,14 +68,14 @@ GenClass.init();</code></pre>
 npx @genclass/runtime init --model-url /genclass-model/</code></pre>
 
       <h2 id="privacy">Privacy</h2>
-      <p>Decisions are made on-device. Anonymous redacted diagnostics are on by default to improve the model; turn them off with <code>GenClass.init({ telemetry: false })</code> or <code>npx @genclass/runtime init --no-telemetry</code>. See <a href="/privacy">privacy</a>.</p>
+      <p>Decisions are made on-device. From runtime 0.2.1, anonymous diagnostics are on by default on public hosts and off on local and private hosts (<code>localhost</code>, <code>*.localhost</code>, <code>*.local</code>, <code>*.test</code>, <code>127.0.0.1</code>, <code>::1</code>, private IP ranges). By default they contain no text from the page: a random per-page session id, versions, mode, device class, your hostname and id-normalised path, and per decision the trigger, diagnosis and confidence, action, gate, outcome, latency and counts. The situation text the model read is sent only if you opt in with <code>telemetry: { include: { situation: true } }</code>. Turn it off with <code>GenClass.init({ telemetry: false })</code>, <code>npx @genclass/runtime init --no-telemetry</code>, <code>?genclass=no-telemetry</code>, <code>localStorage</code> <code>genclass.telemetry=off</code>, or Global Privacy Control. See <a href="/docs/telemetry">telemetry</a> and <a href="/privacy">privacy</a>.</p>
 
-      <h2 id="cloud">Connect GenClass Cloud</h2>
-      <div class="callout"><b>Early access.</b> The <code>cloud</code> option below is the proposed API and ships with GenClass Cloud. <a href="/cloud#early-access">Request access</a>.</div>
+      <h2 id="cloud">GenClass Cloud (planned)</h2>
+      <div class="callout"><b>GenClass Cloud is not available yet.</b> We are building it with design partners; the runtime above is what ships today. The <code>cloud</code> option below is a proposed API and is not in the current runtime. <a href="/cloud#early-access">Request early access</a>.</div>
 <pre><code>GenClass.init({
   cloud: { projectKey: "gc_pub_..." },   // publishable, metrics-only key
 });</code></pre>
-      <p>The runtime never waits on the cloud. If it is unreachable, protection continues locally.</p>
+      <p>The runtime will never wait on the cloud. If it is unreachable, protection continues locally.</p>
 
       <h2 id="more">Reference</h2>
       <ul>

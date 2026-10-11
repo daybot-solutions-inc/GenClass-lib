@@ -8,6 +8,7 @@ SITE = "https://genclass.dev"
 TODAY = datetime.date.today().isoformat()
 GH = "https://github.com/daybot-solutions-inc/GenClass-lib"
 NPM = "https://www.npmjs.com/package/@genclass/runtime"
+RT = "0.2.0"  # the pinned @genclass/runtime version shown on the site; "{{rt}}" in src/ renders as this
 
 css = (SRC / "css/base.css").read_text() + "\n" + (SRC / "css/components.css").read_text()
 (PUB / "styles.css").write_text(css)
@@ -32,7 +33,7 @@ def nav(active):
 
 FOOTER = f'''<footer class="end">
   <div class="wrap">
-    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass" width="220" height="183" loading="lazy">
     <h2>Free to run. Built to scale.</h2>
     <div class="row">
       <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>
@@ -90,7 +91,7 @@ def page(meta, body):
 <meta property="og:image" content="{SITE}/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:image:alt" content="GenClass: catch race conditions and stale data in production">
 <meta property="og:locale" content="en_US">
 {extra}<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{meta.get("og_title", title)}">
@@ -110,7 +111,7 @@ def page(meta, body):
 <body>
 <a class="skip" href="#main">Skip to content</a>
 '''
-    return head + nav(meta.get("nav")) + f'\n<main id="main">\n{body}\n</main>\n' + FOOTER + f'\n<script src="/app.js?v={JSV}" defer></script>\n{meta.get("body_extra", "")}</body>\n</html>\n'
+    return (head + nav(meta.get("nav")) + f'\n<main id="main">\n{body}\n</main>\n' + FOOTER + f'\n<script src="/app.js?v={JSV}" defer></script>\n{meta.get("body_extra", "")}</body>\n</html>\n').replace("{{rt}}", RT)
 
 # ---------- shared blocks ----------
 def bars():
@@ -144,7 +145,7 @@ def dashboard():
           <div class="kpi"><div class="k">Anomalies detected</div><div class="v">12,847</div><div class="d mut">across 1.9M sessions</div></div>
           <div class="kpi"><div class="k">Interventions applied</div><div class="v">3,291</div><div class="d up">stale writes, duplicates, retries</div></div>
           <div class="kpi"><div class="k">Undone by users</div><div class="v">14</div><div class="d up">0.43% of interventions</div></div>
-          <div class="kpi"><div class="k">P95 inference</div><div class="v">82 ms</div><div class="d mut">on-device, WebGPU + WASM</div></div>
+          <div class="kpi"><div class="k">P50 decision</div><div class="v">182 ms</div><div class="d mut">WASM, 1 thread · faster on WebGPU</div></div>
         </div>
         <div class="panels">
           <div class="pnl"><h4>Interventions per day <span>30 days</span></h4><div class="spark" aria-hidden="true">{bars()}</div><div class="axisx"><span>Sep 10</span><span>Sep 25</span><span>Oct 9</span></div></div>
@@ -191,7 +192,7 @@ def dashboard():
           <div class="ev"><span class="tm">rule</span><span class="toggle"><i></i>on</span><span class="msg">Failure storm on any /api/checkout route</span><span class="mut" style="font-size: 12px">page</span></div>
           <div class="ev"><span class="tm">rule</span><span class="toggle"><i></i>on</span><span class="msg">Interventions undone above 1% in an hour</span><span class="mut" style="font-size: 12px">email</span></div>
           <div class="ev"><span class="tm">rule</span><span class="toggle"><i></i>on</span><span class="msg">New release raises stale overwrites by 20%</span><span class="mut" style="font-size: 12px">slack</span></div>
-          <div class="ev"><span class="tm">rule</span><span class="toggle off"><i></i>off</span><span class="msg">P95 inference above 150 ms</span><span class="mut" style="font-size: 12px">slack</span></div>
+          <div class="ev"><span class="tm">rule</span><span class="toggle off"><i></i>off</span><span class="msg">P95 decision latency above 600 ms</span><span class="mut" style="font-size: 12px">slack</span></div>
         </div>
       </div>
       <div class="view" data-panel="policies" hidden>
@@ -212,7 +213,7 @@ def dashboard():
       </div>
     </div>
   </div>
-  <p class="app-note">Product preview with sample data. GenClass Cloud is in early access; figures here illustrate the dashboard and are not customer results.</p>
+  <p class="app-note">Product preview with sample data. GenClass Cloud is not available yet; figures here illustrate the planned dashboard and are not customer results.</p>
 </div>'''
 
 def waitlist(plan, heading, text):

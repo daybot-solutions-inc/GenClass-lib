@@ -3,8 +3,7 @@
 Cloudflare Worker that receives the default-on diagnostics batches from `@genclass/runtime` (see
 [`packages/runtime/TELEMETRY.md`](../packages/runtime/TELEMETRY.md)) and stores them in R2.
 
-- **Deployed:** `https://genclass-telemetry.mehar-144.workers.dev` (account `144bd5f5270b51dbe7faf46227a154f0`,
-  worker `genclass-telemetry`, workers.dev route). The runtime's `DEFAULT_TELEMETRY_ENDPOINT` is this URL + `/v1/events`.
+- **Deployed:** `https://genclass-telemetry.mehar-144.workers.dev` (worker `genclass-telemetry`, workers.dev route). The runtime's `DEFAULT_TELEMETRY_ENDPOINT` is this URL + `/v1/events`.
 - **Storage:** R2 bucket `genclass-telemetry`, one gzip JSON Lines object per accepted batch at
   `events/dt=YYYY-MM-DD/rt=<runtime version>/model=<model version|none>/<uuid>.jsonl.gz` (date = server UTC date).
   Each line is `{ sid, runtime, model, sent, receivedAt, country, event }`.

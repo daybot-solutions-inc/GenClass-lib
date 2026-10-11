@@ -11,7 +11,7 @@ for spec in "$@"; do
   name="${spec%%:*}"; size="${spec##*:}"
   if grep -q "^$name " "$HOSTS" 2>/dev/null; then echo "$name exists"; continue; fi
   common=(-g $RG -n "vm-jev-$name" --size "$size" --image Canonical:ubuntu-24_04-lts:server:latest --admin-username azureuser
-          --ssh-key-values ~/.ssh/jev_azure.pub --vnet-name vm-jev-trainVNET --subnet vm-jev-trainSubnet --nsg nsg-jev-train
+          --ssh-key-values "${AZURE_SSH_KEY:-$HOME/.ssh/id_ed25519}.pub" --vnet-name vm-jev-trainVNET --subnet vm-jev-trainSubnet --nsg nsg-jev-train
           --public-ip-sku Standard --accelerated-networking true --os-disk-size-gb 256 --storage-sku Premium_LRS
           --os-disk-delete-option Delete --nic-delete-option Delete --tags project=jev-local purpose=train-cluster
           --query "[id,publicIpAddress,privateIpAddress]" -o tsv)

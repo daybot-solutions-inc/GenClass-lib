@@ -17,7 +17,7 @@
 <meta property="og:image" content="https://genclass.dev/og.png?v=4">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="GenClass: the self-healing runtime for web apps">
+<meta property="og:image:alt" content="GenClass: catch race conditions and stale data in production">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="GenClass Threat Model">
@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=c4d84874">
+<link rel="stylesheet" href="/styles.css?v=0ca3ba97">
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Threat model", "item": "https://genclass.dev/docs/threat-model"}]}, {"@type": "TechArticle", "headline": "Threat model", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-10", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/THREAT-MODEL.md"}]}</script>
 </head>
 <body>
@@ -202,16 +202,20 @@ downloads lazily on Save-Data connections and can be skipped (<code>model.loadIf
 salient request, response or failure. <code>policy.holdBudgetMs</code> lowers it; <code>observe</code> removes holds entirely.</p>
 <h2 id="t5-telemetry-and-redaction-leaks">T5. Telemetry and redaction leaks</h2>
 <p><strong>Threat.</strong> Diagnostics, sink records, reports or the audit trail carry personal data.</p>
-<p><strong>Mitigations.</strong> Telemetry (on by default for <code>GenClass.init</code> in a browser) sends only what <a href="/docs/telemetry">TELEMETRY.md</a>
-lists: the redacted situation text, decisions, action outcomes and counts, never input values of sensitive fields,
-cookies, headers, bodies, the query string or full URL, error messages or the sentences describing changes. It is off
-with <code>telemetry: false</code>, <code>?genclass=no-telemetry</code>, <code>localStorage["genclass.telemetry"]="off"</code>, Global Privacy
-Control, and in <code>createRuntime()</code>; <code>telemetry: { include: { situation: false } }</code> keeps the situation text out. The transport omits
+<p><strong>Mitigations.</strong> Telemetry (on by default for <code>GenClass.init</code> in a browser on a public host, never on localhost or
+private networks) sends only what <a href="/docs/telemetry">TELEMETRY.md</a> lists: decisions, action
+outcomes and counts, the hostname and id-normalised route; no page text unless the app opts in with
+<code>telemetry: { include: { situation: true } }</code>, and never input values of sensitive fields, cookies, headers, bodies
+or the sentences describing changes. With situation text opted in, it can carry request names with query strings,
+route changes, the page title, short error messages, short typed values and short store values (see TELEMETRY.md).
+It is off with <code>telemetry: false</code>, <code>?genclass=no-telemetry</code>, <code>localStorage["genclass.telemetry"]="off"</code>, Global
+Privacy Control, and in <code>createRuntime()</code>. The transport omits
 credentials and the referrer (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/telemetry/transport.ts">telemetry/transport.ts</a>); the
 collector stores no IP address or user agent. Query values are redacted in situation text and replaced with "…" in
 sink evidence and audit entries (<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/src/runtime.ts">runtime.ts</a> <code>redactUrlText</code>).</p>
 <p><strong>Residual.</strong> Redaction is by name and by the sensitive inputs it saw: a personal value in a field with an ordinary
-name (an email in <code>profile.contact</code>, a search term, an address) can appear in the situation text and so in telemetry,
+name (an email in <code>profile.contact</code>, a search term, an address) can appear in the situation text and so in telemetry
+when situation text is opted in,
 <code>rt.explain()</code>, the devtools overlay and sinks with <code>evidence: true</code>. Add a <code>redact</code> function for such fields, set
 <code>telemetry: { include: { situation: false } }</code>, or turn telemetry off.</p>
 <h2 id="t6-state-discovery-reading-application-state">T6. State discovery reading application state</h2>
@@ -352,7 +356,7 @@ records that without acting): <code>mode: "guard"</code> with <code>routes: [{ m
 </main>
 <footer class="end">
   <div class="wrap">
-    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass: AI runtime, self healing" width="220" height="183" loading="lazy">
+    <img class="lockup" src="/brand/lockup-stack.png?v=1" alt="genclass" width="220" height="183" loading="lazy">
     <h2>Free to run. Built to scale.</h2>
     <div class="row">
       <button class="cmd" type="button" data-copy="npm install @genclass/runtime" aria-label="Copy the install command"><span><span class="p">$</span> npm i @genclass/runtime</span><span class="k">Copy</span></button>

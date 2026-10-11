@@ -1,7 +1,7 @@
 {
   "name": "@genclass/runtime-model",
   "version": "0.2.0",
-  "description": "The local decision model for @genclass/runtime: a 17M-parameter GenClass encoder (ONNX, int8 for WASM and fp16 for WebGPU), its tokenizer and calibration. Loaded by the runtime from jsDelivr, or self-hosted.",
+  "description": "The GenClass runtime model (8.8M parameters, ONNX) for @genclass/runtime.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

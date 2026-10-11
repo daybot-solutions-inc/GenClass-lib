@@ -1,6 +1,6 @@
 #!/bin/bash
 # TRAIN helper for the Azure cluster (hosts in ~/.jev-local/azure_hosts). Mac-safe: ssh/rsync only.
-#   training/node.sh HOST sync            rsync training/ -> ~/gcl-train/training/ and jev code -> ~/jev (jev_local, scripts)
+#   training/node.sh HOST sync            rsync training/ -> ~/gcl-train/training/ and research/ -> ~/jev (jev_local, scripts)
 #   training/node.sh HOST 'cmd'           run cmd in ~/gcl-train on HOST (PYTHONPATH=~/jev, venv python as $PY)
 #   training/node.sh HOST get REMOTE LOCAL
 #   training/node.sh HOST put LOCAL REMOTE
@@ -9,9 +9,9 @@ set -euo pipefail
 H="${1:?host}"; shift
 IP=$(awk -v h="$H" '$1==h {print $2}' "$HOME/.jev-local/azure_hosts")
 [ -n "$IP" ] || { echo "unknown host $H" >&2; exit 2; }
-OPTS=(-i "$HOME/.ssh/jev_azure" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6)
+OPTS=(-i "${AZURE_SSH_KEY:-$HOME/.ssh/id_ed25519}" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6)
 HERE="$(cd "$(dirname "$0")" && pwd)"
-JEV="$(cd "$HERE/../.." && pwd)"          # /Users/meharkhanna/jev (parent repo with jev_local)
+JEV="${JEV_ROOT:-$(cd "$HERE/.." && pwd)/research}"   # research/ (jev_local, scripts, pyproject.toml)
 T="${TIMEOUT:-900}"
 DEST="azureuser@${IP}"
 case "${1:-}" in

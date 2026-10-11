@@ -18,13 +18,13 @@
       <figure>
         <div class="frame">
           <div class="ftitle">Detection on real apps it never trained on</div>
-          <div class="fsub">Observe mode, 16,600 held-out situations, precision 0.96</div>
+          <div class="fsub">Model 0.1.0, observe mode, report threshold 0.70, 16,600 held-out situations, precision 0.96</div>
           <div class="hbar"><div class="r"><span>Duplicate submits detected</span><b>76%</b></div><div class="t"><i class="b" style="width: 76%"></i></div></div>
           <div class="hbar"><div class="r"><span>Stale overwrites detected</span><b>43%</b></div><div class="t"><i class="b" style="width: 43%"></i></div></div>
           <div class="hbar"><div class="r"><span>Broken state detected</span><b>27%</b></div><div class="t"><i class="b" style="width: 27%"></i></div></div>
           <div class="hbar"><div class="r"><span>False detections on clean traffic</span><b>0.62%</b></div><div class="t"><i class="o" style="width: 0.62%; min-width: 3px"></i></div></div>
         </div>
-        <figcaption><b>Fig. 2</b> Report threshold 0.70. At the shipped threshold of 0.85: duplicates about 76%, stale 28%, false detections 0.36%.</figcaption>
+        <figcaption><b>Fig. 2</b> Model 0.1.0 at report threshold 0.70. The shipped model 0.2.0 at its default threshold of 0.90 detects 75% of duplicate submits, 21–30% of stale overwrites and 6% of broken state on the same held-out apps, within its 2% false-detection limit on clean real-app traffic.</figcaption>
       </figure>
 
       <figure>
@@ -66,7 +66,7 @@
             </table>
           </div>
         </div>
-        <figcaption><b>Table 1</b> Model r17-v2b on the sim2e test set. Calibration error 0.009; browser and PyTorch outputs agree on 223 of 223 decisions.</figcaption>
+        <figcaption><b>Table 1</b> Model 0.1.0 (r17-v2b) on the sim2e test set, report threshold 0.70. Expected calibration error on the action question 0.021–0.023; browser and PyTorch outputs agree on 223 of 223 decisions.</figcaption>
       </figure>
 
       <figure>
@@ -96,10 +96,10 @@
         <div class="frame">
           <div class="ftitle">Small enough for every device</div>
           <div class="fsub">Model file size, int8</div>
-          <div class="hbar"><div class="r"><span>R17, shipped</span><b>9.6 MB</b></div><div class="t"><i class="b" style="width: 16.8%"></i></div></div>
+          <div class="hbar"><div class="r"><span>R17, shipped (0.2.0 q8)</span><b>10.2 MB</b></div><div class="t"><i class="b" style="width: 17.9%"></i></div></div>
           <div class="hbar"><div class="r"><span>R32</span><b>22.5 MB</b></div><div class="t"><i style="width: 39.5%"></i></div></div>
           <div class="hbar"><div class="r"><span>GenClass 0.1, original</span><b>57 MB</b></div><div class="t"><i class="m" style="width: 100%"></i></div></div>
-          <p class="fsub" style="margin-top: 18px">One WASM thread, 500-token situation: 177 ms for R17, 569 ms for R32. WebGPU and multi-threaded WASM are faster, and normal traffic makes no model calls.</p>
+          <p class="fsub" style="margin-top: 18px">One WASM thread, 500-token situation: about 180 ms for R17 (182 ms for the shipped 0.2.0 export), 569 ms for R32. WebGPU and multi-threaded WASM are faster, and normal traffic makes no model calls.</p>
         </div>
         <figcaption><b>Fig. 5</b> R17 matches R32's accuracy at about a third of the size and latency, so it is the default everywhere.</figcaption>
       </figure>
@@ -108,10 +108,28 @@
     <figure style="margin-top: 56px">
       <div class="frame">
         <div class="ftitle">Never make a correct app worse</div>
-        <div class="fsub">Real apps in headless Chromium: final page text and server state, with and without the runtime acting</div>
+        <div class="fsub">Plumbing test of the runtime with an always-passive model: real apps in headless Chromium, final page text and server state with and without the runtime installed</div>
         <div class="pair">
           <div><div class="big" style="color: #C42A12">194 / 198</div><p>clean runs untouched by the v1 runtime, which held store writes. Not good enough: the React/Redux RealWorld app never rendered its home feed.</p></div>
-          <div><div class="big" style="color: #08794A">396 / 396</div><p>clean runs untouched by the v2 runtime, which decides at the network boundary: 66 real apps × 6 seeds. So v2 shipped.</p></div>
+          <div><div class="big" style="color: #08794A">396 / 396</div><p>clean runs unchanged with the v2 runtime installed, which decides at the network boundary: 66 real apps × 6 seeds, always-passive model. With the real model, the compatibility matrix counts 0 non-passive actions on correct apps in 1,760 guard and heal runs.</p></div>
         </div>
       </div>
+    </figure>
+
+    <figure style="margin-top: 32px" id="misses">
+      <div class="frame">
+        <div class="ftitle">Where it still misses: six demo apps under chaos</div>
+        <div class="fsub">Model 0.2.0 on the 0.2.0 runtime code. Bug rate over the six demos, 60 chaos trials per cell; false interventions (FI) counted on 30 clean trials per mode.</div>
+        <div class="tbl-wrap" style="margin-top: 18px">
+          <table class="prof">
+            <thead><tr><th>Setting</th><th>off</th><th>observe</th><th class="hl">guard</th><th>heal</th><th>actions guard / heal</th><th>FI guard / heal</th></tr></thead>
+            <tbody>
+              <tr><td>balanced (default)</td><td>72%</td><td>70%</td><td class="hl">72%</td><td>73%</td><td>2 / 3</td><td>0 / 0</td></tr>
+              <tr><td>cautious</td><td>–</td><td>–</td><td class="hl">72%</td><td>77%</td><td>0 / 0</td><td>0 / 0</td></tr>
+              <tr><td>eager</td><td>–</td><td>72%</td><td class="hl">73%</td><td>75%</td><td>6 / 12</td><td>2 / 0</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <figcaption><b>Table 2</b> Nothing is healed at the shipped gates: the demos' bug rate is the same with GenClass on or off, and differences under about 5 points are noise. The compatibility matrix says the same: of 250 runs that showed a latent bug without GenClass, guard left 249 and heal 240 buggy. Today the value is in what it reports, not in what it fixes.</figcaption>
     </figure>

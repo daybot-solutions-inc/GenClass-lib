@@ -7,6 +7,7 @@
   const lab = $("lab");
   if (!lab) return;
   const RAW = window.__gcRawFetch || window.fetch.bind(window);
+  const RTV = lab.dataset.rt || ""; // runtime version, templated by build.py
   const GC = window.GenClass;
   const qs = new URLSearchParams(location.search);
   const thr = qs.get("lab-thr") ?? "0";
@@ -35,7 +36,7 @@
     if (s.device) text($("gc-backend"), s.device + (s.variant ? " · " + s.variant : "") + (s.loadMs ? " · loaded in " + (s.loadMs / 1000).toFixed(1) + " s" : ""));
     if (s.state === "ready") {
       ready = true;
-      text($("gc-live"), "GenClass 0.2.0 running on your device");
+      text($("gc-live"), "GenClass" + (RTV ? " " + RTV : "") + " running on your device");
       lab.classList.add("is-ready");
     } else if (s.state === "loading" || s.state === "unloaded") {
       text($("gc-live"), "Loading the GenClass model on your device…");
@@ -161,7 +162,7 @@
   $("inv-on-btn").addEventListener("click", () => send("on"));
   go.addEventListener("click", () => {
     invNo++; resetLane("off"); resetLane("on"); $("dup-quote").hidden = true; lastCoalesce = "";
-    ["off", "on"].forEach((s) => { const b = $(`inv-${s}-btn`); [0, 280, 560].forEach((t) => setTimeout(() => b.click(), t)); });
+    ["off", "on"].forEach((s) => { const b = $(`inv-${s}-btn`); [0, 280].forEach((t) => setTimeout(() => b.click(), t)); });
   });
 
   // ---------- 2. search race (with GenClass) ----------
