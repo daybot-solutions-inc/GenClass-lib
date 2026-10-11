@@ -35,5 +35,5 @@
 
 ## Links
 - How it works: https://genclass.dev/how-it-works
-- GitHub: https://github.com/daybot-solutions-inc/GenClass-lib
+- GitHub: https://github.com/genclass-dev/GenClass-lib
 - npm: https://www.npmjs.com/package/@genclass/runtime

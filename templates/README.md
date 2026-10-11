@@ -15,7 +15,7 @@ work within a minute.
 Copy one without the rest of the repository:
 
 ```bash
-npx degit daybot-solutions-inc/GenClass-lib/templates/react-vite my-app
+npx degit genclass-dev/GenClass-lib/templates/react-vite my-app
 cd my-app && npm install && npm run dev
 ```
 

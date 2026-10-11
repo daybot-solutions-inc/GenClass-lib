@@ -748,7 +748,7 @@ describe("init options: --no-telemetry / --telemetry / --model-url (Troy trial, 
     const r = cli(viteVue(), "init", "--dry-run");
     expect(r.out).toMatch(/Telemetry\s+on \(the default\)/);
     expect(r.out).toContain("npx @genclass/runtime init --no-telemetry");
-    expect(r.out).toContain("https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md");
+    expect(r.out).toContain("https://github.com/genclass-dev/GenClass-lib/blob/main/PRIVACY.md");
     expect(r.out).toContain("packages/runtime/TELEMETRY.md");
     expect(cli(viteVue(), "init", "--dry-run", "--no-telemetry").out).toMatch(/Telemetry\s+off/);
     const usage = cli(project({}), "init", "--help").out;

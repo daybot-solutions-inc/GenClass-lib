@@ -152,5 +152,5 @@ the session event names your hostname. Depending on your users and jurisdiction 
 - turn it off (`telemetry: false`) in apps that handle regulated data (health, finance, children's services): a
   custom `redact` lowers what reaches situation text but does not guarantee that nothing sensitive does.
 
-Privacy policy for this collection: [PRIVACY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md). Data processing terms are not published yet
+Privacy policy for this collection: [PRIVACY.md](https://github.com/genclass-dev/GenClass-lib/blob/main/PRIVACY.md). Data processing terms are not published yet
 (planned); if you cannot disclose a third-party diagnostics recipient, set `telemetry: false`.

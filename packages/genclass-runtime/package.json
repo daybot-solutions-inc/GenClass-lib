@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/daybot-solutions-inc/GenClass-lib.git",
+    "url": "git+https://github.com/genclass-dev/GenClass-lib.git",
     "directory": "packages/genclass-runtime"
   },
   "homepage": "https://genclass.dev",

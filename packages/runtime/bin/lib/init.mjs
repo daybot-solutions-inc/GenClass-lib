@@ -27,7 +27,7 @@ const CMD = "npx @genclass/runtime";
 const PKG = "@genclass/runtime";
 const MODES = ["observe", "guard", "heal"];
 
-const REPO = "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main";
+const REPO = "https://github.com/genclass-dev/GenClass-lib/blob/main";
 export const TELEMETRY_URL = `${REPO}/packages/runtime/TELEMETRY.md`;
 export const INTERCEPTION_URL = "https://genclass.dev/docs/interception";
 export const PRIVACY_URL = `${REPO}/PRIVACY.md`;

@@ -57,7 +57,7 @@ if (process.env.NODE_ENV === "development") {
 ## Privacy
 
 In a browser, GenClass sends anonymous, redacted diagnostics by default
-([TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md)).
+([TELEMETRY.md](https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md)).
 To turn that off, add a meta tag through the root layout's metadata:
 
 ```ts
@@ -70,9 +70,9 @@ or run `npx @genclass/runtime init --no-telemetry`.
 
 If you set a CSP (for example in `next.config.ts` headers), allow `https://cdn.jsdelivr.net` in `connect-src` (the
 model is downloaded from there once and cached) and `'wasm-unsafe-eval'` in `script-src`, or self-host the model
-([README](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#content-security-policy-and-self-hosting)).
+([README](https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/README.md#content-security-policy-and-self-hosting)).
 
 ## Compatibility
 
 This setup is part of the public compatibility matrix (Next.js 16 App Router with client components and SWR, SSR
-checked): see [compat/RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md).
+checked): see [compat/RESULTS.md](https://github.com/genclass-dev/GenClass-lib/blob/main/compat/RESULTS.md).

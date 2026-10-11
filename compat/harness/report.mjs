@@ -205,7 +205,7 @@ export function writeReport(results, { jsonPath, mdPath }) {
   const fixedText = Object.entries(fixedBy).map(([k, v]) => `${v} × ${k}`).join("; ");
   const byAction = modeCells.reduce((a, c) => a + (c.fixedByAction ?? 0), 0);
   const noAction = modeCells.reduce((a, c) => a + (c.fixedNoAction ?? 0), 0);
-  L.push(`- **Bugs fixed by an action: ${byAction}${fixedText ? ` (${fixedText})` : ""}.** The two scenarios with a latent bug (a stale typeahead, a double submit) showed it in ${offBugs} of ${offBugRuns} runs without GenClass; guard left ${bugRuns("guard").reduce((a, c) => a + c.bugs, 0)} and heal ${bugRuns("heal").reduce((a, c) => a + c.bugs, 0)} of the same runs buggy. GenClass acts only when its model is confident, and with the shipped model that is rare: it reports far more than it fixes (see [Model quality](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#model-quality)).${noAction ? ` In ${noAction} more runs a bug of the app did not show with GenClass although GenClass took no action: GenClass changed the timing of a race in the app (listed at the end of the page).` : ""}`);
+  L.push(`- **Bugs fixed by an action: ${byAction}${fixedText ? ` (${fixedText})` : ""}.** The two scenarios with a latent bug (a stale typeahead, a double submit) showed it in ${offBugs} of ${offBugRuns} runs without GenClass; guard left ${bugRuns("guard").reduce((a, c) => a + c.bugs, 0)} and heal ${bugRuns("heal").reduce((a, c) => a + c.bugs, 0)} of the same runs buggy. GenClass acts only when its model is confident, and with the shipped model that is rare: it reports far more than it fixes (see [Model quality](https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/README.md#model-quality)).${noAction ? ` In ${noAction} more runs a bug of the app did not show with GenClass although GenClass took no action: GenClass changed the timing of a race in the app (listed at the end of the page).` : ""}`);
   // findings on correct apps: the ones about a failure the scenario injects on purpose, and the rest (false findings)
   let injected = 0;
   const falseBy = {};
@@ -416,8 +416,8 @@ export function writeReport(results, { jsonPath, mdPath }) {
   // ------------------------------------------------------------------------------------------------ method
   L.push("## Method");
   L.push("");
-  L.push(`- **Apps.** One small app per framework under [\`compat/apps/\`](https://github.com/daybot-solutions-inc/GenClass-lib/tree/main/compat/apps), written idiomatically for each data layer (no GenClass API anywhere: only the one line). They install \`@genclass/runtime\` from a tarball packed from this repository (\`npm pack\`), so the matrix tests the code as it would be published.`);
-  L.push("- **Backend.** One seeded mock server for every app ([`compat/harness/backend.mjs`](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/harness/backend.mjs)): REST, a GraphQL endpoint, a WebSocket and EventSource streams on the app's own origin. It injects latency and failures per scenario; nothing in it knows about GenClass.");
+  L.push(`- **Apps.** One small app per framework under [\`compat/apps/\`](https://github.com/genclass-dev/GenClass-lib/tree/main/compat/apps), written idiomatically for each data layer (no GenClass API anywhere: only the one line). They install \`@genclass/runtime\` from a tarball packed from this repository (\`npm pack\`), so the matrix tests the code as it would be published.`);
+  L.push("- **Backend.** One seeded mock server for every app ([`compat/harness/backend.mjs`](https://github.com/genclass-dev/GenClass-lib/blob/main/compat/harness/backend.mjs)): REST, a GraphQL endpoint, a WebSocket and EventSource streams on the app's own origin. It injects latency and failures per scenario; nothing in it knows about GenClass.");
   L.push("- **A trial.** A fresh browser context loads the page (`?genclass=off` for the run without GenClass; otherwise the mode through `window.GENCLASS_CONFIG`, telemetry off), waits until the model is ready, drives the scenario with real (trusted) keyboard and mouse input, waits until nothing is in flight and the page has been quiet for 0.9 s, then reads the page and the server's state.");
   L.push(`- **Pairing.** Every mode run is compared with the run without GenClass on the same seed. ${seedsN} seeds per cell, plus a second run without GenClass per seed as a determinism control.`);
   L.push("- **Isolation.** Every request to another host is blocked and counted; the model files and ONNX Runtime are served from a local copy of the files the runtime would fetch from jsDelivr, and the script-tag app gets the packed tarball in place of the CDN.");
@@ -429,7 +429,7 @@ export function writeReport(results, { jsonPath, mdPath }) {
   L.push("On Linux with Node ≥ 22.22.3 (Angular 22's minimum) and about 4 GB free:");
   L.push("");
   L.push("```bash");
-  L.push("git clone https://github.com/daybot-solutions-inc/GenClass-lib && cd GenClass-lib");
+  L.push("git clone https://github.com/genclass-dev/GenClass-lib && cd GenClass-lib");
   L.push("npm ci && (cd compat && npm install && npx playwright install --with-deps chromium)");
   L.push("node packages/runtime/bin/genclass-runtime.mjs fetch-model .cache-model/runtime-model-0.2.0 --variant q8 --ort wasm");
   L.push(`COMPAT_MODEL_DIR=$PWD/.cache-model/runtime-model-0.2.0 npm --prefix compat run compat -- --seeds ${seedsN}`);

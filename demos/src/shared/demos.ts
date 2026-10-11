@@ -155,4 +155,4 @@ export const DEMO_BY_ID: Record<DemoId, DemoInfo> = Object.fromEntries(DEMOS.map
   DemoInfo
 >;
 
-export const REPO_URL = "https://github.com/daybot-solutions-inc/GenClass-lib";
+export const REPO_URL = "https://github.com/genclass-dev/GenClass-lib";

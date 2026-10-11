@@ -161,7 +161,7 @@ function shell(nonce: string, title: string, body: string, script: string): stri
 </head>
 <body>
 <header class="top"><div class="wrap"><a class="logo" href="https://genclass.dev/"><img src="${ICON}" alt="">GenClass</a>
-<nav><a href="https://genclass.dev/">Home</a><a href="/start">Get a token</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib#readme">Docs</a></nav></div></header>
+<nav><a href="https://genclass.dev/">Home</a><a href="/start">Get a token</a><a href="https://github.com/genclass-dev/GenClass-lib#readme">Docs</a></nav></div></header>
 <main class="wrap">${body}</main>
 <script nonce="${nonce}">${SNIPPETS_JS}${script}</script>
 </body>
@@ -200,8 +200,8 @@ export function startPage(nonce: string): string {
   <div class="card stack"><h2 class="h2l">Install</h2><div id="snips" class="stack"></div></div>
 </section>
 <footer>Dashboards show counts only (never the situation text) and keep data for 90 days.
-See <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md">privacy</a> and
-<a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md">what is sent</a>.</footer>`;
+See <a href="https://github.com/genclass-dev/GenClass-lib/blob/main/PRIVACY.md">privacy</a> and
+<a href="https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md">what is sent</a>.</footer>`;
   const script = `
 (function(){
   var f = document.getElementById("f"), go = document.getElementById("go"), err = document.getElementById("err");

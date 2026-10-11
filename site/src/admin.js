@@ -242,7 +242,7 @@ async function adoptionStats(env) {
   return { runtime, model, dependents, note: "jsDelivr publishes daily stats with a 1–2 day delay; model loads count installs with the default CDN model, telemetry on or off." };
 }
 async function githubStats() {
-  const j = await cachedJson("https://api.github.com/repos/daybot-solutions-inc/GenClass-lib", 600, { headers: { "user-agent": "genclass-admin", accept: "application/vnd.github+json" } });
+  const j = await cachedJson("https://api.github.com/repos/genclass-dev/GenClass-lib", 600, { headers: { "user-agent": "genclass-admin", accept: "application/vnd.github+json" } });
   return j ? { stars: j.stargazers_count, forks: j.forks_count, issues: j.open_issues_count, watchers: j.subscribers_count, pushed: j.pushed_at } : null;
 }
 export async function stats(env, url) {

@@ -40,7 +40,7 @@ what your app does (see Known limitations). `npx @genclass/runtime init` writes 
 > `npx @genclass/runtime init --no-telemetry`, `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`, or
 > `localStorage["genclass.telemetry"] = "off"`;
 > browsers sending Global Privacy Control are never collected. Details: [Privacy and telemetry](#privacy-and-telemetry)
-> and [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
+> and [TELEMETRY.md](https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
 
 > **Status: `0.2.1`, with model `@genclass/runtime-model@0.2.0`.**
 >
@@ -65,7 +65,7 @@ what your app does (see Known limitations). `npx @genclass/runtime init` writes 
 >   ships model 0.1.0. `0.1.0-alpha.1` and `0.1.0-alpha.0` (v1 runtime: guard by default, holds store writes, `NaN`
 >   crash) predate the model; do not use them.
 >
-> Measured results: [RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md).
+> Measured results: [RESULTS.md](https://github.com/genclass-dev/GenClass-lib/blob/main/docs/runtime/RESULTS.md).
 
 ## Contents
 
@@ -75,8 +75,8 @@ what your app does (see Known limitations). `npx @genclass/runtime init` writes 
 [Ask it questions](#ask-it-questions) · [Observability](#observability) · [Extend it](#extend-it) ·
 [Model quality](#model-quality) · [Performance](#performance) · [Costs](#costs) ·
 [Content-Security-Policy and self-hosting](#content-security-policy-and-self-hosting) · [Privacy and telemetry](#privacy-and-telemetry) ·
-[Known limitations](#known-limitations) · [API reference](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/API.md) ·
-[Interception surface](INTERCEPTION.md) · [Security](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/SECURITY.md)
+[Known limitations](#known-limitations) · [API reference](https://github.com/genclass-dev/GenClass-lib/blob/main/docs/runtime/API.md) ·
+[Interception surface](INTERCEPTION.md) · [Security](https://github.com/genclass-dev/GenClass-lib/blob/main/SECURITY.md)
 
 ## What it looks like
 
@@ -154,12 +154,12 @@ Nuxt 4.6, React Router 8 (framework mode), Angular 20 and plain HTML. In all 15 
 - `remove` left every file byte-identical to the scaffold (node_modules, lockfiles and build output excluded).
 
 Remix, Solid, Preact and Next.js before 15.3 are detected but were not scaffolded with their own generators.
-The [compatibility matrix](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md) runs the
+The [compatibility matrix](https://github.com/genclass-dev/GenClass-lib/blob/main/compat/RESULTS.md) runs the
 one line in React + Vite, Next.js 16, Vue + Pinia, SvelteKit 3, Angular 22, Solid and plain HTML, with 15 data layers
 (TanStack Query, SWR, Redux Toolkit, Zustand, Apollo, WebSocket and EventSource among them), in every mode, and checks
 that GenClass never makes those apps worse; starter templates are in
-[templates/](https://github.com/daybot-solutions-inc/GenClass-lib/tree/main/templates).
-Details: [test/install/RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/test/install/RESULTS.md).
+[templates/](https://github.com/genclass-dev/GenClass-lib/tree/main/templates).
+Details: [test/install/RESULTS.md](https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/test/install/RESULTS.md).
 Those scaffold runs predate the `init` / `remove` fixes in this version (`--mode`, formatter handling, server and
 library detection), which are covered by unit tests; the current end-to-end evidence is the compatibility matrix above.
 
@@ -264,7 +264,7 @@ These hold for the runtime; whether the model's decisions are good is a separate
   Ember, Elm, Lit, Redux, Zustand, MobX, TanStack Query and more, including 14 unmodified open-source RealWorld
   front-ends), 6 seeds each. What that check does and does not compare is under [Model quality](#model-quality).
 - **Every mode, on idiomatic apps in seven frameworks.** The
-  [compatibility matrix](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md) (React,
+  [compatibility matrix](https://github.com/genclass-dev/GenClass-lib/blob/main/compat/RESULTS.md) (React,
   Next.js, Vue, SvelteKit, Angular, Solid, plain HTML; 15 data layers; 10 seeds per cell) found 0 bugs introduced in
   3,510 runs with GenClass and 0 actions on correct apps. Observe left page and server state identical to the run
   without GenClass in every cell but one: an app's own timing race (SWR's optimistic rollback) that came out right
@@ -498,7 +498,7 @@ Standing questions ride along with built-in decisions: `rt.question({ id, on: ["
 - **What it touches:** [INTERCEPTION.md](INTERCEPTION.md) lists every API GenClass wraps or listens to, what each mode
   may change, what it never does, every action's preconditions and undo, and how `disable()` restores the page (a
   unit test keeps it in sync with the code). Threat model:
-  [docs/runtime/THREAT-MODEL.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/THREAT-MODEL.md).
+  [docs/runtime/THREAT-MODEL.md](https://github.com/genclass-dev/GenClass-lib/blob/main/docs/runtime/THREAT-MODEL.md).
 - **Devtools overlay** with four views: **Interventions** (what GenClass did, with Undo where it exists),
   **Detections** (what it noticed but did not act on), **Activity** (a live log of requests, writes, user actions and
   errors with their causal links) and **Now** (what the model would see at this moment). About 52 KB minified /
@@ -626,7 +626,7 @@ The default model is `genclass-runtime-r17` 2.0.0-rc4t (`@genclass/runtime-model
 GenClass encoder trained on simulated apps and on real apps driven in headless Chromium. It ships a gain gate (act
 only when the model's expected gain over doing nothing clears a margin) with one fitted profile per aggressiveness
 level. Held-out test, from
-[RESULTS.md §1](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md):
+[RESULTS.md §1](https://github.com/genclass-dev/GenClass-lib/blob/main/docs/runtime/RESULTS.md):
 
 | profile | guard false interventions | guard recall (clear / real) | heal false interventions | heal recall (clear / real) | report threshold |
 |---|---|---|---|---|---|
@@ -684,7 +684,7 @@ on 66 real apps (6 seeds each), with the v2 runtime as of `0.1.0-alpha.1` (not r
 excluded) and server state. The check does not compare request timing or store contents, and it does not compare
 observe mode against running without GenClass. With network chaos, 3 of 198 runs differed: a request held about
 25 ms changed the simulated network's draws. Details:
-[RESULTS.md §4](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/docs/runtime/RESULTS.md).
+[RESULTS.md §4](https://github.com/genclass-dev/GenClass-lib/blob/main/docs/runtime/RESULTS.md).
 
 ## Performance
 
@@ -794,12 +794,12 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
 ## Privacy and telemetry
 
 - **Decisions are local.** Situations are built and decided in the browser by the local model; nothing is sent anywhere to make a decision.
-- **Anonymous diagnostics are on by default** with `GenClass.init()` in a browser, except on local and private hosts (`localhost`, `*.localhost`, `*.local`, `*.test`, `127.0.0.1`, `::1`, private IP ranges), in Node/SSR, and in `createRuntime()`. They go to the GenClass maintainers' collector ([`telemetry-worker/`](https://github.com/daybot-solutions-inc/GenClass-lib/tree/main/telemetry-worker), a Cloudflare Worker writing to a private R2 bucket) and are used to improve the model.
+- **Anonymous diagnostics are on by default** with `GenClass.init()` in a browser, except on local and private hosts (`localhost`, `*.localhost`, `*.local`, `*.test`, `127.0.0.1`, `::1`, private IP ranges), in Node/SSR, and in `createRuntime()`. They go to the GenClass maintainers' collector ([`telemetry-worker/`](https://github.com/genclass-dev/GenClass-lib/tree/main/telemetry-worker), a Cloudflare Worker writing to a private R2 bucket) and are used to improve the model.
 - **By default no text from your page is sent.** Sent: a random per-page session id, versions, mode, device class, the app's hostname and id-normalised path, and for each decision the trigger, the diagnosis and its confidence, the action and gate, the outcome, latency and counts. The collector stores no IP address or user agent. One console notice per page says it is on.
-- **The situation text the model read is sent only if you opt in** with `GenClass.init({ telemetry: { include: { situation: true } } })`. It is redacted by field meaning, but can still contain route names with query strings, short error messages and short field values; read [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md) before enabling it.
+- **The situation text the model read is sent only if you opt in** with `GenClass.init({ telemetry: { include: { situation: true } } })`. It is redacted by field meaning, but can still contain route names with query strings, short error messages and short field values; read [TELEMETRY.md](https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md) before enabling it.
 - **Opt out:** `GenClass.init({ telemetry: false })`, `?genclass=no-telemetry`, `localStorage.setItem("genclass.telemetry", "off")`; browsers sending Global Privacy Control are never collected.
-- Apps that ship GenClass may need to disclose this to their users (GDPR/CCPA). Full schema, storage and guidance: [TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
-- Other telemetry options: `npx @genclass/runtime init --no-telemetry` writes the opt-out into your project (`telemetry=off` in the meta tag or `data-telemetry="off"` on the script tag do the same); `telemetry: { endpoint, sample, flushMs, maxBatch, include }` sends to your own collector, samples page loads, or tunes batching; `runtime.telemetry` tells whether it is on and why not. Privacy policy: [PRIVACY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md).
+- Apps that ship GenClass may need to disclose this to their users (GDPR/CCPA). Full schema, storage and guidance: [TELEMETRY.md](https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md).
+- Other telemetry options: `npx @genclass/runtime init --no-telemetry` writes the opt-out into your project (`telemetry=off` in the meta tag or `data-telemetry="off"` on the script tag do the same); `telemetry: { endpoint, sample, flushMs, maxBatch, include }` sends to your own collector, samples page loads, or tunes batching; `runtime.telemetry` tells whether it is on and why not. Privacy policy: [PRIVACY.md](https://github.com/genclass-dev/GenClass-lib/blob/main/PRIVACY.md).
 - **Inputs:** typed values of password fields, `cc-*` / `one-time-code` / password autocomplete fields, and fields
   whose name or label names a secret are never recorded.
 - **Redaction:** the default redactor (`redact` option) works by the leaf field's meaning, not by substring.
@@ -860,7 +860,7 @@ GenClass.init({ model: { baseUrl: "/genclass-model/", ortWasmPaths: "/genclass-m
 - **Store state.** With the one line, React, Redux and Zustand (`devtools`) state is discovered; discovered React
   and Zustand state is observed only (detections and delivery `deliver` / `defer`, no write actions). Zustand's
   `devtools` middleware is off in production builds unless you pass `enabled: true`, and then nothing is discovered
-  from it (measured in the [compatibility matrix](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md)). Other state
+  from it (measured in the [compatibility matrix](https://github.com/genclass-dev/GenClass-lib/blob/main/compat/RESULTS.md)). Other state
   (Vue / Pinia, MobX, Jotai, signals, module variables) is seen only through its effects unless you register it.
   Discovered React state has no variable names (`Comp.state0`), production builds minify component names (the store
   is then named after the element the component renders), and a component's store appears on its first state change.

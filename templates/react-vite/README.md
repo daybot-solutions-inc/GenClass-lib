@@ -55,7 +55,7 @@ It lists detections and actions, explains each decision and lets you switch mode
 ## Privacy
 
 In a browser, GenClass sends anonymous, redacted diagnostics by default
-([TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md)).
+([TELEMETRY.md](https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md)).
 To turn that off, set the option before the import runs, for example in `index.html`:
 
 ```html
@@ -66,4 +66,4 @@ To turn that off, set the option before the import runs, for example in `index.h
 
 This setup is part of the public compatibility matrix (React 19 + Vite 8 with plain state, TanStack Query, Zustand,
 Redux Toolkit and Apollo): see
-[compat/RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md).
+[compat/RESULTS.md](https://github.com/genclass-dev/GenClass-lib/blob/main/compat/RESULTS.md).

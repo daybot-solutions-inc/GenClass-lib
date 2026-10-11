@@ -29,7 +29,7 @@ writes the same file into an existing app.
 stores yet, so GenClass works from the network and user input: duplicate submits, failure storms, retries and
 stalls. Decisions that compare a late response with newer data already in your state need that state registered
 (`genclass.atom(...)` / `genclass.guard(...)`, see
-[State it can protect](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#state-it-can-protect)).
+[State it can protect](https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/README.md#state-it-can-protect)).
 
 ## Observe, then guard
 
@@ -59,7 +59,7 @@ if (import.meta.env.DEV) import('@genclass/runtime/devtools').then((d) => d.moun
 ## Privacy
 
 In a browser, GenClass sends anonymous, redacted diagnostics by default
-([TELEMETRY.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md)).
+([TELEMETRY.md](https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md)).
 To turn that off, add to `src/app.html`'s `<head>`:
 
 ```html
@@ -69,4 +69,4 @@ To turn that off, add to `src/app.html`'s `<head>`:
 ## Compatibility
 
 This setup is part of the public compatibility matrix (SvelteKit 3 with Svelte stores, SSR checked): see
-[compat/RESULTS.md](https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/compat/RESULTS.md).
+[compat/RESULTS.md](https://github.com/genclass-dev/GenClass-lib/blob/main/compat/RESULTS.md).

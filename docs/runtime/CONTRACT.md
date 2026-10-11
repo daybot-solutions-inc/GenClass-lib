@@ -67,7 +67,7 @@ The console should read like:
            wrote only cart.items. (unusual, 0.88)
 ```
 
-## 1. Repo layout (branch `runtime` of daybot-solutions-inc/GenClass-lib)
+## 1. Repo layout (branch `runtime` of genclass-dev/GenClass-lib)
 
 ```
 package.json                 npm workspaces: packages/*, sim, demos

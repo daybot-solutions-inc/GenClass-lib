@@ -32,7 +32,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Figtree:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css?v=0ca3ba97">
-<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/daybot-solutions-inc/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Telemetry", "item": "https://genclass.dev/docs/telemetry"}]}, {"@type": "TechArticle", "headline": "GenClass Runtime telemetry", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-11", "isBasedOn": "https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://genclass.dev/#org", "name": "GenClass", "url": "https://genclass.dev/", "logo": "https://genclass.dev/icon-512.png", "sameAs": ["https://github.com/genclass-dev/GenClass-lib", "https://www.npmjs.com/package/@genclass/runtime"]}, {"@type": "WebSite", "@id": "https://genclass.dev/#site", "url": "https://genclass.dev/", "name": "GenClass", "publisher": {"@id": "https://genclass.dev/#org"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://genclass.dev/"}, {"@type": "ListItem", "position": 2, "name": "Docs", "item": "https://genclass.dev/docs"}, {"@type": "ListItem", "position": 3, "name": "Telemetry", "item": "https://genclass.dev/docs/telemetry"}]}, {"@type": "TechArticle", "headline": "GenClass Runtime telemetry", "author": {"@id": "https://genclass.dev/#org"}, "publisher": {"@id": "https://genclass.dev/#org"}, "dateModified": "2026-10-11", "isBasedOn": "https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md"}]}</script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -40,14 +40,14 @@
   <div class="wrap">
     <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=2" alt="genclass" width="170" height="37"></a>
     <nav aria-label="Main"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs" class="on" aria-current="page">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a></nav>
-    <a class="gh" href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a>
-    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
+    <a class="gh" href="https://github.com/genclass-dev/GenClass-lib">GitHub</a>
+    <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel"><a href="/cloud">Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/benchmarks">Benchmarks</a><a href="/guides">Guides</a><a href="https://github.com/genclass-dev/GenClass-lib">GitHub</a><a href="/docs">Get started</a></div></details>
     <a class="btn" href="/docs">Get started</a>
   </div>
 </header>
 <main id="main">
 <div class="page-hero"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a><span aria-hidden="true">/</span><span>Telemetry</span></nav><h1>GenClass Runtime telemetry</h1>
-<p class="lede">Rendered from <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md"><code>packages/runtime/TELEMETRY.md</code></a> in the GenClass repository.</p></div></div>
+<p class="lede">Rendered from <a href="https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/TELEMETRY.md"><code>packages/runtime/TELEMETRY.md</code></a> in the GenClass repository.</p></div></div>
 <section style="padding-top: 24px"><div class="wrap doc"><nav class="toc" aria-label="Reference"><b>Reference</b><a href="/docs/api">API Reference</a><a href="/docs/options">Options Reference</a><a href="/docs/architecture">Architecture</a><a href="/docs/telemetry">Telemetry</a><a href="/docs/interception">Interception surface</a><a href="/docs/threat-model">Threat model</a><a href="/security">Security</a><a href="/docs/compatibility">Compatibility</a><b>On this page</b><a href="#when-it-is-on">When it is on</a><a href="#what-is-sent">What is sent</a><a href="#where-it-goes">Where it goes</a><a href="#options">Options</a><a href="#opting-out">Opting out</a><a href="#if-you-ship-genclass-in-your-app">If you ship GenClass in your app</a></nav><article class="prose"><p>Since <strong><code>0.1.0-beta.3</code></strong>, <code>GenClass.init()</code> in a browser sends <strong>anonymous diagnostics</strong> about GenClass's own
 decisions to the GenClass maintainers (Daybot Solutions Inc.). We use them to measure and improve the GenClass
 model (accuracy, false interventions, latency, which situations it sees in real apps). This page lists exactly what
@@ -96,7 +96,7 @@ latency and counts, plus the app's hostname and the id-normalised route (no quer
 <li><strong>The situation text the model read is sent only with <code>include: { situation: true }</code></strong> (default off since
   <code>0.2.1</code>). It is the text exactly as built for the model, after the redactor (<code>InitOptions.redact</code>, default:
   secret-named fields such as passwords, tokens, card numbers, API keys are replaced by <code>[redacted]</code>; see the
-  README's <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime/README.md#privacy-and-telemetry">Privacy</a> section for the rules and their known gaps). It describes
+  README's <a href="https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime/README.md#privacy-and-telemetry">Privacy</a> section for the rules and their known gaps). It describes
   operations (e.g. <code>GET /api/items/:id</code>), store fields and short value summaries, timing and the facts GenClass
   computed. <strong>Before enabling it, know what it can contain:</strong> request names with their query strings (parameter
   values are redacted only when the parameter name looks secret), route changes with query string and fragment,
@@ -264,7 +264,7 @@ the session event names your hostname. Depending on your users and jurisdiction 
 <li>turn it off (<code>telemetry: false</code>) in apps that handle regulated data (health, finance, children's services): a
   custom <code>redact</code> lowers what reaches situation text but does not guarantee that nothing sensitive does.</li>
 </ul>
-<p>Privacy policy for this collection: <a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/PRIVACY.md">PRIVACY.md</a>. Data processing terms are not published yet
+<p>Privacy policy for this collection: <a href="https://github.com/genclass-dev/GenClass-lib/blob/main/PRIVACY.md">PRIVACY.md</a>. Data processing terms are not published yet
 (planned); if you cannot disclose a third-party diagnostics recipient, set <code>telemetry: false</code>.</p></article></div></section>
 </main>
 <footer class="end">
@@ -277,9 +277,9 @@ the session event names your hostname. Depending on your users and jurisdiction 
     </div>
     <div class="foot-cols">
       <div><b>Product</b><a href="/">Runtime</a><a href="/cloud">GenClass Cloud</a><a href="/enterprise">Enterprise</a><a href="/pricing">Pricing</a></div>
-      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
+      <div><b>Developers</b><a href="/docs">Docs</a><a href="/docs/api">API reference</a><a href="/docs/options">Options</a><a href="/how-it-works">How it works</a><a href="/benchmarks">Benchmarks</a><a href="https://github.com/genclass-dev/GenClass-lib">GitHub</a><a href="https://www.npmjs.com/package/@genclass/runtime">npm</a></div>
       <div><b>Guides</b><a href="/guides/race-conditions-react">Race conditions in React</a><a href="/guides/prevent-duplicate-submissions">Duplicate submissions</a><a href="/guides/stale-responses-out-of-order">Out-of-order responses</a></div>
-      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/daybot-solutions-inc/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
+      <div><b>Company</b><a href="/privacy">Privacy</a><a href="https://github.com/genclass-dev/GenClass-lib/blob/main/LICENSE">License (Apache-2.0)</a><a href="https://github.com/genclass-dev/GenClass-lib/blob/main/packages/runtime-model/MODEL_CARD.md">Model card</a></div>
     </div>
     <div class="foot">
       <span>© 2026 Daybot Solutions Inc. GenClass runtime is open source under Apache-2.0.</span>
