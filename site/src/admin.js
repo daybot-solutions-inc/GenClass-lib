@@ -228,7 +228,7 @@ async function npmStats() {
 // repositories that depend on the package come from code search (needs the optional GITHUB_TOKEN secret).
 async function adoptionStats(env) {
   const cdn = async (pkg) => {
-    const j = await cachedJson(`https://data.jsdelivr.com/v1/stats/packages/npm/${pkg.replace("/", "%2F")}?period=month`, 3600);
+    const j = await cachedJson(`https://data.jsdelivr.com/v1/stats/packages/npm/${pkg}?period=month`, 3600); // jsDelivr wants the literal slash
     const dates = j?.hits?.dates || {};
     return { total: j?.hits?.total ?? null, daily: Object.keys(dates).sort().map((day) => ({ day, hits: dates[day] })), bandwidth: j?.bandwidth?.total ?? null };
   };

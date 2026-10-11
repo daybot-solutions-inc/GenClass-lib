@@ -121,7 +121,7 @@ td.n,th.n{text-align:right;font-family:var(--mono)}
 <div class="card c4"><h2>Held vs background <small>could it still act?</small></h2><div class="bars" id="b-held"></div><div class="bars" id="b-reason" style="margin-top:12px"></div></div>
 <div class="card c4"><h2>Model backend <small>sessions and loads</small></h2><div class="bars" id="b-backend"></div></div>
 <div class="card c4"><h2>Top routes <small>id-normalised, no query</small></h2><div class="bars" id="b-route"></div></div>
-<div class="card c8"><h2>Adoption without a beacon <small id="ad-sub"></small></h2><div class="mini" id="ad-mini"></div><div id="ad-chart" class="chart" style="margin-top:12px"></div><div class="legend" id="ad-leg"></div><div id="ad-deps" style="margin-top:12px"></div></div>
+<div class="card c8"><h2>Adoption without a beacon <small id="ad-sub"></small></h2><div class="mini" id="ad-mini"></div><div id="ad-chart" style="margin-top:12px"></div><div class="legend" id="ad-leg"></div><div id="ad-deps" style="margin-top:12px"></div></div>
 <div class="card c4"><h2>What this page cannot see <small>coverage</small></h2><ul class="notes">
 <li><b>Who turned telemetry off is unknowable by design.</b> <code>telemetry: false</code> sends nothing, and that stays literally true. The Adoption card estimates the share instead: CDN model loads count every install, telemetry on or off.</li>
 <li><b>Only pages with telemetry on.</b> Since 0.2.1 nothing is sent from localhost, *.local, *.test or private networks, nor with <code>telemetry: false</code>, <code>?genclass=no-telemetry</code>, the localStorage opt-out, Global Privacy Control, <code>createRuntime()</code>, Node/SSR, or sampled-out sessions.</li>
@@ -275,6 +275,7 @@ function render(d) {
     E("div", {}, [E("b", { text: fmt(rtc.daily.slice(-d.days).reduce((a, r) => a + r.hits, 0)) }), E("span", { text: "script-tag loads from the CDN" })]),
     E("div", {}, [E("b", { text: fmt(sessionsAll) }), E("span", { text: "sessions that sent telemetry" })]),
     E("div", {}, [E("b", { text: optOut === null ? "–" : Math.round(optOut * 100) + "%" }), E("span", { text: "estimated share with telemetry off (loads minus sessions)" })]));
+  $("ad-chart").className = cdnDays.length ? "chart" : "";
   if (cdnDays.length) lineChart($("ad-chart"), $("ad-leg"), cdnDays.map((r) => r.day), [
     { name: "Model loads (CDN)", values: cdnDays.map((r) => r.hits), color: C.sessions, area: true },
     { name: "Telemetry sessions", values: cdnDays.map((r) => S.sessions[labels.indexOf(r.day)] || 0), color: C.acted }]);
