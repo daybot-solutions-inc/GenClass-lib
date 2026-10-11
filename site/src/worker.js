@@ -1,4 +1,6 @@
 // genclass.dev edge worker: canonical host, early-access API, then static assets with security and cache headers.
+import { handleAdmin, ingest } from "./admin.js";
+
 const CANONICAL = "genclass.dev";
 
 const SECURITY = {
@@ -89,7 +91,7 @@ async function demoApi(request, url) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.hostname === `www.${CANONICAL}`) {
       url.hostname = CANONICAL;
@@ -101,6 +103,7 @@ export default {
     }
     if (url.pathname.startsWith("/forms/")) return new Response("Not found", { status: 404 });
     if (url.pathname.startsWith("/demo-api/")) return demoApi(request, url);
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) return handleAdmin(request, env, url, ctx);
 
     const res = await env.ASSETS.fetch(request);
     const out = new Response(res.body, res);
@@ -112,5 +115,9 @@ export default {
     else if (/\.(txt|xml)$/.test(path)) out.headers.set("cache-control", "public, max-age=3600");
     else out.headers.set("cache-control", "public, max-age=300, must-revalidate");
     return out;
+  },
+  // Every minute: pull new telemetry batches from R2 into the admin aggregates.
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(ingest(env).catch((e) => console.error("admin ingest failed", e)));
   },
 };

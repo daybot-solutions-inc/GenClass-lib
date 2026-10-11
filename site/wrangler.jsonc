@@ -21,7 +21,7 @@
   "r2_buckets": [
     { "binding": "TELEMETRY", "bucket_name": "genclass-telemetry" }
   ],
-  "triggers": { "crons": [] },
+  "triggers": { "crons": ["* * * * *"] },
   "ratelimits": [
     { "name": "LIMIT", "namespace_id": "4801", "simple": { "limit": 5, "period": 60 } }
   ],
