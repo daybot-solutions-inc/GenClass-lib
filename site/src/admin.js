@@ -123,6 +123,11 @@ export async function ingest(env, maxObjects = 150) {
         bump(day, host, "runtime", r.runtime || e.runtime || "?");
         bump(day, host, "mode", e.mode || "?");
         bump(day, host, "country", r.country || "?");
+        bump(day, host, "route", String(e.route || "/").slice(0, 80));
+        if (e.aggressiveness !== undefined) bump(day, host, "aggressiveness", String(e.aggressiveness));
+        bump(day, host, "situation_text", e.situation ? "on" : "off");
+        if (e.device && e.device.webgpu !== undefined) bump(day, host, "webgpu", e.device.webgpu ? "available" : "none");
+        if (e.model) bump(day, host, "model_kind", String(e.model));
         continue;
       }
       let host = hostOf.get(r.sid);
@@ -133,6 +138,15 @@ export async function ingest(env, maxObjects = 150) {
       if (e.t === "decision") {
         bump(day, host, "decisions"); bump(day, host, "decisions_by_trigger", e.trigger || "?");
         if (e.acted) bump(day, host, "acted", e.ran || e.action || "?");
+        if (e.diagnosis) bump(day, host, "diagnoses", e.diagnosis);
+        if (typeof e.latencyMs === "number") {
+          bump(day, host, "latency_ms", "", e.latencyMs); bump(day, host, "latency_n");
+          bump(day, host, "latency_bucket", e.latencyMs < 100 ? "< 100 ms" : e.latencyMs < 250 ? "100–250 ms" : e.latencyMs < 500 ? "250–500 ms" : e.latencyMs < 1000 ? "0.5–1 s" : "≥ 1 s");
+        }
+        if (e.held !== undefined) bump(day, host, "held", e.held ? "held (could act)" : "background (too late to act)");
+        if (!e.acted) bump(day, host, "passive_reason", String(e.reason || (e.tier === "passive" ? "gate: not confident enough" : "passive")).slice(0, 60));
+      } else if (e.t === "veto") {
+        bump(day, host, "vetoes");
       } else if (e.t === "detect") {
         bump(day, host, "detections", e.diagnosis || "?");
         stmts.push(db.prepare(`INSERT INTO recent (at, sid, host, route, kind, trigger, diagnosis, confidence, runtime) VALUES (?,?,?,?,?,?,?,?,?)`)
@@ -146,7 +160,13 @@ export async function ingest(env, maxObjects = 150) {
       } else if (e.t === "undo") {
         bump(day, host, "undos");
       } else if (e.t === "model") {
-        if (e.state === "ready") { bump(day, host, "model_ready", e.device || e.backend || "?"); if (e.loadMs) { bump(day, host, "model_load_ms", "", e.loadMs); bump(day, host, "model_load_n"); } }
+        if (e.state === "ready") {
+          bump(day, host, "model_ready", e.device || e.backend || "?");
+          if (e.loadMs) { bump(day, host, "model_load_ms", "", e.loadMs); bump(day, host, "model_load_n"); }
+          bump(day, host, "model_worker", e.worker === false ? "inline (main thread)" : "web worker");
+          bump(day, host, "model_cache", e.fromCache ? "from cache" : "downloaded");
+          if (e.variant) bump(day, host, "model_variant", String(e.variant).slice(0, 40));
+        }
         if (e.state === "error") bump(day, host, "model_error", String(e.error || "error").slice(0, 60));
       } else if (e.t === "model-error") {
         bump(day, host, "model_error", String(e.code || "error").slice(0, 60));
@@ -216,7 +236,7 @@ export async function stats(env, url) {
   const q = (sql, ...b) => db.prepare(sql).bind(...b).all().then((r) => r.results);
   const [series, breakdown, hosts, recent, ingestState, testHosts] = await Promise.all([
     q(`SELECT day, metric, SUM(n) n FROM daily WHERE day >= ? AND metric IN ('sessions','decisions','detections','acted','undos') ${hostFilter} GROUP BY day, metric ORDER BY day`, since),
-    q(`SELECT metric, key, SUM(n) n FROM daily WHERE day >= ? AND metric IN ('detections','acted','actions','runtime','mode','country','model_ready','model_error','decisions_by_trigger','breaker') ${hostFilter} GROUP BY metric, key ORDER BY n DESC`, since),
+    q(`SELECT metric, key, SUM(n) n FROM daily WHERE day >= ? AND metric IN ('detections','acted','actions','runtime','mode','country','model_ready','model_error','decisions_by_trigger','breaker','diagnoses','latency_bucket','held','passive_reason','model_worker','model_cache','model_variant','route','aggressiveness','situation_text','webgpu','model_kind','vetoes') ${hostFilter} GROUP BY metric, key ORDER BY n DESC`, since),
     q(`SELECT s.host, MIN(s.first_at) first_at, MAX(s.last_at) last_at, COUNT(*) sessions, MAX(s.test) test, MAX(s.runtime) runtime,
         (SELECT SUM(n) FROM daily d WHERE d.host = s.host AND d.metric = 'detections' AND d.day >= ?1) detections,
         (SELECT SUM(n) FROM daily d WHERE d.host = s.host AND d.metric = 'acted' AND d.day >= ?1) acted
@@ -225,7 +245,8 @@ export async function stats(env, url) {
     db.prepare("SELECT COUNT(*) objects, SUM(events) events, MAX(at) last FROM processed WHERE key LIKE 'events/%'").first(),
     q("SELECT host, COUNT(*) sessions FROM sessions WHERE test = 1 GROUP BY host ORDER BY sessions DESC LIMIT 20"),
   ]);
-  const load = await db.prepare(`SELECT SUM(CASE WHEN metric='model_load_ms' THEN n END) ms, SUM(CASE WHEN metric='model_load_n' THEN n END) n FROM daily WHERE day >= ? ${hostFilter}`).bind(since).first();
+  const load = await db.prepare(`SELECT SUM(CASE WHEN metric='model_load_ms' THEN n END) ms, SUM(CASE WHEN metric='model_load_n' THEN n END) n,
+    SUM(CASE WHEN metric='latency_ms' THEN n END) lms, SUM(CASE WHEN metric='latency_n' THEN n END) ln FROM daily WHERE day >= ? ${hostFilter}`).bind(since).first();
   const [waitlist, waitlistRecent, projects, npm, github] = await Promise.all([
     env.DB ? env.DB.prepare("SELECT plan, COUNT(*) n FROM waitlist GROUP BY plan").all().then((r) => r.results).catch(() => []) : [],
     env.DB ? env.DB.prepare("SELECT email, company, apps, plan, page, created_at FROM waitlist ORDER BY id DESC LIMIT 25").all().then((r) => r.results).catch(() => []) : [],
@@ -233,5 +254,6 @@ export async function stats(env, url) {
     npmStats(), githubStats(),
   ]);
   return { generatedAt: new Date().toISOString(), days, includeTest, series, breakdown, hosts, testHosts, recent, ingest: ingestState,
-    modelLoadMs: load && load.n ? Math.round(load.ms / load.n) : null, waitlist, waitlistRecent, projects, npm, github };
+    modelLoadMs: load && load.n ? Math.round(load.ms / load.n) : null, decisionLatencyMs: load && load.ln ? Math.round(load.lms / load.ln) : null,
+    waitlist, waitlistRecent, projects, npm, github };
 }

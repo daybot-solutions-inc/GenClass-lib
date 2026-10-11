@@ -95,6 +95,7 @@ td.n,th.n{text-align:right;font-family:var(--mono)}
 .mini{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
 .mini div{background:var(--panel);border-radius:10px;padding:10px 12px}.mini b{display:block;font:700 20px var(--display)}.mini span{font-size:12px;color:var(--ink3)}
 .foot{font:12px var(--mono);color:var(--ink3);text-align:center;padding:8px 0 24px}
+.notes{font-size:12.5px;line-height:1.5;padding-left:16px;display:flex;flex-direction:column;gap:6px}.notes b{font-weight:600}
 </style></head><body>
 <header class="top"><div class="in">
 <a href="/"><img src="/brand/lockup-h.png?v=2" alt="genclass"></a><span class="tag">admin</span>
@@ -113,8 +114,21 @@ td.n,th.n{text-align:right;font-family:var(--mono)}
 <div class="card chart c8"><h2>Runtime activity <small id="act-sub"></small></h2><div id="act"></div><div class="legend" id="act-leg"></div></div>
 <div class="card feed c4"><h2>Live feed <small>latest detections and fixes</small></h2><ol id="feed"></ol></div>
 <div class="card c4"><h2>Errors found <small>by diagnosis</small></h2><div class="bars" id="b-diag"></div></div>
-<div class="card c4"><h2>Errors resolved <small>actions applied</small></h2><div class="bars green" id="b-act"></div></div>
+<div class="card c4"><h2>Fixes applied <small>interventions, before undos</small></h2><div class="bars green" id="b-act"></div></div>
 <div class="card c4"><h2>Model health <small id="m-sub"></small></h2><div class="mini" id="m-mini"></div><div class="bars red" id="b-merr" style="margin-top:12px"></div></div>
+<div class="card c4"><h2>Decisions by trigger <small>what the model was asked about</small></h2><div class="bars" id="b-trig"></div></div>
+<div class="card c4"><h2>Decision latency <small id="lat-sub"></small></h2><div class="bars" id="b-lat"></div></div>
+<div class="card c4"><h2>Held vs background <small>could it still act?</small></h2><div class="bars" id="b-held"></div><div class="bars" id="b-reason" style="margin-top:12px"></div></div>
+<div class="card c4"><h2>Model backend <small>sessions and loads</small></h2><div class="bars" id="b-backend"></div></div>
+<div class="card c4"><h2>Top routes <small>id-normalised, no query</small></h2><div class="bars" id="b-route"></div></div>
+<div class="card c4"><h2>What this page cannot see <small>coverage</small></h2><ul class="notes">
+<li><b>Only pages with telemetry on.</b> Since 0.2.1 nothing is sent from localhost, *.local, *.test or private networks, nor with <code>telemetry: false</code>, <code>?genclass=no-telemetry</code>, the localStorage opt-out, Global Privacy Control, <code>createRuntime()</code>, Node/SSR, or sampled-out sessions.</li>
+<li><b>Blocked deliveries.</b> A strict Content-Security-Policy without the collector in <code>connect-src</code>, tracker blockers, offline users and page exits before the last beacon all drop batches silently; over 60 batches a minute from one IP are rejected.</li>
+<li><b>No people.</b> One random id per page load: no users, IPs, user agents, cross-page sessions, funnels or retention.</li>
+<li><b>No page content.</b> No situation text unless the app opts in, no URLs beyond hostname and id-normalised path, no bodies, headers or storage.</li>
+<li><b>No ground truth.</b> A detection is the model's opinion; nothing here says whether it was a real bug or whether a fix helped, apart from undos and breaker trips.</li>
+<li><b>Not yet wired.</b> Per-app Cloud dashboards (/start tokens) need a runtime that sends the token; 0.2.1 does not. npm counts lag about a day.</li>
+</ul></div>
 <div class="card c12"><h2>Sites running GenClass <small id="hosts-sub"></small></h2><div class="scroll" id="hosts"></div></div>
 <div class="card chart c8"><h2>npm downloads <small id="npm-sub"></small></h2><div id="npm"></div><div class="legend" id="npm-leg"></div></div>
 <div class="card c4"><h2>Downloads by version <small>last 7 days</small></h2><div class="bars" id="b-ver"></div></div>
@@ -239,6 +253,15 @@ function render(d) {
     E("div", {}, [E("b", { text: loads + nerr ? Math.round(100 * loads / (loads + nerr)) + "%" : "–" }), E("span", { text: "load success" })]),
     E("div", {}, [E("b", { text: fmt(brk.reduce((a, r) => a + r[1], 0)) }), E("span", { text: "breaker trips" })]));
   bars($("b-merr"), errs, "No model errors.");
+
+  bars($("b-trig"), byKey(d.breakdown, "decisions_by_trigger"), "No decisions in this range.");
+  $("lat-sub").textContent = d.decisionLatencyMs ? "avg " + d.decisionLatencyMs + " ms per model call" : "per model call";
+  bars($("b-lat"), byKey(d.breakdown, "latency_bucket"), "No decisions in this range.", 5);
+  bars($("b-held"), byKey(d.breakdown, "held"), "No decisions in this range.", 2);
+  bars($("b-reason"), byKey(d.breakdown, "passive_reason"), "No passive decisions.", 6);
+  bars($("b-backend"), [].concat(byKey(d.breakdown, "model_ready").map(([k, n]) => ["device: " + k, n]), byKey(d.breakdown, "model_worker"), byKey(d.breakdown, "model_cache"),
+    byKey(d.breakdown, "webgpu").map(([k, n]) => ["WebGPU " + k, n]), byKey(d.breakdown, "situation_text").map(([k, n]) => ["situation text " + k, n]), byKey(d.breakdown, "model_kind").map(([k, n]) => ["model " + k, n])), "No model loads in this range.", 12);
+  bars($("b-route"), byKey(d.breakdown, "route"), "No sessions in this range.", 10);
 
   $("hosts-sub").textContent = d.hosts.length + " host" + (d.hosts.length === 1 ? "" : "s") + " · " + range;
   table($("hosts"), [{ t: "Host" }, { t: "Runtime" }, { t: "Sessions", n: 1 }, { t: "Errors found", n: 1 }, { t: "Fixes", n: 1 }, { t: "First seen" }, { t: "Last seen" }],

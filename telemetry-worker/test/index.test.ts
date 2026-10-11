@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { gunzipSync } from "node:zlib";
-import { handle, MAX_BODY_BYTES, MAX_EVENTS, validate } from "../src/index.js";
+import { handle, MAX_BODY_BYTES, MAX_EVENTS, validate } from "../src/collector.js";
 
 function bucket() {
   const puts: { key: string; body: Uint8Array }[] = [];
@@ -33,13 +33,12 @@ function post(body: string, headers: Record<string, string> = { "content-type": 
 const opts = { now: () => new Date("2026-10-08T12:00:00Z"), uuid: () => "u-1" };
 
 describe("collector", () => {
-  it("rate limit: a client over its budget gets 429 and nothing is stored; a failing limiter lets the batch through", async () => {
+  it("rate limit: a client over its batch budget gets 429 and nothing is stored; a failing limiter lets the batch through", async () => {
     const keys: string[] = [];
     const limited = { ...bucket(), LIMIT: { async limit({ key }: { key: string }) { keys.push(key); return { success: false }; } } };
     const req = post(JSON.stringify(batch()));
     req.headers.set("cf-connecting-ip", "203.0.113.9");
-    const res = await handle(req, limited, opts);
-    expect(res.status).toBe(429);
+    expect((await handle(req, limited, opts)).status).toBe(429);
     expect(limited.puts).toHaveLength(0);
     expect(keys).toEqual(["203.0.113.9"]);
     const broken = { ...bucket(), LIMIT: { async limit() { throw new Error("limiter down"); } } };
