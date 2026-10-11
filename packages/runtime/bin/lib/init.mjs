@@ -317,9 +317,10 @@ function telemetryNotice(cfg, where) {
     return;
   }
   row("Telemetry", `${c.bold("on")}${cfg.telemetry ? c.gray(" (--telemetry)") : c.gray(" (the default)")}`);
-  out(`             GenClass sends anonymous diagnostics to its maintainers: its decisions with the redacted`);
-  out(`             situation text the model read, action outcomes, model status and counts (never input values,`);
-  out(`             cookies or IP addresses). Turn it off: ${c.cyan(`${CMD} init --no-telemetry`)}`);
+  out(`             GenClass sends anonymous diagnostics to its maintainers: its decisions, action outcomes,`);
+  out(`             model status and counts. No text from the page (the situation text the model read is sent`);
+  out(`             only with telemetry: { include: { situation: true } }); never cookies or IP addresses;`);
+  out(`             never from localhost or private hosts. Turn it off: ${c.cyan(`${CMD} init --no-telemetry`)}`);
   out(`             (or GenClass.init({ telemetry: false }), ?genclass=no-telemetry in the URL).`);
   out(`             What is sent: ${TELEMETRY_URL}`);
   out(`             Privacy policy: ${PRIVACY_URL}`);

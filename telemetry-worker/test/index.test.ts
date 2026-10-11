@@ -33,6 +33,20 @@ function post(body: string, headers: Record<string, string> = { "content-type": 
 const opts = { now: () => new Date("2026-10-08T12:00:00Z"), uuid: () => "u-1" };
 
 describe("collector", () => {
+  it("rate limit: a client over its budget gets 429 and nothing is stored; a failing limiter lets the batch through", async () => {
+    const keys: string[] = [];
+    const limited = { ...bucket(), LIMIT: { async limit({ key }: { key: string }) { keys.push(key); return { success: false }; } } };
+    const req = post(JSON.stringify(batch()));
+    req.headers.set("cf-connecting-ip", "203.0.113.9");
+    const res = await handle(req, limited, opts);
+    expect(res.status).toBe(429);
+    expect(limited.puts).toHaveLength(0);
+    expect(keys).toEqual(["203.0.113.9"]);
+    const broken = { ...bucket(), LIMIT: { async limit() { throw new Error("limiter down"); } } };
+    expect((await handle(post(JSON.stringify(batch())), broken, opts)).status).toBe(202);
+    expect(broken.puts).toHaveLength(1);
+  });
+
   it("health", async () => {
     const res = await handle(new Request("https://c.example/v1/health"), bucket(), opts);
     expect(res.status).toBe(200);

@@ -1,6 +1,6 @@
 {
   "name": "genclass-runtime",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Short alias for the @genclass/runtime CLI: npx genclass-runtime init sets up GenClass Runtime in your app.",
   "type": "module",
   "license": "Apache-2.0",
@@ -19,7 +19,7 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@genclass/runtime": "0.2.0"
+    "@genclass/runtime": "0.2.1"
   },
   "engines": {
     "node": ">=20"

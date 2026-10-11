@@ -146,17 +146,21 @@ salient request, response or failure. `policy.holdBudgetMs` lowers it; `observe`
 
 **Threat.** Diagnostics, sink records, reports or the audit trail carry personal data.
 
-**Mitigations.** Telemetry (on by default for `GenClass.init` in a browser) sends only what [TELEMETRY.md](../../packages/runtime/TELEMETRY.md)
-lists: the redacted situation text, decisions, action outcomes and counts, never input values of sensitive fields,
-cookies, headers, bodies, the query string or full URL, error messages or the sentences describing changes. It is off
-with `telemetry: false`, `?genclass=no-telemetry`, `localStorage["genclass.telemetry"]="off"`, Global Privacy
-Control, and in `createRuntime()`; `telemetry: { include: { situation: false } }` keeps the situation text out. The transport omits
+**Mitigations.** Telemetry (on by default for `GenClass.init` in a browser on a public host, never on localhost or
+private networks) sends only what [TELEMETRY.md](../../packages/runtime/TELEMETRY.md) lists: decisions, action
+outcomes and counts, the hostname and id-normalised route; no page text unless the app opts in with
+`telemetry: { include: { situation: true } }`, and never input values of sensitive fields, cookies, headers, bodies
+or the sentences describing changes. With situation text opted in, it can carry request names with query strings,
+route changes, the page title, short error messages, short typed values and short store values (see TELEMETRY.md).
+It is off with `telemetry: false`, `?genclass=no-telemetry`, `localStorage["genclass.telemetry"]="off"`, Global
+Privacy Control, and in `createRuntime()`. The transport omits
 credentials and the referrer ([telemetry/transport.ts](../../packages/runtime/src/telemetry/transport.ts)); the
 collector stores no IP address or user agent. Query values are redacted in situation text and replaced with "…" in
 sink evidence and audit entries ([runtime.ts](../../packages/runtime/src/runtime.ts) `redactUrlText`).
 
 **Residual.** Redaction is by name and by the sensitive inputs it saw: a personal value in a field with an ordinary
-name (an email in `profile.contact`, a search term, an address) can appear in the situation text and so in telemetry,
+name (an email in `profile.contact`, a search term, an address) can appear in the situation text and so in telemetry
+when situation text is opted in,
 `rt.explain()`, the devtools overlay and sinks with `evidence: true`. Add a `redact` function for such fields, set
 `telemetry: { include: { situation: false } }`, or turn telemetry off.
 

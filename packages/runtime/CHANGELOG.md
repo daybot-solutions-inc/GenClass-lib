@@ -1,6 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 (2026-10-10)
+
+- **Telemetry: no page text by default.** `telemetry.include.situation` now defaults to **false**: decision events
+  carry the trigger, diagnosis, confidence, action, gate, outcome, latency and counts, but not the situation text
+  the model read. Opt in with `GenClass.init({ telemetry: { include: { situation: true } } })`; TELEMETRY.md now
+  says exactly what that text can contain (request names with query strings, route changes, the page title, short
+  error messages, short typed values, short store values). The console notice changed accordingly.
+- **Telemetry stays off on local and private hosts** (`localhost`, `*.localhost`, `*.local`, `*.test`,
+  `*.internal`, loopback, private IPv4 ranges, link-local, `file:`); `runtime.telemetry.reason` is `local`. An
+  explicit `telemetry: true` / `{ ... }` still sends from them.
+- **Fix: the first salient request after the model loaded was never held in guard or heal mode.** The hold
+  budget and the expected model latency used the first warm-up pass, which on WebGPU includes pipeline compilation
+  and reads as seconds, so the first decision was taken in the background and could not act. They now use the
+  warm pass timed after compilation (`status.latency`), so a duplicate submit right after `Model ready` can be
+  coalesced.
+- **Fix: the "Model ready" console line repeated** (every 5 s, with each latency notification). Printed once per
+  transition into ready.
+- Docs: Zustand's `devtools` middleware is off in production builds unless `enabled: true`, so production Zustand
+  stores are not discovered without it; `?genclass=guard|heal` only raise the mode within limits.
 
 ### From the compatibility matrix (`compat/RESULTS.md`)
 
@@ -9,12 +27,6 @@ layers, every mode, 10 seeds: no bug introduced; observe identical to no GenClas
 optimistic rollback) that GenClass's timing tipped to the correct outcome. No situation text or other model-visible
 text changes; no telemetry change.
 
-- **Fix: the "Model ready" console line repeated.** The model host also notifies while it stays ready (latency
-  stats after the first decision, then every 5 s), and each notification printed `[GenClass] Model ready (…)` again.
-  It is now printed once per transition into ready.
-- **Docs:** Zustand's `devtools` middleware is off in production builds unless `enabled: true`, so production
-  Zustand stores are not discovered without it (README "Automatic state discovery"); `?genclass=guard|heal` only
-  raise the mode within limits (README "Kill switch").
 
 ## 0.2.0 (2026-10-10)
 

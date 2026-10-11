@@ -19,8 +19,15 @@ export interface BucketLike {
   put(key: string, value: ArrayBuffer | Uint8Array, options?: { httpMetadata?: Record<string, string> }): Promise<unknown>;
 }
 
+/** The subset of a Workers rate-limit binding this worker uses. */
+export interface RateLimitLike {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface Env {
   BUCKET: BucketLike;
+  /** Per-client batch limit (wrangler.toml `ratelimits`); keyed by the client IP, which is never stored. */
+  LIMIT?: RateLimitLike;
 }
 
 const CORS: Record<string, string> = {
@@ -131,6 +138,18 @@ export async function handle(request: Request, env: Env, opts: HandleOptions = {
   const ct = (request.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
   if (ct !== "application/json" && ct !== "text/plain") {
     return reply(415, { ok: false, error: "content-type must be application/json or text/plain" });
+  }
+
+  // Abuse guard: a sliding per-IP budget of batches. The key is used only for the counter and never stored.
+  if (env.LIMIT) {
+    const key = request.headers.get("cf-connecting-ip") ?? "unknown";
+    let ok = true;
+    try {
+      ok = (await env.LIMIT.limit({ key })).success;
+    } catch {
+      /* the limiter is best effort */
+    }
+    if (!ok) return reply(429, { ok: false, error: "too many batches; slow down" });
   }
 
   const raw = await readCapped(request, MAX_BODY_BYTES);

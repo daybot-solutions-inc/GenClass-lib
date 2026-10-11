@@ -7,6 +7,7 @@ import { GenClass, createRuntime, DEFAULT_TELEMETRY_ENDPOINT, RUNTIME_VERSION, T
 import type { RuntimeImpl } from "../src/runtime.js";
 import { stateText } from "../src/situation/serialize.js";
 import { resetTelemetryNotice, resolveTelemetry, MAX_QUEUE } from "../src/telemetry/index.js";
+import { isLocalHost } from "../src/telemetry/config.js";
 import type { TelemetryTransport } from "../src/types.js";
 import { FakeClock, defaultScript, setup } from "./helpers.js";
 
@@ -79,7 +80,7 @@ describe("telemetry: defaults and opt-outs (TELEMETRY.md)", () => {
     expect(rt.telemetry?.enabled).toBe(true);
     expect(info.mock.calls.filter((c) => c[0] === TELEMETRY_NOTICE)).toHaveLength(1);
     expect(TELEMETRY_NOTICE).toBe(
-      "[GenClass] Sends anonymous diagnostics (decisions, redacted situation text) to improve the model. Opt out: GenClass.init({ telemetry: false }) or ?genclass=no-telemetry.",
+      "[GenClass] Sends anonymous diagnostics (decisions and counts, no page text) to improve the model. Opt out: GenClass.init({ telemetry: false }) or ?genclass=no-telemetry.",
     );
     // a second runtime on the same page does not repeat the notice
     const rt2 = m.createRuntime({ telemetry: true, decider: null, report: "silent", observe: { fetch: false, timers: false } });
@@ -116,7 +117,27 @@ describe("telemetry: defaults and opt-outs (TELEMETRY.md)", () => {
     // still on: GPC false, localStorage other values, sample 1, an unrelated genclass value
     const on = resolveTelemetry({ sample: 1 }, { ...base, navigator: { globalPrivacyControl: false }, localStorage: ls("on"), location: { search: "?genclass=guard" } }, true);
     expect(on.on).toBe(true);
-    if (on.on) expect(on.config).toMatchObject({ endpoint: DEFAULT_TELEMETRY_ENDPOINT, flushMs: 10_000, maxBatch: 100, situation: true, sample: 1 });
+    if (on.on) expect(on.config).toMatchObject({ endpoint: DEFAULT_TELEMETRY_ENDPOINT, flushMs: 10_000, maxBatch: 100, situation: false, sample: 1 });
+    const withText = resolveTelemetry({ include: { situation: true } }, base, true);
+    expect(withText.on).toBe(true);
+    if (withText.on) expect(withText.config.situation).toBe(true);
+  });
+
+  it("the default-on telemetry stays off on local and private hosts; an explicit option still sends from them", () => {
+    const base = { crypto: globalThis.crypto };
+    const at = (hostname: string) => ({ ...base, location: { hostname, search: "" } });
+    for (const h of ["localhost", "LOCALHOST", "app.localhost", "dev.test", "mac.local", "db.internal", "127.0.0.1", "127.9.9.9", "[::1]", "::1", "0.0.0.0", "10.0.0.5", "192.168.1.20", "172.16.0.1", "172.31.255.255", "169.254.1.1", "100.64.0.1", "fd12::1", "fe80::1", "intranet", ""]) {
+      expect(resolveTelemetry(undefined, at(h), true), h).toEqual({ on: false, reason: "local" });
+    }
+    for (const h of ["genclass.dev", "app.example.com", "172.32.0.1", "11.0.0.1", "8.8.8.8", "2606:4700::1"]) {
+      expect(resolveTelemetry(undefined, at(h), true).on, h).toBe(true);
+    }
+    expect(resolveTelemetry(undefined, { ...base, location: { search: "" } }, true).on).toBe(true); // hostname unknown: not local
+    expect(isLocalHost(undefined)).toBe(false);
+    expect(resolveTelemetry(true, at("localhost"), true).on).toBe(true);
+    expect(resolveTelemetry({ sample: 1 }, at("10.0.0.5"), true).on).toBe(true);
+    // the explicit opt-outs keep their reasons on local hosts too
+    expect(resolveTelemetry(undefined, { ...at("localhost"), location: { hostname: "localhost", search: "?genclass=no-telemetry" } }, true)).toEqual({ on: false, reason: "url" });
   });
 
   it("opt-outs apply to createRuntime and GenClass.init too (GPC, ?genclass=off kill switch)", () => {
@@ -206,8 +227,11 @@ describe("telemetry: batching, flush and page exit", () => {
 });
 
 describe("telemetry: event shapes and the situation text", () => {
-  it("a decision carries the exact redacted situation text the model received, its answers and the gate", async () => {
-    const { rt, clock, transport, decider } = tsetup({ triage: "always", policy: { holdWrites: true }, script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) });
+  it("with include.situation, a decision carries the exact redacted situation text the model received, its answers and the gate", async () => {
+    const { rt, clock, transport, decider } = tsetup(
+      { triage: "always", policy: { holdWrites: true }, script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) },
+      { include: { situation: true } },
+    );
     const auth = rt.atom("auth", { user: "ada", password: "hunter2-secret", token: "tok-SECRET-123" });
     void rt.op("login", () => auth.set({ user: "bob", password: "correct-horse", token: "tok-SECRET-456" }));
     await clock.flush();
@@ -250,10 +274,10 @@ describe("telemetry: event shapes and the situation text", () => {
     expect(ofType(transport, "action").at(-1)).toMatchObject({ outcome: "undone", action: "discard" });
   });
 
-  it("include.situation: false leaves the text out; vetoes, failures and late reverts are recorded", async () => {
+  it("by default (include.situation off) the text is left out; vetoes, failures and late reverts are recorded", async () => {
     const { rt, clock, transport } = tsetup(
       { triage: "always", onBeforeAction: () => false, script: defaultScript({ mutation: { diagnosis: "stale", action: "discard" } }) },
-      { include: { situation: false } },
+      {},
     );
     const a = rt.atom("a", 1);
     void rt.op("w", () => a.set(2));

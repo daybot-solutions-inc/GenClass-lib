@@ -13,36 +13,43 @@ Details under [Opting out](#opting-out).
 
 | how GenClass starts | default |
 |---|---|
-| `GenClass.init()`, `import "@genclass/runtime/auto"` (and `/auto/*`), the CDN script tag, `npx @genclass/runtime init` setups | **on** in a browser |
+| `GenClass.init()`, `import "@genclass/runtime/auto"` (and `/auto/*`), the CDN script tag, `npx @genclass/runtime init` setups | **on** in a browser on a public host |
+| the same, on a local or private host (`localhost`, `*.localhost`, `*.local`, `*.test`, `*.internal`, `127.0.0.1`, `::1`, `10/8`, `172.16/12`, `192.168/16`, link-local, `file:`) | off unless `telemetry: true` / `{ ... }` |
 | `GenClass.init()` outside a browser (Node, SSR, workers) | off unless `telemetry: true` / `{ ... }` |
 | `createRuntime()` (headless, tests, the simulator) | off unless `telemetry: true` / `{ ... }` |
 
 When it is on, the console shows one notice per page:
 
 ```
-[GenClass] Sends anonymous diagnostics (decisions, redacted situation text) to improve the model. Opt out: GenClass.init({ telemetry: false }) or ?genclass=no-telemetry.
+[GenClass] Sends anonymous diagnostics (decisions and counts, no page text) to improve the model. Opt out: GenClass.init({ telemetry: false }) or ?genclass=no-telemetry.
 ```
 
 `runtime.telemetry` reports `{ enabled, reason?, endpoint?, sessionId?, flush() }`; `reason` says why it is off
-(`option`, `headless`, `url`, `localStorage`, `gpc`, `sampled-out`, `no-crypto`, `no-transport`, `kill-switch`,
-`disabled`).
+(`option`, `headless`, `local`, `url`, `localStorage`, `gpc`, `sampled-out`, `no-crypto`, `no-transport`,
+`kill-switch`, `disabled`).
 
 ## What is sent
 
-Only data the runtime already computes for its own decisions, after redaction:
+Only data the runtime already computes for its own decisions. **By default, no text from the page is sent:**
+decision events carry the trigger kind, the diagnosis and its confidence, the chosen action, the gate, the outcome,
+latency and counts, plus the app's hostname and the id-normalised route (no query or fragment).
 
-- **The situation text the model read**, exactly as built for the model, after the redactor
-  (`InitOptions.redact`, default: secret-named fields such as passwords, tokens, card numbers, API keys are replaced
-  by `[redacted]`; see the README's [Privacy](README.md#privacy-and-telemetry) section for the rules and their known
-  gaps). Situation text describes operations (e.g. `GET /api/items/:id`), store fields and short value summaries,
-  timing and the facts GenClass computed. It can contain app data that the redactor does not recognise as secret
-  (for example a product name or a search term). `include: { situation: false }` leaves it out. Since `0.2.0` it
-  also covers state the runtime discovered on its own (`autoState`: React, Redux or Zustand state the app never
-  registered), redacted the same way; those decisions carry `autoState: true`.
-- **Never:** typed values of password, payment (`cc-*`), one-time-code or secret-named inputs (the runtime never
-  records them in the first place), cookies, request or response headers, request or response bodies, storage
-  contents, the page's query string or fragment, the full URL, error messages or stack traces of your app, the
-  sentences GenClass prints about what it changed, IP addresses or user agents (the collector does not store them).
+- **The situation text the model read is sent only with `include: { situation: true }`** (default off since
+  `0.2.1`). It is the text exactly as built for the model, after the redactor (`InitOptions.redact`, default:
+  secret-named fields such as passwords, tokens, card numbers, API keys are replaced by `[redacted]`; see the
+  README's [Privacy](README.md#privacy-and-telemetry) section for the rules and their known gaps). It describes
+  operations (e.g. `GET /api/items/:id`), store fields and short value summaries, timing and the facts GenClass
+  computed. **Before enabling it, know what it can contain:** request names with their query strings (parameter
+  values are redacted only when the parameter name looks secret), route changes with query string and fragment,
+  the page title, the first 100 characters of your app's error messages, the first 40 characters typed into
+  ordinary inputs (a name or an email typed into a field called "Email"), fragments of WebSocket / SSE messages
+  (up to 60 characters) and store leaf values up to 48 characters, including state the runtime discovered on its
+  own (`autoState`: React, Redux or Zustand state the app never registered; those decisions carry
+  `autoState: true`). Add a `redact` function for fields with ordinary names and personal values.
+- **Never, in either setting:** typed values of password, payment (`cc-*`), one-time-code or secret-named inputs
+  (the runtime never records them in the first place), cookies, request or response headers, request or response
+  bodies, storage contents, the sentences GenClass prints about what it changed, IP addresses or user agents (the
+  collector does not store them).
 
 ### Batch envelope (schema `genclass-telemetry/1`)
 
@@ -53,7 +60,7 @@ Only data the runtime already computes for its own decisions, after redaction:
   "schema": "genclass-telemetry/1",
   "sid": "3f9c…",            // 24 hex chars from crypto.getRandomValues, new on every page load, never stored
   "sent": 12034,             // ms since this page's GenClass started (no wall-clock time is sent)
-  "runtime": "0.1.0-beta.3", // @genclass/runtime version
+  "runtime": "0.2.1", // @genclass/runtime version
   "model": "2.0.0-rc4t",     // model card version, or null without a model
   "events": [ /* ≤ 100 events, ≤ 60 KB per request */ ]
 }
@@ -108,7 +115,7 @@ GenClass.init({
     sample: 0.25,                    // fraction of page loads that send (default 1)
     flushMs: 10_000,                 // batch interval
     maxBatch: 100,                   // events per request
-    include: { situation: false },   // leave the situation text out
+    include: { situation: true },    // also send the redacted situation text (default: off)
   },
 });
 ```

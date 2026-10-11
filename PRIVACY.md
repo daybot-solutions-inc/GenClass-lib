@@ -11,15 +11,19 @@ GenClass is maintained by Daybot Solutions Inc. ("we"). Contact: karan@daybot.ca
 
 ## What we collect
 
-When a website runs GenClass with telemetry on (the default), the browser sends us:
+When a website runs GenClass with telemetry on (the default on public websites; never on localhost or private
+networks), the browser sends us:
 
 - **Decisions the runtime made:** what kind of event it looked at (for example a network response or a store
   write), the model's diagnosis and suggested action, its confidence, and whether anything was changed or undone.
-- **The situation text the model read.** This describes recent app activity: request paths, store field names and
-  short summaries of their values (including app state GenClass finds on its own, such as React component state),
-  and timing. GenClass removes passwords, payment details and fields whose names
-  look like secrets before this text is created. Other values, such as names or search terms typed into the app,
-  can appear in shortened form.
+  No text from the page is included by default.
+- **The situation text the model read, only if the website's developer opted in** (`include: { situation: true }`).
+  This describes recent app activity: request paths, store field names and short summaries of their values
+  (including app state GenClass finds on its own, such as React component state), timing, route changes, short
+  error messages and short values typed into ordinary fields. GenClass removes passwords, payment details and
+  fields whose names look like secrets before this text is created. Other values, such as names, emails or search
+  terms typed into the app, can appear in shortened form. Developers who enable it are responsible for telling
+  their users.
 - **Technical details:** GenClass and model versions, settings, device type (WebGPU or WASM), load times and error
   counts, and the website's hostname.
 - **Your approximate country**, from our server provider.

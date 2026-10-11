@@ -153,6 +153,23 @@ describe("hold budget", () => {
     expect(rt.holdBudgetMs()).toBe(150);
   });
 
+  it("before any decision, the warm pass after pipeline compilation sets the budget and the expected latency, not the slow first pass", async () => {
+    // WebGPU compiles its pipelines during the first warm-up pass (seconds); the backend times a second, warm pass.
+    // Without this, the first salient request after "Model ready" was never held (expected 3 s > the 800 ms cap).
+    const manual = new ManualDecider();
+    const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdWrites: true } });
+    manual.status = { state: "ready", warmupMs: 3000, latency: { p50: 60, p90: 80, n: 0, source: "warmup" } };
+    expect(rt.holdBudgetMs()).toBe(150);
+    const a = rt.atom("a", 0);
+    const p = rt.op("w", () => a.set(1));
+    await clock.advance(10);
+    expect(a.get()).toBe(0); // held: the write waits for the decision
+    manual.answer(defaultScript());
+    await clock.flush();
+    await p;
+    expect(a.get()).toBe(1);
+  });
+
   it("held requests carry timeoutMs = the time left in the hold budget; expired queued requests are never computed", async () => {
     const manual = new ManualDecider();
     const { rt, clock } = setup({ decider: manual, triage: "always", policy: { holdBudgetMs: 200, holdWrites: true } });

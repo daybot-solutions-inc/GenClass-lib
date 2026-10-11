@@ -94,6 +94,8 @@ export interface ModelStatus {
   threads?: number;
   /** Duration of the warm-up forward pass. */
   warmupMs?: number;
+  /** Model latency: the warm pass after the pipelines compiled ("warmup"), then a window of real evaluations. */
+  latency?: { p50: number; p90: number; n: number; tokensP50?: number; msPerToken?: number; source?: "warmup" | "evaluations" };
   /** Inference runs in a Worker (false: inline on the main thread). */
   worker?: boolean;
   /** Why the Worker was not used (inline fallback). */
@@ -779,9 +781,10 @@ export interface InitOptions {
   situation?: { budget?: number | "auto" };
   /**
    * Anonymous diagnostics sent to the GenClass maintainers to improve the model (packages/runtime/TELEMETRY.md):
-   * session info, every decision (trigger, the redacted situation text the model read, its calibrated answers, the
-   * gate and what ran), action outcomes, detections, model errors and periodic counts. Never raw input values, cookies,
-   * headers or storage. **Default: on with `GenClass.init()` in a browser** (one console notice per page); off in
+   * session info, every decision (trigger, its calibrated answers, the gate and what ran; the redacted situation
+   * text the model read only with `include: { situation: true }`), action outcomes, detections, model errors and
+   * periodic counts. Never raw input values, cookies, headers or storage. **Default: on with `GenClass.init()` in a
+   * browser on a public host** (one console notice per page; never on localhost or private networks); off in
    * Node/SSR and with `createRuntime()` unless set here. Off with `false`, `?genclass=no-telemetry` (or `off`),
    * `localStorage["genclass.telemetry"] = "off"`, or when the browser sends Global Privacy Control
    * (`navigator.globalPrivacyControl === true`).
@@ -836,7 +839,7 @@ export interface TelemetryOptions {
   flushMs?: number;
   /** Max events per request (default 100; requests are also kept under 60 KB for keepalive/sendBeacon). */
   maxBatch?: number;
-  /** situation (default true): include the redacted situation text the model read in decision events. */
+  /** situation (default false): include the redacted situation text the model read in decision events. */
   include?: { situation?: boolean };
   /** Advanced (tests, custom pipelines): replaces the network transport. Errors are swallowed. */
   transport?: TelemetryTransport;

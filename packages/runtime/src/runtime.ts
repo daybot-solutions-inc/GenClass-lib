@@ -1302,7 +1302,7 @@ export class RuntimeImpl implements Runtime {
 
   /** The current hold budget in ms (policy.holdBudgetMs, "auto" by default). */
   holdBudgetMs(): number {
-    return holdBudget(this.policy, this.queue.latencies(), this.decider?.status.warmupMs);
+    return holdBudget(this.policy, this.queue.latencies(), this.warmLatency());
   }
 
   /** Side-effect free situation building (apart from caching op.reads). */
@@ -1923,6 +1923,18 @@ export class RuntimeImpl implements Runtime {
    * the one being computed (at least as long as it has already taken). Infinite while the provider is not answering
    * (its last evaluation timed out): holding would only add latency.
    */
+  /**
+   * The model's latency before any real decision: the warm pass timed after the pipelines compiled (WebGPU compiles
+   * on the first pass, so the first pass alone would read as seconds and the first salient request after load would
+   * never be held), else the warm-up pass itself.
+   */
+  private warmLatency(): number {
+    const st = this.decider?.status;
+    const warm = st?.latency?.p50;
+    if (typeof warm === "number" && warm > 0) return warm;
+    return st?.warmupMs ?? 0;
+  }
+
   private expectedLatency(): number {
     if (this.queue.stuck) return Infinity;
     const lat = this.queue.latencies();
@@ -1930,7 +1942,7 @@ export class RuntimeImpl implements Runtime {
     if (lat.length) {
       const a = [...lat].sort((x, y) => x - y);
       base = a[Math.floor((a.length - 1) / 2)];
-    } else base = this.decider?.status.warmupMs ?? 0;
+    } else base = this.warmLatency();
     const current = this.queue.computing ? Math.max(base, this.clock.now() - this.queue.computingSince) : 0;
     return base * (1 + this.queue.waiting) + current;
   }

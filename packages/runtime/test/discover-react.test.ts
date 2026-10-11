@@ -435,7 +435,7 @@ describe("autoState React: devtools overlay and telemetry", () => {
   it("telemetry sends discovered state like registered stores and marks the decision autoState", async () => {
     const sent: { events: { t: string; situation?: string; autoState?: boolean }[] }[] = [];
     const transport = { send: (_u: string, body: string) => void sent.push(JSON.parse(body)) };
-    const e = start({ telemetry: { transport, flushMs: 1000 }, triage: "always" });
+    const e = start({ telemetry: { transport, flushMs: 1000, include: { situation: true } }, triage: "always" });
     const { createElement: h, useState } = e.R.React;
     let set!: (v: unknown) => void;
     function Basket() {

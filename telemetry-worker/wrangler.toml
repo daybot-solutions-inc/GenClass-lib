@@ -14,3 +14,9 @@ enabled = false
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "genclass-telemetry"
+
+# Per-client batch limit: 60 batches per minute per IP (the runtime sends at most one batch every 10 s per page).
+[[ratelimits]]
+name = "LIMIT"
+namespace_id = "4802"
+simple = { limit = 60, period = 60 }
