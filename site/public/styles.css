@@ -459,9 +459,9 @@ details p{color:var(--ink2);padding:0 0 20px;font-size:15.5px}
 .ev{grid-template-columns:70px auto minmax(0,1fr) auto}
 @media (max-width:700px){.ev{grid-template-columns:1fr auto}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi .v{font-size:24px}}
 @media (max-width:520px){.nav .btn{display:none}.nav .wrap{gap:12px}}
-.logo .lk{height:32px;width:auto;display:block}
+.logo .lk{height:37px;width:auto;display:block}
 .end .lockup{width:220px;height:auto;mix-blend-mode:normal;margin-bottom:36px}
-@media (max-width:520px){.logo .lk{height:28px}}
+@media (max-width:520px){.logo .lk{height:32px}}
 
 /* ---------- type scale v2: calmer, one column, product above the fold ---------- */
 h1,h2,h3{font-weight:650;letter-spacing:-.02em}

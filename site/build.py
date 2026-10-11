@@ -22,7 +22,7 @@ def nav(active):
     mlinks = "".join(f'<a href="{h}">{t}</a>' for t, h, k in NAV) + f'<a href="{GH}">GitHub</a><a href="/docs">Get started</a>'
     return f'''<header class="nav">
   <div class="wrap">
-    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=1" alt="genclass" width="144" height="32"></a>
+    <a class="logo" href="/" aria-label="GenClass home"><img class="lk" src="/brand/lockup-h.png?v=2" alt="genclass" width="170" height="37"></a>
     <nav aria-label="Main">{links}</nav>
     <a class="gh" href="{GH}">GitHub</a>
     <details class="mnav"><summary aria-label="Open menu">Menu</summary><div class="panel">{mlinks}</div></details>
