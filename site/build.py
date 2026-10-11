@@ -8,7 +8,7 @@ SITE = "https://genclass.dev"
 TODAY = datetime.date.today().isoformat()
 GH = "https://github.com/daybot-solutions-inc/GenClass-lib"
 NPM = "https://www.npmjs.com/package/@genclass/runtime"
-RT = "0.2.0"  # the pinned @genclass/runtime version shown on the site; "{{rt}}" in src/ renders as this
+RT = "0.2.1"  # the pinned @genclass/runtime version shown on the site; "{{rt}}" in src/ renders as this
 
 css = (SRC / "css/base.css").read_text() + "\n" + (SRC / "css/components.css").read_text()
 (PUB / "styles.css").write_text(css)
