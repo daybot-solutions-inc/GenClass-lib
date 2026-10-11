@@ -223,6 +223,24 @@ async function npmStats() {
   }));
   return out;
 }
+// Adoption without a beacon: the model download from jsDelivr is not optional, so CDN hits count every install that
+// loaded the default model (telemetry on or off, minus self-hosted models and browser-cached repeats). Public GitHub
+// repositories that depend on the package come from code search (needs the optional GITHUB_TOKEN secret).
+async function adoptionStats(env) {
+  const cdn = async (pkg) => {
+    const j = await cachedJson(`https://data.jsdelivr.com/v1/stats/packages/npm/${pkg.replace("/", "%2F")}?period=month`, 3600);
+    const dates = j?.hits?.dates || {};
+    return { total: j?.hits?.total ?? null, daily: Object.keys(dates).sort().map((day) => ({ day, hits: dates[day] })), bandwidth: j?.bandwidth?.total ?? null };
+  };
+  const [runtime, model] = await Promise.all([cdn("@genclass/runtime"), cdn("@genclass/runtime-model")]);
+  let dependents = null;
+  if (env.GITHUB_TOKEN) {
+    const j = await cachedJson("https://api.github.com/search/code?q=%22%40genclass%2Fruntime%22+filename%3Apackage.json&per_page=50", 1800,
+      { headers: { authorization: `Bearer ${env.GITHUB_TOKEN}`, "user-agent": "genclass-admin", accept: "application/vnd.github+json" } });
+    if (j) dependents = { total: j.total_count, repos: [...new Set((j.items || []).map((i) => i.repository?.full_name).filter(Boolean))].slice(0, 50) };
+  }
+  return { runtime, model, dependents, note: "jsDelivr publishes daily stats with a 1–2 day delay; model loads count installs with the default CDN model, telemetry on or off." };
+}
 async function githubStats() {
   const j = await cachedJson("https://api.github.com/repos/daybot-solutions-inc/GenClass-lib", 600, { headers: { "user-agent": "genclass-admin", accept: "application/vnd.github+json" } });
   return j ? { stars: j.stargazers_count, forks: j.forks_count, issues: j.open_issues_count, watchers: j.subscribers_count, pushed: j.pushed_at } : null;
@@ -247,13 +265,13 @@ export async function stats(env, url) {
   ]);
   const load = await db.prepare(`SELECT SUM(CASE WHEN metric='model_load_ms' THEN n END) ms, SUM(CASE WHEN metric='model_load_n' THEN n END) n,
     SUM(CASE WHEN metric='latency_ms' THEN n END) lms, SUM(CASE WHEN metric='latency_n' THEN n END) ln FROM daily WHERE day >= ? ${hostFilter}`).bind(since).first();
-  const [waitlist, waitlistRecent, projects, npm, github] = await Promise.all([
+  const [waitlist, waitlistRecent, projects, npm, github, adoption] = await Promise.all([
     env.DB ? env.DB.prepare("SELECT plan, COUNT(*) n FROM waitlist GROUP BY plan").all().then((r) => r.results).catch(() => []) : [],
     env.DB ? env.DB.prepare("SELECT email, company, apps, plan, page, created_at FROM waitlist ORDER BY id DESC LIMIT 25").all().then((r) => r.results).catch(() => []) : [],
     env.DASH_DB ? env.DASH_DB.prepare("SELECT name, created, last_event FROM projects ORDER BY created DESC LIMIT 50").all().then((r) => r.results).catch(() => []) : [],
-    npmStats(), githubStats(),
+    npmStats(), githubStats(), adoptionStats(env),
   ]);
   return { generatedAt: new Date().toISOString(), days, includeTest, series, breakdown, hosts, testHosts, recent, ingest: ingestState,
     modelLoadMs: load && load.n ? Math.round(load.ms / load.n) : null, decisionLatencyMs: load && load.ln ? Math.round(load.lms / load.ln) : null,
-    waitlist, waitlistRecent, projects, npm, github };
+    waitlist, waitlistRecent, projects, npm, github, adoption };
 }

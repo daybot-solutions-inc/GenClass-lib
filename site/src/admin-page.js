@@ -121,7 +121,9 @@ td.n,th.n{text-align:right;font-family:var(--mono)}
 <div class="card c4"><h2>Held vs background <small>could it still act?</small></h2><div class="bars" id="b-held"></div><div class="bars" id="b-reason" style="margin-top:12px"></div></div>
 <div class="card c4"><h2>Model backend <small>sessions and loads</small></h2><div class="bars" id="b-backend"></div></div>
 <div class="card c4"><h2>Top routes <small>id-normalised, no query</small></h2><div class="bars" id="b-route"></div></div>
+<div class="card c8"><h2>Adoption without a beacon <small id="ad-sub"></small></h2><div class="mini" id="ad-mini"></div><div id="ad-chart" class="chart" style="margin-top:12px"></div><div class="legend" id="ad-leg"></div><div id="ad-deps" style="margin-top:12px"></div></div>
 <div class="card c4"><h2>What this page cannot see <small>coverage</small></h2><ul class="notes">
+<li><b>Who turned telemetry off is unknowable by design.</b> <code>telemetry: false</code> sends nothing, and that stays literally true. The Adoption card estimates the share instead: CDN model loads count every install, telemetry on or off.</li>
 <li><b>Only pages with telemetry on.</b> Since 0.2.1 nothing is sent from localhost, *.local, *.test or private networks, nor with <code>telemetry: false</code>, <code>?genclass=no-telemetry</code>, the localStorage opt-out, Global Privacy Control, <code>createRuntime()</code>, Node/SSR, or sampled-out sessions.</li>
 <li><b>Blocked deliveries.</b> A strict Content-Security-Policy without the collector in <code>connect-src</code>, tracker blockers, offline users and page exits before the last beacon all drop batches silently; over 60 batches a minute from one IP are rejected.</li>
 <li><b>No people.</b> One random id per page load: no users, IPs, user agents, cross-page sessions, funnels or retention.</li>
@@ -262,6 +264,24 @@ function render(d) {
   bars($("b-backend"), [].concat(byKey(d.breakdown, "model_ready").map(([k, n]) => ["device: " + k, n]), byKey(d.breakdown, "model_worker"), byKey(d.breakdown, "model_cache"),
     byKey(d.breakdown, "webgpu").map(([k, n]) => ["WebGPU " + k, n]), byKey(d.breakdown, "situation_text").map(([k, n]) => ["situation text " + k, n]), byKey(d.breakdown, "model_kind").map(([k, n]) => ["model " + k, n])), "No model loads in this range.", 12);
   bars($("b-route"), byKey(d.breakdown, "route"), "No sessions in this range.", 10);
+
+  const ad = d.adoption || {}; const rtc = ad.runtime || { daily: [] }; const mdc = ad.model || { daily: [] };
+  const cdnDays = mdc.daily.slice(-d.days); const modelLoads = cdnDays.reduce((a, r) => a + r.hits, 0);
+  const sessionsAll = tot("sessions");
+  const optOut = modelLoads > 0 ? Math.max(0, Math.min(1, 1 - sessionsAll / modelLoads)) : null;
+  $("ad-sub").textContent = range + " · jsDelivr stats, 1–2 day delay";
+  $("ad-mini").replaceChildren(
+    E("div", {}, [E("b", { text: fmt(modelLoads) }), E("span", { text: "model loads from the CDN (every install, telemetry on or off)" })]),
+    E("div", {}, [E("b", { text: fmt(rtc.daily.slice(-d.days).reduce((a, r) => a + r.hits, 0)) }), E("span", { text: "script-tag loads from the CDN" })]),
+    E("div", {}, [E("b", { text: fmt(sessionsAll) }), E("span", { text: "sessions that sent telemetry" })]),
+    E("div", {}, [E("b", { text: optOut === null ? "–" : Math.round(optOut * 100) + "%" }), E("span", { text: "estimated share with telemetry off (loads minus sessions)" })]));
+  if (cdnDays.length) lineChart($("ad-chart"), $("ad-leg"), cdnDays.map((r) => r.day), [
+    { name: "Model loads (CDN)", values: cdnDays.map((r) => r.hits), color: C.sessions, area: true },
+    { name: "Telemetry sessions", values: cdnDays.map((r) => S.sessions[labels.indexOf(r.day)] || 0), color: C.acted }]);
+  else { $("ad-chart").replaceChildren(E("p", { cls: "empty", text: "CDN stats unavailable right now." })); $("ad-leg").replaceChildren(); }
+  const deps = ad.dependents;
+  if (!deps) $("ad-deps").replaceChildren(E("p", { cls: "empty", text: "Public GitHub repos depending on @genclass/runtime: add the GITHUB_TOKEN secret (read-only, public repos) to list them here." }));
+  else table($("ad-deps"), [{ t: "Public GitHub repos with @genclass/runtime in package.json (" + fmt(deps.total) + ")" }], deps.repos.map((r) => [E("a", { href: "https://github.com/" + r, target: "_blank", rel: "noopener", text: r })]), "No public repos depend on it yet (GitHub code search).");
 
   $("hosts-sub").textContent = d.hosts.length + " host" + (d.hosts.length === 1 ? "" : "s") + " · " + range;
   table($("hosts"), [{ t: "Host" }, { t: "Runtime" }, { t: "Sessions", n: 1 }, { t: "Errors found", n: 1 }, { t: "Fixes", n: 1 }, { t: "First seen" }, { t: "Last seen" }],
